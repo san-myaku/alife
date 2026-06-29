@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+<link rel="icon" href="data:," />
 <title>記号生命進化シミュレーター — Symbolic Shapes v1</title>
 <style>
   :root{ --bg1:#0c1445; --bg2:#1a2980; --panel:#111827cc; --panel-border:#2a3352; --text:#e8eefc; --muted:#9fb3d1; --warn:#ff6b6b; --ok:#50fa7b; --amber:#f7b731; }
@@ -313,6 +314,109 @@
     step(){ this.t--; }
     draw(ctx){ const k=Math.max(0,this.t/(28+10*this.scale)); ctx.save(); ctx.translate(this.x,this.y); ctx.globalCompositeOperation='lighter'; ctx.strokeStyle=`${this.color}${(0.7*k).toFixed(3)})`; ctx.lineWidth=1.5+1.5*this.scale*k; for(let i=0;i<this.rays;i++){ const a=i*(TAU/this.rays); const L=8+18*this.scale*k; ctx.beginPath(); ctx.moveTo(Math.cos(a)*2,Math.sin(a)*2); ctx.lineTo(Math.cos(a)*L,Math.sin(a)*L); ctx.stroke(); } ctx.restore(); } }
 
+  class BodyParticle{
+    constructor(x,y,vx,vy,r,hue,light=66,life=58,core=false){
+      this.x=x; this.y=y; this.vx=vx; this.vy=vy; this.r=r; this.hue=hue; this.light=light; this.t=life; this.maxT=life; this.core=core; this.spin=Math.random()*TAU; this.rot=rnd(-0.09,0.09);
+    }
+    step(){
+      this.t--;
+      this.x+=this.vx; this.y+=this.vy;
+      this.vx*=0.974; this.vy*=0.974;
+      this.vy += 0.002;
+      this.spin += this.rot;
+    }
+    draw(ctx){
+      const k=clamp(this.t/this.maxT,0,1);
+      const r=this.r*(0.55+0.70*k);
+      ctx.save();
+      ctx.translate(this.x,this.y);
+      ctx.rotate(this.spin);
+      ctx.globalCompositeOperation='lighter';
+      const g=ctx.createRadialGradient(-r*0.22,-r*0.24,0.2,0,0,r*2.0);
+      if(this.core){
+        g.addColorStop(0,`hsla(${this.hue},96%,92%,${0.78*k})`);
+        g.addColorStop(0.45,`hsla(${this.hue},86%,62%,${0.42*k})`);
+        g.addColorStop(1,'rgba(0,0,0,0)');
+        ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,r*1.65,0,TAU); ctx.fill();
+        ctx.strokeStyle=`hsla(${this.hue},92%,90%,${0.46*k})`;
+        ctx.lineWidth=Math.max(0.45,r*0.18);
+        ctx.beginPath(); ctx.arc(0,0,r*0.72,0,TAU); ctx.stroke();
+      } else {
+        g.addColorStop(0,`hsla(${this.hue},92%,82%,${0.58*k})`);
+        g.addColorStop(0.62,`hsla(${this.hue},78%,${this.light}%,${0.36*k})`);
+        g.addColorStop(1,'rgba(0,0,0,0)');
+        ctx.fillStyle=g;
+        ctx.beginPath();
+        ctx.ellipse(0,0,r*1.15,r*(0.55+0.30*Math.sin(this.spin)),0,0,TAU);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  class SpeciesFlash{
+    constructor(org){
+      this.org=org; this.x=org.x; this.y=org.y; this.r=Math.max(14, org.size*2.1); this.hue=(org.hue||org._symbol?.outlineHue||190); this.t=132; this.maxT=132;
+    }
+    step(){
+      this.t--;
+      if(this.org && !this.org.dead){ this.x=this.org.x; this.y=this.org.y; }
+    }
+    draw(ctx){
+      const k=clamp(this.t/this.maxT,0,1);
+      const grow=1.0 + (1-k)*0.85;
+      ctx.save();
+      ctx.translate(this.x,this.y);
+      ctx.globalCompositeOperation='lighter';
+      ctx.strokeStyle=`hsla(${this.hue},96%,82%,${0.34*k})`;
+      ctx.lineWidth=1.1+2.0*k;
+      ctx.beginPath(); ctx.arc(0,0,this.r*grow,0,TAU); ctx.stroke();
+      ctx.strokeStyle=`hsla(${(this.hue+70)%360},95%,86%,${0.20*k})`;
+      ctx.lineWidth=0.9;
+      for(let i=0;i<8;i++){
+        const a=i*TAU/8 + (1-k)*0.65;
+        const inner=this.r*(0.64+0.30*(1-k));
+        const outer=this.r*(1.05+0.68*(1-k));
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a)*inner,Math.sin(a)*inner);
+        ctx.lineTo(Math.cos(a)*outer,Math.sin(a)*outer);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  function spawnPredationScatter(prey,predator,scale=1){
+    if(!prey) return;
+    try{ if(!prey._symbol && prey.prepareSymbolDetails) prey.prepareSymbolDetails(); }catch(_){}
+    const sym=prey._symbol||null;
+    const nodes=(sym && sym.nodes && sym.nodes.length) ? sym.nodes : null;
+    const heading=Number.isFinite(prey.heading) ? prey.heading : 0;
+    const ca=Math.cos(heading), sa=Math.sin(heading);
+    const away=predator ? Math.atan2(prey.y-predator.y, prey.x-predator.x) : Math.random()*TAU;
+    const count=Math.max(12, Math.min(48, Math.round(10 + prey.size*1.15 + (nodes?nodes.length*4:0) + scale*8)));
+    for(let i=0;i<count;i++){
+      const n=nodes ? nodes[i%nodes.length] : null;
+      const lx=n ? n.x*rnd(0.45,0.95) : Math.cos(Math.random()*TAU)*prey.size*rnd(0.05,0.85);
+      const ly=n ? n.y*rnd(0.45,0.95) : Math.sin(Math.random()*TAU)*prey.size*rnd(0.05,0.85);
+      const px=prey.x + lx*ca - ly*sa;
+      const py=prey.y + lx*sa + ly*ca;
+      const a=away*rnd(0.35,0.75) + Math.atan2(py-prey.y,px-prey.x)*rnd(0.25,0.65) + rnd(-0.95,0.95);
+      const sp=rnd(0.42,1.85)*(0.75+0.35*scale);
+      const core=(i%5===0);
+      const hue=core ? ((sym?.nucleusHue ?? ((prey.hue||180)+35))%360) : ((n?.hue ?? sym?.outlineHue ?? prey.hue ?? 190)%360);
+      const r=core ? rnd(1.1,2.7) : rnd(0.9,3.4);
+      sparks.push(new BodyParticle(px,py,Math.cos(a)*sp + (prey.vx||0)*0.18,Math.sin(a)*sp + (prey.vy||0)*0.18,r,hue,core?70:rnd(52,72),Math.round(rnd(42,76)*(0.85+0.20*scale)),core));
+    }
+    sparks.push(new Spark(prey.x, prey.y, clamp(scale*0.75,0.55,1.6),'rgba(255,120,120,'));
+  }
+
+  function markNewSpecies(org){
+    if(!org) return;
+    org.newSpeciesFlash=140;
+    sparks.push(new SpeciesFlash(org));
+  }
+
   function q4(x){ return x<0.25?0: x<0.5?1: x<0.75?2:3; }
 
   function q3(x){ return x<1/3?0: x<2/3?1:2; }
@@ -465,7 +569,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this.id=NEXT_ID++; this.x=x; this.y=y; this.vx=0; this.vy=0; this.energy=100; this.storeN=0; this.storeO=0; this.storeD=0; this.mem=1.0; this.age=0; this.fitness=0; this.moveCostSum=0; this.trail=[]; this.phase=Math.random()*TAU; this.attackCD=0; this.fleeTimer=0; this.protect=90; this.mutagenBoost=0; this.burstTimer=0; this.role='other';
       this.mateSeekT=0; this.callCD=0;
       this.restT=0; this.restCD=0;
-      this.heading=Math.random()*TAU; this.gait=Math.random()*TAU; this.motionLevel=0; this.socialCount=0; this.herdThreat=0;
+      this.heading=Math.random()*TAU; this.gait=Math.random()*TAU; this.motionLevel=0; this.socialCount=0; this.herdThreat=0; this.newSpeciesFlash=0;
       this.genes = genes ? genes : { speed:Math.random(), size:Math.random(), efficiency:Math.random(), reproduction:Math.random(), sensory:Math.random(), carnivory:Math.random(), lobes:Math.random(), lobeAmp:Math.random(), elongation:Math.random(), pattern:Math.random() , morph:Math.random()};
       this.recalcPhenotype(); this.updateColor();
       this.aff = { aN: clamp(0.3 + 0.7*(1-this.genes.carnivory), -1, 1), aC: clamp(-0.2 - 0.8*this.genes.speed, -1, 1), aT: clamp(-0.3 - 0.5*this.genes.sensory, -1, 1), aZ: (function(g){ let a=-0.7; if(g.carnivory>0.6) a+=0.4*(g.carnivory-0.6); if(g.speed<0.5) a+=0.2*(0.5-g.speed); return clamp(a,-1,1); })(this.genes) };;
@@ -473,7 +577,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       const c0 = speciesCount.get(this.speciesKey)||0; speciesCount.set(this.speciesKey, c0+1);
       noteSpeciesSeen(this.speciesKey);
       if(bornByRepro){
-        if(c0===0){ showToast('species', `🧬 新種誕生：種コード ${this.speciesKey}`); }
+        if(c0===0){ showToast('species', `🧬 新種誕生：種コード ${this.speciesKey}`); markNewSpecies(this); }
         if(parentA){ addLineageEdge(parentA, this.speciesKey); }
         if(parentB){ addLineageEdge(parentB, this.speciesKey); }
       }
@@ -913,7 +1017,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
 
     step(){
       if((this.age & 3)===0){ this.trail.push({x:this.x,y:this.y}); if(this.trail.length>16) this.trail.shift(); }
-      if(this.attackCD>0) this.attackCD--; if(this.protect>0) this.protect--; if(this.fleeTimer>0) this.fleeTimer--; if(this.mutagenBoost>0) this.mutagenBoost--; if(this.burstTimer>0) this.burstTimer--;
+      if(this.attackCD>0) this.attackCD--; if(this.protect>0) this.protect--; if(this.fleeTimer>0) this.fleeTimer--; if(this.mutagenBoost>0) this.mutagenBoost--; if(this.burstTimer>0) this.burstTimer--; if(this.newSpeciesFlash>0) this.newSpeciesFlash--;
 
       // フィールド効果
       for(const e of effects){ const dx=e.x-this.x, dy=e.y-this.y; const d2=dx*dx+dy*dy; if(d2<e.r*e.r){ const d=Math.sqrt(d2)||1; if(e.type==='repel'){ this.vx -= (dx/d)*0.35; this.vy -= (dy/d)*0.35; this.attackCD=Math.max(this.attackCD,10); } if(e.type==='mutagen'){ this.mutagenBoost=60; } } }
@@ -1228,11 +1332,11 @@ if(Z>0.10){
         this.fitness+=0.6;
 
         prey.dead=true;
-        const corpseE=gainRaw*0.45;
-        corpses.push(new Corpse(prey.x,prey.y,corpseE));
-        eco.detritusMeter += corpseE;
         const scale=clamp((gain/60),0.6,2.0);
-        sparks.push(new Spark(prey.x, prey.y, scale,'rgba(255,90,110,'));
+        const corpseE=gainRaw*0.32;
+        eco.detritusMeter += corpseE;
+        if(window.env && window.env.addDetritusAt) window.env.addDetritusAt(prey.x,prey.y,0.012 + 0.010*scale);
+        spawnPredationScatter(prey,this,scale);
         this.attackCD=120;
         predEvents++;
         peaceCounter=0;
@@ -1374,6 +1478,30 @@ if(Z>0.10){
         ctx.strokeStyle = threat>0 ? `rgba(255,220,130,${0.10+0.16*threat})` : 'rgba(150,225,245,0.10)';
         ctx.lineWidth = Math.max(0.8,this.size*0.08);
         ctx.stroke();
+        ctx.restore();
+      }
+      if(this.newSpeciesFlash>0){
+        const k=clamp(this.newSpeciesFlash/140,0,1);
+        const hue=(this._symbol?.outlineHue ?? this.hue ?? 190);
+        const rr=this.size*(1.85 + 0.95*(1-k));
+        ctx.save();
+        ctx.globalCompositeOperation='lighter';
+        const halo=ctx.createRadialGradient(0,0,1,0,0,rr*1.35);
+        halo.addColorStop(0,`hsla(${hue},96%,78%,${0.14*k})`);
+        halo.addColorStop(1,'rgba(0,0,0,0)');
+        ctx.fillStyle=halo; ctx.beginPath(); ctx.arc(0,0,rr*1.35,0,TAU); ctx.fill();
+        ctx.strokeStyle=`hsla(${hue},96%,86%,${0.38*k})`;
+        ctx.lineWidth=1.0+2.0*k;
+        ctx.beginPath(); ctx.arc(0,0,rr,0,TAU); ctx.stroke();
+        ctx.strokeStyle=`hsla(${(hue+70)%360},96%,88%,${0.22*k})`;
+        ctx.lineWidth=0.8;
+        for(let i=0;i<7;i++){
+          const a=i*TAU/7 + (this.gait||0)*0.22;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(a)*rr*0.72,Math.sin(a)*rr*0.72);
+          ctx.lineTo(Math.cos(a)*rr*1.12,Math.sin(a)*rr*1.12);
+          ctx.stroke();
+        }
         ctx.restore();
       }
 
@@ -2984,6 +3112,24 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     drawHUD();
     drawPhy();
   }
+
+  window.__alifeDebug = {
+    counts(){
+      return { organisms:organisms.length, sparks:sparks.length, corpses:corpses.length, species:new Set(organisms.map(o=>o.speciesKey)).size };
+    },
+    previewPredationEffect(){
+      const prey=organisms[0];
+      if(!prey) return false;
+      spawnPredationScatter(prey, organisms[1]||null, 1.2);
+      return true;
+    },
+    previewNewSpeciesEffect(){
+      const org=organisms[0];
+      if(!org) return false;
+      markNewSpecies(org);
+      return true;
+    }
+  };
 
   function loop(){ if(running){ update(); if(frame%20===0) reportMix(); } draw(); requestAnimationFrame(loop); }
 
