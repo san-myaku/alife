@@ -444,11 +444,18 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const social = clamp(0.10 + g.sensory*0.38 + g.reproduction*0.24 + (1-g.carnivory)*0.16 + g.lobes*0.14 - g.size*0.10, 0, 1);
     if(social<0.34) return { mode:'solitary', sociality:social };
     if(g.carnivory>0.62 && g.speed>0.52 && g.sensory>0.42) return { mode:'hunt-pack', sociality:social };
+    if(g.carnivory<=0.34 && social>=0.38 && (g.sensory>0.42 || g.reproduction>0.52)) return { mode:'defense-school', sociality:social };
     if(g.elongation>0.66 && g.sensory>0.44) return { mode:'trail', sociality:social };
     if(g.efficiency>0.62 && g.speed<0.58) return { mode:'cluster', sociality:social };
     return { mode:'school', sociality:social };
   }
   function socialStrategyLabel(mode){
+    if(mode==='hunt-pack') return '群狩り';
+    if(mode==='defense-school') return '防御群れ';
+    if(mode==='trail') return '追尾';
+    if(mode==='cluster') return '密集';
+    if(mode==='school') return '群泳';
+    if(mode==='solitary') return '単独';
     return mode==='hunt-pack' ? '群狩り' : mode==='trail' ? '追尾' : mode==='cluster' ? '密集' : mode==='school' ? '群泳' : '単独';
   }
 
@@ -458,7 +465,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this.id=NEXT_ID++; this.x=x; this.y=y; this.vx=0; this.vy=0; this.energy=100; this.storeN=0; this.storeO=0; this.storeD=0; this.mem=1.0; this.age=0; this.fitness=0; this.moveCostSum=0; this.trail=[]; this.phase=Math.random()*TAU; this.attackCD=0; this.fleeTimer=0; this.protect=90; this.mutagenBoost=0; this.burstTimer=0; this.role='other';
       this.mateSeekT=0; this.callCD=0;
       this.restT=0; this.restCD=0;
-      this.heading=Math.random()*TAU; this.gait=Math.random()*TAU; this.motionLevel=0;
+      this.heading=Math.random()*TAU; this.gait=Math.random()*TAU; this.motionLevel=0; this.socialCount=0; this.herdThreat=0;
       this.genes = genes ? genes : { speed:Math.random(), size:Math.random(), efficiency:Math.random(), reproduction:Math.random(), sensory:Math.random(), carnivory:Math.random(), lobes:Math.random(), lobeAmp:Math.random(), elongation:Math.random(), pattern:Math.random() , morph:Math.random()};
       this.recalcPhenotype(); this.updateColor();
       this.aff = { aN: clamp(0.3 + 0.7*(1-this.genes.carnivory), -1, 1), aC: clamp(-0.2 - 0.8*this.genes.speed, -1, 1), aT: clamp(-0.3 - 0.5*this.genes.sensory, -1, 1), aZ: (function(g){ let a=-0.7; if(g.carnivory>0.6) a+=0.4*(g.carnivory-0.6); if(g.speed<0.5) a+=0.2*(0.5-g.speed); return clamp(a,-1,1); })(this.genes) };;
@@ -834,39 +841,73 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       const mode = this.socialMode || 'solitary';
       const sociality = this.sociality || 0;
       if(mode==='solitary' || sociality<0.32) return 0;
-      const range = clamp(this.senseR*(0.38 + sociality*0.44), 38, 112);
+      const range = mode==='defense-school' ? clamp(this.senseR*(0.54 + sociality*0.52), 54, 152) : clamp(this.senseR*(0.38 + sociality*0.44), 38, 112);
       let wx=0, wy=0, wvx=0, wvy=0, wsum=0, count=0;
+      let fleeX=0, fleeY=0, fleeW=0, predators=0;
       forEachOrgNeighbors(this.x,this.y,range,(o,dx,dy,d2)=>{
         if(o===this || o.dead) return;
         const d=Math.sqrt(d2)||1;
+        const predatorThreat = mode==='defense-school' && o.genes && o.genes.carnivory>0.62 && o.size>=this.size*0.62;
+        if(predatorThreat){
+          const w = clamp(1 - d/range, 0.08, 1) * (0.85 + o.genes.carnivory*0.45);
+          fleeX += (-dx/d)*w;
+          fleeY += (-dy/d)*w;
+          fleeW += w;
+          predators++;
+        }
         const sameSpecies = o.speciesKey===this.speciesKey;
         const sameMode = o.socialMode===mode;
         const sameRole = o.role===this.role;
-        let affinity = sameSpecies ? 1.0 : (sameMode ? 0.62 : (sameRole ? 0.34 : 0.10));
+        const herbAlly = o.genes && o.genes.carnivory<=0.38;
+        let affinity = mode==='defense-school'
+          ? (sameSpecies ? 1.12 : (herbAlly ? (sameMode ? 0.78 : 0.46) : 0.06))
+          : (sameSpecies ? 1.0 : (sameMode ? 0.62 : (sameRole ? 0.34 : 0.10)));
         if(mode==='cluster' && !sameSpecies) affinity *= 0.45;
         if(mode==='hunt-pack' && !(sameSpecies || sameRole)) affinity *= 0.35;
         if(affinity<0.08) return;
         const w = affinity * clamp(1 - d/range, 0.04, 1);
         wx += o.x*w; wy += o.y*w; wvx += o.vx*w; wvy += o.vy*w; wsum += w; count++;
       });
-      if(!count || wsum<=0) return 0;
+      if(!count || wsum<=0){
+        if(predators && fleeW>0){
+          const flee = (0.13 + 0.28*sociality) * (1 + Math.min(2,predators)*0.22);
+          this.vx += (fleeX/fleeW)*flee;
+          this.vy += (fleeY/fleeW)*flee;
+          this.fleeTimer = Math.max(this.fleeTimer, 24 + Math.min(34, predators*8));
+          this.herdThreat = Math.max(this.herdThreat||0, 35 + predators*8);
+          this.motionLevel = Math.max(this.motionLevel||0, clamp(0.18 + predators*0.18,0,0.70));
+          return predators;
+        }
+        this.socialCount = 0;
+        this.herdThreat = Math.max(0,(this.herdThreat||0)-1);
+        return 0;
+      }
       const cx=wx/wsum, cy=wy/wsum, avx=wvx/wsum, avy=wvy/wsum;
       const dx=cx-this.x, dy=cy-this.y;
       const d=Math.hypot(dx,dy)||1;
-      const targetDist = (this.personalSpaceR||this.size) * (mode==='cluster' ? 1.75 : (mode==='trail' ? 2.30 : 2.05));
+      const targetDist = (this.personalSpaceR||this.size) * (mode==='defense-school' ? (predators ? 1.30 : 1.55) : (mode==='cluster' ? 1.75 : (mode==='trail' ? 2.30 : 2.05)));
       let cohesion = 0;
       if(d>targetDist) cohesion = clamp((d-targetDist)/range,0,1);
+      if(mode==='defense-school' && predators) cohesion = Math.max(cohesion,0.42);
       if(mode==='trail') cohesion *= 1.25;
       if(mode==='cluster') cohesion *= 0.85;
-      const align = (mode==='school'||mode==='hunt-pack') ? (0.026 + 0.040*sociality) : (mode==='trail' ? 0.018 + 0.028*sociality : 0.010 + 0.018*sociality);
-      const coh = (0.020 + 0.050*sociality) * cohesion;
+      const align = (mode==='school'||mode==='hunt-pack'||mode==='defense-school') ? (0.026 + 0.040*sociality + (predators?0.026:0)) : (mode==='trail' ? 0.018 + 0.028*sociality : 0.010 + 0.018*sociality);
+      const coh = (0.020 + 0.050*sociality + (mode==='defense-school'?0.018:0)) * cohesion;
       this.vx += avx*align + (dx/d)*coh;
       this.vy += avy*align + (dy/d)*coh;
+      if(predators && fleeW>0){
+        const flee = (0.12 + 0.28*sociality) * (1 + Math.min(2,predators)*0.22);
+        this.vx += (fleeX/fleeW)*flee;
+        this.vy += (fleeY/fleeW)*flee;
+        this.fleeTimer = Math.max(this.fleeTimer, 22 + Math.min(34, predators*8));
+      }
       if(mode==='cluster' && d<targetDist*0.70){
         this.vx *= 0.992;
         this.vy *= 0.992;
       }
-      this.motionLevel = Math.max(this.motionLevel||0, clamp(0.08 + count*0.025,0,0.46));
+      this.socialCount = count;
+      this.herdThreat = predators ? Math.max(this.herdThreat||0, 35 + predators*8) : Math.max(0,(this.herdThreat||0)-1);
+      this.motionLevel = Math.max(this.motionLevel||0, clamp(0.08 + count*0.025 + predators*0.16,0,0.70));
       return count;
     }
 
@@ -1102,7 +1143,7 @@ if(Z>0.10){
       // エネルギー消費
       const moveCost=0.03*(this.vx*this.vx + this.vy*this.vy);
       let neigh=0; forEachOrgNeighbors(this.x,this.y,35,(o)=>{ if(o!==this) neigh++; });
-      const crowdEase = (this.socialMode==='cluster'||this.socialMode==='school'||this.socialMode==='hunt-pack') ? (1 - 0.42*(this.sociality||0)) : 1;
+      const crowdEase = (this.socialMode==='cluster'||this.socialMode==='school'||this.socialMode==='hunt-pack'||this.socialMode==='defense-school') ? (1 - 0.42*(this.sociality||0)) : 1;
       const densityCost=0.01*neigh*clamp(crowdEase,0.54,1);
 
       // chloroplast trait: in daytime, calm herbivores can suppress basal metabolism (survival only)
@@ -1155,6 +1196,24 @@ if(Z>0.10){
     tryPredate(){ if(this.attackCD>0) return; const carnIntent=this.genes.carnivory; if(carnIntent<0.2) return; let repelHere=false; for(const e of effects){ if(e.type!=='repel') continue; const dx=e.x-this.x, dy=e.y-this.y; if(dx*dx+dy*dy < e.r*e.r){ repelHere=true; break; } }
       const deficit=Math.max(0, this.hungerBias - this.energy); let intent=carnivoryIntent(carnIntent, deficit); if(repelHere) intent*=0.2; if(intent<0.05) return; let prey=null, bestD2=Infinity; forEachOrgNeighbors(this.x,this.y,this.senseR,(o,dx,dy,d2)=>{ if(o===this) return; if(o.protect>0) return; if(o.size >= this.size*0.95) return; const rr=(this.size+o.size+2); if(d2<bestD2 && d2 <= rr*rr){ bestD2=d2; prey=o; } }); if(!prey) return; let pBase=0.22; const sizeEdge=clamp((this.size-prey.size)/this.size,0,0.5); let p=clamp(pBase*(0.6+sizeEdge*0.8)*intent,0,0.65); if(repelHere) p*=0.5; if(this.role==='ambusher'){ p*= 1.0*rareFactor('ambusher'); if(this.burstTimer>0) p*=1.2; } if(this.role==='pack' || this.socialMode==='hunt-pack'){ let mates=0; forEachOrgNeighbors(prey.x,prey.y,76,(o2)=>{ if(o2!==this && (o2.role==='pack' || o2.socialMode==='hunt-pack' || o2.speciesKey===this.speciesKey)) mates++; }); p*= (0.75 + 0.10*mates) * rareFactor('pack'); }
       p*= (worldEvent.predSuccessMul||1);
+      if(prey.socialMode==='defense-school'){
+        let herd=0, screen=0;
+        const preyToPred=Math.hypot(prey.x-this.x,prey.y-this.y)||1;
+        forEachOrgNeighbors(prey.x,prey.y,82,(ally,dx,dy,d2)=>{
+          if(ally===prey || ally.dead || !ally.genes || ally.genes.carnivory>0.40) return;
+          if(!(ally.speciesKey===prey.speciesKey || ally.socialMode==='defense-school')) return;
+          herd++;
+          const allyToPred=Math.hypot(ally.x-this.x,ally.y-this.y)||1;
+          if(allyToPred<preyToPred && Math.sqrt(d2)<54) screen++;
+          ally.fleeTimer=Math.max(ally.fleeTimer||0,18);
+          ally.herdThreat=Math.max(ally.herdThreat||0,30);
+        });
+        if(herd>0){
+          p *= clamp(1 - 0.070*Math.min(7,herd) - 0.035*Math.min(5,screen), 0.42, 1.0);
+          prey.fleeTimer=Math.max(prey.fleeTimer||0,28);
+          prey.herdThreat=Math.max(prey.herdThreat||0,42);
+        }
+      }
       if(Math.random()<p){
         const carn=this.genes.carnivory;
         const diet=dietTypeFromCarn(carn);
@@ -1304,6 +1363,18 @@ if(Z>0.10){
         ctx.strokeStyle='rgba(100,180,255,0.08)';
         ctx.lineWidth=1;
         ctx.stroke();
+      }
+      if(this.socialMode==='defense-school'){
+        const threat = clamp((this.herdThreat||0)/48,0,1);
+        const rr = (this.personalSpaceR || this.size*1.4) * (1.10 + 0.06*Math.sin((this.gait||0)*1.2));
+        ctx.save();
+        ctx.globalCompositeOperation='lighter';
+        ctx.beginPath();
+        ctx.arc(0,0,rr,0,TAU);
+        ctx.strokeStyle = threat>0 ? `rgba(255,220,130,${0.10+0.16*threat})` : 'rgba(150,225,245,0.10)';
+        ctx.lineWidth = Math.max(0.8,this.size*0.08);
+        ctx.stroke();
+        ctx.restore();
       }
 
       const roleHue = ROLE_HUE[this.role] ?? sym.outlineHue;
