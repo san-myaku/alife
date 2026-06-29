@@ -64,11 +64,12 @@
     #species-cards{ max-height:20vh !important; }
   }
   .toasts{ position:fixed; top:8px; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; gap:4px; z-index:12; pointer-events:none; }
-  .toast{ background:rgba(10,18,41,0.45); border:1px solid #1b2550; color:#dbe7ff; padding:4px 8px; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,.18); font-weight:600; font-size:.76rem; letter-spacing:.01em; opacity:0; transform:translateY(-6px); transition: opacity .16s ease, transform .16s ease; }
+  .toast{ max-width:min(92vw,640px); background:rgba(10,18,41,0.55); border:1px solid #1b2550; color:#dbe7ff; padding:4px 8px; border-radius:10px; box-shadow:0 4px 12px rgba(0,0,0,.18); font-weight:600; font-size:.76rem; line-height:1.35; letter-spacing:.01em; opacity:0; transform:translateY(-6px); transition: opacity .16s ease, transform .16s ease; }
   .toast.show{ opacity:1; transform:translateY(0) }
   .toast.species{ border-color:#4fa3ff }
   .toast.season{ border-color:#8bd37b }
   .toast.event{ border-color:#ffae42 }
+  .toast.cycle{ border-color:#7bdff2; background:rgba(8,18,38,0.68); }
   .species-card { padding:8px; border:1px solid #2a3352; background:#0b122a; border-radius:10px; margin-bottom:6px; }
   .species-card-header { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
   .species-avatar { width:28px; height:28px; }
@@ -79,10 +80,15 @@
   .species-bar { height:6px; background:linear-gradient(90deg, #98c0ff var(--value, 0%), rgba(255,255,255,.10) var(--value, 0%)); border-radius:4px; margin:2px 0; }
   .species-details { display:none; padding-top:6px; font-size:.9rem; color:var(--muted); }
   #debug-console{position:fixed; top:0; left:0; right:0; background:rgba(0,0,0,.7); color:#fff; font:12px/1.4 monospace; padding:6px 8px; display:none; z-index:1000;}
+  #fps-hud{ position:fixed; left:8px; bottom:8px; z-index:30; pointer-events:none; min-width:64px; padding:4px 7px; border:1px solid rgba(123,223,242,.38); border-radius:8px; background:rgba(5,12,26,.62); color:#dbeafe; font:700 12px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace; font-variant-numeric:tabular-nums; box-shadow:0 4px 12px rgba(0,0,0,.20); }
+  #fps-hud[data-level="mid"]{ border-color:rgba(247,183,49,.46); color:#ffe8ad; }
+  #fps-hud[data-level="low"]{ border-color:rgba(255,107,107,.58); color:#ffc9c9; }
+  @media (max-width:520px){ #fps-hud{ left:6px; bottom:6px; font-size:11px; padding:3px 6px; } }
 </style>
 </head>
 <body>
 <div id="debug-console"></div>
+<div id="fps-hud" aria-live="off">FPS --</div>
 <div id="toasts" class="toasts"></div>
 <div class="wrap">
   <canvas id="viewport"></canvas>
@@ -221,15 +227,32 @@
   const recentToast = new Map();
   let toastBlockUntil=0;
   function showToast(type, text){
-    if(frame < toastBlockUntil) return;
+    if(type!=='cycle' && frame < toastBlockUntil) return;
     const key = type+':'+text; const now = frame;
     if(recentToast.has(key) && now - recentToast.get(key) < 900) return;
     recentToast.set(key, now);
     const el = document.createElement('div'); el.className = 'toast '+type; el.textContent = text;
     toastsEl.appendChild(el);
     requestAnimationFrame(()=> el.classList.add('show'));
-    setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=> el.remove(), 200); }, 1200);
-    while(toastsEl.children.length>1){ toastsEl.removeChild(toastsEl.firstChild); }
+    const duration = type==='cycle' ? 4200 : 1400;
+    setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=> el.remove(), 200); }, duration);
+    while(toastsEl.children.length>2){ toastsEl.removeChild(toastsEl.firstChild); }
+  }
+
+  // ===== Lightweight FPS HUD =====
+  const fpsHud = $('fps-hud');
+  const fpsMeter = { last: performance.now(), frames: 0, fps: 0 };
+  function updateFpsHud(now){
+    if(!fpsHud) return;
+    fpsMeter.frames++;
+    const dt = now - fpsMeter.last;
+    if(dt < 500) return;
+    fpsMeter.fps = fpsMeter.frames * 1000 / Math.max(1, dt);
+    const fps = Math.round(fpsMeter.fps);
+    fpsHud.textContent = `FPS ${fps}`;
+    fpsHud.dataset.level = fps < 28 ? 'low' : (fps < 45 ? 'mid' : 'ok');
+    fpsMeter.last = now;
+    fpsMeter.frames = 0;
   }
 
   // ===== Spatial Grid =====
@@ -1537,6 +1560,8 @@ if(Z>0.10){
       const roleHue = ROLE_HUE[this.role] ?? sym.outlineHue;
       const outlineHue = ui.roleViz ? roleHue : sym.outlineHue;
       const energy = clamp(this.energy/160,0,1);
+      const night = clamp01(dayNight.night ?? (dayNight.isNight ? 1 : 0));
+      const dayContrast = 1 - night;
       const motion = clamp(this.motionLevel||0,0,1.65);
       const behavior = clamp(
         motion + (this.fleeTimer>0?0.35:0) + ((this.role==='ambusher' && this.burstTimer>0)?0.30:0) + (this.mateSeekT>120?0.10:0),
@@ -1581,7 +1606,7 @@ if(Z>0.10){
       ctx.globalCompositeOperation='lighter';
       const auraR = this.size*(1.4 + 0.35*nodes.length);
       const aura=ctx.createRadialGradient(0,0,1,0,0,auraR);
-      aura.addColorStop(0,`hsla(${outlineHue},82%,72%,${dayNight.isNight?0.12:0.11})`);
+      aura.addColorStop(0,`hsla(${outlineHue},82%,76%,${lerp(0.18,0.12,night)})`);
       aura.addColorStop(1,'rgba(0,0,0,0)');
       ctx.fillStyle=aura;
       ctx.beginPath(); ctx.arc(0,0,auraR,0,TAU); ctx.fill();
@@ -1606,7 +1631,7 @@ if(Z>0.10){
         ctx.beginPath();
         ctx.moveTo(p.x,p.y);
         ctx.quadraticCurveTo(cx,cy,q.x,q.y);
-        const linkAlpha=clamp(sym.lineAlpha*(dayNight.isNight?0.54:0.76)*(0.75+0.25*energy),0.08,0.38);
+        const linkAlpha=clamp(sym.lineAlpha*lerp(0.86,0.54,night)*(0.75+0.25*energy),0.08,0.40);
         ctx.strokeStyle=`hsla(${outlineHue},82%,78%,${linkAlpha})`;
         ctx.lineWidth=Math.max(1.0, Math.min(nodes[n.parent].r,n.r)*0.30);
         ctx.stroke();
@@ -1623,7 +1648,7 @@ if(Z>0.10){
         ctx.beginPath();
         ctx.moveTo(p.x,p.y);
         ctx.quadraticCurveTo(cx,cy,q.x,q.y);
-        const linkAlpha=clamp(sym.lineAlpha*(dayNight.isNight?0.58:0.82)*(0.78+0.22*energy),0.10,0.42);
+        const linkAlpha=clamp(sym.lineAlpha*lerp(0.90,0.58,night)*(0.78+0.22*energy),0.10,0.44);
         ctx.strokeStyle=`hsla(${outlineHue},84%,80%,${linkAlpha})`;
         ctx.lineWidth=Math.max(1.0, Math.min(nodes[link.a].r,nodes[link.b].r)*0.30);
         ctx.stroke();
@@ -1681,12 +1706,12 @@ if(Z>0.10){
         this.symbolShapePath(ctx, shape, r);
         ctx.fill();
 
-        ctx.strokeStyle=dayNight.isNight ? `hsla(${hue},92%,88%,${0.30 + 0.26*energy})` : 'rgba(4,18,30,0.24)';
-        ctx.lineWidth=Math.max(1.1,r*0.16);
+        ctx.strokeStyle=`rgba(2,10,18,${clamp(0.46 + 0.12*energy - 0.38*night,0.07,0.58)})`;
+        ctx.lineWidth=Math.max(1.25,r*0.18);
         this.symbolShapePath(ctx, shape, r);
         ctx.stroke();
 
-        ctx.strokeStyle=`hsla(${hue},96%,${dayNight.isNight?88:92}%,${clamp(0.38 + 0.30*energy + (dayNight.isNight?0:0.12),0,0.82)})`;
+        ctx.strokeStyle=`hsla(${hue},96%,${Math.round(lerp(96,88,night))}%,${clamp(0.50 + 0.28*energy + 0.08*dayContrast,0,0.86)})`;
         ctx.lineWidth=Math.max(0.75,r*0.09);
         this.symbolShapePath(ctx, shape, r);
         ctx.stroke();
@@ -2283,7 +2308,7 @@ if(p.type==='turbid'){
       if(o.role==='scav') scavGrid[i]++;
     }
 
-    const L = (typeof dayNight!=='undefined' && dayNight.isNight) ? 0.0 : 1.0; // light (0|1)
+    const L = (typeof dayNight!=='undefined') ? (dayNight.light ?? (dayNight.isNight ? 0.0 : 1.0)) : 1.0; // light (0..1)
 
     // per-cell dynamics (N/D/O + temperature modifier)
     const capCorpse=4, capBio=8, capScav=3;
@@ -2635,25 +2660,23 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
     ctx.setTransform(DPR,0,0,DPR,0,0);
     ctx.globalCompositeOperation='source-over';
     const s=season();
+    const night = clamp01(dayNight.night ?? (dayNight.isNight ? 1 : 0));
+    const day = 1 - night;
+    const hsl = (h,sa,l)=>`hsl(${Math.round(h)}, ${Math.round(sa)}%, ${Math.round(l)}%)`;
     const bg=ctx.createRadialGradient(W*0.45,H*0.42,Math.min(W,H)*0.05,W*0.5,H*0.5,Math.max(W,H)*0.72);
-    if(dayNight.isNight){
-      bg.addColorStop(0,'#102b3f');
-      bg.addColorStop(0.62,'#071a2d');
-      bg.addColorStop(1,'#030711');
-    } else {
-      bg.addColorStop(0,'#82afba');
-      bg.addColorStop(0.58,'#5f8f9d');
-      bg.addColorStop(1,'#2f5a70');
-    }
+    bg.addColorStop(0,hsl(lerp(190,206,night), lerp(34,46,night), lerp(43,18,night)));
+    bg.addColorStop(0.58,hsl(lerp(190,213,night), lerp(30,46,night), lerp(36,12,night)));
+    bg.addColorStop(1,hsl(lerp(197,228,night), lerp(38,52,night), lerp(25,5,night)));
     ctx.fillStyle=bg; ctx.fillRect(0,0,W,H);
-    // microscope lens bloom and day/night contrast
-    if(dayNight.isNight){ ctx.fillStyle='rgba(0,0,0,0.38)'; ctx.fillRect(0,0,W,H); }
-    else {
-      const lens=ctx.createRadialGradient(W*0.52,H*0.44,0,W*0.52,H*0.44,Math.max(W,H)*0.55);
-      lens.addColorStop(0,'rgba(255,255,235,0.06)');
-      lens.addColorStop(0.72,'rgba(255,255,255,0.01)');
-      lens.addColorStop(1,'rgba(8,18,34,0.22)');
-      ctx.fillStyle=lens; ctx.fillRect(0,0,W,H);
+    // microscope lens bloom and continuous day/night contrast.
+    const lens=ctx.createRadialGradient(W*0.52,H*0.44,0,W*0.52,H*0.44,Math.max(W,H)*0.55);
+    lens.addColorStop(0,`rgba(245,255,240,${(0.045*day).toFixed(3)})`);
+    lens.addColorStop(0.70,`rgba(160,210,220,${(0.012*day).toFixed(3)})`);
+    lens.addColorStop(1,`rgba(1,7,18,${(0.18*day + 0.46*night).toFixed(3)})`);
+    ctx.fillStyle=lens; ctx.fillRect(0,0,W,H);
+    if(day>0){
+      ctx.fillStyle=`rgba(2,10,20,${(0.09*day).toFixed(3)})`;
+      ctx.fillRect(0,0,W,H);
     }
 // distant gradient veil by events
     if(worldEvent && worldEvent.t>0){ ctx.fillStyle=worldEvent.veilColor||'rgba(0,0,0,0)'; ctx.fillRect(0,0,W,H); }
@@ -2662,7 +2685,7 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
     const k = ui.parallax;
     // layer 1: stars
     ctx.save();
-    ctx.globalAlpha= dayNight.isNight ? 0.55 : 0.15;
+    ctx.globalAlpha= lerp(0.13,0.55,night);
     for(const st of parallax.stars){
       const px = (st.x*W + (frame*0.06*st.z)) % W;
       const py = (st.y*H + Math.sin(frame*0.003+st.x*7)*4*st.z);
@@ -2673,14 +2696,14 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
 
     // layer 2: soft blobs
     ctx.save();
-    ctx.globalAlpha = 0.10 + 0.10*s;
+    ctx.globalAlpha = 0.08 + 0.08*s + 0.04*night;
     for(const b of parallax.blobs){
       const x = (b.x*W + Math.sin(frame*0.002 + b.x*9)*40*b.z);
       const y = (b.y*H + Math.cos(frame*0.0015 + b.y*11)*30*b.z);
       const r = b.r*(0.9+0.1*Math.sin(frame*0.004+b.x*5));
       const grad = ctx.createRadialGradient(x,y,0, x,y,r);
       const hue = 220 + 30*(s-0.6) - 30*b.z;
-      grad.addColorStop(0, `hsla(${hue},70%,${dayNight.isNight?40:55}%,0.25)`);
+      grad.addColorStop(0, `hsla(${hue},70%,${lerp(48,40,night)}%,0.22)`);
       grad.addColorStop(1, `hsla(${hue-20},60%,12%,0.0)`);
       ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(x,y,r,0,TAU); ctx.fill();
     }
@@ -2688,8 +2711,8 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
 
     // layer 3: streaks (parallax drift)
     ctx.save();
-    ctx.globalAlpha = 0.10;
-    ctx.strokeStyle = 'rgba(160,200,255,0.08)';
+    ctx.globalAlpha = lerp(0.07,0.12,night);
+    ctx.strokeStyle = `rgba(160,210,255,${lerp(0.07,0.10,night)})`;
     ctx.lineWidth=2;
     for(const t of parallax.streaks){
       const len=t.len; const x=(t.x*W + (frame*0.12*t.z))%W; const y=(t.y*H + Math.sin(frame*0.002+t.x*13)*18*t.z);
@@ -2718,20 +2741,52 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
   function isOffscreen(x,y,w,h,m){return (x<-m||y<-m||x>w+m||y>h+m);}
 
   // ===== Day/Night =====
-  const dayNight = { phase: 0, length: 3000, isNight: false };
-  function tickDayNight(){
-    dayNight.phase = (dayNight.phase + 1/dayNight.length) % 1;
+  function smoothstep01(x){ x=clamp01(x); return x*x*(3-2*x); }
+  function nightAtPhase(phase){
+    const t = ((phase % 1) + 1) % 1;
+    const dusk = smoothstep01((t - 0.42) / 0.18);
+    const dawn = smoothstep01((t - 0.84) / 0.16);
+    return clamp01(dusk - dawn);
+  }
+  const dayNight = { phase: 0, length: 9000, isNight: false, night: 0, light: 1, period: 'day' };
+  function dayNightLabel(phase, night){
+    if(night >= 0.72) return '夜';
+    if(night <= 0.28) return phase > 0.84 ? '朝' : '昼';
+    return phase < 0.62 ? '夕方' : '夜明け';
+  }
+  function dayNightToast(period){
+    if(period === 'night'){
+      return '夜が来た。感覚コストが上がり、捕食は少し慎重になる。デトリタスとプランクトンが増えやすいだろう。';
+    }
+    return '朝が来た。藻が増え、光合成型の草食に有利に働くだろう。';
+  }
+  function applyDayNightState(announce){
     const t = dayNight.phase;
-    dayNight.isNight = (t>=0.5);
+    const prev = dayNight.period;
+    const night = nightAtPhase(t);
+    const period = night >= 0.5 ? 'night' : 'day';
+    dayNight.night = night;
+    dayNight.light = 1 - night;
+    dayNight.isNight = period === 'night';
+    dayNight.period = period;
     const bar = $('daynight-bar');
     const lab = $('daynight-label');
     if(bar) bar.style.width = Math.round(t*100)+'%';
-    if(lab) lab.textContent = dayNight.isNight ? '夜' : '昼';
-    if (typeof worldEvent!=='undefined'){ 
-      worldEvent.senseCostMul = dayNight.isNight? 1.25: 1.0; 
-      worldEvent.predSuccessMul = dayNight.isNight? 0.92: 1.0; 
+    if(lab) lab.textContent = dayNightLabel(t, night);
+    if(announce && prev && prev !== period) showToast('cycle', dayNightToast(period));
+    if (typeof worldEvent!=='undefined'){
+      worldEvent.senseCostMul = lerp(1.0, 1.25, night);
+      worldEvent.predSuccessMul = lerp(1.0, 0.92, night);
     }
   }
+  function tickDayNight(){
+    dayNight.phase = (dayNight.phase + 1/dayNight.length) % 1;
+    applyDayNightState(true);
+  }
+  function dayNightSnapshot(){
+    return { phase:dayNight.phase, length:dayNight.length, night:dayNight.night, light:dayNight.light, isNight:dayNight.isNight, label:dayNightLabel(dayNight.phase, dayNight.night) };
+  }
+  applyDayNightState(false);
 
   // ===== Tools UI =====
   const toolBtn=$('tool-btn'); const toolMenu=$('tool-menu'); const toolPill=$('tool-pill');
@@ -2900,12 +2955,15 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
 
   // ===== Phylo canvas (MST + Lineage) =====
   let phyMode = 'mst';
+  let phyDirty = true;
+  let lastPhyDrawFrame = -999;
   const btnM = $('phy-tab-mst');
   const btnL = $('phy-tab-lineage');
   function setPhyMode(m){
     phyMode = m;
     if(btnM) btnM.style.background = (phyMode === 'mst' ? 'var(--panel)' : '#0b122a');
     if(btnL) btnL.style.background = (phyMode === 'lineage' ? 'var(--panel)' : '#0b122a');
+    phyDirty = true;
   }
   if(btnM) btnM.onclick = ()=>setPhyMode('mst');
   if(btnL) btnL.onclick = ()=>setPhyMode('lineage');
@@ -3049,7 +3107,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     // reset simple eco / day-night state
     eco.detritusMeter = 0;
     eco.nutrient = 0;
-    if(dayNight){ dayNight.phase = 0; dayNight.isNight = false; }
+    if(dayNight){ dayNight.phase = 0; dayNight.isNight = false; dayNight.night = 0; dayNight.light = 1; dayNight.period = 'day'; applyDayNightState(false); }
     // reset world event to neutral
     Object.assign(worldEvent, {
       type:null, t:0, maxT:0,
@@ -3092,8 +3150,9 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       // プランクトン自然発生（N×O×光 で上限が変動）
 {
   const a = (window.env && window.env.getAverages) ? window.env.getAverages() : {N:0.25,O:0.75,D:0.05,C:0.25};
-  const prod = a.N * (0.35 + 0.65*a.O) * (dayNight.isNight?0.85:1.0);
-  const cap = 120 + worldEvent.planktonCapBonus + (dayNight.isNight?60:0) + Math.floor(260*prod);
+  const night = dayNight.night ?? (dayNight.isNight ? 1 : 0);
+  const prod = a.N * (0.35 + 0.65*a.O) * lerp(1.0,0.85,night);
+  const cap = 120 + worldEvent.planktonCapBonus + Math.round(60*night) + Math.floor(260*prod);
   const rareMul = clamp(1 + 0.6*(0.2 - (roleShare['filter']||0)), 0.5, 1.8);
   if(plankton.length < cap && frame%10===0){
     const n = Math.max(1, Math.round(rareMul * clamp(0.6 + 1.6*prod, 0.4, 2.0)));
@@ -3167,7 +3226,11 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     for(const o of organisms){ o.draw(); }
     for(let i=sparks.length-1;i>=0;--i){ const s=sparks[i]; s.step(); s.draw(ctx); if(s.t<=0) sparks.splice(i,1); }
     drawHUD();
-    drawPhy();
+    if(phyDirty || frame - lastPhyDrawFrame >= 12){
+      drawPhy();
+      lastPhyDrawFrame = frame;
+      phyDirty = false;
+    }
   }
 
   window.__alifeDebug = {
@@ -3201,10 +3264,19 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       if(!org) return false;
       markNewSpecies(org);
       return true;
+    },
+    dayNightSummary(){
+      return dayNightSnapshot();
+    },
+    setDayNightPhase(phase, announce=true){
+      const v = Number(phase);
+      dayNight.phase = Number.isFinite(v) ? ((v % 1) + 1) % 1 : 0;
+      applyDayNightState(Boolean(announce));
+      return dayNightSnapshot();
     }
   };
 
-  function loop(){ if(running){ update(); if(frame%20===0) reportMix(); } draw(); requestAnimationFrame(loop); }
+  function loop(now=performance.now()){ updateFpsHud(now); if(running){ update(); if(frame%20===0) reportMix(); } draw(); requestAnimationFrame(loop); }
 
   function seedPatches(){ patches.push(new Patch('algae', W*0.30, H*0.32, Math.min(W,H)*0.20)); patches.push(new Patch('turbid', W*0.55, H*0.75, Math.min(W,H)*0.18)); }
   function seedPlankton(){ for(let i=0;i<160;i++) plankton.push(new Plankton()); }
@@ -3240,7 +3312,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
                 __ensureChlSpots(u);
 organisms.push(u);
       });
-      frame=state.frame||0; generation=state.generation||1; if(state.dayNight?.phase!=null) dayNight.phase=state.dayNight.phase; Object.assign(worldEvent, state.worldEvent||{}); Object.assign(eco, state.eco||{});
+      frame=state.frame||0; generation=state.generation||1; if(state.dayNight?.phase!=null){ dayNight.phase=state.dayNight.phase; applyDayNightState(false); } Object.assign(worldEvent, state.worldEvent||{}); Object.assign(eco, state.eco||{});
       // lineage
       lineage.nodes.clear(); lineage.edges.length=0;
       if(state.lineage){ for(const [k,v] of (state.lineage.nodes||[])){ lineage.nodes.set(k,v); } lineage.edges.push(...(state.lineage.edges||[])); }

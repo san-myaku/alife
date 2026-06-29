@@ -36,6 +36,7 @@
 - Added sketch-inspired symbolic node shapes: leaf, diamond, four-point sparkle, six-point star, and five-lobed cloud.
 - Expanded the mobile pond/canvas area so the simulation has more screen space before the control panel.
 - Made organism colors species-stable: individuals with the same species key now share the same body, nucleus, avatar, and phylogeny colors.
+- Improved daytime readability with stronger organism contrast, slowed and smoothed the day/night transition, added explanatory morning/night toasts, added a persistent FPS HUD, and throttled phylogeny redraws to reduce UI overhead.
 
 ## Verification Notes
 
