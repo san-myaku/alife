@@ -647,11 +647,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       const shapeNames = ['circle','square','triangle','ellipse','pentagon','hexagon'];
       const primaryIndex = Math.max(0, Math.min(5, Math.floor(clamp(this.genes.morph ?? this.genes.elongation ?? 0.5,0,0.999)*6)));
       const secondaryIndex = Math.max(0, Math.min(5, Math.floor(clamp((this.genes.lobes*0.55 + this.genes.pattern*0.45),0,0.999)*6)));
-      const solitaryChance = clamp(0.44 + 0.24*this.genes.size - 0.24*this.genes.elongation - 0.14*this.genes.reproduction + 0.08*(rng()-0.5), 0.18, 0.68);
+      const solitaryChance = clamp(0.42 + 0.24*this.genes.size - 0.24*this.genes.elongation - 0.14*this.genes.reproduction + 0.08*(rng()-0.5), 0.16, 0.66);
+      const chainBase = 2 + this.genes.elongation*4.4 + this.genes.reproduction*1.9 + rng()*1.4;
+      const longChainChance = clamp(0.08 + this.genes.elongation*0.30 + this.genes.sensory*0.12 + this.genes.reproduction*0.10, 0.08, 0.54);
+      const longChainBonus = rng()<longChainChance ? Math.round(2 + rng()*4 + this.genes.elongation*2.2) : 0;
       const chainLen = (rng()<solitaryChance)
         ? 1
-        : Math.max(2, Math.min(8, Math.round(2 + this.genes.elongation*3.8 + this.genes.reproduction*1.7 + rng()*1.2)));
-      const branchCount = chainLen<=1 ? 0 : Math.max(0, Math.min(4, Math.round((this.genes.sensory*2.2 + this.genes.lobes*1.8 + rng()*0.9) - 1.45)));
+        : Math.max(2, Math.min(13, Math.round(chainBase + longChainBonus)));
+      const tipFork = chainLen>=4 && rng()<clamp(0.10 + this.genes.sensory*0.28 + this.genes.lobes*0.20 + this.genes.elongation*0.12, 0.10, 0.58);
+      const branchCount = chainLen<=1 ? 0 : Math.max(0, Math.min(4, Math.round((this.genes.sensory*2.0 + this.genes.lobes*1.7 + rng()*0.8) - (tipFork ? 1.75 : 1.35))));
       const spacing = this.size*(0.78 + 0.38*this.genes.elongation);
       const nodes = [];
       const nodeR = this.size*(0.62 + 0.52*this.genes.size)*(0.92 + 0.12*rng());
@@ -673,7 +677,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       }
       const mainLen = nodes.length;
       for(let b=0;b<branchCount;b++){
-        const parent = Math.max(0, Math.min(mainLen-1, Math.floor((0.18 + rng()*0.70)*mainLen)));
+        const parent = Math.max(0, Math.min(mainLen-1, Math.floor((0.26 + rng()*0.64)*mainLen)));
         const side = rng()<0.5 ? -1 : 1;
         const len = 1 + Math.floor(rng()*(1 + this.genes.reproduction*3));
         let px = nodes[parent].x;
@@ -696,9 +700,45 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           });
         }
       }
+      if(tipFork){
+        const parent = mainLen-1;
+        const prev = nodes[Math.max(0, mainLen-2)];
+        const tip = nodes[parent];
+        const baseAng = Math.atan2(tip.y-prev.y, tip.x-prev.x);
+        for(const side of [-1,1]){
+          const len = 1 + (rng()<0.34 + this.genes.reproduction*0.28 ? 1 : 0);
+          let px = tip.x;
+          let py = tip.y;
+          let parentIndex = parent;
+          for(let j=0;j<len;j++){
+            const spread = 0.54 + rng()*0.36 + j*0.08;
+            const ang = baseAng + side*spread + (rng()-0.5)*0.18;
+            const step = spacing*(0.78 + 0.18*rng());
+            px += Math.cos(ang)*step;
+            py += Math.sin(ang)*step;
+            nodes.push({
+              x:px, y:py,
+              r:nodeR,
+              shape: primaryIndex,
+              hue:(baseHue + side*34 + j*18 + rng()*18 + 360) % 360,
+              alpha:0.40 + 0.30*this.genes.efficiency + 0.12*rng(),
+              rot:rng()*TAU,
+              parent:parentIndex,
+              kind:'tip'
+            });
+            parentIndex = nodes.length-1;
+          }
+        }
+      }
+      let visualR = 0;
+      for(const n of nodes){ visualR = Math.max(visualR, Math.hypot(n.x,n.y) + n.r); }
+      const personalSpaceR = clamp(nodeR*(0.88 + Math.min(2.4, Math.sqrt(nodes.length))*0.16) + Math.min(visualR,this.size*5.2)*0.16, this.size*0.96, this.size*2.55);
+      this.personalSpaceR = personalSpaceR;
       this._symbol = {
         shapeNames,
         nodes,
+        visualR,
+        personalSpaceR,
         primaryIndex,
         secondaryIndex,
         outlineHue: baseHue,
@@ -716,6 +756,40 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     }
     mutateGene(g,mag){ return clamp(g + (Math.random()*2-1)*mag,0,1); }
     inPatch(type){ if(!window.env) return null; const v=window.env.valueAt(type,this.x,this.y); return v>0.45 ? {v} : null; }
+    separateFromNeighbors(){
+      const selfR = this.personalSpaceR || this.size*1.12;
+      let pushX=0, pushY=0, hits=0, deep=0;
+      forEachOrgNeighbors(this.x,this.y,selfR + this.size*3.4,(o,dx,dy,d2)=>{
+        if(o===this || o.dead) return;
+        const otherR = o.personalSpaceR || o.size*1.12;
+        const contact = (selfR + otherR) * 0.82;
+        const soft = (selfR + otherR) * 1.06;
+        if(d2>soft*soft) return;
+        let d = Math.sqrt(d2);
+        let nx, ny;
+        if(d<0.001){
+          const a = (this.id*12.9898 + o.id*78.233) % TAU;
+          nx = Math.cos(a); ny = Math.sin(a); d = 0.001;
+        } else {
+          nx = -dx/d; ny = -dy/d;
+        }
+        let k = (soft-d)/soft;
+        if(d<contact){
+          k += ((contact-d)/contact)*1.25;
+          deep++;
+        }
+        if(this.role==='ambusher' && this.energy < this.reproThreshold*0.52) k *= 0.55;
+        pushX += nx*k;
+        pushY += ny*k;
+        hits++;
+      });
+      if(hits){
+        const scale = clamp(0.030 + 0.018*hits + 0.026*deep, 0.025, 0.16);
+        this.vx += pushX*scale;
+        this.vy += pushY*scale;
+        this.motionLevel = Math.max(this.motionLevel||0, clamp((hits + deep)*0.10,0,0.42));
+      }
+    }
 
     step(){
       if((this.age & 3)===0){ this.trail.push({x:this.x,y:this.y}); if(this.trail.length>16) this.trail.shift(); }
@@ -726,6 +800,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
 
       // 餌/死骸への移動
       let nearest=null, minD2=this.senseR*this.senseR;
+      this.separateFromNeighbors();
       for(const f of food){ const dx=f.x-this.x, dy=f.y-this.y, d2=dx*dx+dy*dy; if(d2<minD2){ minD2=d2; nearest=f; } }
       if(this.role==='scav'){
         for(const c of corpses){ const dx=c.x-this.x, dy=c.y-this.y, d2=dx*dx+dy*dy; if(d2<minD2*0.8){ minD2=d2; nearest=c; } }
