@@ -269,6 +269,8 @@
   // ===== Lightweight FPS HUD =====
   const fpsHud = $('fps-hud');
   const fpsMeter = { last: performance.now(), frames: 0, fps: 0 };
+  const TINY_RENDER_ENTER_POP = 118;
+  const TINY_RENDER_EXIT_POP = 96;
   function updateFpsHud(now){
     if(!fpsHud) return;
     fpsMeter.frames++;
@@ -279,7 +281,8 @@
     fpsHud.textContent = `FPS ${fps}`;
     fpsHud.dataset.level = fps < 28 ? 'low' : (fps < 45 ? 'mid' : 'ok');
     renderPerf.low = renderPerf.mobile || fps < 36 || organisms.length > 84;
-    renderPerf.tiny = fps < 30 || organisms.length > 105;
+    if(organisms.length >= TINY_RENDER_ENTER_POP) renderPerf.tiny = true;
+    else if(organisms.length <= TINY_RENDER_EXIT_POP) renderPerf.tiny = false;
     fpsMeter.last = now;
     fpsMeter.frames = 0;
   }
@@ -4250,7 +4253,9 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
         muteFrames: Math.max(0, speciesAnnounceMuteUntil-frame),
         flashes: organisms.filter(o=>o.newSpeciesFlash>0).length,
         dpr: DPR,
-        lowRender: renderPerf.low
+        lowRender: renderPerf.low,
+        tinyRender: renderPerf.tiny,
+        fps: Math.round(fpsMeter.fps)
       };
     },
     speciesColorSummary(){
