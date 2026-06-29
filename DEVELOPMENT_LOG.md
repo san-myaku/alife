@@ -37,6 +37,7 @@
 - Expanded the mobile pond/canvas area so the simulation has more screen space before the control panel.
 - Made organism colors species-stable: individuals with the same species key now share the same body, nucleus, avatar, and phylogeny colors.
 - Improved daytime readability with stronger organism contrast, slowed and smoothed the day/night transition, added explanatory morning/night toasts, added a persistent FPS HUD, and throttled phylogeny redraws to reduce UI overhead.
+- Reduced early new-species spam by starting with an established diverse population, changed default mutation to 3%, softened colored organism outlines, removed new-species burst rays, expanded event/season explanation toasts, and added broader render-performance cuts.
 
 ## Verification Notes
 

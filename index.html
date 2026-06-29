@@ -129,8 +129,8 @@
     </div>
 
     <div class="control">
-      <label>突然変異の強さ <span class="value" id="mutation-value">5%</span></label>
-      <input id="mutation-slider" type="range" min="0" max="20" step="1" value="5" />
+      <label>突然変異の強さ <span class="value" id="mutation-value">3%</span></label>
+      <input id="mutation-slider" type="range" min="0" max="20" step="1" value="3" />
     </div>
 
     <div class="control">
@@ -183,15 +183,18 @@
 
   // ===== Canvas / Context =====
   const view = $('viewport');
-  const ctx = view.getContext('2d', { willReadFrequently: true });
-  let W=0,H=0; const DPR=Math.min(2, window.devicePixelRatio||1);
+  const ctx = view.getContext('2d', { alpha:false });
+  const IS_MOBILE_VIEW = window.matchMedia && window.matchMedia('(max-width: 700px)').matches;
+  const DPR_CAP = IS_MOBILE_VIEW ? 1.12 : 1.35;
+  let W=0,H=0; const DPR=Math.min(DPR_CAP, Math.max(1, window.devicePixelRatio||1));
   function resize(){ const r=view.getBoundingClientRect(); W=r.width; H=r.height; view.width=Math.round(W*DPR); view.height=Math.round(H*DPR); ctx.setTransform(DPR,0,0,DPR,0,0); if(window.env) window.env.ensure(); }
   window.addEventListener('resize',resize,{passive:true}); resize();
   const TAU=Math.PI*2; const rnd=(a,b)=>Math.random()*(b-a)+a; const clamp=(x,a,b)=>Math.max(a,Math.min(b,x)); const clamp01=(x)=>clamp(x,0,1); const lerp=(a,b,t)=>a+(b-a)*t; const sigmoid=x=>1/(1+Math.exp(-x));
   const hash01 = (s)=>{ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h>>>0)/2**32; };
 
   // ===== UI State =====
-  const ui={ speed:1, mutation:0.05, showSense:false, tool:'food', popMax:120, parallax:1.0, roleViz:false };
+  const ui={ speed:1, mutation:0.03, showSense:false, tool:'food', popMax:120, parallax:1.0, roleViz:false };
+  const renderPerf = { mobile:IS_MOBILE_VIEW, low:IS_MOBILE_VIEW, tiny:false };
   $('speed-slider').addEventListener('input',e=>{ ui.speed=+e.target.value; $('speed-value').textContent=ui.speed+'x'; });
   $('mutation-slider').addEventListener('input',e=>{ ui.mutation=(+e.target.value)/100; $('mutation-value').textContent=e.target.value+'%'; });
   $('popmax-slider').addEventListener('input',e=>{ ui.popMax=+e.target.value; $('popmax-value').textContent=String(ui.popMax); });
@@ -227,16 +230,17 @@
   const recentToast = new Map();
   let toastBlockUntil=0;
   function showToast(type, text){
-    if(type!=='cycle' && frame < toastBlockUntil) return;
+    if(type!=='cycle' && type!=='species' && type!=='event' && frame < toastBlockUntil) return false;
     const key = type+':'+text; const now = frame;
-    if(recentToast.has(key) && now - recentToast.get(key) < 900) return;
+    if(recentToast.has(key) && now - recentToast.get(key) < 900) return false;
     recentToast.set(key, now);
     const el = document.createElement('div'); el.className = 'toast '+type; el.textContent = text;
     toastsEl.appendChild(el);
     requestAnimationFrame(()=> el.classList.add('show'));
-    const duration = type==='cycle' ? 4200 : 1400;
+    const duration = (type==='cycle' || type==='event' || type==='season') ? 4200 : (type==='species' ? 2600 : 1400);
     setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=> el.remove(), 200); }, duration);
-    while(toastsEl.children.length>2){ toastsEl.removeChild(toastsEl.firstChild); }
+    while(toastsEl.children.length>3){ toastsEl.removeChild(toastsEl.firstChild); }
+    return true;
   }
 
   // ===== Lightweight FPS HUD =====
@@ -251,6 +255,8 @@
     const fps = Math.round(fpsMeter.fps);
     fpsHud.textContent = `FPS ${fps}`;
     fpsHud.dataset.level = fps < 28 ? 'low' : (fps < 45 ? 'mid' : 'ok');
+    renderPerf.low = renderPerf.mobile || fps < 34 || organisms.length > 92;
+    renderPerf.tiny = fps < 26 || organisms.length > 115;
     fpsMeter.last = now;
     fpsMeter.frames = 0;
   }
@@ -396,15 +402,7 @@
       ctx.beginPath(); ctx.arc(0,0,this.r*grow,0,TAU); ctx.stroke();
       ctx.strokeStyle=`hsla(${(this.hue+70)%360},95%,86%,${0.20*k})`;
       ctx.lineWidth=0.9;
-      for(let i=0;i<8;i++){
-        const a=i*TAU/8 + (1-k)*0.65;
-        const inner=this.r*(0.64+0.30*(1-k));
-        const outer=this.r*(1.05+0.68*(1-k));
-        ctx.beginPath();
-        ctx.moveTo(Math.cos(a)*inner,Math.sin(a)*inner);
-        ctx.lineTo(Math.cos(a)*outer,Math.sin(a)*outer);
-        ctx.stroke();
-      }
+      ctx.beginPath(); ctx.arc(0,0,this.r*(0.60+0.28*(1-k)),0,TAU); ctx.stroke();
       ctx.restore();
     }
   }
@@ -417,7 +415,7 @@
     const heading=Number.isFinite(prey.heading) ? prey.heading : 0;
     const ca=Math.cos(heading), sa=Math.sin(heading);
     const away=predator ? Math.atan2(prey.y-predator.y, prey.x-predator.x) : Math.random()*TAU;
-    const count=Math.max(12, Math.min(48, Math.round(10 + prey.size*1.15 + (nodes?nodes.length*4:0) + scale*8)));
+    const count=Math.max(8, Math.min(renderPerf.low ? 24 : 34, Math.round(9 + prey.size*0.9 + (nodes?nodes.length*2.2:0) + scale*6)));
     for(let i=0;i<count;i++){
       const n=nodes ? nodes[i%nodes.length] : null;
       const lx=n ? n.x*rnd(0.45,0.95) : Math.cos(Math.random()*TAU)*prey.size*rnd(0.05,0.85);
@@ -432,12 +430,14 @@
       sparks.push(new BodyParticle(px,py,Math.cos(a)*sp + (prey.vx||0)*0.18,Math.sin(a)*sp + (prey.vy||0)*0.18,r,hue,core?70:rnd(52,72),Math.round(rnd(42,76)*(0.85+0.20*scale)),core));
     }
     sparks.push(new Spark(prey.x, prey.y, clamp(scale*0.75,0.55,1.6),'rgba(255,120,120,'));
+    trimSparks();
   }
 
   function markNewSpecies(org){
     if(!org) return;
     org.newSpeciesFlash=140;
     sparks.push(new SpeciesFlash(org));
+    trimSparks();
   }
 
   function q4(x){ return x<0.25?0: x<0.5?1: x<0.75?2:3; }
@@ -546,6 +546,15 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     return p;
   }
 let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food=[]; const corpses=[]; const plankton=[]; const patches=[]; const calls=[];
+  const STARTER_POP = 64;
+  const MAX_SPARKS = 190;
+  let speciesAnnounceMuteUntil = 0;
+  function trimSparks(){
+    if(sparks.length>MAX_SPARKS) sparks.splice(0, sparks.length-MAX_SPARKS);
+  }
+  function canAnnounceNewSpecies(){
+    return frame >= speciesAnnounceMuteUntil;
+  }
   const roleShare={ ambusher:0, pack:0, scav:0, filter:0, other:1 };
   const dietShare={ h:0.34, m:0.33, c:0.33 }; // herb / omni / carn
   function dietTypeFromCarn(c){ return (c<0.33)?'h':(c<0.66?'m':'c'); }
@@ -618,7 +627,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       const c0 = speciesCount.get(this.speciesKey)||0; speciesCount.set(this.speciesKey, c0+1);
       noteSpeciesSeen(this.speciesKey);
       if(bornByRepro){
-        if(c0===0){ showToast('species', `🧬 新種誕生：種コード ${this.speciesKey}`); markNewSpecies(this); }
+        if(c0===0 && canAnnounceNewSpecies()){
+          if(showToast('species', `🧬 新種誕生：種コード ${this.speciesKey}`)) markNewSpecies(this);
+        }
         if(parentA){ addLineageEdge(parentA, this.speciesKey); }
         if(parentB){ addLineageEdge(parentB, this.speciesKey); }
       }
@@ -1515,7 +1526,7 @@ if(Z>0.10){
     drawSymbolic(){
       const sym = this._symbol || (this.prepareSymbolDetails(), this._symbol);
       const nodes = sym.nodes || [];
-      if(this.trail.length>1){
+      if(!renderPerf.low && this.trail.length>1){
         ctx.beginPath();
         for(let i=0;i<this.trail.length;i++){ const p=this.trail[i]; if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y); }
         ctx.strokeStyle='rgba(150,190,255,0.10)';
@@ -1547,13 +1558,7 @@ if(Z>0.10){
         ctx.beginPath(); ctx.arc(0,0,rr,0,TAU); ctx.stroke();
         ctx.strokeStyle=`hsla(${(hue+70)%360},96%,88%,${0.22*k})`;
         ctx.lineWidth=0.8;
-        for(let i=0;i<7;i++){
-          const a=i*TAU/7 + (this.gait||0)*0.22;
-          ctx.beginPath();
-          ctx.moveTo(Math.cos(a)*rr*0.72,Math.sin(a)*rr*0.72);
-          ctx.lineTo(Math.cos(a)*rr*1.12,Math.sin(a)*rr*1.12);
-          ctx.stroke();
-        }
+        ctx.beginPath(); ctx.arc(0,0,rr*(0.58+0.20*(1-k)),0,TAU); ctx.stroke();
         ctx.restore();
       }
 
@@ -1602,15 +1607,17 @@ if(Z>0.10){
       }
 
       // Soft aura for readable overlap.
-      ctx.save();
-      ctx.globalCompositeOperation='lighter';
-      const auraR = this.size*(1.4 + 0.35*nodes.length);
-      const aura=ctx.createRadialGradient(0,0,1,0,0,auraR);
-      aura.addColorStop(0,`hsla(${outlineHue},82%,76%,${lerp(0.18,0.12,night)})`);
-      aura.addColorStop(1,'rgba(0,0,0,0)');
-      ctx.fillStyle=aura;
-      ctx.beginPath(); ctx.arc(0,0,auraR,0,TAU); ctx.fill();
-      ctx.restore();
+      if(!renderPerf.low){
+        ctx.save();
+        ctx.globalCompositeOperation='lighter';
+        const auraR = this.size*(1.4 + 0.35*nodes.length);
+        const aura=ctx.createRadialGradient(0,0,1,0,0,auraR);
+        aura.addColorStop(0,`hsla(${outlineHue},82%,76%,${lerp(0.18,0.12,night)})`);
+        aura.addColorStop(1,'rgba(0,0,0,0)');
+        ctx.fillStyle=aura;
+        ctx.beginPath(); ctx.arc(0,0,auraR,0,TAU); ctx.fill();
+        ctx.restore();
+      }
 
       // Smooth connective tissue between joints.
       ctx.save();
@@ -1656,36 +1663,38 @@ if(Z>0.10){
       ctx.restore();
 
       // Articulation joints.
-      ctx.save();
-      ctx.globalCompositeOperation='lighter';
-      for(let i=0;i<nodes.length;i++){
-        const n=nodes[i];
-        if(n.parent==null || n.parent<0 || !posed[n.parent] || !posed[i]) continue;
-        const p=posed[n.parent], q=posed[i];
-        const jx=(p.x+q.x)*0.5, jy=(p.y+q.y)*0.5;
-        const jr=Math.max(0.85, Math.min(nodes[n.parent].r,n.r)*0.18);
-        ctx.beginPath();
-        ctx.arc(jx,jy,jr,0,TAU);
-        ctx.fillStyle=`hsla(${outlineHue},92%,84%,${0.20+0.16*energy+0.08*motion})`;
-        ctx.fill();
-        ctx.strokeStyle=`rgba(255,255,255,${0.22+0.16*energy+0.06*motion})`;
-        ctx.lineWidth=0.7;
-        ctx.stroke();
+      if(!renderPerf.tiny){
+        ctx.save();
+        ctx.globalCompositeOperation='lighter';
+        for(let i=0;i<nodes.length;i++){
+          const n=nodes[i];
+          if(n.parent==null || n.parent<0 || !posed[n.parent] || !posed[i]) continue;
+          const p=posed[n.parent], q=posed[i];
+          const jx=(p.x+q.x)*0.5, jy=(p.y+q.y)*0.5;
+          const jr=Math.max(0.85, Math.min(nodes[n.parent].r,n.r)*0.18);
+          ctx.beginPath();
+          ctx.arc(jx,jy,jr,0,TAU);
+          ctx.fillStyle=`hsla(${outlineHue},92%,84%,${0.20+0.16*energy+0.08*motion})`;
+          ctx.fill();
+          ctx.strokeStyle=`rgba(255,255,255,${0.22+0.16*energy+0.06*motion})`;
+          ctx.lineWidth=0.7;
+          ctx.stroke();
+        }
+        for(const link of (sym.extraLinks||[])){
+          const p=posed[link.a], q=posed[link.b];
+          if(!p || !q || !nodes[link.a] || !nodes[link.b]) continue;
+          const jx=(p.x+q.x)*0.5, jy=(p.y+q.y)*0.5;
+          const jr=Math.max(0.85, Math.min(nodes[link.a].r,nodes[link.b].r)*0.18);
+          ctx.beginPath();
+          ctx.arc(jx,jy,jr,0,TAU);
+          ctx.fillStyle=`hsla(${outlineHue},94%,86%,${0.18+0.16*energy+0.06*motion})`;
+          ctx.fill();
+          ctx.strokeStyle=`rgba(255,255,255,${0.20+0.16*energy+0.05*motion})`;
+          ctx.lineWidth=0.7;
+          ctx.stroke();
+        }
+        ctx.restore();
       }
-      for(const link of (sym.extraLinks||[])){
-        const p=posed[link.a], q=posed[link.b];
-        if(!p || !q || !nodes[link.a] || !nodes[link.b]) continue;
-        const jx=(p.x+q.x)*0.5, jy=(p.y+q.y)*0.5;
-        const jr=Math.max(0.85, Math.min(nodes[link.a].r,nodes[link.b].r)*0.18);
-        ctx.beginPath();
-        ctx.arc(jx,jy,jr,0,TAU);
-        ctx.fillStyle=`hsla(${outlineHue},94%,86%,${0.18+0.16*energy+0.06*motion})`;
-        ctx.fill();
-        ctx.strokeStyle=`rgba(255,255,255,${0.20+0.16*energy+0.05*motion})`;
-        ctx.lineWidth=0.7;
-        ctx.stroke();
-      }
-      ctx.restore();
 
       for(let i=0;i<nodes.length;i++){
         const n=nodes[i];
@@ -1698,16 +1707,20 @@ if(Z>0.10){
         ctx.translate(pn.x,pn.y);
         ctx.rotate(sym.shapeRot || 0);
 
-        const grad=ctx.createRadialGradient(-r*0.35,-r*0.38,Math.max(0.8,r*0.08),0,0,r*1.35);
-        grad.addColorStop(0,`hsla(${(hue+sym.gradientShift*0.28)%360},92%,78%,${alpha+0.06})`);
-        grad.addColorStop(0.62,`hsla(${hue},78%,58%,${alpha})`);
-        grad.addColorStop(1,`hsla(${(hue+24)%360},72%,48%,${alpha*0.82})`);
-        ctx.fillStyle=grad;
+        if(renderPerf.tiny){
+          ctx.fillStyle=`hsla(${hue},78%,58%,${alpha})`;
+        } else {
+          const grad=ctx.createRadialGradient(-r*0.35,-r*0.38,Math.max(0.8,r*0.08),0,0,r*1.35);
+          grad.addColorStop(0,`hsla(${(hue+sym.gradientShift*0.28)%360},92%,78%,${alpha+0.06})`);
+          grad.addColorStop(0.62,`hsla(${hue},78%,58%,${alpha})`);
+          grad.addColorStop(1,`hsla(${(hue+24)%360},72%,48%,${alpha*0.82})`);
+          ctx.fillStyle=grad;
+        }
         this.symbolShapePath(ctx, shape, r);
         ctx.fill();
 
-        ctx.strokeStyle=`rgba(2,10,18,${clamp(0.46 + 0.12*energy - 0.38*night,0.07,0.58)})`;
-        ctx.lineWidth=Math.max(1.25,r*0.18);
+        ctx.strokeStyle=`hsla(${(hue+210)%360},44%,30%,${clamp(0.28 + 0.09*energy - 0.18*night,0.06,0.38)})`;
+        ctx.lineWidth=Math.max(1.0,r*0.13);
         this.symbolShapePath(ctx, shape, r);
         ctx.stroke();
 
@@ -2172,7 +2185,7 @@ const env = (function(){
   function makeSprite(){
     const s = document.createElement('canvas');
     s.width = 32; s.height = 32;
-    const c = s.getContext('2d', { willReadFrequently: true });
+    const c = s.getContext('2d');
     const g = c.createRadialGradient(16,16,1, 16,16,16);
     g.addColorStop(0,'rgba(255,255,255,0.9)');
     g.addColorStop(1,'rgba(255,255,255,0)');
@@ -2436,7 +2449,7 @@ if(p.type==='turbid'){
   function paintPixels(){
     if(!pxCtx) return;
     // Only repaint occasionally
-    if(frame - lastPaint < 8) return;
+    if(frame - lastPaint < 16) return;
     lastPaint = frame;
     const img = pxCtx.getImageData(0,0,ew,eh);
     const data = img.data;
@@ -2578,17 +2591,17 @@ function triggerEvent(type){
       worldEvent.mx = rnd(0.25*W, 0.75*W); worldEvent.my = rnd(0.25*H, 0.75*H);
       worldEvent.rx = Math.min(W,H) * 0.28; worldEvent.ry = Math.min(W,H) * 0.22; worldEvent.rot = Math.random()*Math.PI; worldEvent.dx = rnd(-0.15,0.15); worldEvent.dy = rnd(-0.10,0.10);
       Object.assign(worldEvent, {t:600, maxT:600, speedMul:0.85, metaMul:0.9, planktonCapBonus:-10, algaeFactor:0.35, corpseDecayExtra:0.15, veilColor:'rgba(80,110,160,0.18)', predSuccessMul:0.9, reproMul:1, reproT:0});
-      showToast('event','❄️ 寒冷化');
+      showToast('event','寒冷化。移動と捕食が鈍り、藻の伸びも弱まる。省エネでゆっくり動く個体に有利に働くだろう。');
     } else if(type==='bloom'){
       // place a local bloom patch
       worldEvent.mx = rnd(0.25*W, 0.75*W); worldEvent.my = rnd(0.25*H, 0.75*H);
       worldEvent.rx = Math.min(W,H) * 0.26; worldEvent.ry = Math.min(W,H) * 0.20; worldEvent.rot = Math.random()*Math.PI; worldEvent.dx = rnd(-0.12,0.12); worldEvent.dy = rnd(-0.08,0.08);
       Object.assign(worldEvent, {t:500, maxT:500, speedMul:1.08, metaMul:1.18, planktonCapBonus:30, algaeFactor:1.0, corpseDecayExtra:0, veilColor:'rgba(120,200,120,0.12)', predSuccessMul:1.05, reproMul:1.2, reproT:300});
-      showToast('event','🌿 ブルーム');
+      showToast('event','ブルーム。藻とプランクトンが増え、繁殖も少し進みやすい。草食と濾過食に追い風だろう。');
     } else if(type==='drought'){
       worldEvent.mx = null; worldEvent.my=null;
       Object.assign(worldEvent, {t:450, maxT:450, speedMul:0.92, metaMul:0.95, planktonCapBonus:-20, algaeFactor:0.6, corpseDecayExtra:0.25, veilColor:'rgba(180,120,80,0.14)', predSuccessMul:1.0, reproMul:0.7, reproT:400});
-      showToast('event','🔥 乾燥期/火災');
+      showToast('event','乾燥期/火災。藻と繁殖が落ち、死骸の分解が速くなる。蓄えがある個体や腐肉食が粘るだろう。');
     }
   }
   function tickEvent(){
@@ -2621,7 +2634,7 @@ function triggerEvent(type){
   }
 
   // ===== Mix chart =====
-  const mixCanvas=$('mix-canvas'); const mixCtx=mixCanvas.getContext('2d', { willReadFrequently: true }); let MX=0,MY=0; const mixHist=[];
+  const mixCanvas=$('mix-canvas'); const mixCtx=mixCanvas.getContext('2d'); let MX=0,MY=0; const mixHist=[];
   function resizeMix(){ const r=mixCanvas.getBoundingClientRect(); MX=r.width; MY=r.height; mixCanvas.width=Math.round(MX*DPR); mixCanvas.height=Math.round(MY*DPR); mixCtx.setTransform(DPR,0,0,DPR,0,0); } window.addEventListener('resize', resizeMix, {passive:true}); resizeMix();
   function classifyDiet(o){ const c=o.genes.carnivory; if(c<0.33) return 0; if(c<0.66) return 1; return 2; }
   function reportMix(){
@@ -2649,9 +2662,12 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
   const season=()=> 0.6 + 0.6*Math.max(0, Math.sin(frame/3000*TAU));
   const parallax = { stars:[], blobs:[], streaks:[] };
   function initParallax(){
-    parallax.stars.length=0; for(let i=0;i<180;i++){ parallax.stars.push({x:Math.random(), y:Math.random(), z:rnd(0.2,1)}); }
-    parallax.blobs.length=0; for(let i=0;i<32;i++){ parallax.blobs.push({x:Math.random(), y:Math.random(), r:rnd(40,160), z:rnd(0.3,0.9)}); }
-    parallax.streaks.length=0; for(let i=0;i<22;i++){ parallax.streaks.push({x:Math.random(), y:Math.random(), len:rnd(60,200), z:rnd(0.4,0.95), a:rnd(0,TAU)}); }
+    const starN = renderPerf.mobile ? 70 : 110;
+    const blobN = renderPerf.mobile ? 10 : 18;
+    const streakN = renderPerf.mobile ? 6 : 10;
+    parallax.stars.length=0; for(let i=0;i<starN;i++){ parallax.stars.push({x:Math.random(), y:Math.random(), z:rnd(0.2,1)}); }
+    parallax.blobs.length=0; for(let i=0;i<blobN;i++){ parallax.blobs.push({x:Math.random(), y:Math.random(), r:rnd(40,160), z:rnd(0.3,0.9)}); }
+    parallax.streaks.length=0; for(let i=0;i<streakN;i++){ parallax.streaks.push({x:Math.random(), y:Math.random(), len:rnd(60,200), z:rnd(0.4,0.95), a:rnd(0,TAU)}); }
   }
   initParallax();
 
@@ -2729,7 +2745,6 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
       ctx.textAlign='right'; ctx.textBaseline='bottom';
       const pad=6; const tx=W-8, ty=H-6;
       const m=ctx.measureText(text); const bw=m.width+pad*2, bh=18; const x=tx-bw, y=ty-bh;
-      ctx.clearRect(x-2,y-2,bw+6,bh+6);
       ctx.fillStyle='rgba(10,18,41,0.40)'; ctx.strokeStyle='rgba(27,37,80,0.6)'; ctx.lineWidth=1;
       if(ctx.roundRect){ ctx.beginPath(); ctx.roundRect(x,y,bw,bh,8); ctx.fill(); ctx.stroke(); }
       else { ctx.fillRect(x,y,bw,bh); ctx.strokeRect(x,y,bw,bh); }
@@ -2974,7 +2989,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     try {
       const cvs = $('phylo-canvas');
       if(!cvs) return;
-      const c = cvs.getContext('2d', { willReadFrequently: true });
+      const c = cvs.getContext('2d');
       const w = cvs.width, h = cvs.height;
       c.clearRect(0,0,w,h);
       c.fillStyle='rgba(12,16,28,0.25)';
@@ -3067,11 +3082,20 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
   }
 
   // ===== Update / Loop =====
-  function initPopulation(n){
+  function settleStarter(o){
+    if(!o) return;
+    o.energy = clamp(o.reproThreshold*rnd(0.46,0.78), 34, 92);
+    o.age = Math.floor(rnd(90,780));
+    o.protect = Math.floor(rnd(50,130));
+    o.mateSeekT = 0;
+    o.callCD = Math.floor(rnd(90,360));
+  }
+  function initPopulation(n=STARTER_POP){
   organisms.length=0;
   const baseline = Math.max(0, (n|0) - 10);
   for(let i=0;i<baseline;i++){
     const o = new Organism(rnd(20,W-20), rnd(20,H-20));
+    settleStarter(o);
     organisms.push(o);
   }
   // Guarantee at least one per family (0..9)
@@ -3083,6 +3107,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       morph:(f+0.001)/familyCount, pattern:Math.random(), carnivory:Math.random()
     };
     const o = new Organism(rnd(20,W-20), rnd(20,H-20), g);
+    settleStarter(o);
     organisms.push(o);
   }
 }
@@ -3117,8 +3142,9 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       reproMul:1, reproT:0,
       senseCostMul:1, predSuccessMul:1
     });
+    speciesAnnounceMuteUntil = frame + 600;
     // re-seed population and environment
-    initPopulation(24);
+    initPopulation(STARTER_POP);
     seedPatches();
     if(window.env && window.env.reset){
       window.env.ensure();
@@ -3131,6 +3157,9 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     ui.speed = 1;
     if($('speed-slider')) $('speed-slider').value='1';
     if($('speed-value')) $('speed-value').textContent='1x';
+    ui.mutation = 0.03;
+    if($('mutation-slider')) $('mutation-slider').value='3';
+    if($('mutation-value')) $('mutation-value').textContent='3%';
     log('↺ リセット');
     drawMix(true);
     initChallenges();
@@ -3152,7 +3181,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
   const a = (window.env && window.env.getAverages) ? window.env.getAverages() : {N:0.25,O:0.75,D:0.05,C:0.25};
   const night = dayNight.night ?? (dayNight.isNight ? 1 : 0);
   const prod = a.N * (0.35 + 0.65*a.O) * lerp(1.0,0.85,night);
-  const cap = 120 + worldEvent.planktonCapBonus + Math.round(60*night) + Math.floor(260*prod);
+  const cap = 90 + worldEvent.planktonCapBonus + Math.round(45*night) + Math.floor(190*prod);
   const rareMul = clamp(1 + 0.6*(0.2 - (roleShare['filter']||0)), 0.5, 1.8);
   if(plankton.length < cap && frame%10===0){
     const n = Math.max(1, Math.round(rareMul * clamp(0.6 + 1.6*prod, 0.4, 2.0)));
@@ -3192,11 +3221,11 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       // 人口制限
       if(ui.popMax>0 && organisms.length>ui.popMax){ organisms.sort((a,b)=>b.fitness - a.fitness); organisms.length=ui.popMax; log(`⚖ 個体数を上限${ui.popMax}に調整`); }
       // 餌の自然供給
-      if(frame%20===0){ const f=season(); const pop=organisms.length; const baseSmall=Math.max(1,Math.round(2*f)); const baseBig=Math.random()<0.15?1:0; const extra=Math.round(pop*0.15*f); addFood(baseSmall+extra, baseBig); const label = f<0.9 ? '🍂 飢饉期' : '🌱 豊作期'; if(label !== lastSeasonLabel){ showToast('season', label); lastSeasonLabel = label; } }
+      if(frame%20===0){ const f=season(); const pop=organisms.length; const baseSmall=Math.max(1,Math.round(2*f)); const baseBig=Math.random()<0.15?1:0; const extra=Math.round(pop*0.15*f); addFood(baseSmall+extra, baseBig); const label = f<0.9 ? '🍂 飢饉期' : '🌱 豊作期'; if(label !== lastSeasonLabel){ showToast('season', f<0.9 ? '飢饉期。自然発生する餌が減り、低代謝・高効率の個体や腐肉食が有利に働くだろう。' : '豊作期。餌が増え、繁殖が進みやすい。草食と増殖力の高い種に追い風だろう。'); lastSeasonLabel = label; } }
       if(frame%60===0) updateRoleShare();
       if(frame%800===0 && organisms.length){ generation++; $('generation').textContent=String(generation); reportMix(); }
       tickEvent(); maybeTriggerEvent(); if((frame%10)===0) ecoTick();
-      if(organisms.length===0){ log('💀 絶滅 → 再播種'); initPopulation(18); }
+      if(organisms.length===0){ log('💀 絶滅 → 再播種'); speciesAnnounceMuteUntil = frame + 600; initPopulation(Math.max(36, Math.round(STARTER_POP*0.65))); }
       peaceCounter++; evaluateChallenges();
       tickDayNight();
       if(frame%210===0) rebuildSpeciesCards();
@@ -3237,6 +3266,17 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     counts(){
       return { organisms:organisms.length, sparks:sparks.length, corpses:corpses.length, species:new Set(organisms.map(o=>o.speciesKey)).size };
     },
+    starterSummary(){
+      return {
+        mutation: ui.mutation,
+        organisms: organisms.length,
+        species: new Set(organisms.map(o=>o.speciesKey)).size,
+        muteFrames: Math.max(0, speciesAnnounceMuteUntil-frame),
+        flashes: organisms.filter(o=>o.newSpeciesFlash>0).length,
+        dpr: DPR,
+        lowRender: renderPerf.low
+      };
+    },
     speciesColorSummary(){
       const bySpecies=new Map();
       for(const o of organisms){
@@ -3273,13 +3313,17 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       dayNight.phase = Number.isFinite(v) ? ((v % 1) + 1) % 1 : 0;
       applyDayNightState(Boolean(announce));
       return dayNightSnapshot();
+    },
+    triggerWorldEvent(type){
+      triggerEvent(type);
+      return { type:worldEvent.type, t:worldEvent.t, maxT:worldEvent.maxT };
     }
   };
 
   function loop(now=performance.now()){ updateFpsHud(now); if(running){ update(); if(frame%20===0) reportMix(); } draw(); requestAnimationFrame(loop); }
 
   function seedPatches(){ patches.push(new Patch('algae', W*0.30, H*0.32, Math.min(W,H)*0.20)); patches.push(new Patch('turbid', W*0.55, H*0.75, Math.min(W,H)*0.18)); }
-  function seedPlankton(){ for(let i=0;i<160;i++) plankton.push(new Plankton()); }
+  function seedPlankton(){ for(let i=0;i<110;i++) plankton.push(new Plankton()); }
 
   // ===== Save / Load =====
   function capture(){
@@ -3393,7 +3437,8 @@ organisms.push(u);
   function boot(){ 
     try {
       toastBlockUntil = frame + 600; 
-      initPopulation(24); 
+      speciesAnnounceMuteUntil = frame + 600;
+      initPopulation(STARTER_POP);
       seedPatches(); 
       if(window.env) window.env.seedFromPatches(patches);
       seedPlankton(); 
