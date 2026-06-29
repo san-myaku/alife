@@ -1,0 +1,6 @@
+/.agents/
+/.codex/
+/alife_env_*.html
+/alife_symbolic_shapes_v1.html
+/serve_symbolic_mobile_only.py
+/__pycache__/
