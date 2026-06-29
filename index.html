@@ -966,14 +966,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         }
         if(!canUseGroupStrategy(o.genes)) return;
         const sameSpecies = o.speciesKey===this.speciesKey;
-        const sameMode = o.socialMode===mode;
-        const sameRole = o.role===this.role;
-        const herbAlly = o.genes && o.genes.carnivory<=0.38;
-        let affinity = mode==='defense-school'
-          ? (sameSpecies ? 1.12 : (herbAlly ? (sameMode ? 0.78 : 0.46) : 0.06))
-          : (sameSpecies ? 1.0 : (sameMode ? 0.62 : (sameRole ? 0.34 : 0.10)));
-        if(mode==='cluster' && !sameSpecies) affinity *= 0.45;
-        if(mode==='hunt-pack' && !(sameSpecies || sameRole)) affinity *= 0.35;
+        if(!sameSpecies) return;
+        const affinity = mode==='defense-school' ? 1.12 : 1.0;
         if(affinity<0.08) return;
         const w = affinity * clamp(1 - d/range, 0.04, 1);
         wx += o.x*w; wy += o.y*w; wvx += o.vx*w; wvy += o.vy*w; wsum += w; count++;
@@ -1304,7 +1298,7 @@ if(Z>0.10){
     }
 
     tryPredate(){ if(this.attackCD>0) return; const carnIntent=this.genes.carnivory; if(carnIntent<0.2) return; let repelHere=false; for(const e of effects){ if(e.type!=='repel') continue; const dx=e.x-this.x, dy=e.y-this.y; if(dx*dx+dy*dy < e.r*e.r){ repelHere=true; break; } }
-      const deficit=Math.max(0, this.hungerBias - this.energy); let intent=carnivoryIntent(carnIntent, deficit); if(repelHere) intent*=0.2; if(intent<0.05) return; let prey=null, bestD2=Infinity; forEachOrgNeighbors(this.x,this.y,this.senseR,(o,dx,dy,d2)=>{ if(o===this) return; if(o.protect>0) return; if(o.size >= this.size*0.95) return; const rr=(this.size+o.size+2); if(d2<bestD2 && d2 <= rr*rr){ bestD2=d2; prey=o; } }); if(!prey) return; let pBase=0.22; const sizeEdge=clamp((this.size-prey.size)/this.size,0,0.5); let p=clamp(pBase*(0.6+sizeEdge*0.8)*intent,0,0.65); if(repelHere) p*=0.5; if(this.role==='ambusher'){ p*= 1.0*rareFactor('ambusher'); if(this.burstTimer>0) p*=1.2; } if(this.role==='pack' || this.socialMode==='hunt-pack'){ let mates=0; forEachOrgNeighbors(prey.x,prey.y,76,(o2)=>{ if(o2!==this && (o2.role==='pack' || o2.socialMode==='hunt-pack' || o2.speciesKey===this.speciesKey)) mates++; }); p*= (0.75 + 0.10*mates) * rareFactor('pack'); }
+      const deficit=Math.max(0, this.hungerBias - this.energy); let intent=carnivoryIntent(carnIntent, deficit); if(repelHere) intent*=0.2; if(intent<0.05) return; let prey=null, bestD2=Infinity; forEachOrgNeighbors(this.x,this.y,this.senseR,(o,dx,dy,d2)=>{ if(o===this) return; if(o.protect>0) return; if(o.size >= this.size*0.95) return; const rr=(this.size+o.size+2); if(d2<bestD2 && d2 <= rr*rr){ bestD2=d2; prey=o; } }); if(!prey) return; let pBase=0.22; const sizeEdge=clamp((this.size-prey.size)/this.size,0,0.5); let p=clamp(pBase*(0.6+sizeEdge*0.8)*intent,0,0.65); if(repelHere) p*=0.5; if(this.role==='ambusher'){ p*= 1.0*rareFactor('ambusher'); if(this.burstTimer>0) p*=1.2; } if(this.role==='pack' || this.socialMode==='hunt-pack'){ let mates=0; forEachOrgNeighbors(prey.x,prey.y,76,(o2)=>{ if(o2!==this && o2.speciesKey===this.speciesKey && (o2.role==='pack' || o2.socialMode==='hunt-pack')) mates++; }); p*= (0.75 + 0.10*mates) * rareFactor('pack'); }
       p*= (worldEvent.predSuccessMul||1);
       if(prey.socialMode==='defense-school'){
         let herd=0, screen=0;
@@ -1312,7 +1306,7 @@ if(Z>0.10){
         forEachOrgNeighbors(prey.x,prey.y,82,(ally,dx,dy,d2)=>{
           if(ally===prey || ally.dead || !ally.genes || ally.genes.carnivory>0.40) return;
           if(!canUseGroupStrategy(ally.genes)) return;
-          if(!(ally.speciesKey===prey.speciesKey || ally.socialMode==='defense-school')) return;
+          if(ally.speciesKey!==prey.speciesKey) return;
           herd++;
           const allyToPred=Math.hypot(ally.x-this.x,ally.y-this.y)||1;
           if(allyToPred<preyToPred && Math.sqrt(d2)<54) screen++;
