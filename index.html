@@ -544,9 +544,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(c<0.50 && ef>0.72 && sz<0.42) return 'filter';
     return 'other';
   }
+  const GROUP_MAX_SIZE_GENE = 0.58;
+  function canUseGroupStrategy(g){
+    return !!g && (g.size ?? 1) <= GROUP_MAX_SIZE_GENE;
+  }
   function socialStrategyFromGenes(g){
     const social = clamp(0.10 + g.sensory*0.38 + g.reproduction*0.24 + (1-g.carnivory)*0.16 + g.lobes*0.14 - g.size*0.10, 0, 1);
     if(social<0.34) return { mode:'solitary', sociality:social };
+    if(!canUseGroupStrategy(g)) return { mode:'solitary', sociality:social*0.55 };
     if(g.carnivory>0.62 && g.speed>0.52 && g.sensory>0.42) return { mode:'hunt-pack', sociality:social };
     if(g.carnivory<=0.34 && social>=0.38 && (g.sensory>0.42 || g.reproduction>0.52)) return { mode:'defense-school', sociality:social };
     if(g.elongation>0.66 && g.sensory>0.44) return { mode:'trail', sociality:social };
@@ -959,6 +964,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           fleeW += w;
           predators++;
         }
+        if(!canUseGroupStrategy(o.genes)) return;
         const sameSpecies = o.speciesKey===this.speciesKey;
         const sameMode = o.socialMode===mode;
         const sameRole = o.role===this.role;
@@ -1305,6 +1311,7 @@ if(Z>0.10){
         const preyToPred=Math.hypot(prey.x-this.x,prey.y-this.y)||1;
         forEachOrgNeighbors(prey.x,prey.y,82,(ally,dx,dy,d2)=>{
           if(ally===prey || ally.dead || !ally.genes || ally.genes.carnivory>0.40) return;
+          if(!canUseGroupStrategy(ally.genes)) return;
           if(!(ally.speciesKey===prey.speciesKey || ally.socialMode==='defense-school')) return;
           herd++;
           const allyToPred=Math.hypot(ally.x-this.x,ally.y-this.y)||1;
@@ -1467,18 +1474,6 @@ if(Z>0.10){
         ctx.strokeStyle='rgba(100,180,255,0.08)';
         ctx.lineWidth=1;
         ctx.stroke();
-      }
-      if(this.socialMode==='defense-school'){
-        const threat = clamp((this.herdThreat||0)/48,0,1);
-        const rr = (this.personalSpaceR || this.size*1.4) * (1.10 + 0.06*Math.sin((this.gait||0)*1.2));
-        ctx.save();
-        ctx.globalCompositeOperation='lighter';
-        ctx.beginPath();
-        ctx.arc(0,0,rr,0,TAU);
-        ctx.strokeStyle = threat>0 ? `rgba(255,220,130,${0.10+0.16*threat})` : 'rgba(150,225,245,0.10)';
-        ctx.lineWidth = Math.max(0.8,this.size*0.08);
-        ctx.stroke();
-        ctx.restore();
       }
       if(this.newSpeciesFlash>0){
         const k=clamp(this.newSpeciesFlash/140,0,1);
