@@ -440,6 +440,17 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(c<0.50 && ef>0.72 && sz<0.42) return 'filter';
     return 'other';
   }
+  function socialStrategyFromGenes(g){
+    const social = clamp(0.10 + g.sensory*0.38 + g.reproduction*0.24 + (1-g.carnivory)*0.16 + g.lobes*0.14 - g.size*0.10, 0, 1);
+    if(social<0.34) return { mode:'solitary', sociality:social };
+    if(g.carnivory>0.62 && g.speed>0.52 && g.sensory>0.42) return { mode:'hunt-pack', sociality:social };
+    if(g.elongation>0.66 && g.sensory>0.44) return { mode:'trail', sociality:social };
+    if(g.efficiency>0.62 && g.speed<0.58) return { mode:'cluster', sociality:social };
+    return { mode:'school', sociality:social };
+  }
+  function socialStrategyLabel(mode){
+    return mode==='hunt-pack' ? '群狩り' : mode==='trail' ? '追尾' : mode==='cluster' ? '密集' : mode==='school' ? '群泳' : '単独';
+  }
 
 
   class Organism{
@@ -546,6 +557,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
 
       this.hungerBias = this.reproThreshold;
       this.role = computeRole(this.genes);
+      const social = socialStrategyFromGenes(this.genes);
+      this.socialMode = social.mode;
+      this.sociality = social.sociality;
       // --- sea-glass micro-bubbles (impurities) precompute ---
       try{
         const bubN = Math.max(1, Math.min(6, Math.round(2 + 4*(1 - this.genes.size)*0.7 + 2*this.genes.reproduction*0.3)));
@@ -654,26 +668,50 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       const chainLen = (rng()<solitaryChance)
         ? 1
         : Math.max(2, Math.min(13, Math.round(chainBase + longChainBonus)));
-      const tipFork = chainLen>=4 && rng()<clamp(0.10 + this.genes.sensory*0.28 + this.genes.lobes*0.20 + this.genes.elongation*0.12, 0.10, 0.58);
-      const branchCount = chainLen<=1 ? 0 : Math.max(0, Math.min(4, Math.round((this.genes.sensory*2.0 + this.genes.lobes*1.7 + rng()*0.8) - (tipFork ? 1.75 : 1.35))));
+      const ringBody = chainLen>=5 && rng()<clamp(0.05 + this.genes.lobes*0.30 + this.genes.efficiency*0.16 + this.genes.reproduction*0.08 - this.genes.elongation*0.06, 0.04, 0.48);
+      const tipFork = !ringBody && chainLen>=4 && rng()<clamp(0.10 + this.genes.sensory*0.28 + this.genes.lobes*0.20 + this.genes.elongation*0.12, 0.10, 0.58);
+      const branchCount = chainLen<=1 ? 0 : (ringBody ? (rng()<0.28 + this.genes.sensory*0.20 ? 1 : 0) : Math.max(0, Math.min(4, Math.round((this.genes.sensory*2.0 + this.genes.lobes*1.7 + rng()*0.8) - (tipFork ? 1.75 : 1.35)))));
       const spacing = this.size*(0.78 + 0.38*this.genes.elongation);
       const nodes = [];
+      const extraLinks = [];
       const nodeR = this.size*(0.62 + 0.52*this.genes.size)*(0.92 + 0.12*rng());
-      const mainStart = -spacing*(chainLen-1)*0.5;
-      for(let i=0;i<chainLen;i++){
-        const q = chainLen===1 ? 0 : (i/(chainLen-1)-0.5);
-        const wob = Math.sin((i*0.95 + rng()*2.0))*this.size*(0.10 + 0.24*this.genes.sensory);
-        nodes.push({
-          x: mainStart + i*spacing,
-          y: wob,
-          r: nodeR,
-          shape: primaryIndex,
-          hue: (baseHue + q*54 + (rng()-0.5)*26 + 360) % 360,
-          alpha: 0.46 + 0.34*this.genes.efficiency + 0.12*rng(),
-          rot: rng()*TAU,
-          parent: i>0 ? i-1 : -1,
-          kind: 'main'
-        });
+      if(ringBody){
+        const ringLen = Math.max(6, Math.min(15, chainLen + Math.round(this.genes.lobes*3.2 + rng()*2.2)));
+        const ringR = spacing*ringLen/TAU*(0.72 + 0.18*rng());
+        const oval = 0.82 + this.genes.elongation*0.30;
+        for(let i=0;i<ringLen;i++){
+          const a = -Math.PI/2 + i/ringLen*TAU;
+          const q = i/ringLen - 0.5;
+          nodes.push({
+            x: Math.cos(a)*ringR*oval,
+            y: Math.sin(a)*ringR,
+            r: nodeR,
+            shape: primaryIndex,
+            hue: (baseHue + q*62 + (rng()-0.5)*22 + 360) % 360,
+            alpha: 0.44 + 0.34*this.genes.efficiency + 0.10*rng(),
+            rot: rng()*TAU,
+            parent: i>0 ? i-1 : -1,
+            kind: 'ring'
+          });
+        }
+        extraLinks.push({a:ringLen-1,b:0,kind:'ring'});
+      } else {
+        const mainStart = -spacing*(chainLen-1)*0.5;
+        for(let i=0;i<chainLen;i++){
+          const q = chainLen===1 ? 0 : (i/(chainLen-1)-0.5);
+          const wob = Math.sin((i*0.95 + rng()*2.0))*this.size*(0.10 + 0.24*this.genes.sensory);
+          nodes.push({
+            x: mainStart + i*spacing,
+            y: wob,
+            r: nodeR,
+            shape: primaryIndex,
+            hue: (baseHue + q*54 + (rng()-0.5)*26 + 360) % 360,
+            alpha: 0.46 + 0.34*this.genes.efficiency + 0.12*rng(),
+            rot: rng()*TAU,
+            parent: i>0 ? i-1 : -1,
+            kind: 'main'
+          });
+        }
       }
       const mainLen = nodes.length;
       for(let b=0;b<branchCount;b++){
@@ -737,6 +775,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this._symbol = {
         shapeNames,
         nodes,
+        extraLinks,
+        bodyPlan: ringBody ? 'ring' : (tipFork ? 'fork' : (chainLen>=9 ? 'long-chain' : (chainLen>1 ? 'chain' : 'single'))),
         visualR,
         personalSpaceR,
         primaryIndex,
@@ -790,6 +830,45 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         this.motionLevel = Math.max(this.motionLevel||0, clamp((hits + deep)*0.10,0,0.42));
       }
     }
+    socialSteer(){
+      const mode = this.socialMode || 'solitary';
+      const sociality = this.sociality || 0;
+      if(mode==='solitary' || sociality<0.32) return 0;
+      const range = clamp(this.senseR*(0.38 + sociality*0.44), 38, 112);
+      let wx=0, wy=0, wvx=0, wvy=0, wsum=0, count=0;
+      forEachOrgNeighbors(this.x,this.y,range,(o,dx,dy,d2)=>{
+        if(o===this || o.dead) return;
+        const d=Math.sqrt(d2)||1;
+        const sameSpecies = o.speciesKey===this.speciesKey;
+        const sameMode = o.socialMode===mode;
+        const sameRole = o.role===this.role;
+        let affinity = sameSpecies ? 1.0 : (sameMode ? 0.62 : (sameRole ? 0.34 : 0.10));
+        if(mode==='cluster' && !sameSpecies) affinity *= 0.45;
+        if(mode==='hunt-pack' && !(sameSpecies || sameRole)) affinity *= 0.35;
+        if(affinity<0.08) return;
+        const w = affinity * clamp(1 - d/range, 0.04, 1);
+        wx += o.x*w; wy += o.y*w; wvx += o.vx*w; wvy += o.vy*w; wsum += w; count++;
+      });
+      if(!count || wsum<=0) return 0;
+      const cx=wx/wsum, cy=wy/wsum, avx=wvx/wsum, avy=wvy/wsum;
+      const dx=cx-this.x, dy=cy-this.y;
+      const d=Math.hypot(dx,dy)||1;
+      const targetDist = (this.personalSpaceR||this.size) * (mode==='cluster' ? 1.75 : (mode==='trail' ? 2.30 : 2.05));
+      let cohesion = 0;
+      if(d>targetDist) cohesion = clamp((d-targetDist)/range,0,1);
+      if(mode==='trail') cohesion *= 1.25;
+      if(mode==='cluster') cohesion *= 0.85;
+      const align = (mode==='school'||mode==='hunt-pack') ? (0.026 + 0.040*sociality) : (mode==='trail' ? 0.018 + 0.028*sociality : 0.010 + 0.018*sociality);
+      const coh = (0.020 + 0.050*sociality) * cohesion;
+      this.vx += avx*align + (dx/d)*coh;
+      this.vy += avy*align + (dy/d)*coh;
+      if(mode==='cluster' && d<targetDist*0.70){
+        this.vx *= 0.992;
+        this.vy *= 0.992;
+      }
+      this.motionLevel = Math.max(this.motionLevel||0, clamp(0.08 + count*0.025,0,0.46));
+      return count;
+    }
 
     step(){
       if((this.age & 3)===0){ this.trail.push({x:this.x,y:this.y}); if(this.trail.length>16) this.trail.shift(); }
@@ -801,6 +880,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       // 餌/死骸への移動
       let nearest=null, minD2=this.senseR*this.senseR;
       this.separateFromNeighbors();
+      const socialNeighbors = this.socialSteer();
       for(const f of food){ const dx=f.x-this.x, dy=f.y-this.y, d2=dx*dx+dy*dy; if(d2<minD2){ minD2=d2; nearest=f; } }
       if(this.role==='scav'){
         for(const c of corpses){ const dx=c.x-this.x, dy=c.y-this.y, d2=dx*dx+dy*dy; if(d2<minD2*0.8){ minD2=d2; nearest=c; } }
@@ -948,7 +1028,8 @@ if(Z>0.10){
       }
       const speedIntent=clamp(actualSp/Math.max(0.1,this.maxSpeed*1.25),0,1);
       const forageIntent=nearest ? 0.18 : 0;
-      const stressIntent=(this.fleeTimer>0?0.50:0) + ((this.role==='ambusher' && this.burstTimer>0)?0.42:0);
+      const socialIntent=socialNeighbors ? clamp(socialNeighbors*0.035,0,0.26) : 0;
+      const stressIntent=(this.fleeTimer>0?0.50:0) + ((this.role==='ambusher' && this.burstTimer>0)?0.42:0) + socialIntent;
       this.motionLevel=clamp((this.motionLevel||0)*0.72 + (speedIntent+forageIntent+stressIntent)*0.28,0,1.65);
       this.gait=(this.gait + (0.020 + 0.125*this.motionLevel)*(0.75+0.60*this.genes.speed)) % TAU;
 
@@ -1021,7 +1102,8 @@ if(Z>0.10){
       // エネルギー消費
       const moveCost=0.03*(this.vx*this.vx + this.vy*this.vy);
       let neigh=0; forEachOrgNeighbors(this.x,this.y,35,(o)=>{ if(o!==this) neigh++; });
-      const densityCost=0.01*neigh;
+      const crowdEase = (this.socialMode==='cluster'||this.socialMode==='school'||this.socialMode==='hunt-pack') ? (1 - 0.42*(this.sociality||0)) : 1;
+      const densityCost=0.01*neigh*clamp(crowdEase,0.54,1);
 
       // chloroplast trait: in daytime, calm herbivores can suppress basal metabolism (survival only)
       let baseMeta = (this.baseMetabolic*metaMul*worldEvent.metaMul);
@@ -1071,7 +1153,7 @@ if(Z>0.10){
     }
 
     tryPredate(){ if(this.attackCD>0) return; const carnIntent=this.genes.carnivory; if(carnIntent<0.2) return; let repelHere=false; for(const e of effects){ if(e.type!=='repel') continue; const dx=e.x-this.x, dy=e.y-this.y; if(dx*dx+dy*dy < e.r*e.r){ repelHere=true; break; } }
-      const deficit=Math.max(0, this.hungerBias - this.energy); let intent=carnivoryIntent(carnIntent, deficit); if(repelHere) intent*=0.2; if(intent<0.05) return; let prey=null, bestD2=Infinity; forEachOrgNeighbors(this.x,this.y,this.senseR,(o,dx,dy,d2)=>{ if(o===this) return; if(o.protect>0) return; if(o.size >= this.size*0.95) return; const rr=(this.size+o.size+2); if(d2<bestD2 && d2 <= rr*rr){ bestD2=d2; prey=o; } }); if(!prey) return; let pBase=0.22; const sizeEdge=clamp((this.size-prey.size)/this.size,0,0.5); let p=clamp(pBase*(0.6+sizeEdge*0.8)*intent,0,0.65); if(repelHere) p*=0.5; if(this.role==='ambusher'){ p*= 1.0*rareFactor('ambusher'); if(this.burstTimer>0) p*=1.2; } if(this.role==='pack'){ let mates=0; forEachOrgNeighbors(prey.x,prey.y,70,(o2)=>{ if(o2!==this && o2.role==='pack') mates++; }); p*= (0.75 + 0.12*mates) * rareFactor('pack'); }
+      const deficit=Math.max(0, this.hungerBias - this.energy); let intent=carnivoryIntent(carnIntent, deficit); if(repelHere) intent*=0.2; if(intent<0.05) return; let prey=null, bestD2=Infinity; forEachOrgNeighbors(this.x,this.y,this.senseR,(o,dx,dy,d2)=>{ if(o===this) return; if(o.protect>0) return; if(o.size >= this.size*0.95) return; const rr=(this.size+o.size+2); if(d2<bestD2 && d2 <= rr*rr){ bestD2=d2; prey=o; } }); if(!prey) return; let pBase=0.22; const sizeEdge=clamp((this.size-prey.size)/this.size,0,0.5); let p=clamp(pBase*(0.6+sizeEdge*0.8)*intent,0,0.65); if(repelHere) p*=0.5; if(this.role==='ambusher'){ p*= 1.0*rareFactor('ambusher'); if(this.burstTimer>0) p*=1.2; } if(this.role==='pack' || this.socialMode==='hunt-pack'){ let mates=0; forEachOrgNeighbors(prey.x,prey.y,76,(o2)=>{ if(o2!==this && (o2.role==='pack' || o2.socialMode==='hunt-pack' || o2.speciesKey===this.speciesKey)) mates++; }); p*= (0.75 + 0.10*mates) * rareFactor('pack'); }
       p*= (worldEvent.predSuccessMul||1);
       if(Math.random()<p){
         const carn=this.genes.carnivory;
@@ -1252,7 +1334,7 @@ if(Z>0.10){
         const dx=n.x-restParent.x, dy=n.y-restParent.y;
         const len=Math.hypot(dx,dy)||1;
         const baseA=Math.atan2(dy,dx);
-        const branchMul=n.kind==='branch'?0.72:1.0;
+        const branchMul=n.kind==='ring'?0.34:(n.kind==='branch'||n.kind==='tip'?0.72:1.0);
         const wave1=Math.sin(gait*1.15 + sym.wigglePhase + i*0.95 + (n.kind==='branch'?0.7:0));
         const wave2=Math.sin(gait*0.52 + sym.wigglePhase*1.7 + i*0.41);
         const joint=(wave1*0.78 + wave2*0.22) * sym.wiggleAmp * intent * branchMul;
@@ -1301,6 +1383,23 @@ if(Z>0.10){
         ctx.lineWidth=Math.max(1.0, Math.min(nodes[n.parent].r,n.r)*0.30);
         ctx.stroke();
       }
+      for(const link of (sym.extraLinks||[])){
+        const p=posed[link.a], q=posed[link.b];
+        if(!p || !q || !nodes[link.a] || !nodes[link.b]) continue;
+        const mx=(p.x+q.x)*0.5, my=(p.y+q.y)*0.5;
+        const dx=q.x-p.x, dy=q.y-p.y;
+        const d=Math.hypot(dx,dy)||1;
+        const bend=Math.sin(gait*0.82 + sym.wigglePhase + link.a*0.37)*sym.wiggleAmp*intent*0.22;
+        const cx=mx + (-dy/d)*bend*this.size*0.38;
+        const cy=my + ( dx/d)*bend*this.size*0.38;
+        ctx.beginPath();
+        ctx.moveTo(p.x,p.y);
+        ctx.quadraticCurveTo(cx,cy,q.x,q.y);
+        const linkAlpha=clamp(sym.lineAlpha*(dayNight.isNight?0.58:0.82)*(0.78+0.22*energy),0.10,0.42);
+        ctx.strokeStyle=`hsla(${outlineHue},84%,80%,${linkAlpha})`;
+        ctx.lineWidth=Math.max(1.0, Math.min(nodes[link.a].r,nodes[link.b].r)*0.30);
+        ctx.stroke();
+      }
       ctx.restore();
 
       // Articulation joints.
@@ -1317,6 +1416,19 @@ if(Z>0.10){
         ctx.fillStyle=`hsla(${outlineHue},92%,84%,${0.20+0.16*energy+0.08*motion})`;
         ctx.fill();
         ctx.strokeStyle=`rgba(255,255,255,${0.22+0.16*energy+0.06*motion})`;
+        ctx.lineWidth=0.7;
+        ctx.stroke();
+      }
+      for(const link of (sym.extraLinks||[])){
+        const p=posed[link.a], q=posed[link.b];
+        if(!p || !q || !nodes[link.a] || !nodes[link.b]) continue;
+        const jx=(p.x+q.x)*0.5, jy=(p.y+q.y)*0.5;
+        const jr=Math.max(0.85, Math.min(nodes[link.a].r,nodes[link.b].r)*0.18);
+        ctx.beginPath();
+        ctx.arc(jx,jy,jr,0,TAU);
+        ctx.fillStyle=`hsla(${outlineHue},94%,86%,${0.18+0.16*energy+0.06*motion})`;
+        ctx.fill();
+        ctx.strokeStyle=`rgba(255,255,255,${0.20+0.16*energy+0.05*motion})`;
         ctx.lineWidth=0.7;
         ctx.stroke();
       }
@@ -2508,6 +2620,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       const pct=Math.round(it.share*100);
       const arrow= ratio>0.12?'↑':(ratio<-0.12?'↓':'→');
       const av = avatar(it.key,it.g,{glow:it.flags.glow>0.5,crown:it.flags.crown>0.5,colony:it.flags.colony>0.5,chl:it.flags.chl>0.5});
+      const strat = socialStrategyFromGenes(it.g);
       const rare = [it.flags.glow>0.5?'🌙':'', it.flags.crown>.5?'👑':'', it.flags.colony>0.5?'♒':'', it.flags.chl>0.5?'🟩':''].filter(Boolean).join('\n');
       html += `<div class="species-card">
         <div class="species-card-header">
@@ -2522,7 +2635,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
         </div>
         <div>${stars01(score)}</div>
         <div style="margin-top:4px; font-size:11px; opacity:.72;">
-          クラッチ最大: ${getSpeciesReproParams(it.key).clutchMax}
+          クラッチ最大: ${getSpeciesReproParams(it.key).clutchMax} ｜戦略: ${socialStrategyLabel(strat.mode)}
         </div>
       </div>`;
     }
