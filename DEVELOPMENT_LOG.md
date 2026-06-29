@@ -33,6 +33,8 @@
 - Limited group strategies to smaller organisms.
 - Changed all group membership and group-based protection to same-species only.
 - Added this development log so future changes keep a compact proof trail.
+- Added sketch-inspired symbolic node shapes: leaf, diamond, four-point sparkle, six-point star, and five-lobed cloud.
+- Expanded the mobile pond/canvas area so the simulation has more screen space before the control panel.
 
 ## Verification Notes
 
