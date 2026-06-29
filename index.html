@@ -469,6 +469,19 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   }
 
   function speciesKey(g){ const base=`${q4(g.speed)}${q4(g.size)}${q4(g.sensory)}${q4(g.carnivory)}`; const m=morphFromGenes(g,base); const p=q3(m.pointiness); const a=m.aspect<1.33?0:(m.aspect<1.66?1:2); const l=Math.max(1,Math.min(8,Math.round(m.lobesMain))); return `${base}${p}${a}${l}`; }
+  function speciesPalette(key){
+    const s=String(key||'0000000');
+    const speedQ=Number(s[0]||1)/3;
+    const carnQ=Number(s[3]||1)/3;
+    const dietHue=lerp(195,6,clamp(carnQ,0,1));
+    const speedTint=lerp(-18,18,clamp(speedQ,0,1));
+    const hue=(dietHue + speedTint*0.25 + (hash01('speciesHue:'+s)-0.5)*96 + 360) % 360;
+    const sat=64 + Math.round(hash01('speciesSat:'+s)*18);
+    const light=50 + Math.round(hash01('speciesLight:'+s)*12);
+    const nucleusHue=(hue + 132 + hash01('speciesNucleus:'+s)*86) % 360;
+    const gradientShift=28 + 96*hash01('speciesGradient:'+s);
+    return { hue, sat, light, nucleusHue, gradientShift };
+  }
 
   // ===== Lineage tracking =====
   const lineage = {
@@ -576,9 +589,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this.restT=0; this.restCD=0;
       this.heading=Math.random()*TAU; this.gait=Math.random()*TAU; this.motionLevel=0; this.socialCount=0; this.herdThreat=0; this.newSpeciesFlash=0;
       this.genes = genes ? genes : { speed:Math.random(), size:Math.random(), efficiency:Math.random(), reproduction:Math.random(), sensory:Math.random(), carnivory:Math.random(), lobes:Math.random(), lobeAmp:Math.random(), elongation:Math.random(), pattern:Math.random() , morph:Math.random()};
+      this.speciesKey = speciesKey(this.genes);
       this.recalcPhenotype(); this.updateColor();
       this.aff = { aN: clamp(0.3 + 0.7*(1-this.genes.carnivory), -1, 1), aC: clamp(-0.2 - 0.8*this.genes.speed, -1, 1), aT: clamp(-0.3 - 0.5*this.genes.sensory, -1, 1), aZ: (function(g){ let a=-0.7; if(g.carnivory>0.6) a+=0.4*(g.carnivory-0.6); if(g.speed<0.5) a+=0.2*(0.5-g.speed); return clamp(a,-1,1); })(this.genes) };;
-      this.speciesKey = speciesKey(this.genes);
       const c0 = speciesCount.get(this.speciesKey)||0; speciesCount.set(this.speciesKey, c0+1);
       noteSpeciesSeen(this.speciesKey);
       if(bornByRepro){
@@ -619,14 +632,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       }
     }
     updateColor(){
-      const c = this.genes.carnivory;
-      // diet-driven hue for readability: herbivore=cyan/teal, omnivore=amber, carnivore=red
-      const dietHue = lerp(195, 6, c); // 195 → 6
-      const speedTint = lerp(-14, 14, this.genes.speed);
-      const hue = (dietHue + speedTint*0.25 + 360) % 360;
-      const sat = lerp(42, 78, c);
-      let light = lerp(66, 42, this.genes.size);
-      light = light + lerp(2, -6, c);
+      const pal = speciesPalette(this.speciesKey || speciesKey(this.genes));
+      const hue = pal.hue;
+      const sat = pal.sat;
+      const light = pal.light;
       this.hue = hue;
       this.sat = sat;
       this.light = Math.floor(clamp(light, 30, 72));
@@ -772,8 +781,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       const geneKey = Object.values(this.genes).map(v=>Math.round(v*101)).join('.');
       const seedKey = 'symbol:'+this.id+':'+geneKey;
       const rng = rngFromKey(seedKey);
-      const dietHue = Number.isFinite(this.hue) ? this.hue : ((lerp(195,6,this.genes.carnivory) + lerp(-14,14,this.genes.speed)*0.25 + 360) % 360);
-      const baseHue = (hash01('palette:'+geneKey)*360 + dietHue*0.28 + this.genes.pattern*210 + this.genes.morph*130 + this.genes.sensory*95 + 360) % 360;
+      const pal = speciesPalette(this.speciesKey || speciesKey(this.genes));
+      const baseHue = pal.hue;
       const shapeNames = ['circle','square','triangle','ellipse','pentagon','hexagon','leaf','diamond','sparkle4','star6','cloud5'];
       const shapeCount = shapeNames.length;
       const primaryIndex = Math.max(0, Math.min(shapeCount-1, Math.floor(clamp(this.genes.morph ?? this.genes.elongation ?? 0.5,0,0.999)*shapeCount)));
@@ -804,7 +813,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
             y: Math.sin(a)*ringR,
             r: nodeR,
             shape: primaryIndex,
-            hue: (baseHue + q*62 + (rng()-0.5)*22 + 360) % 360,
+            hue: baseHue,
             alpha: 0.44 + 0.34*this.genes.efficiency + 0.10*rng(),
             rot: rng()*TAU,
             parent: i>0 ? i-1 : -1,
@@ -822,7 +831,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
             y: wob,
             r: nodeR,
             shape: primaryIndex,
-            hue: (baseHue + q*54 + (rng()-0.5)*26 + 360) % 360,
+            hue: baseHue,
             alpha: 0.46 + 0.34*this.genes.efficiency + 0.12*rng(),
             rot: rng()*TAU,
             parent: i>0 ? i-1 : -1,
@@ -847,7 +856,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
             x:px, y:py,
             r:nodeR,
             shape: primaryIndex,
-            hue:(baseHue + side*42 + b*18 + rng()*20 + 360) % 360,
+            hue:baseHue,
             alpha:0.38 + 0.30*this.genes.efficiency + 0.14*rng(),
             rot:rng()*TAU,
             parent:parentIndex,
@@ -875,7 +884,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
               x:px, y:py,
               r:nodeR,
               shape: primaryIndex,
-              hue:(baseHue + side*34 + j*18 + rng()*18 + 360) % 360,
+              hue:baseHue,
               alpha:0.40 + 0.30*this.genes.efficiency + 0.12*rng(),
               rot:rng()*TAU,
               parent:parentIndex,
@@ -900,8 +909,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         secondaryIndex,
         outlineHue: baseHue,
         lineAlpha: 0.16 + 0.24*this.genes.sensory,
-        nucleusHue: (baseHue + 155 + this.genes.pattern*80) % 360,
-        gradientShift: 32 + 128*this.genes.pattern,
+        nucleusHue: pal.nucleusHue,
+        gradientShift: pal.gradientShift,
         transparency: clamp(0.42 + 0.34*this.genes.efficiency - 0.12*this.genes.size, 0.30, 0.82),
         coreScale: 0.18 + 0.11*this.genes.reproduction,
         pulse: rng()*TAU,
@@ -2767,7 +2776,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     return d + ' Z';
   }
   function avatar(key, g, flags){
-    const hue = Math.floor((200 - 160*clamp(g.carnivory,0,1) + 30*clamp(g.speed,0,1) + 230*clamp(g.pattern??0.5,0,1) + 90*clamp(g.elongation??0.5,0,1) + 70*clamp(g.lobes??0.5,0,1) + 360) % 360);
+    const hue = Math.floor(speciesPalette(key).hue);
     const stroke = `hsl(${hue} 75% 85%)`;
     const fillA = `hsl(${(hue+10)%360} 82% 66%)`;
     const fillB = `hsl(${hue} 74% 55%)`;
@@ -2927,7 +2936,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       sums.forEach((s,k)=>{
         const n=s.n; if(n<=0) return;
         const g={speed:s.g.speed/n,size:s.g.size/n,eff:s.g.eff/n,reproduction:s.g.repro/n,sensory:s.g.sens/n,carnivory:s.g.carn/n};
-        const hue = Math.floor(200 - 160*g.carnivory + 30*g.speed);
+        const hue = Math.floor(speciesPalette(k).hue);
         const ln = lineage.nodes.get(k) || {firstSeen:frame,lastSeen:frame,count:n};
         nodes.push({key:k,n,g,hue, first:ln.firstSeen, last:ln.lastSeen});
       });
@@ -3164,6 +3173,22 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
   window.__alifeDebug = {
     counts(){
       return { organisms:organisms.length, sparks:sparks.length, corpses:corpses.length, species:new Set(organisms.map(o=>o.speciesKey)).size };
+    },
+    speciesColorSummary(){
+      const bySpecies=new Map();
+      for(const o of organisms){
+        const key=o.speciesKey || speciesKey(o.genes);
+        let rec=bySpecies.get(key);
+        if(!rec){ rec={key,n:0,hues:new Set(),colors:new Set()}; bySpecies.set(key,rec); }
+        rec.n++;
+        rec.hues.add(Math.round((o.hue||0)*100)/100);
+        rec.colors.add(o.baseColor||'');
+      }
+      const mismatched=[];
+      for(const rec of bySpecies.values()){
+        if(rec.hues.size>1 || rec.colors.size>1) mismatched.push({key:rec.key,n:rec.n,hues:[...rec.hues],colors:[...rec.colors]});
+      }
+      return { species:bySpecies.size, mismatched };
     },
     previewPredationEffect(){
       const prey=organisms[0];

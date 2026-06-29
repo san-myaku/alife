@@ -35,6 +35,7 @@
 - Added this development log so future changes keep a compact proof trail.
 - Added sketch-inspired symbolic node shapes: leaf, diamond, four-point sparkle, six-point star, and five-lobed cloud.
 - Expanded the mobile pond/canvas area so the simulation has more screen space before the control panel.
+- Made organism colors species-stable: individuals with the same species key now share the same body, nucleus, avatar, and phylogeny colors.
 
 ## Verification Notes
 
