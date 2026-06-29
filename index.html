@@ -115,6 +115,9 @@
     <div class="row">
       <button id="roleviz-btn" class="btn" style="width:100%">🎭 ロール色分け: OFF</button>
     </div>
+    <div class="row">
+      <button id="caustics-btn" class="btn" style="width:100%">〰 水面反射: OFF</button>
+    </div>
     <div id="role-legend" class="legend" style="display:none; flex-wrap:wrap; margin-top:-4px; margin-bottom:6px">
       <span class="dot amb"></span><span class="hint">待ち伏せ</span>
       <span class="dot pack"></span><span class="hint">群れ狩り</span>
@@ -216,8 +219,8 @@
   const hash01 = (s)=>{ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h>>>0)/2**32; };
 
   // ===== UI State =====
-  const ui={ speed:1, mutation:0.03, showSense:false, tool:'food', popMax:120, parallax:1.0, roleViz:false };
-  const renderPerf = { mobile:IS_MOBILE_VIEW, low:IS_MOBILE_VIEW, tiny:false };
+  const ui={ speed:1, mutation:0.03, showSense:false, tool:'food', popMax:120, parallax:1.0, roleViz:false, caustics:false };
+  const renderPerf = { mobile:IS_MOBILE_VIEW, low:IS_MOBILE_VIEW, tiny:false, mode:IS_MOBILE_VIEW?'low':'full', meshCount:0, complexCount:0, heavyComplex:false };
   $('speed-slider').addEventListener('input',e=>{ ui.speed=+e.target.value; $('speed-value').textContent=ui.speed+'x'; });
   $('mutation-slider').addEventListener('input',e=>{ ui.mutation=(+e.target.value)/100; $('mutation-value').textContent=e.target.value+'%'; });
   $('popmax-slider').addEventListener('input',e=>{ ui.popMax=+e.target.value; $('popmax-value').textContent=String(ui.popMax); });
@@ -246,6 +249,17 @@
     syncRoleVizUI();
   }
 
+  const causticsBtn = $('caustics-btn');
+  function syncCausticsUI(){
+    if(!causticsBtn) return;
+    causticsBtn.textContent = ui.caustics ? '〰 水面反射: ON' : '〰 水面反射: OFF';
+    causticsBtn.classList.toggle('on', ui.caustics);
+  }
+  if(causticsBtn){
+    causticsBtn.addEventListener('click', ()=>{ ui.caustics = !ui.caustics; syncCausticsUI(); });
+    syncCausticsUI();
+  }
+
 
   // ===== Toast =====
   let frame=0;
@@ -272,6 +286,31 @@
   const perfStats = { updateMs:0, drawMs:0, speciesCardMs:0, neighborQueries:0, neighborQueriesLast:0, predationScans:0, predationScansLast:0 };
   const TINY_RENDER_ENTER_POP = 118;
   const TINY_RENDER_EXIT_POP = 96;
+  function updateAdaptiveRenderMode(fps){
+    const pop = organisms.length;
+    let meshCount = 0, complexCount = 0;
+    for(const o of organisms){
+      const t = o.morphologyTopology || topologyFromGenes(o.genes);
+      if(t==='mesh') meshCount++;
+      if(t==='mesh' || t==='radial' || t==='ring' || t==='branch' || t==='cluster') complexCount++;
+    }
+    const heavyComplex = (renderPerf.mobile && (pop >= 96 || meshCount >= 24 || complexCount >= 64))
+      || meshCount >= 58
+      || complexCount >= 112;
+    const enterPop = renderPerf.mobile ? 96 : TINY_RENDER_ENTER_POP;
+    const exitPop = renderPerf.mobile ? 72 : TINY_RENDER_EXIT_POP;
+    const fpsEmergency = fps < (renderPerf.mobile ? 22 : 18) && pop > 68;
+    renderPerf.meshCount = meshCount;
+    renderPerf.complexCount = complexCount;
+    renderPerf.heavyComplex = heavyComplex;
+    renderPerf.low = renderPerf.mobile || fps < 38 || pop > 78 || heavyComplex;
+    if(pop >= enterPop || heavyComplex || fpsEmergency){
+      renderPerf.tiny = true;
+    } else if(pop <= exitPop && meshCount < (renderPerf.mobile ? 14 : 28) && complexCount < (renderPerf.mobile ? 44 : 86) && fps > (renderPerf.mobile ? 29 : 26)){
+      renderPerf.tiny = false;
+    }
+    renderPerf.mode = renderPerf.tiny ? 'tiny' : (renderPerf.low ? 'low' : 'full');
+  }
   function updateFpsHud(now){
     if(!fpsHud) return;
     fpsMeter.frames++;
@@ -283,12 +322,10 @@
     perfStats.predationScansLast = perfStats.predationScans;
     perfStats.neighborQueries = 0;
     perfStats.predationScans = 0;
-    fpsHud.textContent = `FPS ${fps}｜個体 ${organisms.length}｜U${perfStats.updateMs.toFixed(1)} D${perfStats.drawMs.toFixed(1)}`;
-    fpsHud.title = `FPS ${fps}\n個体 ${organisms.length}\n餌 ${food.length}\n死骸 ${corpses.length}\nプランクトン ${plankton.length}\n粒子 ${sparks.length + rings.length}\n近傍探索 ${perfStats.neighborQueriesLast}/秒\n捕食探索 ${perfStats.predationScansLast}/秒\n種カード更新 ${perfStats.speciesCardMs.toFixed(1)}ms`;
+    updateAdaptiveRenderMode(fps);
+    fpsHud.textContent = `FPS ${fps}｜${renderPerf.mode}｜個体 ${organisms.length}｜U${perfStats.updateMs.toFixed(1)} D${perfStats.drawMs.toFixed(1)}`;
+    fpsHud.title = `FPS ${fps}\n描画 ${renderPerf.mode}\n個体 ${organisms.length}\nmesh ${renderPerf.meshCount}\n複雑形態 ${renderPerf.complexCount}\n餌 ${food.length}\n死骸 ${corpses.length}\nプランクトン ${plankton.length}\n粒子 ${sparks.length + rings.length}\n近傍探索 ${perfStats.neighborQueriesLast}/秒\n捕食探索 ${perfStats.predationScansLast}/秒\n種カード更新 ${perfStats.speciesCardMs.toFixed(1)}ms\n水面反射 ${ui.caustics ? 'ON' : 'OFF'}`;
     fpsHud.dataset.level = fps < 28 ? 'low' : (fps < 45 ? 'mid' : 'ok');
-    renderPerf.low = renderPerf.mobile || fps < 36 || organisms.length > 84;
-    if(organisms.length >= TINY_RENDER_ENTER_POP) renderPerf.tiny = true;
-    else if(organisms.length <= TINY_RENDER_EXIT_POP) renderPerf.tiny = false;
     fpsMeter.last = now;
     fpsMeter.frames = 0;
   }
@@ -2336,6 +2373,10 @@ if(Z>0.10){
 
     drawTinySymbolic(){
       const topo=this.morphologyTopology||topologyFromGenes(this.genes);
+      const sym = this._symbol || (this.prepareSymbolDetails(), this._symbol) || {};
+      const shapeNames = sym.shapeNames || ['circle'];
+      const shape = shapeNames[sym.primaryIndex || 0] || 'circle';
+      const shapeRot = sym.shapeRot || 0;
       const hue=ui.roleViz ? (ROLE_HUE[this.role] ?? this.hue ?? 190) : (this.hue||190);
       const r=Math.max(2.2,this.size*0.74);
       const pts=[];
@@ -2370,15 +2411,20 @@ if(Z>0.10){
         ctx.stroke();
       }
       for(const p of pts){
-        ctx.beginPath(); ctx.arc(p.x,p.y,p.rr,0,TAU);
+        ctx.save();
+        ctx.translate(p.x,p.y);
+        ctx.rotate(shapeRot);
         ctx.fillStyle=`hsla(${hue},76%,58%,0.62)`;
+        this.symbolShapePath(ctx, shape, p.rr);
         ctx.fill();
         ctx.strokeStyle=`hsla(${hue},88%,86%,0.42)`;
         ctx.lineWidth=Math.max(0.7,p.rr*0.13);
+        this.symbolShapePath(ctx, shape, p.rr);
         ctx.stroke();
-        ctx.beginPath(); ctx.arc(p.x,p.y,Math.max(0.55,p.rr*0.24),0,TAU);
+        ctx.beginPath(); ctx.arc(0,0,Math.max(0.55,p.rr*0.24),0,TAU);
         ctx.fillStyle=`hsla(${(hue+140)%360},86%,78%,0.72)`;
         ctx.fill();
+        ctx.restore();
       }
       if(this.flags?.glow && dayNight.isNight){
         ctx.beginPath(); ctx.arc(0,0,r*3.0,0,TAU);
@@ -3873,6 +3919,7 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
     waterCaustics.last=frame;
   }
   function drawSurfaceCaustics(){
+    if(!ui.caustics) return;
     const a = window.env?.getAverages ? window.env.getAverages() : {O:0.75,N:0.28,D:0.05};
     const night = clamp01(dayNight.night ?? (dayNight.isNight ? 1 : 0));
     const day = 1-night;
@@ -4470,6 +4517,8 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     ui.mutation = 0.03;
     if($('mutation-slider')) $('mutation-slider').value='3';
     if($('mutation-value')) $('mutation-value').textContent='3%';
+    ui.caustics = false;
+    syncCausticsUI();
     log('↺ リセット');
     drawMix(true);
     renderExtinctRecords();
@@ -4703,15 +4752,19 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
         particles: sparks.length + rings.length,
         currents: waterCurrents.length,
         membranes: membranes.length,
-        caustics: waterCaustics.canvas ? {w:waterCaustics.w,h:waterCaustics.h,last:waterCaustics.last,loops:waterCaustics.loops.length} : null,
+        caustics: ui.caustics && waterCaustics.canvas ? {enabled:true,w:waterCaustics.w,h:waterCaustics.h,last:waterCaustics.last,loops:waterCaustics.loops.length} : {enabled:ui.caustics,ready:false},
         envGpu: !!(window.env && window.env.usesGpu && window.env.usesGpu()),
         gridSize: GS,
         lowRender: renderPerf.low,
-        tinyRender: renderPerf.tiny
+        tinyRender: renderPerf.tiny,
+        renderMode: renderPerf.mode,
+        meshCount: renderPerf.meshCount,
+        complexCount: renderPerf.complexCount,
+        heavyComplex: renderPerf.heavyComplex
       };
     },
     causticsSummary(){
-      return waterCaustics.canvas ? { ready:true, w:waterCaustics.w, h:waterCaustics.h, last:waterCaustics.last, loops:waterCaustics.loops.length } : { ready:false };
+      return ui.caustics && waterCaustics.canvas ? { enabled:true, ready:true, w:waterCaustics.w, h:waterCaustics.h, last:waterCaustics.last, loops:waterCaustics.loops.length } : { enabled:ui.caustics, ready:false };
     },
     forcePopulation(n=120){
       const target=Math.max(1,Math.min(180,Number(n)||120));
@@ -4830,6 +4883,8 @@ organisms.push(u);
       `トポロジー: ${Object.entries(topologies).map(([k,v])=>`${k}:${v}`).join(', ')}`,
       `発見済み希少形質: ${rareSeen}`,
       `平均運動量: ${organisms.length ? (motionSum/organisms.length).toFixed(2) : '0.00'}`,
+      `水面反射: ${ui.caustics ? 'ON' : 'OFF'}`,
+      `描画モード: ${renderPerf.mode} / mesh=${renderPerf.meshCount} / complex=${renderPerf.complexCount} / heavy=${renderPerf.heavyComplex ? 'yes' : 'no'}`,
       `性能: FPS=${Math.round(fpsMeter.fps)}, update=${perfStats.updateMs.toFixed(1)}ms, draw=${perfStats.drawMs.toFixed(1)}ms, neighbor=${perfStats.neighborQueriesLast}, predScan=${perfStats.predationScansLast}`,
       `ロール: ambusher=${roles.ambusher||0}, pack=${roles.pack||0}, scav=${roles.scav||0}, filter=${roles.filter||0}, other=${roles.other||0}`,
       `上位種: ${topSpecies}`,
