@@ -121,6 +121,9 @@
     <div class="row">
       <button id="microview-btn" class="btn" style="width:100%">🔬 遠景観察: ON</button>
     </div>
+    <div class="row">
+      <button id="perf-btn" class="btn" style="width:100%">⚙ 軽量モード: OFF</button>
+    </div>
     <div id="role-legend" class="legend" style="display:none; flex-wrap:wrap; margin-top:-4px; margin-bottom:6px">
       <span class="dot amb"></span><span class="hint">待ち伏せ</span>
       <span class="dot pack"></span><span class="hint">群れ狩り</span>
@@ -222,8 +225,8 @@
   const hash01 = (s)=>{ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h>>>0)/2**32; };
 
   // ===== UI State =====
-  const ui={ speed:1, mutation:0.03, showSense:false, tool:'food', popMax:120, parallax:1.0, roleViz:false, caustics:false, microView:true };
-  const renderPerf = { mobile:IS_MOBILE_VIEW, low:IS_MOBILE_VIEW, tiny:false, mode:IS_MOBILE_VIEW?'low':'full', meshCount:0, complexCount:0, heavyComplex:false };
+  const ui={ speed:1, mutation:0.03, showSense:false, tool:'food', popMax:120, parallax:1.0, roleViz:false, caustics:false, microView:true, forceFullRender:true };
+  const renderPerf = { mobile:IS_MOBILE_VIEW, low:!ui.forceFullRender && IS_MOBILE_VIEW, tiny:false, mode:ui.forceFullRender?'full':(IS_MOBILE_VIEW?'low':'full'), meshCount:0, complexCount:0, heavyComplex:false };
   $('speed-slider').addEventListener('input',e=>{ ui.speed=+e.target.value; $('speed-value').textContent=ui.speed+'x'; });
   $('mutation-slider').addEventListener('input',e=>{ ui.mutation=(+e.target.value)/100; $('mutation-value').textContent=e.target.value+'%'; });
   $('popmax-slider').addEventListener('input',e=>{ ui.popMax=+e.target.value; $('popmax-value').textContent=String(ui.popMax); });
@@ -274,6 +277,22 @@
     syncMicroViewUI();
   }
 
+  const perfBtn = $('perf-btn');
+  function syncPerfUI(){
+    if(!perfBtn) return;
+    perfBtn.textContent = ui.forceFullRender ? '⚙ 軽量モード: OFF' : '⚙ 軽量モード: AUTO';
+    perfBtn.title = ui.forceFullRender ? '自動で low/tiny に落とさない' : 'FPS と個体数に応じて自動で軽量化する';
+    perfBtn.classList.toggle('on', ui.forceFullRender);
+  }
+  if(perfBtn){
+    perfBtn.addEventListener('click', ()=>{
+      ui.forceFullRender = !ui.forceFullRender;
+      if(ui.forceFullRender){ renderPerf.low=false; renderPerf.tiny=false; renderPerf.mode='full'; }
+      syncPerfUI();
+    });
+    syncPerfUI();
+  }
+
 
   // ===== Toast =====
   let frame=0;
@@ -317,6 +336,12 @@
     renderPerf.meshCount = meshCount;
     renderPerf.complexCount = complexCount;
     renderPerf.heavyComplex = heavyComplex;
+    if(ui.forceFullRender){
+      renderPerf.low = false;
+      renderPerf.tiny = false;
+      renderPerf.mode = 'full';
+      return;
+    }
     renderPerf.low = renderPerf.mobile || fps < 38 || pop > 78 || heavyComplex;
     if(pop >= enterPop || heavyComplex || fpsEmergency){
       renderPerf.tiny = true;
@@ -442,27 +467,56 @@
       ctx.beginPath(); ctx.arc(this.x,this.y,r*1.45,0,TAU);
       ctx.strokeStyle=`rgba(126,220,170,${0.08*k})`; ctx.lineWidth=1; ctx.stroke();
     } }
-  class Plankton{ constructor(){ this.x=rnd(8,W-8); this.y=rnd(8,H-8); this.vx=rnd(-0.08,0.08); this.vy=rnd(-0.08,0.08); this.t= rnd(1200,2400); this.spin=rnd(0,TAU); this.kind=(Math.random()*3)|0;} step(){ this.x+=this.vx; this.y+=this.vy; this.spin+=0.015; if(this.x<6||this.x>W-6) this.vx*=-1; if(this.y<6||this.y>H-6) this.vy*=-1; if(--this.t<=0){ this.x=rnd(8,W-8); this.y=rnd(8,H-8); this.t=rnd(1200,2400);} } draw(ctx){
-      const glow=dayNight.isNight?0.62:0.26;
+  class Plankton{
+    constructor(){
+      this.x=rnd(8,W-8);
+      this.y=rnd(8,H-8);
+      this.vx=rnd(-0.08,0.08);
+      this.vy=rnd(-0.08,0.08);
+      this.t=rnd(1800,3600);
+      this.spin=rnd(0,TAU);
+      this.kind=(Math.random()*3)|0;
+      this.fade=0;
+    }
+    step(){
+      this.x+=this.vx;
+      this.y+=this.vy;
+      this.spin+=0.015;
+      this.fade=Math.min(1,this.fade+0.035);
+      if(this.x<6){ this.x=6; this.vx=Math.abs(this.vx)||0.04; }
+      if(this.x>W-6){ this.x=W-6; this.vx=-(Math.abs(this.vx)||0.04); }
+      if(this.y<6){ this.y=6; this.vy=Math.abs(this.vy)||0.04; }
+      if(this.y>H-6){ this.y=H-6; this.vy=-(Math.abs(this.vy)||0.04); }
+      if(--this.t<=0){
+        this.t=rnd(1800,3600);
+        this.vx=clamp(this.vx+rnd(-0.025,0.025),-0.09,0.09);
+        this.vy=clamp(this.vy+rnd(-0.025,0.025),-0.09,0.09);
+      }
+    }
+    draw(ctx){
+      const s=PLANKTON_VISUAL_SCALE;
+      const glow=(dayNight.isNight?0.62:0.26)*this.fade;
+      const glowR=(dayNight.isNight?7:4)*s;
       ctx.save(); ctx.translate(this.x,this.y); ctx.rotate(this.spin);
       ctx.globalCompositeOperation=dayNight.isNight?'lighter':'source-over';
-      const g=ctx.createRadialGradient(0,0,0.4,0,0,dayNight.isNight?7:4);
+      const g=ctx.createRadialGradient(0,0,0.25,0,0,glowR);
       g.addColorStop(0,`rgba(205,255,255,${glow})`);
       g.addColorStop(1,'rgba(0,0,0,0)');
-      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,dayNight.isNight?7:4,0,TAU); ctx.fill();
-      ctx.strokeStyle=`rgba(165,245,255,${dayNight.isNight?0.42:0.24})`;
-      ctx.lineWidth=0.8;
-      if(this.kind===0){ ctx.beginPath(); ctx.ellipse(0,0,2.4,1.1,0,0,TAU); ctx.stroke(); }
-      else if(this.kind===1){ ctx.beginPath(); ctx.arc(0,0,2.0,0.25,TAU-0.25); ctx.stroke(); }
-      else { ctx.beginPath(); ctx.moveTo(-2,0); ctx.lineTo(2,0); ctx.moveTo(0,-2); ctx.lineTo(0,2); ctx.stroke(); }
+      ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,glowR,0,TAU); ctx.fill();
+      ctx.strokeStyle=`rgba(165,245,255,${(dayNight.isNight?0.42:0.24)*this.fade})`;
+      ctx.lineWidth=0.62;
+      if(this.kind===0){ ctx.beginPath(); ctx.ellipse(0,0,2.4*s,1.1*s,0,0,TAU); ctx.stroke(); }
+      else if(this.kind===1){ ctx.beginPath(); ctx.arc(0,0,2.0*s,0.25,TAU-0.25); ctx.stroke(); }
+      else { ctx.beginPath(); ctx.moveTo(-2*s,0); ctx.lineTo(2*s,0); ctx.moveTo(0,-2*s); ctx.lineTo(0,2*s); ctx.stroke(); }
       ctx.restore();
-    } }
+    }
+  }
   class Patch{ constructor(type,x,y,r){ this.type=type; this.x=x; this.y=y; this.r=r; }
     contains(px,py){ const dx=px-this.x, dy=py-this.y; return dx*dx+dy*dy <= this.r*this.r; }
     draw(ctx){ ctx.beginPath(); ctx.arc(this.x,this.y,this.r,0,TAU); let col='rgba(0,0,0,0)'; if(this.type==='algae') col='rgba(80,200,120,0.08)'; else if(this.type==='cold') col='rgba(120,180,255,0.07)'; else if(this.type==='turbid') col='rgba(160,120,220,0.06)'; ctx.fillStyle=col; ctx.fill(); ctx.strokeStyle='rgba(255,255,255,0.06)'; ctx.lineWidth=1; ctx.stroke(); } }
-  class Spark{ constructor(x,y,scale=1,color='rgba(255,90,110,'){ this.x=x; this.y=y; this.t=28+Math.floor(10*scale); this.scale=scale; this.rays=6+Math.floor(4*scale); this.color=color; }
+  class Spark{ constructor(x,y,scale=1,color='rgba(255,90,110,',alphaMul=1){ this.x=x; this.y=y; this.t=28+Math.floor(10*scale); this.scale=scale; this.rays=6+Math.floor(4*scale); this.color=color; this.alphaMul=alphaMul; }
     step(){ this.t--; }
-    draw(ctx){ const k=Math.max(0,this.t/(28+10*this.scale)); ctx.save(); ctx.translate(this.x,this.y); ctx.globalCompositeOperation='lighter'; ctx.strokeStyle=`${this.color}${(0.7*k).toFixed(3)})`; ctx.lineWidth=1.5+1.5*this.scale*k; for(let i=0;i<this.rays;i++){ const a=i*(TAU/this.rays); const L=8+18*this.scale*k; ctx.beginPath(); ctx.moveTo(Math.cos(a)*2,Math.sin(a)*2); ctx.lineTo(Math.cos(a)*L,Math.sin(a)*L); ctx.stroke(); } ctx.restore(); } }
+    draw(ctx){ const k=Math.max(0,this.t/(28+10*this.scale)); ctx.save(); ctx.translate(this.x,this.y); ctx.globalCompositeOperation='lighter'; ctx.strokeStyle=`${this.color}${(0.7*this.alphaMul*k).toFixed(3)})`; ctx.lineWidth=1.5+1.5*this.scale*k; for(let i=0;i<this.rays;i++){ const a=i*(TAU/this.rays); const L=8+18*this.scale*k; ctx.beginPath(); ctx.moveTo(Math.cos(a)*2,Math.sin(a)*2); ctx.lineTo(Math.cos(a)*L,Math.sin(a)*L); ctx.stroke(); } ctx.restore(); } }
 
   class RingEffect{
     constructor(x,y,opts={}){
@@ -726,6 +780,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     selectedScale: 1.0
   };
   const MOVEMENT_SPEED_SCALE = 0.25;
+  const PLANKTON_VISUAL_SCALE = 0.5;
+  const ORGANISM_MAX_SIZE_SCALE = 2.0;
+  const STARVATION_PARTICLE_SCALE = 0.5;
+  const STARVATION_PARTICLE_ALPHA = 0.5;
   const WILD_FOOD_SPAWN_SCALE = 0.18;
   let lastWaterStatusKey = '';
   let lastCapacityKey = '';
@@ -1426,7 +1484,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this.morphologyTopology = topologyFromGenes(this.genes);
       this.maxSpeed = lerp(0.6, 3.2, this.genes.speed) * MOVEMENT_SPEED_SCALE;
       const geneHash = hash01('g:' + Object.values(this.genes).join(','));
-      const baseSize = lerp(3.0, 11.0, Math.pow(this.genes.size, 0.85));
+      const baseSize = lerp(3.0, 11.0*ORGANISM_MAX_SIZE_SCALE, Math.pow(this.genes.size, 0.85));
       this.isMega = (this.genes.size > 0.97) || (geneHash > 0.985);
       this.size = baseSize * (this.isMega ? 1.65 : 1.0);
 
@@ -2324,7 +2382,7 @@ if(Z>0.08){
           this.energy = 0.5;
         }
       }
-      if(this.energy<=0){ const corpseE = 0.45*(8*this.size); corpses.push(new Corpse(this.x,this.y,corpseE)); eco.detritusMeter += corpseE; sparks.push(new Spark(this.x,this.y,0.9,'rgba(120,200,255,')); this.deathCause='飢餓'; recordDeath(this,'飢餓'); this.dead=true; }
+      if(this.energy<=0){ const corpseE = 0.45*(8*this.size); corpses.push(new Corpse(this.x,this.y,corpseE)); eco.detritusMeter += corpseE; sparks.push(new Spark(this.x,this.y,0.9*STARVATION_PARTICLE_SCALE,'rgba(120,200,255,',STARVATION_PARTICLE_ALPHA)); this.deathCause='飢餓'; recordDeath(this,'飢餓'); this.dead=true; }
       else if(this.age>12000){ const corpseE = 0.45*(0.6*this.energy + 8*this.size); corpses.push(new Corpse(this.x,this.y,corpseE)); eco.detritusMeter += corpseE; this.deathCause='老化'; recordDeath(this,'老化'); this.dead=true; }
     }
 
@@ -5121,7 +5179,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     for(const e of effects){ const k=e.t/e.maxT; ctx.beginPath(); ctx.arc(e.x,e.y,e.r*(0.98+0.02*Math.sin(frame*0.1)),0,TAU); ctx.strokeStyle = e.type==='repel'? `rgba(120,255,160,${0.18*k})` : `rgba(255,230,120,${0.18*k})`; ctx.lineWidth=2; ctx.stroke(); }
     for(const f of food){ f.draw(ctx); }
     for(let i=0;i<corpses.length;i++){ if(renderPerf.tiny && (i&1)) continue; corpses[i].draw(ctx); }
-    for(let i=0;i<plankton.length;i++){ if(renderPerf.low && (i&1)) continue; plankton[i].draw(ctx); }
+    for(let i=0;i<plankton.length;i++){ plankton[i].draw(ctx); }
     drawTransientFields();
     // same-species mating calls (beacons)
     for (let i=calls.length-1;i>=0;--i){
@@ -5311,7 +5369,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
   }
 
   function seedPatches(){ patches.push(new Patch('algae', W*0.30, H*0.32, Math.min(W,H)*0.20)); patches.push(new Patch('turbid', W*0.55, H*0.75, Math.min(W,H)*0.18)); }
-  function seedPlankton(){ for(let i=0;i<110;i++) plankton.push(new Plankton()); }
+  function seedPlankton(){ for(let i=0;i<110;i++){ const p=new Plankton(); p.fade=1; plankton.push(p); } }
 
   // ===== Save / Load =====
   function capture(){
@@ -5319,7 +5377,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       food: food.map(f=>({x:f.x,y:f.y,type:f.type})),
       corpses: corpses.map(c=>({x:c.x,y:c.y,energy:c.energy,t:c.t})),
       patches: patches.map(p=>({type:p.type,x:p.x,y:p.y,r:p.r})),
-      plankton: plankton.map(p=>({x:p.x,y:p.y,vx:p.vx,vy:p.vy,t:p.t})),
+      plankton: plankton.map(p=>({x:p.x,y:p.y,vx:p.vx,vy:p.vy,t:p.t,kind:p.kind,fade:p.fade})),
       membranes: membranes.map(m=>({x1:m.x1,y1:m.y1,x2:m.x2,y2:m.y2,type:m.type,t:m.t})),
       organisms: organisms.map(o=>({x:o.x,y:o.y,vx:o.vx,vy:o.vy,energy:o.energy,age:o.age,genes:o.genes,speciesKey:o.speciesKey,traits:o.traits||null,flags:o.flags||null,morphologyTopology:o.morphologyTopology||topologyFromGenes(o.genes),recentEvents:o.recentEvents||[],lastAction:o.lastAction||null})),
       extinctRecords,
@@ -5339,7 +5397,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       (state.patches||[]).forEach(p=>patches.push(new Patch(p.type,p.x,p.y,p.r)));
       (state.food||[]).forEach(f=>food.push(new Food(f.x,f.y,f.type)));
       (state.corpses||[]).forEach(c=>{ const q=new Corpse(c.x,c.y,c.energy); if(c.t!=null) q.t=c.t; corpses.push(q); });
-      (state.plankton||[]).forEach(p=>{ const q=new Plankton(); q.x=p.x;q.y=p.y;q.vx=p.vx;q.vy=p.vy;q.t=p.t; plankton.push(q); });
+      (state.plankton||[]).forEach(p=>{ const q=new Plankton(); q.x=p.x;q.y=p.y;q.vx=p.vx;q.vy=p.vy;q.t=p.t; if(p.kind!=null) q.kind=p.kind; q.fade=p.fade!=null ? p.fade : 1; plankton.push(q); });
       (state.membranes||[]).forEach(m=>{ const q=new MembraneSegment(m.x1,m.y1,m.x2,m.y2,'wall'); if(m.t!=null) q.t=m.t; membranes.push(q); });
       const prevAnnounceMute=speciesAnnounceMuteUntil;
       speciesAnnounceMuteUntil=Number.MAX_SAFE_INTEGER;
