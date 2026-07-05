@@ -720,9 +720,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   const evolutionMilestones = new Set();
   const extinctRecords = [];
   const MICRO_VIEW = {
-    baseScale: 0.22,
-    rareScale: 0.34,
-    discoveryScale: 0.58,
+    baseScale: 0.34,
+    rareScale: 0.48,
+    discoveryScale: 0.72,
     selectedScale: 1.0
   };
   const MOVEMENT_SPEED_SCALE = 0.5;
@@ -2188,8 +2188,8 @@ if(Z>0.08){
             this.storeN = clamp((this.storeN||0) + 0.070*(gain/20), 0, 1);
             this.fitness += 0.05 + eaten*5.0;
             if(gain>0.18) recordAction(this,'背景の藻を食べた');
-            if(gain>0.22 && frame-(this._lastGrazeSpark||0)>54 && Math.random()<0.42){
-              pushRing(this.x,this.y,{r0:2,r1:24,color:'rgba(70,255,128,',t:32,width:1.2});
+            if(gain>0.22 && frame-(this._lastGrazeSpark||0)>58 && Math.random()<0.34){
+              pushRing(this.x,this.y,{r0:2,r1:14,color:'rgba(70,255,128,',t:22,width:1.0});
               this._lastGrazeSpark=frame;
             }
           }
