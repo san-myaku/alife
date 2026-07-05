@@ -3464,12 +3464,14 @@ const env = (function(){
   // ---- Settings ----
   const types = ['algae','cold','turbid','foul']; // foul = 忌避（腐敗/毒/低酸素）
   let cell = 18, ew = 0, eh = 0;
+  const ALGAE_VISUAL_SUBDIV = 5;
+  let scarW = 0, scarH = 0;
   let fields = null;      // Float32Array per type
   let corpseGrid = null;  // Uint16 counts per cell
   let plankGrid = null;   // Uint16 counts per cell (plankton)
   let bioGrid = null;     // Uint16 counts per cell (organisms)
   let scavGrid = null;    // Uint16 counts per cell (scavengers)
-  let grazeScar = null;   // visual-only dark green grazing marks
+  let grazeScar = null;   // visual-only dark green grazing marks at 5x env resolution
   let _avgN=0.25, _avgO=0.75, _avgD=0.05, _avgC=0.25;
   const caps  = { algae:240, cold:180, turbid:200 }; // dot caps (used if viewMode==='dots')
   const Th_on = { algae:0.35, cold:0.35, turbid:0.30 };
@@ -3477,6 +3479,7 @@ const env = (function(){
   // pixel view
   let viewMode = 'pixels'; // 'pixels' | 'dots'
   let pxCanvas=null, pxCtx=null, lastPaint=-999;
+  let algaeCanvas=null, algaeCtx=null, lastAlgaePaint=-999;
   let gpuCanvas=null, gpuGL=null, gpuProgram=null, gpuTex=null, gpuBuffer=null, gpuFieldBytes=null, gpuReady=false;
   // shared dot sprite
   let sprite = null;
@@ -3507,7 +3510,9 @@ const env = (function(){
       plankGrid = new Uint16Array(ew*eh);
       bioGrid   = new Uint16Array(ew*eh);
       scavGrid  = new Uint16Array(ew*eh);
-      grazeScar = new Float32Array(ew*eh);
+      scarW = ew * ALGAE_VISUAL_SUBDIV;
+      scarH = eh * ALGAE_VISUAL_SUBDIV;
+      grazeScar = new Float32Array(scarW*scarH);
 
       // Baseline world state (so it doesn't start "dead")
       fields.algae.fill(0.25);
@@ -3518,6 +3523,7 @@ const env = (function(){
 
       pxCanvas = document.createElement('canvas'); pxCanvas.width=ew; pxCanvas.height=eh; pxCtx = pxCanvas.getContext('2d', { willReadFrequently: true });
       gpuCanvas=null; gpuGL=null; gpuProgram=null; gpuTex=null; gpuBuffer=null; gpuFieldBytes=null; gpuReady=false;
+      algaeCanvas=null; algaeCtx=null; lastAlgaePaint=-999;
       lastPaint = -999;
     }
   }
@@ -3534,9 +3540,11 @@ const env = (function(){
     if(grazeScar) grazeScar.fill(0);
     _avgN=0.25; _avgO=0.75; _avgD=0.05; _avgC=0.25;
     lastPaint = -999;
+    lastAlgaePaint = -999;
   }
   function setViewMode(m){ viewMode = m; }
   function idx(x,y){ return y*ew + x; }
+  function scarIdx(x,y){ return y*scarW + x; }
   function clamp01(x){ return x<0?0:(x>1?1:x); }
   function valueAt(type,x,y){
     ensure();
@@ -3617,11 +3625,49 @@ const env = (function(){
       const take=Math.min(c.avail, target*(c.w/totalW));
       if(take<=0) continue;
       fields.algae[c.i]=clamp01(fields.algae[c.i]-take);
-      if(grazeScar) grazeScar[c.i]=clamp01((grazeScar[c.i]||0) + take*7.0);
       taken+=take;
     }
-    if(taken>0) lastPaint = -999;
+    if(taken>0){
+      addGrazeScarAt(x,y,taken,radius);
+      lastPaint = -999;
+      lastAlgaePaint = -999;
+    }
     return taken;
+  }
+  function addGrazeScarAt(x,y,amount,radius=1){
+    if(!grazeScar || !scarW || !scarH) return;
+    const subCell = cell / ALGAE_VISUAL_SUBDIV;
+    const sx0 = Math.min(scarW-1, Math.max(0, (x/subCell)|0));
+    const sy0 = Math.min(scarH-1, Math.max(0, (y/subCell)|0));
+    const r = Math.max(1, Math.ceil(ALGAE_VISUAL_SUBDIV*(0.42 + 0.32*(radius||1))));
+    const power = Math.max(0, amount||0) * 9.5;
+    for(let dy=-r; dy<=r; dy++){
+      const yy=sy0+dy; if(yy<0||yy>=scarH) continue;
+      for(let dx=-r; dx<=r; dx++){
+        const xx=sx0+dx; if(xx<0||xx>=scarW) continue;
+        const d=Math.hypot(dx,dy);
+        if(d>r+0.01) continue;
+        const w = 1 - d/(r+0.001);
+        const i=scarIdx(xx,yy);
+        grazeScar[i]=clamp01((grazeScar[i]||0) + power*(0.30 + 0.70*w));
+      }
+    }
+  }
+  function fadeGrazeScars(light=1){
+    if(!grazeScar) return;
+    const lit = clamp01(light);
+    const fade = 0.992 + 0.004*(1-lit);
+    const recoverBase = 0.00055 + 0.0017*lit;
+    for(let sy=0; sy<scarH; sy++){
+      const ey = Math.min(eh-1, (sy/ALGAE_VISUAL_SUBDIV)|0);
+      for(let sx=0; sx<scarW; sx++){
+        const ex = Math.min(ew-1, (sx/ALGAE_VISUAL_SUBDIV)|0);
+        const parent = fields.algae[idx(ex,ey)] || 0;
+        const i=scarIdx(sx,sy);
+        grazeScar[i]=clamp01((grazeScar[i]||0)*fade - recoverBase*(0.35 + 0.65*parent));
+      }
+    }
+    lastAlgaePaint = -999;
   }
 
   // ---- Seeding from legacy patches ----
@@ -3738,9 +3784,6 @@ if(p.type==='turbid'){
       N = clamp01(N + algaeGrow);
       const photo = 0.058 * N * L * clearWater;
       O = clamp01(O + 0.88*photo + 0.30*algaeGrow);
-      if(grazeScar){
-        grazeScar[i]=clamp01((grazeScar[i]||0)*0.993 - algaeGrow*0.18);
-      }
 
       // --- Oxygen sinks (respiration + decomposition) ---
       const oxCost = (0.115*decomp + 0.026*densBio*tempF + 0.020*D);
@@ -3776,6 +3819,7 @@ if(p.type==='turbid'){
       C = clamp01(C + 0.002*(baseCold - C) + injCold);
       fields.cold[i]=C;
     }
+    fadeGrazeScars(L);
 
     // diffusion (no forced decay; the dynamics above already "uses" resources)
     diffuseOne(fields.algae, 0.032, 0.000);
@@ -3831,41 +3875,78 @@ if(p.type==='turbid'){
   }
   function drawAlgaeMosaic(ctx){
     if(!fields || !fields.algae) return;
+    const cw = Math.max(1, Math.ceil(W));
+    const ch = Math.max(1, Math.ceil(H));
+    if(!algaeCanvas || algaeCanvas.width!==cw || algaeCanvas.height!==ch){
+      algaeCanvas = document.createElement('canvas');
+      algaeCanvas.width = cw;
+      algaeCanvas.height = ch;
+      algaeCtx = algaeCanvas.getContext('2d');
+      lastAlgaePaint = -999;
+    }
+    const tiny = typeof renderPerf!=='undefined' && renderPerf.tiny;
+    const low = typeof renderPerf!=='undefined' && renderPerf.low;
+    const interval = tiny ? 10 : (low ? 6 : 3);
+    if(lastAlgaePaint<0 || frame-lastAlgaePaint>=interval){
+      algaeCtx.setTransform(1,0,0,1,0,0);
+      algaeCtx.clearRect(0,0,cw,ch);
+      paintAlgaeMosaic(algaeCtx);
+      lastAlgaePaint = frame;
+    }
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.drawImage(algaeCanvas,0,0,W,H);
+    ctx.restore();
+  }
+  function paintAlgaeMosaic(ctx){
     const saveOp = ctx.globalCompositeOperation;
     const prevSmooth = ctx.imageSmoothingEnabled;
     ctx.save();
     ctx.imageSmoothingEnabled = false;
     ctx.globalCompositeOperation = 'source-over';
     const tiny = typeof renderPerf!=='undefined' && renderPerf.tiny;
-    const step = tiny ? 2 : 1;
-    for(let y=0;y<eh;y+=step){
-      for(let x=0;x<ew;x+=step){
+    const sub = ALGAE_VISUAL_SUBDIV;
+    const subCell = cell / sub;
+    const fineStep = tiny ? 2 : 1;
+    for(let y=0;y<eh;y++){
+      for(let x=0;x<ew;x++){
         const i=idx(x,y);
         const n=fields.algae[i] || 0;
-        const scar=grazeScar ? (grazeScar[i]||0) : 0;
-        const edible=clamp01((n-0.12)/0.62);
-        const mark=clamp01(scar);
-        if(edible<0.035 && mark<0.030) continue;
-        const h=((x*73856093)^(y*19349663))>>>0;
-        const noise=((h & 255)/255 - 0.5);
-        const px=x*cell, py=y*cell;
-        const w=cell*step, hh=cell*step;
-        if(edible>0.035){
-          const a=clamp(0.10 + edible*0.34 + noise*0.035,0.07,0.48);
-          const light=46 + Math.round(edible*48 + noise*10);
-          ctx.globalAlpha = a;
-          ctx.fillStyle = `rgb(${20+Math.round(edible*34)},${104+light},${34+Math.round(edible*42)})`;
-          ctx.fillRect(px,py,w+0.8,hh+0.8);
-        }
-        if(mark>0.030){
-          ctx.globalAlpha = clamp(0.16 + mark*0.52,0.14,0.68);
-          ctx.fillStyle = 'rgb(10,42,18)';
-          ctx.fillRect(px,py,w+0.8,hh+0.8);
-        }
-        if(edible>0.58 && !tiny && ((h>>>8)&3)===0){
-          ctx.globalAlpha = 0.12 + edible*0.12;
-          ctx.fillStyle = 'rgb(106,235,92)';
-          ctx.fillRect(px+cell*0.18,py+cell*0.18,cell*0.52,cell*0.52);
+        const baseEdible=clamp01((n-0.12)/0.62);
+        if(baseEdible<0.030 && !grazeScar) continue;
+        for(let sy=0; sy<sub; sy+=fineStep){
+          const fineY = y*sub + sy;
+          for(let sx=0; sx<sub; sx+=fineStep){
+            const fineX = x*sub + sx;
+            const scar=grazeScar ? (grazeScar[scarIdx(fineX,fineY)]||0) : 0;
+            const mark=clamp01(scar);
+            const h=((x*73856093)^(y*19349663)^(sx*83492791)^(sy*2971215073))>>>0;
+            const noise=((h & 255)/255 - 0.5);
+            const edible=clamp01(baseEdible + noise*0.18);
+            if(edible<0.045 && mark<0.030) continue;
+            const px=x*cell + sx*subCell;
+            const py=y*cell + sy*subCell;
+            const w=subCell*fineStep + 0.35;
+            const hh=subCell*fineStep + 0.35;
+            if(edible>0.045){
+              const a=clamp(0.11 + edible*0.38 + noise*0.030,0.07,0.50);
+              const light=44 + Math.round(edible*50 + noise*12);
+              ctx.globalAlpha = a;
+              ctx.fillStyle = `rgb(${18+Math.round(edible*34)},${102+light},${32+Math.round(edible*42)})`;
+              ctx.fillRect(px,py,w,hh);
+            }
+            if(mark>0.030){
+              ctx.globalAlpha = clamp(0.18 + mark*0.55,0.15,0.72);
+              ctx.fillStyle = 'rgb(9,38,16)';
+              ctx.fillRect(px,py,w,hh);
+            }
+            if(edible>0.68 && !tiny && ((h>>>8)&7)===0){
+              ctx.globalAlpha = 0.10 + edible*0.10;
+              ctx.fillStyle = 'rgb(112,238,88)';
+              ctx.fillRect(px+subCell*0.20,py+subCell*0.20,subCell*0.56,subCell*0.56);
+            }
+          }
         }
       }
     }
