@@ -91,7 +91,7 @@
   #fps-hud{ position:fixed; left:8px; bottom:8px; z-index:30; pointer-events:none; min-width:132px; white-space:nowrap; padding:4px 7px; border:1px solid rgba(123,223,242,.38); border-radius:8px; background:rgba(5,12,26,.62); color:#dbeafe; font:700 12px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace; font-variant-numeric:tabular-nums; box-shadow:0 4px 12px rgba(0,0,0,.20); }
   #fps-hud[data-level="mid"]{ border-color:rgba(247,183,49,.46); color:#ffe8ad; }
   #fps-hud[data-level="low"]{ border-color:rgba(255,107,107,.58); color:#ffc9c9; }
-  @media (max-width:520px){ #fps-hud{ left:6px; bottom:6px; font-size:11px; padding:3px 6px; } }
+  @media (max-width:520px){ #fps-hud{ left:6px; top:8px; bottom:auto; min-width:0; max-width:calc(100vw - 18px); font-size:10px; padding:3px 6px; opacity:.78; } }
 </style>
 </head>
 <body>
@@ -726,6 +726,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     selectedScale: 1.0
   };
   const MOVEMENT_SPEED_SCALE = 0.5;
+  const WILD_FOOD_SPAWN_SCALE = 0.18;
   let lastWaterStatusKey = '';
   let lastCapacityKey = '';
   let lastCycleLogFrame = -9999;
@@ -1900,17 +1901,17 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       const carn=this.genes.carnivory;
       const deficit=Math.max(0,this.reproThreshold*0.95-this.energy);
       const intent=carnivoryIntent(carn,deficit);
-      if(carn<0.46 || intent<0.07 || this.attackCD>30){
+      if(carn<0.42 || (carn<0.66 && intent<0.10) || this.attackCD>30){
         if(this.chaseTimer<=0) this.preyTargetId=null;
         return;
       }
       let prey=organismById(this.preyTargetId);
-      const validPrey=(p)=> p && !p.dead && p.protect<=0 && p!==this && p.size < this.size*(this.socialMode==='hunt-pack'?1.04:0.92);
+      const validPrey=(p)=> p && !p.dead && p.protect<=0 && p!==this && p.size < this.size*(this.socialMode==='hunt-pack'?1.12:1.00);
       if(!validPrey(prey)){ prey=null; this.preyTargetId=null; }
       if(!prey && frame>=this.nextPreyScan){
         this.nextPreyScan=frame + 8 + ((this.id+frame)%9);
         let best=null, bestScore=-1;
-        const scanR=this.senseR*(this.morphologyTopology==='branch'?1.12:1.0);
+        const scanR=this.senseR*(this.morphologyTopology==='branch'?1.18:1.0)*(1.04 + carn*0.22);
         perfStats.predationScans++;
         forEachOrgNeighbors(this.x,this.y,scanR,(o,dx,dy,d2)=>{
           if(!validPrey(o)) return;
@@ -1918,14 +1919,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           const d=Math.sqrt(d2)||1;
           const sizeEdge=clamp((this.size-o.size)/Math.max(1,this.size),0,0.8);
           const vulnerability=o.socialMode==='defense-school' ? 0.76 : 1.0;
-          const score=(1-d/scanR)*0.55 + sizeEdge*0.65 + (1-o.energy/160)*0.18;
+          const score=(1-d/scanR)*0.52 + sizeEdge*0.50 + (1-o.energy/160)*0.32 + ((o.fleeTimer||0)>0?0.08:0);
           const finalScore=score*vulnerability;
           if(finalScore>bestScore){ bestScore=finalScore; best=o; }
         });
         if(best){
           prey=best;
           this.preyTargetId=best.id;
-          this.chaseTimer=90 + Math.round(50*intent);
+          this.chaseTimer=130 + Math.round(80*intent);
           recordAction(this,'小型生命を追跡した');
         }
       }
@@ -1933,7 +1934,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       const dx=prey.x-this.x, dy=prey.y-this.y;
       const d=Math.hypot(dx,dy)||1;
       const ambush=this.role==='ambusher';
-      if(ambush && d>this.senseR*0.48){
+      if(ambush && d>this.senseR*0.55){
         this.vx*=0.985; this.vy*=0.985;
         this.chaseTimer=Math.max(this.chaseTimer,20);
         return;
@@ -1945,7 +1946,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         packBonus += Math.min(0.28, mates*0.06);
       }
       if(ambush && d<this.senseR*0.50) this.burstTimer=Math.max(this.burstTimer,20);
-      let chaseForce=(0.050 + 0.080*carn + 0.040*intent)*packBonus;
+      let chaseForce=(0.070 + 0.105*carn + 0.065*intent)*packBonus;
       if(this.morphologyTopology==='radial') chaseForce*=1.05;
       if(this.morphologyTopology==='chain') chaseForce*=0.98;
       this.vx += (dx/d)*chaseForce;
@@ -1976,7 +1977,23 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this.separateFromNeighbors();
       const socialNeighbors = this.socialSteer();
       this.updatePredationIntent();
-      for(const f of food){ const dx=f.x-this.x, dy=f.y-this.y, d2=dx*dx+dy*dy; if(d2<minD2){ minD2=d2; nearest=f; } }
+      const carnGene=this.genes.carnivory;
+      const preyTarget=carnGene>=0.54 ? organismById(this.preyTargetId) : null;
+      if(carnGene<0.66 && window.env && window.env.bestAlgaeNear && (this.energy<this.reproThreshold*1.08 || carnGene<0.34)){
+        const algaeTarget=window.env.bestAlgaeNear(this.x,this.y,this.senseR*(carnGene<0.34?1.05:0.72), carnGene<0.34?0.17:0.24);
+        if(algaeTarget){
+          const dx=algaeTarget.x-this.x, dy=algaeTarget.y-this.y, d2=dx*dx+dy*dy;
+          if(d2<minD2*1.14){ minD2=d2; nearest=algaeTarget; }
+        }
+      }
+      if(!preyTarget){
+        for(const f of food){
+          const isPlantFood = f.type==='algae' || f.type==='small' || f.type==='big';
+          if(carnGene>=0.66 && isPlantFood) continue;
+          const dx=f.x-this.x, dy=f.y-this.y, d2=dx*dx+dy*dy;
+          if(d2<minD2){ minD2=d2; nearest=f; }
+        }
+      }
       if(this.role==='scav'){
         for(const c of corpses){ const dx=c.x-this.x, dy=c.y-this.y, d2=dx*dx+dy*dy; if(d2<minD2*0.8){ minD2=d2; nearest=c; } }
       }
@@ -2056,11 +2073,11 @@ const Z = env.valueAt('foul',  this.x,this.y); // D (detritus)
       // body oxygen follows local oxygen (with slight lag)
       this.storeO = clamp(this.storeO*0.86 + Et*(0.14*eff), 0, 1);
 
-      // dissolved nutrient uptake is now strong enough to make local algae fields matter.
-      const takeN = 0.0014 * herb * eff * (0.20 + 1.10*richN) * clamp(0.45 + 0.75*Et - 0.35*Z, 0.05, 1.25);
+      // passive dissolved nutrient uptake is small; visible grazing below is the main plant meal.
+      const takeN = 0.00036 * herb * eff * (0.20 + 1.10*richN) * clamp(0.45 + 0.75*Et - 0.35*Z, 0.05, 1.25);
       if(takeN>0 && env && env.sinkAlgaeAt){
         env.sinkAlgaeAt(this.x,this.y, takeN);
-        this.storeN = clamp(this.storeN + takeN*4.8, 0, 1);
+        this.storeN = clamp(this.storeN + takeN*3.2, 0, 1);
       }
 
       // local oxygen consumption (respiration) -> lowers O in the cell
@@ -2153,9 +2170,38 @@ if(Z>0.08){
       this.motionLevel=clamp((this.motionLevel||0)*0.72 + (speedIntent+forageIntent+stressIntent)*0.28,0,1.65);
       this.gait=(this.gait + (0.020 + 0.125*this.motionLevel)*(0.75+0.60*this.genes.speed)) % TAU;
 
+      // 食事（背景藻）：緑のフィールドそのものを削って食べる。
+      if(window.env && window.env.grazeAlgaeAt && this.genes.carnivory<0.66){
+        const localN = window.env.valueAt('algae', this.x,this.y);
+        const localO = window.env.valueAt('turbid',this.x,this.y);
+        const localD = window.env.valueAt('foul',  this.x,this.y);
+        const grazeDrive = clamp((0.66-this.genes.carnivory)/0.66,0,1);
+        const grazeNeed = clamp((this.reproThreshold*1.12-this.energy)/Math.max(1,this.reproThreshold),0,1);
+        const grazeField = clamp((localN-0.08)/0.62,0,1);
+        const grazeAmt = (0.0032 + 0.0042*eff + 0.0040*grazeDrive) * grazeField * (0.45 + 0.78*grazeNeed) * clamp(0.48 + 0.72*localO - 0.45*localD,0.10,1.18);
+        const eaten = window.env.grazeAlgaeAt(this.x,this.y,grazeAmt,this.size>7?2:1);
+        if(eaten>0){
+          const diet=dietTypeFromCarn(this.genes.carnivory);
+          const gain = eaten * (50 + 46*grazeDrive) * plantDigestFactor(this.genes.carnivory) * dietRareFactor(diet) * (diet==='h'?1.08:(diet==='m'?0.92:0.35));
+          if(gain>0){
+            this.energy=clamp(this.energy+gain,0,160);
+            this.storeN = clamp((this.storeN||0) + 0.070*(gain/20), 0, 1);
+            this.fitness += 0.05 + eaten*5.0;
+            if(gain>0.18) recordAction(this,'背景の藻を食べた');
+            if(gain>0.35 && frame-(this._lastGrazeSpark||0)>90 && Math.random()<0.16){
+              pushRing(this.x,this.y,{r0:2,r1:18,color:'rgba(92,255,150,',t:26,width:1.0});
+              this._lastGrazeSpark=frame;
+            }
+          }
+        }
+      }
+
       // 食事（餌）
       for(let i=food.length-1;i>=0;--i){
         const f=food[i];
+        const c=this.genes.carnivory;
+        const isPlantFood = f.type==='algae' || f.type==='small' || f.type==='big';
+        if(c>=0.66 && isPlantFood) continue;
         const dx=f.x-this.x, dy=f.y-this.y;
         if(dx*dx+dy*dy <= (this.size+f.r)*(this.size+f.r)){
           let gain=f.gain;
@@ -2163,7 +2209,6 @@ if(Z>0.08){
           else if(f.type==='detritus') gain*=clamp(0.82 + 0.95*Z + 0.16*(1-Et), 0.45, 1.95);
           else if(this.inPatch('algae')) gain*=1.35;
 
-          const c=this.genes.carnivory;
           const diet=dietTypeFromCarn(c);
           // plant food digestion trade-off: carnivores get less out of it
           gain *= plantDigestFactor(c);
@@ -2174,6 +2219,7 @@ if(Z>0.08){
           this.storeN = clamp((this.storeN||0) + 0.035*(gain/40), 0, 1);
           this.fitness+=1;
           food.splice(i,1);
+          if(f.type==='algae' && window.env && window.env.sinkAlgaeAt) window.env.sinkAlgaeAt(f.x,f.y,0.020);
           recordAction(this, f.type==='algae'?'藻を食べた':(f.type==='detritus'?'デトリタスを食べた':'エサを食べた'));
           if(this.energy>160) this.energy=160;
           break;
@@ -2292,17 +2338,17 @@ if(Z>0.08){
         const dx=e.x-this.x, dy=e.y-this.y;
         if(dx*dx+dy*dy < e.r*e.r){ repelHere=true; break; }
       }
-      const deficit=Math.max(0, this.hungerBias - this.energy);
+      const deficit=Math.max(0, this.reproThreshold*1.04 - this.energy);
       let intent=carnivoryIntent(carnIntent, deficit);
       if(repelHere) intent*=0.2;
       if(intent<0.05) return;
       let prey=organismById(this.preyTargetId);
       let bestD2=Infinity;
-      const canEat=(o)=> o && o!==this && !o.dead && o.protect<=0 && o.size < this.size*(this.socialMode==='hunt-pack'?1.05:0.94);
+      const canEat=(o)=> o && o!==this && !o.dead && o.protect<=0 && o.size < this.size*(this.socialMode==='hunt-pack'?1.13:1.00);
       if(!canEat(prey)){
         prey=null;
         perfStats.predationScans++;
-        forEachOrgNeighbors(this.x,this.y,Math.max(this.size*3.0,24),(o,dx,dy,d2)=>{
+        forEachOrgNeighbors(this.x,this.y,Math.max(this.size*3.8,32),(o,dx,dy,d2)=>{
           if(!canEat(o)) return;
           const rr=(this.size+o.size+2.8);
           if(d2<bestD2 && d2 <= rr*rr){ bestD2=d2; prey=o; }
@@ -2312,11 +2358,11 @@ if(Z>0.08){
         bestD2=dx*dx+dy*dy;
       }
       if(!prey) return;
-      const contactR=this.size+prey.size+3.0;
+      const contactR=this.size+prey.size+3.8;
       if(bestD2>contactR*contactR) return;
-      let pBase=0.20;
+      let pBase=0.26;
       const sizeEdge=clamp((this.size-prey.size)/Math.max(1,this.size),0,0.55);
-      let p=clamp(pBase*(0.72+sizeEdge*0.95)*intent,0,0.62);
+      let p=clamp(pBase*(0.72+sizeEdge*0.95)*intent,0,0.74);
       if(this.preyTargetId===prey.id) p*=1.18;
       if(this.morphologyTopology==='radial') p*=1.10;
       if(prey.morphologyTopology==='ring') p*=0.82;
@@ -2368,7 +2414,7 @@ if(Z>0.08){
         spawnPredationScatter(prey,this,scale);
         pushRing(prey.x,prey.y,{r0:4,r1:34*scale,color:'rgba(255,130,120,',t:44,width:1.7});
         if((predEvents%5)===0) log(`捕食：${topologyLabel(this.morphologyTopology)}が${topologyLabel(prey.morphologyTopology||topologyFromGenes(prey.genes))}を捕食。`);
-        this.attackCD=130;
+        this.attackCD=105;
         this.chaseTimer=0;
         this.preyTargetId=null;
         predEvents++;
@@ -3332,7 +3378,9 @@ if(Z>0.08){
     }
   }
 
-  function carnivoryIntent(carnIntent, deficit){ return carnIntent * sigmoid(deficit/12); }
+  function carnivoryIntent(carnIntent, deficit){
+    return clamp(carnIntent * (0.38 + 0.62*sigmoid(deficit/12)) + clamp((carnIntent-0.62)*0.42,0,0.18),0,1);
+  }
   // ===== Simple Mendelian traits (glow/crown/colony/chloroplast) =====
   function __flagsFromTraits(t, g){
     const tt = t || {};
@@ -3512,6 +3560,65 @@ const env = (function(){
     }
     lastPaint = -999;
   }
+  function bestAlgaeNear(x,y,r,minValue=0.20){
+    ensure();
+    const range = Math.max(1, r||cell);
+    const cx = Math.min(ew-1, Math.max(0, (x/cell)|0));
+    const cy = Math.min(eh-1, Math.max(0, (y/cell)|0));
+    const rad = Math.max(1, Math.ceil(range/cell));
+    let best=null, bestScore=minValue;
+    for(let dy=-rad; dy<=rad; dy++){
+      const yy=cy+dy; if(yy<0||yy>=eh) continue;
+      for(let dx=-rad; dx<=rad; dx++){
+        const xx=cx+dx; if(xx<0||xx>=ew) continue;
+        const wx=(xx+0.5)*cell, wy=(yy+0.5)*cell;
+        const dist=Math.hypot(wx-x,wy-y);
+        if(dist>range) continue;
+        const i=idx(xx,yy);
+        const v=fields.algae[i] || 0;
+        const foulPenalty=0.22*(fields.foul[i]||0);
+        const score=v*(0.72 + 0.28*(1-dist/range)) - foulPenalty;
+        if(score>bestScore){
+          bestScore=score;
+          best={x:wx,y:wy,v,type:'fieldAlgae'};
+        }
+      }
+    }
+    return best;
+  }
+  function grazeAlgaeAt(x,y,appetite,radius=1){
+    ensure();
+    const cx = Math.min(ew-1, Math.max(0, (x/cell)|0));
+    const cy = Math.min(eh-1, Math.max(0, (y/cell)|0));
+    const target = Math.max(0, appetite||0);
+    if(target<=0) return 0;
+    const cells=[];
+    let totalW=0;
+    for(let dy=-radius; dy<=radius; dy++){
+      const yy=cy+dy; if(yy<0||yy>=eh) continue;
+      for(let dx=-radius; dx<=radius; dx++){
+        const xx=cx+dx; if(xx<0||xx>=ew) continue;
+        const d=Math.hypot(dx,dy);
+        if(d>radius+0.01) continue;
+        const w = d<0.01 ? 1.0 : (d<1.1 ? 0.48 : 0.20);
+        const i=idx(xx,yy);
+        const avail=Math.max(0, fields.algae[i] - 0.035);
+        if(avail<=0) continue;
+        cells.push({i,w,avail});
+        totalW+=w;
+      }
+    }
+    if(!cells.length || totalW<=0) return 0;
+    let taken=0;
+    for(const c of cells){
+      const take=Math.min(c.avail, target*(c.w/totalW));
+      if(take<=0) continue;
+      fields.algae[c.i]=clamp01(fields.algae[c.i]-take);
+      taken+=take;
+    }
+    if(taken>0) lastPaint = -999;
+    return taken;
+  }
 
   // ---- Seeding from legacy patches ----
   function seedFromPatches(patches){
@@ -3619,12 +3726,14 @@ if(p.type==='turbid'){
       const nightBoost = 0.48 + 0.62*(1 - L);
       const decomp = 0.068 * D * tempF * nightBoost;
       D = clamp01(D - decomp);
-      N = clamp01(N + 0.95*decomp);
+      N = clamp01(N + 0.42*decomp);
 
-      // --- Photosynthesis (day): consumes N, produces O; inhibited by high D ---
-      const photo = 0.118 * N * L * (0.18 + 0.82*(1 - D));
-      N = clamp01(N - 0.70*photo);
-      O = clamp01(O + 1.12*photo);
+      // --- Algae regrowth + photosynthesis: grazing scars recover slowly in clear, lit water ---
+      const clearWater = 0.18 + 0.82*(1 - D);
+      const algaeGrow = (worldEvent.algaeFactor||1) * L * clearWater * (0.004 + 0.042*N) * (1 - N) * (0.40 + 0.60*O);
+      N = clamp01(N + algaeGrow);
+      const photo = 0.058 * N * L * clearWater;
+      O = clamp01(O + 0.88*photo + 0.30*algaeGrow);
 
       // --- Oxygen sinks (respiration + decomposition) ---
       const oxCost = (0.115*decomp + 0.026*densBio*tempF + 0.020*D);
@@ -3864,6 +3973,8 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,Z))
   maintainDots,
   reset: resetAll,
   valueAt: (type,x,y)=> valueAt(type,x,y),
+  bestAlgaeNear: (x,y,r,minValue)=> bestAlgaeNear(x,y,r,minValue),
+  grazeAlgaeAt: (x,y,appetite,radius)=> grazeAlgaeAt(x,y,appetite,radius),
   getAverages: ()=>({ N:_avgN, D:_avgD, O:_avgO, C:_avgC }),
   usesGpu: ()=>!!gpuReady,
   sampleAlgae: function(n){
@@ -4711,7 +4822,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     organisms.push(o);
   }
 }
-  function addFood(nSmall=10, nBig=2){ for(let i=0;i<nSmall;i++){ food.push(new Food(rnd(8,W-8), rnd(8,H-8),'small')); } for(let i=0;i<nBig;i++){ food.push(new Food(rnd(8,W-8), rnd(8,H-8),'big')); } if(food.length>220) food.splice(0, food.length-220); }
+  function addFood(nSmall=10, nBig=2){ for(let i=0;i<nSmall;i++){ food.push(new Food(rnd(8,W-8), rnd(8,H-8),'small')); } for(let i=0;i<nBig;i++){ food.push(new Food(rnd(8,W-8), rnd(8,H-8),'big')); } if(food.length>120) food.splice(0, food.length-120); }
 
   function start(){ if(running) return; running=true; $('start-btn').disabled=true; $('pause-btn').disabled=false; log('▶ 再開'); }
   function pause(){ if(!running) return; running=false; $('start-btn').disabled=false; $('pause-btn').disabled=true; log('⏸ 一時停止'); }
@@ -4763,7 +4874,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       window.env.seedFromPatches(patches);
     }
     seedPlankton();
-    addFood(40,10);
+    addFood(10,2);
     $('generation').textContent='1';
     ui.speed = 1;
     if($('speed-slider')) $('speed-slider').value='1';
@@ -4815,13 +4926,15 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     if(!dayNight.isNight){
       const a = (window.env.getAverages) ? window.env.getAverages() : {N:0.25,O:0.75,D:0.05};
       const prodMul = clamp(worldEvent.algaeFactor * (0.5 + 1.5*a.N) * (0.4 + 0.6*a.O), 0.25, 2.3);
-      const pts = window.env.sampleAlgae(Math.max(1, Math.round(3*prodMul)));
+      const algaeMorsels = Math.max(0, Math.round(3*prodMul*WILD_FOOD_SPAWN_SCALE - 0.35 + Math.random()*0.70));
+      const pts = algaeMorsels>0 ? window.env.sampleAlgae(algaeMorsels) : [];
       for(const q of pts){
         food.push(new Food(clamp(q.x,8,W-8), clamp(q.y,8,H-8), 'algae'));
-        window.env.sinkAlgaeAt(q.x,q.y,0.022);
+        window.env.sinkAlgaeAt(q.x,q.y,0.010);
       }
     } else {
-      const pts = (window.env.sampleDetritus ? window.env.sampleDetritus(2) : []);
+      const detritusMorsels = Math.random() < (0.65*WILD_FOOD_SPAWN_SCALE) ? 1 : 0;
+      const pts = detritusMorsels>0 && window.env.sampleDetritus ? window.env.sampleDetritus(detritusMorsels) : [];
       for(const q of pts){
         food.push(new Food(clamp(q.x,8,W-8), clamp(q.y,8,H-8), 'detritus'));
         if(window.env.sinkDetritusAt) window.env.sinkDetritusAt(q.x,q.y,0.018);
@@ -4852,7 +4965,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
         log(`環境収容力：過密のため${removed.length}個体が淘汰されました。`);
       }
       // 餌の自然供給
-      if(frame%20===0){ const f=season(); const pop=organisms.length; const baseSmall=Math.max(1,Math.round(2*f)); const baseBig=Math.random()<0.15?1:0; const extra=Math.round(pop*0.15*f); addFood(baseSmall+extra, baseBig); const label = f<0.9 ? '🍂 飢饉期' : '🌱 豊作期'; if(label !== lastSeasonLabel){ showToast('season', f<0.9 ? '飢饉期。自然発生する餌が減り、低代謝・高効率の個体や腐肉食が有利に働くだろう。' : '豊作期。餌が増え、繁殖が進みやすい。草食と増殖力の高い種に追い風だろう。'); lastSeasonLabel = label; } }
+      if(frame%120===0){ const f=season(); const small=(Math.random()<0.55*f*WILD_FOOD_SPAWN_SCALE)?1:0; const big=(Math.random()<0.06*f*WILD_FOOD_SPAWN_SCALE)?1:0; if(small||big) addFood(small,big); const label = f<0.9 ? '🍂 飢饉期' : '🌱 豊作期'; if(label !== lastSeasonLabel){ showToast('season', f<0.9 ? '飢饉期。餌粒は少なく、藻場を食べられる個体や腐肉食が有利に働くだろう。' : '豊作期。緑の藻場が再生しやすく、草食と増殖力の高い種に追い風だろう。'); lastSeasonLabel = label; } }
       if(frame%60===0){ updateRoleShare(); updateWaterStatus(); }
       if(frame%180===0) refreshSpeciesStats();
       if(frame%240===0) checkEvolutionMilestones();
@@ -4992,6 +5105,18 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
         if(o.preyTargetId) targets++;
       }
       return {chasing,fleeing,targets,predEvents};
+    },
+    grazingSummary(){
+      let grazing=0,recentGrazing=0,herbivores=0,omnivores=0,carnivores=0;
+      for(const o of organisms){
+        const c=o.genes?.carnivory ?? 0.5;
+        if(c<0.33) herbivores++;
+        else if(c<0.66) omnivores++;
+        else carnivores++;
+        if(String(o.lastAction||'').includes('背景の藻')) grazing++;
+        if((o.recentEvents||[]).some(e=>String(e.msg||'').includes('背景の藻'))) recentGrazing++;
+      }
+      return {grazing,recentGrazing,herbivores,omnivores,carnivores,food:food.length,env:window.env?.getAverages ? window.env.getAverages() : null};
     },
     performanceSummary(){
       return {
@@ -5199,7 +5324,7 @@ organisms.push(u);
       seedPatches(); 
       if(window.env) window.env.seedFromPatches(patches);
       seedPlankton(); 
-      addFood(40,10); 
+      addFood(10,2);
       reportMix(); 
       updateWaterStatus();
       refreshSpeciesStats();
