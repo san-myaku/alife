@@ -118,6 +118,9 @@
     <div class="row">
       <button id="caustics-btn" class="btn" style="width:100%">〰 水面反射: OFF</button>
     </div>
+    <div class="row">
+      <button id="microview-btn" class="btn" style="width:100%">🔬 遠景観察: ON</button>
+    </div>
     <div id="role-legend" class="legend" style="display:none; flex-wrap:wrap; margin-top:-4px; margin-bottom:6px">
       <span class="dot amb"></span><span class="hint">待ち伏せ</span>
       <span class="dot pack"></span><span class="hint">群れ狩り</span>
@@ -219,7 +222,7 @@
   const hash01 = (s)=>{ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h>>>0)/2**32; };
 
   // ===== UI State =====
-  const ui={ speed:1, mutation:0.03, showSense:false, tool:'food', popMax:120, parallax:1.0, roleViz:false, caustics:false };
+  const ui={ speed:1, mutation:0.03, showSense:false, tool:'food', popMax:120, parallax:1.0, roleViz:false, caustics:false, microView:true };
   const renderPerf = { mobile:IS_MOBILE_VIEW, low:IS_MOBILE_VIEW, tiny:false, mode:IS_MOBILE_VIEW?'low':'full', meshCount:0, complexCount:0, heavyComplex:false };
   $('speed-slider').addEventListener('input',e=>{ ui.speed=+e.target.value; $('speed-value').textContent=ui.speed+'x'; });
   $('mutation-slider').addEventListener('input',e=>{ ui.mutation=(+e.target.value)/100; $('mutation-value').textContent=e.target.value+'%'; });
@@ -258,6 +261,17 @@
   if(causticsBtn){
     causticsBtn.addEventListener('click', ()=>{ ui.caustics = !ui.caustics; syncCausticsUI(); });
     syncCausticsUI();
+  }
+
+  const microViewBtn = $('microview-btn');
+  function syncMicroViewUI(){
+    if(!microViewBtn) return;
+    microViewBtn.textContent = ui.microView ? '🔬 遠景観察: ON' : '🔬 遠景観察: OFF';
+    microViewBtn.classList.toggle('on', ui.microView);
+  }
+  if(microViewBtn){
+    microViewBtn.addEventListener('click', ()=>{ ui.microView = !ui.microView; syncMicroViewUI(); });
+    syncMicroViewUI();
   }
 
 
@@ -703,7 +717,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   let selectedDeadAt = 0;
   const discoveredRareTraits = new Set();
   const speciesStats = new Map();
+  const evolutionMilestones = new Set();
   const extinctRecords = [];
+  const MICRO_VIEW = {
+    baseScale: 0.22,
+    rareScale: 0.34,
+    discoveryScale: 0.58,
+    selectedScale: 1.0
+  };
   let lastWaterStatusKey = '';
   let lastCapacityKey = '';
   let lastCycleLogFrame = -9999;
@@ -855,6 +876,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   }
   function featureSummary(g, flags, topology=topologyFromGenes(g)){
     const parts=[topologyLabel(topology)];
+    const adapt=adaptationProfilesFromGenes(g, flags, topology);
+    if(adapt.includes('tentacle')) parts.push('触手で探る');
+    if(adapt.includes('colonyBuilder')) parts.push('コロニー形成');
+    if(adapt.includes('adhesiveMat')) parts.push('付着性');
+    if(adapt.includes('cyst')) parts.push('休眠耐性');
     if((g?.speed??0)>0.68) parts.push('移動が速い');
     if((g?.efficiency??0)>0.66) parts.push('低代謝');
     if((g?.sensory??0)>0.66) parts.push('感覚が鋭い');
@@ -865,7 +891,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     return parts.slice(0,4).join('、');
   }
   function materialLabel(g, topology=topologyFromGenes(g), flags=null){
+    if(hasAdaptationProfile(g, flags, topology, 'tentacle')) return '伸縮する触手を持つ透明膜';
+    if(hasAdaptationProfile(g, flags, topology, 'adhesiveMat')) return '基質に貼りつく薄い粘膜';
     if(flags?.chl) return '葉緑粒を含む半透明膜';
+    if(hasAdaptationProfile(g, flags, topology, 'colonyBuilder')) return '小房がつながる群体膜';
     if(topology==='mesh') return '薄い膜が網目状につながる';
     if(topology==='ring') return '張りのある環状膜';
     if((g?.size??0)>0.68) return '厚めの寒天質';
@@ -876,7 +905,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function internalStructureLabel(g, flags=null, topology=topologyFromGenes(g)){
     const parts=['中心核'];
     if(flags?.chl) parts.push('葉緑粒');
+    if(hasAdaptationProfile(g, flags, topology, 'tentacle')) parts.push('触手基部');
     if(flags?.colony || topology==='cluster') parts.push('小房状の粒');
+    if(hasAdaptationProfile(g, flags, topology, 'adhesiveMat')) parts.push('粘着粒');
     if((g?.sensory??0)>0.66) parts.push('感覚粒');
     if((g?.reproduction??0)>0.66) parts.push('小核が多い');
     if((g?.efficiency??0)>0.70) parts.push('粒子は少なめ');
@@ -892,6 +923,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   }
   function weaknessLabel(g, topology=topologyFromGenes(g)){
     const c=g?.carnivory ?? 0.5;
+    const adapt=adaptationProfilesFromGenes(g, null, topology);
+    if(adapt.includes('adhesiveMat')) return '環境変化から逃げにくい';
+    if(adapt.includes('colonyBuilder')) return '過密で広がりにくい';
+    if(adapt.includes('tentacle')) return '触手維持の負担が重い';
     if(topology==='cluster') return '単体の逃走が弱い';
     if(topology==='single') return '強い専門性がない';
     if(topology==='radial') return '低酸素に弱い';
@@ -899,7 +934,55 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if((g?.reproduction??0)>0.70) return '過密で失速しやすい';
     return '急な環境変化に弱い';
   }
+  const ADAPTATION_LABELS = {
+    tentacle:'触手型',
+    colonyBuilder:'コロニー形成',
+    adhesiveMat:'付着マット型',
+    cyst:'休眠シスト型',
+    filterFan:'濾過扇型',
+    toxin:'毒棘型',
+    symbiotic:'共生葉緑型',
+    nightGlow:'夜光遊泳型'
+  };
+  function adaptationProfilesFromGenes(g, flags=null, topology=topologyFromGenes(g), role=null){
+    if(!g) return [];
+    const sp=g.speed??0.5, sz=g.size??0.5, ef=g.efficiency??0.5, re=g.reproduction??0.5;
+    const se=g.sensory??0.5, c=g.carnivory??0.5, lob=g.lobes??0.5, el=g.elongation??0.5;
+    const r=role || computeRole(g);
+    const tags=[];
+    if(se>0.70 && lob>0.42 && el>0.28) tags.push('tentacle');
+    if((topology==='cluster' || flags?.colony || re>0.76) && re>0.62 && sz<0.72) tags.push('colonyBuilder');
+    if(ef>0.72 && sp<0.40 && c<0.58) tags.push('adhesiveMat');
+    if(ef>0.70 && sz>0.52 && sp<0.58) tags.push('cyst');
+    if(r==='filter' && (se>0.38 || lob>0.35)) tags.push('filterFan');
+    if(c>0.72 && lob>0.54) tags.push('toxin');
+    if(flags?.chl) tags.push('symbiotic');
+    if(flags?.glow) tags.push('nightGlow');
+    return tags;
+  }
+  function adaptationLabelText(g, flags=null, topology=topologyFromGenes(g), role=null, empty='未分化'){
+    const tags=adaptationProfilesFromGenes(g, flags, topology, role);
+    return tags.map(k=>ADAPTATION_LABELS[k]||k).slice(0,3).join('、') || empty;
+  }
+  function hasAdaptationProfile(g, flags, topology, key, role=null){
+    return adaptationProfilesFromGenes(g, flags, topology, role).includes(key);
+  }
+  function organismVisualScale(o){
+    if(!ui.microView) return 1;
+    if(!o) return MICRO_VIEW.baseScale;
+    let s=MICRO_VIEW.baseScale;
+    if(o.flags && rareTraitNames(o.flags).length) s=Math.max(s, MICRO_VIEW.rareScale);
+    if(o.newSpeciesFlash>0){
+      const k=clamp(o.newSpeciesFlash/140,0,1);
+      s=Math.max(s, lerp(MICRO_VIEW.baseScale, MICRO_VIEW.discoveryScale, k));
+    }
+    if(selectedOrganism && selectedOrganism.id===o.id) s=Math.max(s, MICRO_VIEW.selectedScale);
+    return s;
+  }
   function prosperityLabel(g, topology=topologyFromGenes(g), flags=null){
+    if(hasAdaptationProfile(g, flags, topology, 'tentacle')) return '触手で周囲を探れる';
+    if(hasAdaptationProfile(g, flags, topology, 'colonyBuilder')) return '近接した子で群体を作る';
+    if(hasAdaptationProfile(g, flags, topology, 'adhesiveMat')) return '省エネで張り付く';
     if(flags?.chl) return '昼間の代謝が安定';
     if(topology==='mesh') return '汚濁と低酸素に強い';
     if(topology==='ring') return '防御力が高い';
@@ -951,6 +1034,40 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         log(`希少形質：${name}が初めて発現した。${speciesNameFromGenes(o.genes,o.flags)}で観察できる。`);
         showToast('species', `希少形質：${name}を発見`);
       }
+    }
+  }
+  function announceEvolutionMilestone(key,text){
+    if(evolutionMilestones.has(key)) return false;
+    evolutionMilestones.add(key);
+    log(`進化節目：${text}`);
+    return showToast('event', `進化：${text}`);
+  }
+  function checkEvolutionMilestones(){
+    const total=organisms.length;
+    if(total<12) return;
+    if(frame<speciesAnnounceMuteUntil) return;
+    const speciesN=new Set(organisms.map(o=>o.speciesKey)).size;
+    if(speciesN>=8) announceEvolutionMilestone('diversity:8', '現存種が8種を超え、培地の多様性が広がった');
+    if(speciesN>=14) announceEvolutionMilestone('diversity:14', '現存種が14種を超え、小さな生態系らしく枝分かれした');
+    const adaptationCounts=new Map();
+    const topologyCounts=new Map();
+    for(const o of organisms){
+      const topo=o.morphologyTopology||topologyFromGenes(o.genes);
+      topologyCounts.set(topo,(topologyCounts.get(topo)||0)+1);
+      for(const tag of adaptationProfilesFromGenes(o.genes,o.flags,topo,o.role)){
+        adaptationCounts.set(tag,(adaptationCounts.get(tag)||0)+1);
+      }
+    }
+    for(const [tag,count] of adaptationCounts){
+      const share=count/total;
+      const label=ADAPTATION_LABELS[tag]||tag;
+      if(count>=3 && share>=0.08) announceEvolutionMilestone(`adapt:${tag}:seed`, `${label}が定着しはじめた`);
+      if(count>=8 && share>=0.22) announceEvolutionMilestone(`adapt:${tag}:rise`, `${label}が個体群の一角を占めた`);
+      if(share>=0.42) announceEvolutionMilestone(`adapt:${tag}:dominant`, `${label}が優勢になった`);
+    }
+    for(const [topo,count] of topologyCounts){
+      const share=count/total;
+      if(count>=8 && share>=0.26) announceEvolutionMilestone(`topology:${topo}:rise`, `${topologyLabel(topo)}が広がっている`);
     }
   }
   function registerSpeciesStats(o){
@@ -1184,6 +1301,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       `エネルギー：${Math.round(o.energy)} / 年齢：${ageLabel(o)} / 世代：${generation}`,
       `希少形質：${rare}`,
       `保因：${carrier}`,
+      `適応：${adaptationLabelText(o.genes,o.flags,o.morphologyTopology,o.role)}`,
       `素材：${materialLabel(o.genes,o.morphologyTopology,o.flags)}`,
       `内部：${internalStructureLabel(o.genes,o.flags,o.morphologyTopology)}`,
       `特徴：${featureSummary(o.genes,o.flags,o.morphologyTopology)}`,
@@ -1354,6 +1472,13 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(this.morphologyTopology==='cluster'){ this.reproThreshold*=0.94; this.maxSpeed*=0.94; }
       if(this.morphologyTopology==='spiral'){ this.maxSpeed*=1.03; this.senseCost*=0.97; }
       if(this.morphologyTopology==='mesh'){ this.baseMetabolic*=0.94; this.senseCost*=0.92; }
+      const adaptations = adaptationProfilesFromGenes(this.genes, null, this.morphologyTopology, this.role);
+      if(adaptations.includes('tentacle')){ this.senseR*=1.14; this.senseCost*=1.08; this.baseMetabolic*=1.04; }
+      if(adaptations.includes('colonyBuilder')){ this.reproThreshold*=0.96; this.maxSpeed*=0.88; this.protect=Math.max(this.protect||0,118); }
+      if(adaptations.includes('adhesiveMat')){ this.baseMetabolic*=0.84; this.maxSpeed*=0.70; this.senseCost*=0.90; }
+      if(adaptations.includes('cyst')){ this.baseMetabolic*=0.88; this.reproThreshold*=1.04; }
+      if(adaptations.includes('filterFan')){ this.senseR*=1.08; this.maxSpeed*=0.95; }
+      if(adaptations.includes('toxin')){ this.baseMetabolic*=1.05; this.protect=Math.max(this.protect||0,105); }
       // --- sea-glass micro-bubbles (impurities) precompute ---
       try{
         const bubN = Math.max(1, Math.min(6, Math.round(2 + 4*(1 - this.genes.size)*0.7 + 2*this.genes.reproduction*0.3)));
@@ -2279,7 +2404,8 @@ if(Z>0.10){
           g=Object.assign({}, this.genes);
           for(const k of Object.keys(g)){ g[k]=clamp(g[k]+(Math.random()*2-1)*baseMut,0,1); }
         }
-        const c=new Organism(clamp(this.x+rnd(-20,20),10,W-10), clamp(this.y+rnd(-20,20),10,H-10), g, true, this.speciesKey, mate?.speciesKey||null);
+        const childSpread = hasAdaptationProfile(this.genes, this.flags, this.morphologyTopology, 'colonyBuilder', this.role) ? 8 : 20;
+        const c=new Organism(clamp(this.x+rnd(-childSpread,childSpread),10,W-10), clamp(this.y+rnd(-childSpread,childSpread),10,H-10), g, true, this.speciesKey, mate?.speciesKey||null);
         c.vx=this.vx*0.2; c.vy=this.vy*0.2;
 
         // Mendelian flags inheritance (glow/crown/colony)
@@ -2378,6 +2504,7 @@ if(Z>0.10){
       const shape = shapeNames[sym.primaryIndex || 0] || 'circle';
       const shapeRot = sym.shapeRot || 0;
       const hue=ui.roleViz ? (ROLE_HUE[this.role] ?? this.hue ?? 190) : (this.hue||190);
+      const visualScale=organismVisualScale(this);
       const r=Math.max(2.2,this.size*0.74);
       const pts=[];
       if(topo==='chain' || topo==='spiral'){
@@ -2397,6 +2524,14 @@ if(Z>0.10){
       }
       ctx.save();
       ctx.translate(this.x,this.y);
+      if(ui.microView && visualScale>MICRO_VIEW.baseScale+0.03){
+        ctx.beginPath();
+        ctx.arc(0,0,Math.max(4,r*3.2*visualScale),0,TAU);
+        ctx.strokeStyle=`hsla(${hue},92%,86%,${this===selectedOrganism?0.32:0.16})`;
+        ctx.lineWidth=1;
+        ctx.stroke();
+      }
+      ctx.scale(visualScale,visualScale);
       ctx.rotate(Number.isFinite(this.heading) ? this.heading : 0);
       ctx.lineCap='round';
       ctx.lineJoin='round';
@@ -2451,15 +2586,26 @@ if(Z>0.10){
       if(renderPerf.tiny){ this.drawTinySymbolic(); return; }
       const sym = this._symbol || (this.prepareSymbolDetails(), this._symbol);
       const nodes = sym.nodes || [];
+      const visualScale=organismVisualScale(this);
       if(!renderPerf.low && this.trail.length>1){
         ctx.beginPath();
         for(let i=0;i<this.trail.length;i++){ const p=this.trail[i]; if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y); }
         ctx.strokeStyle='rgba(150,190,255,0.10)';
-        ctx.lineWidth=1.6;
+        ctx.lineWidth=Math.max(0.45,1.6*visualScale);
         ctx.stroke();
       }
       ctx.save();
       ctx.translate(this.x,this.y);
+      if(ui.microView && visualScale>MICRO_VIEW.baseScale+0.03){
+        const hue=(sym.outlineHue ?? this.hue ?? 190);
+        const rr=Math.max(4,(sym.visualR||this.size)*visualScale*1.22);
+        ctx.beginPath();
+        ctx.arc(0,0,rr,0,TAU);
+        ctx.strokeStyle=`hsla(${hue},94%,86%,${this===selectedOrganism?0.34:0.18})`;
+        ctx.lineWidth=this===selectedOrganism?1.3:1;
+        ctx.stroke();
+      }
+      ctx.scale(visualScale,visualScale);
       ctx.rotate(Number.isFinite(this.heading) ? this.heading : 0);
 
       if(ui.showSense){
@@ -2541,6 +2687,80 @@ if(Z>0.10){
           angle:a,
           bend:joint + inherited*0.45
         };
+      }
+
+      const adaptationTags = adaptationProfilesFromGenes(this.genes, this.flags, topo, this.role);
+      if(adaptationTags.length && !renderPerf.tiny){
+        const bodyR=Math.max(this.size*1.0,(sym.visualR||this.size)*0.48);
+        if(adaptationTags.includes('adhesiveMat')){
+          ctx.save();
+          ctx.globalCompositeOperation='source-over';
+          ctx.fillStyle=`hsla(${outlineHue},60%,62%,${dayNight.isNight?0.06:0.045})`;
+          ctx.beginPath();
+          ctx.ellipse(0,this.size*0.18,bodyR*1.55,bodyR*0.78,Math.sin(gait*0.08)*0.18,0,TAU);
+          ctx.fill();
+          ctx.restore();
+        }
+        if(adaptationTags.includes('tentacle') || adaptationTags.includes('filterFan')){
+          ctx.save();
+          ctx.globalCompositeOperation='lighter';
+          const tentacleN = adaptationTags.includes('filterFan') ? 8 : (4 + Math.round(this.genes.sensory*5));
+          const spread = adaptationTags.includes('filterFan') ? TAU : Math.PI*1.35;
+          const startA = adaptationTags.includes('filterFan') ? sym.pulse : -spread*0.5;
+          ctx.strokeStyle=`hsla(${outlineHue},92%,84%,${dayNight.isNight?0.30:0.20})`;
+          ctx.lineWidth=Math.max(0.65,this.size*0.07);
+          ctx.lineCap='round';
+          for(let i=0;i<tentacleN;i++){
+            const q=tentacleN===1?0.5:i/(tentacleN-1);
+            const a=startA + q*spread + Math.sin(gait*0.09+i)*0.10;
+            const rootR=bodyR*(0.72+0.08*Math.sin(i));
+            const len=this.size*(1.25 + this.genes.sensory*1.65 + (adaptationTags.includes('filterFan')?0.55:0));
+            const sx=Math.cos(a)*rootR, sy=Math.sin(a)*rootR;
+            const ex=Math.cos(a)*(rootR+len), ey=Math.sin(a)*(rootR+len);
+            const bend=Math.sin(gait*0.62 + i*1.7)*this.size*(0.28+this.genes.lobes*0.22);
+            const mx=Math.cos(a)*(rootR+len*0.52) + Math.cos(a+Math.PI/2)*bend;
+            const my=Math.sin(a)*(rootR+len*0.52) + Math.sin(a+Math.PI/2)*bend;
+            ctx.beginPath();
+            ctx.moveTo(sx,sy);
+            ctx.quadraticCurveTo(mx,my,ex,ey);
+            ctx.stroke();
+            if(adaptationTags.includes('filterFan')){
+              ctx.beginPath();
+              ctx.arc(ex,ey,Math.max(0.45,this.size*0.055),0,TAU);
+              ctx.fillStyle=`hsla(${(outlineHue+70)%360},94%,82%,0.20)`;
+              ctx.fill();
+            }
+          }
+          ctx.restore();
+        }
+        if(adaptationTags.includes('toxin')){
+          ctx.save();
+          ctx.globalCompositeOperation='lighter';
+          ctx.strokeStyle=`hsla(${(outlineHue+330)%360},95%,78%,${dayNight.isNight?0.28:0.20})`;
+          ctx.lineWidth=Math.max(0.7,this.size*0.08);
+          const n=7 + Math.round(this.genes.lobes*5);
+          for(let i=0;i<n;i++){
+            const a=i/n*TAU + sym.pulse*0.12;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(a)*bodyR*0.84,Math.sin(a)*bodyR*0.84);
+            ctx.lineTo(Math.cos(a)*bodyR*1.28,Math.sin(a)*bodyR*1.28);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+        if(adaptationTags.includes('colonyBuilder')){
+          ctx.save();
+          const n=5 + Math.round(this.genes.reproduction*5);
+          for(let i=0;i<n;i++){
+            const a=i/n*TAU + Math.sin(gait*0.18+i)*0.10;
+            const rr=bodyR*(1.05+0.25*Math.sin(gait*0.22+i));
+            ctx.beginPath();
+            ctx.arc(Math.cos(a)*rr,Math.sin(a)*rr,Math.max(0.8,this.size*0.12),0,TAU);
+            ctx.fillStyle=`hsla(${outlineHue},72%,80%,0.18)`;
+            ctx.fill();
+          }
+          ctx.restore();
+        }
       }
 
       // Soft aura for readable overlap.
@@ -4265,6 +4485,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       const weakness = weaknessLabel(it.g, topo);
       const material = materialLabel(it.g, topo, flagBool);
       const internal = internalStructureLabel(it.g, flagBool, topo);
+      const adaptation = adaptationLabelText(it.g, flagBool, topo, computeRole(it.g));
       html += `<div class="species-card">
         <div class="species-card-header">
           <div class="species-avatar">${av}</div>
@@ -4279,6 +4500,9 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
         <div>${stars01(score)}</div>
         <div style="margin-top:4px; font-size:11px; opacity:.72;">
           形態: ${topologyLabel(topo)} ｜食性: ${dietLabelFromGenes(it.g)} ｜戦略: ${socialStrategyLabel(strat.mode)}
+        </div>
+        <div style="margin-top:3px; font-size:11px; opacity:.72;">
+          適応: ${adaptation}
         </div>
         <div style="margin-top:3px; font-size:11px; opacity:.72;">
           栄養源: ${source} ｜主な死因: ${cause}
@@ -4480,6 +4704,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     speciesStats.clear();
     extinctRecords.length=0;
     discoveredRareTraits.clear();
+    evolutionMilestones.clear();
     selectedOrganism=null;
     selectedDeadAt=0;
     lastWaterStatusKey='';
@@ -4601,6 +4826,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       if(frame%20===0){ const f=season(); const pop=organisms.length; const baseSmall=Math.max(1,Math.round(2*f)); const baseBig=Math.random()<0.15?1:0; const extra=Math.round(pop*0.15*f); addFood(baseSmall+extra, baseBig); const label = f<0.9 ? '🍂 飢饉期' : '🌱 豊作期'; if(label !== lastSeasonLabel){ showToast('season', f<0.9 ? '飢饉期。自然発生する餌が減り、低代謝・高効率の個体や腐肉食が有利に働くだろう。' : '豊作期。餌が増え、繁殖が進みやすい。草食と増殖力の高い種に追い風だろう。'); lastSeasonLabel = label; } }
       if(frame%60===0){ updateRoleShare(); updateWaterStatus(); }
       if(frame%180===0) refreshSpeciesStats();
+      if(frame%240===0) checkEvolutionMilestones();
       if(frame%800===0 && organisms.length){ generation++; $('generation').textContent=String(generation); reportMix(); }
       tickEvent(); maybeTriggerEvent(); if((frame%10)===0) ecoTick();
       if(organisms.length===0){ log('💀 絶滅 → 再播種'); speciesAnnounceMuteUntil = frame + 600; initPopulation(Math.max(36, Math.round(STARTER_POP*0.65))); }
@@ -4812,6 +5038,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       extinctRecords,
       speciesStats:Array.from(speciesStats.entries()),
       discoveredRareTraits:Array.from(discoveredRareTraits),
+      evolutionMilestones:Array.from(evolutionMilestones),
       lineage: { nodes: Array.from(lineage.nodes.entries()), edges: lineage.edges }
     };
     return 'ALIFE2:'+ btoa(unescape(encodeURIComponent(JSON.stringify(state))));
@@ -4821,7 +5048,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       if(!s.startsWith('ALIFE2:')) throw new Error('ヘッダー不正');
       const body=s.split(':',2)[1]; const state=JSON.parse(decodeURIComponent(escape(atob(body))));
       running=false;
-      food.length=0; corpses.length=0; plankton.length=0; patches.length=0; organisms.length=0; sparks.length=0; effects.length=0; rings.length=0; waterCurrents.length=0; membranes.length=0; speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); selectedOrganism=null; selectedDeadAt=0;
+      food.length=0; corpses.length=0; plankton.length=0; patches.length=0; organisms.length=0; sparks.length=0; effects.length=0; rings.length=0; waterCurrents.length=0; membranes.length=0; speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear(); selectedOrganism=null; selectedDeadAt=0;
       (state.patches||[]).forEach(p=>patches.push(new Patch(p.type,p.x,p.y,p.r)));
       (state.food||[]).forEach(f=>food.push(new Food(f.x,f.y,f.type)));
       (state.corpses||[]).forEach(c=>{ const q=new Corpse(c.x,c.y,c.energy); if(c.t!=null) q.t=c.t; corpses.push(q); });
@@ -4847,6 +5074,7 @@ organisms.push(u);
       speciesAnnounceMuteUntil=Math.max(prevAnnounceMute||0, frame+120);
       if(Array.isArray(state.extinctRecords)) extinctRecords.push(...state.extinctRecords.slice(0,14));
       if(Array.isArray(state.discoveredRareTraits)){ for(const x of state.discoveredRareTraits) discoveredRareTraits.add(x); }
+      if(Array.isArray(state.evolutionMilestones)){ for(const x of state.evolutionMilestones) evolutionMilestones.add(x); }
       if(Array.isArray(state.speciesStats)){ for(const [k,v] of state.speciesStats) speciesStats.set(k,v); }
       // lineage
       lineage.nodes.clear(); lineage.edges.length=0;
