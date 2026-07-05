@@ -725,6 +725,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     discoveryScale: 0.58,
     selectedScale: 1.0
   };
+  const MOVEMENT_SPEED_SCALE = 0.5;
   let lastWaterStatusKey = '';
   let lastCapacityKey = '';
   let lastCycleLogFrame = -9999;
@@ -1422,7 +1423,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     recalcPhenotype(){
       // === phenotype recompute (v1i) ===
       this.morphologyTopology = topologyFromGenes(this.genes);
-      this.maxSpeed = lerp(0.6, 3.2, this.genes.speed);
+      this.maxSpeed = lerp(0.6, 3.2, this.genes.speed) * MOVEMENT_SPEED_SCALE;
       const geneHash = hash01('g:' + Object.values(this.genes).join(','));
       const baseSize = lerp(3.0, 11.0, Math.pow(this.genes.size, 0.85));
       this.isMega = (this.genes.size > 0.97) || (geneHash > 0.985);
@@ -2025,6 +2026,27 @@ const En= env.valueAt('algae', this.x,this.y); // N
 const Ec= env.valueAt('cold',  this.x,this.y); // coldness
 const Et= env.valueAt('turbid',this.x,this.y); // O (oxygen)
 const Z = env.valueAt('foul',  this.x,this.y); // D (detritus)
+      const lowO = clamp01((0.52 - Et)/0.52);
+      const dirty = clamp01((Z - 0.06)/0.74);
+      const richN = clamp01((En - 0.24)/0.56);
+      const fieldFavor = clamp(this.aff.aN*richN + 0.55*(Et-0.50) + (this.aff.aZ||-0.7)*dirty - 0.18*Ec, -1.2, 1.2);
+
+      // Stronger local steering: rich algae/oxygen attracts suitable bodies, dirty water repels most bodies.
+      if(window.env){
+        const ang=Math.atan2(this.vy,this.vx)||this.heading||0;
+        const probe=22 + this.genes.sensory*18;
+        const sample=(type,a)=>window.env.valueAt(type,this.x+Math.cos(a)*probe,this.y+Math.sin(a)*probe);
+        const left=ang+0.78, right=ang-0.78;
+        const leftScore =
+          this.aff.aN*sample('algae',left) + 0.55*sample('turbid',left) +
+          (this.aff.aZ||-0.7)*sample('foul',left) - 0.15*sample('cold',left);
+        const rightScore =
+          this.aff.aN*sample('algae',right) + 0.55*sample('turbid',right) +
+          (this.aff.aZ||-0.7)*sample('foul',right) - 0.15*sample('cold',right);
+        const turn=clamp((leftScore-rightScore)*0.16, -0.12, 0.12);
+        this.vx += Math.cos(ang+Math.PI/2)*turn;
+        this.vy += Math.sin(ang+Math.PI/2)*turn;
+      }
 
       // metabolism: local uptake / oxygen use / excretion (creates local gradients)
       if(this.mem===undefined){ this.storeN=0; this.storeO=Et; this.storeD=0; this.mem=1.0; }
@@ -2032,26 +2054,26 @@ const Z = env.valueAt('foul',  this.x,this.y); // D (detritus)
       const herb = (1 - this.genes.carnivory);
 
       // body oxygen follows local oxygen (with slight lag)
-      this.storeO = clamp(this.storeO*0.92 + Et*(0.08*eff), 0, 1);
+      this.storeO = clamp(this.storeO*0.86 + Et*(0.14*eff), 0, 1);
 
-      // tiny dissolved nutrient uptake (kept small; main energy still from food items)
-      const takeN = 0.0006 * herb * eff * (0.25 + 0.75*En);
+      // dissolved nutrient uptake is now strong enough to make local algae fields matter.
+      const takeN = 0.0014 * herb * eff * (0.20 + 1.10*richN) * clamp(0.45 + 0.75*Et - 0.35*Z, 0.05, 1.25);
       if(takeN>0 && env && env.sinkAlgaeAt){
         env.sinkAlgaeAt(this.x,this.y, takeN);
-        this.storeN = clamp(this.storeN + takeN*3.0, 0, 1);
+        this.storeN = clamp(this.storeN + takeN*4.8, 0, 1);
       }
 
       // local oxygen consumption (respiration) -> lowers O in the cell
-      const respO = 0.00055 * (0.65 + 0.7*this.genes.size) * (0.55 + 0.65*this.genes.speed);
+      const respO = 0.00105 * (0.65 + 0.7*this.genes.size) * (0.55 + 0.65*this.genes.speed) * (1 + 0.45*dirty);
       if(env && env.sinkOxygenAt) env.sinkOxygenAt(this.x,this.y, respO);
 
       // waste accumulates with activity; low oxygen slows detox (more damaging)
       this.storeD = clamp(this.storeD + respO*(0.9 + 0.5*this.genes.carnivory), 0, 1);
       const hyp = clamp01((0.28 - this.storeO)/0.28);
-      this.mem = clamp(this.mem - (0.00055*hyp) - (0.00075*this.storeD*(1.1-Et)), 0, 1);
+      this.mem = clamp(this.mem - (0.00125*hyp) - (0.00155*this.storeD*(1.22-Et)) - 0.00055*dirty, 0, 1);
 
       // excretion -> raises local detritus
-      const ex = Math.min(this.storeD, 0.0024 + 0.0010*herb);
+      const ex = Math.min(this.storeD, 0.0038 + 0.0014*herb);
       if(ex>0){
         this.storeD -= ex;
         if(env && env.addDetritusAt) env.addDetritusAt(this.x,this.y, ex);
@@ -2060,25 +2082,25 @@ const Z = env.valueAt('foul',  this.x,this.y); // D (detritus)
       // slow nutrient burn (maintenance)
       this.storeN = clamp(this.storeN - 0.00010*(0.8 + this.genes.size), 0, 1);
 
-      // very mild recovery if oxygen is high and detritus is low
-      if(Z<0.25 && Et>0.55) this.mem = clamp(this.mem + 0.00045*Et, 0, 1);
+      // clear oxygen-rich pockets recover membranes noticeably.
+      if(Z<0.18 && Et>0.60) this.mem = clamp(this.mem + 0.00095*Et*(0.7+0.3*richN), 0, 1);
 
 // cold slows overall costs a bit (esp. big bodies)
-if(Ec>0.35){ metaMul*=(this.size>7?0.90:0.96); }
+if(Ec>0.35){ metaMul*=(this.size>7?0.78:0.88); }
 
 // low oxygen increases stress: higher cost, lower sensing
-if(Et<0.35){
-  const k = (0.35-Et)/0.35;
-  senseMul *= (1 - 0.25*k);
-  metaMul  *= (1 + 0.22*k);
+if(Et<0.48){
+  const k = (0.48-Et)/0.48;
+  senseMul *= (1 - 0.45*k);
+  metaMul  *= (1 + 0.58*k);
 }
 
 // detritus/dirty water: worse sensing + extra cost
-if(Z>0.10){
-  senseMul *= (1 - 0.20*Z);
-  metaMul  *= (1 + 0.12*Z);
+if(Z>0.08){
+  senseMul *= (1 - 0.48*dirty);
+  metaMul  *= (1 + 0.48*dirty);
 }
-      const score = this.aff.aN*En + this.aff.aC*Ec + this.aff.aT*Et + (this.aff.aZ||-0.7)*Z;
+      const score = this.aff.aN*En - 0.35*Ec + 0.55*(Et-0.50) + (this.aff.aZ||-0.7)*Z;
 
       const fleeBoost=this.fleeTimer>0?1.35:1.0;
       const burstBoost=(this.role==='ambusher' && this.burstTimer>0)? 1.65:1.0;
@@ -2106,8 +2128,12 @@ if(Z>0.10){
         }
       }
 
-      let spBias = 1 + 0.06*score;
-      const maxSp=this.maxSpeed*desired*fleeBoost*burstBoost*worldEvent.speedMul*spBias; if(sp>maxSp){ const k=maxSp/sp; this.vx*=k; this.vy*=k; }
+      const oxygenSpeed = clamp(0.45 + 0.75*Et, 0.35, 1.18);
+      const dirtyDrag = clamp(1 - 0.55*dirty, 0.34, 1.0);
+      const nutrientLift = clamp(1 + 0.18*fieldFavor, 0.72, 1.26);
+      let spBias = clamp(1 + 0.18*score, 0.48, 1.42);
+      const localSpeedMul=clamp(oxygenSpeed*dirtyDrag*nutrientLift*(1 - 0.22*Ec), 0.26, 1.35);
+      const maxSp=this.maxSpeed*desired*fleeBoost*burstBoost*worldEvent.speedMul*spBias*localSpeedMul; if(sp>maxSp){ const k=maxSp/sp; this.vx*=k; this.vy*=k; }
       this.x+=this.vx; this.y+=this.vy;
       if(this.x<this.size){this.x=this.size; this.vx*=-0.5} if(this.x>W-this.size){this.x=W-this.size; this.vx*=-0.5}
       if(this.y<this.size){this.y=this.size; this.vy*=-0.5} if(this.y>H-this.size){this.y=H-this.size; this.vy*=-0.5}
@@ -2133,7 +2159,9 @@ if(Z>0.10){
         const dx=f.x-this.x, dy=f.y-this.y;
         if(dx*dx+dy*dy <= (this.size+f.r)*(this.size+f.r)){
           let gain=f.gain;
-          if(this.inPatch('algae')) gain*=1.2;
+          if(f.type==='algae') gain*=clamp(0.72 + 1.05*En + 0.28*Et - 0.35*Z, 0.35, 1.85);
+          else if(f.type==='detritus') gain*=clamp(0.82 + 0.95*Z + 0.16*(1-Et), 0.45, 1.95);
+          else if(this.inPatch('algae')) gain*=1.35;
 
           const c=this.genes.carnivory;
           const diet=dietTypeFromCarn(c);
@@ -2161,7 +2189,7 @@ if(Z>0.10){
           if(dx*dx+dy*dy <= rr*rr){
             const carn=this.genes.carnivory;
             const diet=dietTypeFromCarn(carn);
-            const gain = c.energy*0.9 * rareFactor('scav') * meatDigestFactor(carn) * dietRareFactor(diet) * (diet==='m'?1.0:(diet==='c'?0.95:0.85));
+            const gain = c.energy*0.9 * clamp(0.82 + 0.78*Z, 0.55, 1.65) * rareFactor('scav') * meatDigestFactor(carn) * dietRareFactor(diet) * (diet==='m'?1.0:(diet==='c'?0.95:0.85));
             this.energy=clamp(this.energy+gain,0,160);
             this.storeN = clamp((this.storeN||0) + 0.040*(gain/40), 0, 1);
             this.fitness+=0.5;
@@ -2188,7 +2216,7 @@ if(Z>0.10){
           const dx=p.x-this.x, dy=p.y-this.y;
           const rr=(this.size + 2.2);
           if(dx*dx+dy*dy <= rr*rr){
-            const gain = 2.2 * rareFactor('filter') * plantDigestFactor(carn) * dietRareFactor(diet) * filtEff;
+            const gain = 2.2 * clamp(0.70 + 0.90*En + 0.35*Et - 0.35*Z, 0.25, 1.90) * rareFactor('filter') * plantDigestFactor(carn) * dietRareFactor(diet) * filtEff;
             this.energy=clamp(this.energy+gain,0,160);
             this.storeN = clamp((this.storeN||0) + 0.040*(gain/40), 0, 1);
             if(eaten===0) recordAction(this,'プランクトンを濾過した');
@@ -2227,14 +2255,14 @@ if(Z>0.10){
           calls.push({x:this.x, y:this.y, r: 100, t: 180, maxT:180, speciesKey:this.speciesKey});
           this.callCD = 240; // cooldown
         }
-        const p0=0.03; let p=p0*sigmoid((this.energy-this.reproThreshold)/8.0); p*= (1 + 0.08*score)*(1 - 0.18*Z); p*= clamp((Et-0.10)/0.55, 0.05, 1.0);
+        const p0=0.03; let p=p0*sigmoid((this.energy-this.reproThreshold)/8.0); p*= (1 + 0.18*fieldFavor)*(1 - 0.42*dirty); p*= clamp((Et-0.16)/0.48, 0.03, 1.18);
         // additional gates: local nutrients + body condition + internal stores (mild)
         if(this.mem!==undefined){
-          p *= clamp(0.85 + 0.30*En, 0.55, 1.15);
-          p *= clamp(0.70 + 0.30*this.mem, 0.40, 1.0);
-          p *= clamp(0.85 + 0.15*clamp01(this.storeN*3.0), 0.65, 1.0);
-          p *= clamp(0.85 + 0.15*clamp01(this.storeO*3.0), 0.65, 1.0);
-          p *= clamp(1.00 - 0.35*clamp01(this.storeD*3.0), 0.45, 1.0);
+          p *= clamp(0.65 + 0.74*En, 0.28, 1.35);
+          p *= clamp(0.48 + 0.56*this.mem, 0.18, 1.08);
+          p *= clamp(0.72 + 0.30*clamp01(this.storeN*3.0), 0.42, 1.06);
+          p *= clamp(0.62 + 0.44*clamp01(this.storeO*3.0), 0.34, 1.08);
+          p *= clamp(1.00 - 0.62*clamp01(this.storeD*3.0), 0.20, 1.0);
         }
         p*= (worldEvent.reproT>0 ? worldEvent.reproMul : 1);
         if(Math.random()<p){ const kids=this.tryReproduce(); if(kids && kids.length){ newborn.push(...kids); recordAction(this,`繁殖した（${kids.length}個体）`); this.mateSeekT=0; } }
@@ -3387,7 +3415,7 @@ if(Z>0.10){
 const env = (function(){
   // ---- Settings ----
   const types = ['algae','cold','turbid','foul']; // foul = 忌避（腐敗/毒/低酸素）
-  let cell = 20, ew = 0, eh = 0;
+  let cell = 18, ew = 0, eh = 0;
   let fields = null;      // Float32Array per type
   let corpseGrid = null;  // Uint16 counts per cell
   let plankGrid = null;   // Uint16 counts per cell (plankton)
@@ -3465,6 +3493,25 @@ const env = (function(){
     const cy = Math.min(eh-1, Math.max(0, (y/cell)|0));
     return fields[type][idx(cx,cy)] || 0;
   }
+  function applyLocal(type,x,y,amt,sign=1,radius=1){
+    ensure();
+    if(!fields[type]) return;
+    const cx = Math.min(ew-1, Math.max(0, (x/cell)|0));
+    const cy = Math.min(eh-1, Math.max(0, (y/cell)|0));
+    const mag = Math.max(0, amt||0);
+    for(let dy=-radius; dy<=radius; dy++){
+      const yy=cy+dy; if(yy<0||yy>=eh) continue;
+      for(let dx=-radius; dx<=radius; dx++){
+        const xx=cx+dx; if(xx<0||xx>=ew) continue;
+        const d=Math.hypot(dx,dy);
+        if(d>radius+0.01) continue;
+        const w = d<0.01 ? 1.0 : (d<1.1 ? 0.46 : 0.22);
+        const i=idx(xx,yy);
+        fields[type][i]=clamp01(fields[type][i] + sign*mag*w);
+      }
+    }
+    lastPaint = -999;
+  }
 
   // ---- Seeding from legacy patches ----
   function seedFromPatches(patches){
@@ -3483,11 +3530,11 @@ const env = (function(){
             const ii = idx(xx,yy);
 if(p.type==='turbid'){
   // reinterpret "turbid" patches as dirty / low-oxygen zones
-  const vv = k*k*0.9;
-  fields.foul[ii] = Math.max(fields.foul[ii], vv*0.65);
-  fields.turbid[ii] = Math.min(fields.turbid[ii], 0.65 - 0.35*vv);
+  const vv = k*k*1.0;
+  fields.foul[ii] = Math.max(fields.foul[ii], vv*0.92);
+  fields.turbid[ii] = Math.min(fields.turbid[ii], 0.52 - 0.40*vv);
 } else {
-  fields[p.type][ii] = Math.max(fields[p.type][ii], k*k*0.9);
+  fields[p.type][ii] = Math.max(fields[p.type][ii], k*k*1.0);
 }
           }
         }
@@ -3564,27 +3611,27 @@ if(p.type==='turbid'){
 
       // --- Detritus production & cleanup ---
       // corpses + "waste" from living biomass
-      D = clamp01(D + (0.030*densCorp + 0.006*densBio) * (1 - D));
+      D = clamp01(D + (0.055*densCorp + 0.014*densBio) * (1 - D));
       // scavengers reduce detritus locally (clean-up)
-      D = clamp01(D - 0.030*densScav * (0.25 + 0.75*D));
+      D = clamp01(D - 0.046*densScav * (0.25 + 0.75*D));
 
       // --- Decomposition: D -> N, consumes O (stronger at night) ---
-      const nightBoost = 0.55 + 0.45*(1 - L);
-      const decomp = 0.040 * D * tempF * nightBoost;
+      const nightBoost = 0.48 + 0.62*(1 - L);
+      const decomp = 0.068 * D * tempF * nightBoost;
       D = clamp01(D - decomp);
-      N = clamp01(N + 0.75*decomp);
+      N = clamp01(N + 0.95*decomp);
 
       // --- Photosynthesis (day): consumes N, produces O; inhibited by high D ---
-      const photo = 0.070 * N * L * (0.35 + 0.65*(1 - D));
-      N = clamp01(N - 0.55*photo);
-      O = clamp01(O + photo);
+      const photo = 0.118 * N * L * (0.18 + 0.82*(1 - D));
+      N = clamp01(N - 0.70*photo);
+      O = clamp01(O + 1.12*photo);
 
       // --- Oxygen sinks (respiration + decomposition) ---
-      const oxCost = (0.060*decomp + 0.012*densBio*tempF);
+      const oxCost = (0.115*decomp + 0.026*densBio*tempF + 0.020*D);
       O = clamp01(O - oxCost);
 
       // gentle re-aeration toward a baseline
-      O = clamp01(O + 0.010*(0.75 - O));
+      O = clamp01(O + 0.006*(0.75 - O));
 
       fields.algae[i]=N;
       fields.foul[i]=D;
@@ -3615,10 +3662,10 @@ if(p.type==='turbid'){
     }
 
     // diffusion (no forced decay; the dynamics above already "uses" resources)
-    diffuseOne(fields.algae, 0.055, 0.000);
-    diffuseOne(fields.foul,  0.035, 0.000);
-    diffuseOne(fields.turbid,0.065, 0.000);
-    diffuseOne(fields.cold,  0.025, 0.000);
+    diffuseOne(fields.algae, 0.032, 0.000);
+    diffuseOne(fields.foul,  0.018, 0.000);
+    diffuseOne(fields.turbid,0.034, 0.000);
+    diffuseOne(fields.cold,  0.016, 0.000);
 
     // averages for HUD/logic
     let sN=0, sD=0, sO=0, sC=0;
@@ -3681,7 +3728,7 @@ if(p.type==='turbid'){
         const i = (y*ew+x);
         const o = i<<2;
         let Na = fields.algae[i], C = fields.cold[i], T = fields.turbid[i], Z = fields.foul[i];
-        const gamma=1.6; Na=Math.pow(Na,gamma); C=Math.pow(C,gamma); T=Math.pow(T,gamma); Z=Math.pow(Z,gamma);
+        const gamma=1.25; Na=Math.pow(Na,gamma); C=Math.pow(C,gamma); T=Math.pow(T,gamma); Z=Math.pow(Z,gamma);
         // per-layer colors (start->end)
 function col(c1,c2,t){
   return [ lerp(c1[0],c2[0],t), lerp(c1[1],c2[1],t), lerp(c1[2],c2[2],t) ];
@@ -3694,16 +3741,16 @@ const cC = col([28,42,112],[132,176,255], Math.min(1,C));
 const cO = col([25,88,96],[205,250,250], Math.min(1,T));
 
 // additive-ish base blend
-const wN = Na*0.85, wC = C*0.55, wO = T*0.80;
+const wN = Na*1.05, wC = C*0.72, wO = T*1.00;
 let r = cN[0]*wN + cC[0]*wC + cO[0]*wO;
 let g = cN[1]*wN + cC[1]*wC + cO[1]*wO;
 let b = cN[2]*wN + cC[2]*wC + cO[2]*wO;
 
 // Detritus (Z) darkens + adds amber/pink organic stain
-const shade = (1 - 0.42*Z);
-r = r*shade + 95*Z;
-g = g*shade + 62*Z;
-b = b*shade + 50*Z;
+const shade = (1 - 0.58*Z);
+r = r*shade + 126*Z;
+g = g*shade + 58*Z;
+b = b*shade + 64*Z;
 
 const scale = 1.0; // overall brightness
 data[o+0] = Math.max(0, Math.min(255, r*scale));
@@ -3729,16 +3776,16 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,Z))
         vec3 mix3(vec3 a, vec3 b, float t){ return a + (b-a)*t; }
         void main(){
           vec4 f = texture2D(uFields, vec2(vUv.x, 1.0-vUv.y));
-          float N = pow(f.r, 1.6);
-          float C = pow(f.g, 1.6);
-          float O = pow(f.b, 1.6);
-          float D = pow(f.a, 1.6);
+          float N = pow(f.r, 1.25);
+          float C = pow(f.g, 1.25);
+          float O = pow(f.b, 1.25);
+          float D = pow(f.a, 1.25);
           vec3 cN = mix3(vec3(28.0,78.0,58.0), vec3(128.0,235.0,162.0), N);
           vec3 cC = mix3(vec3(28.0,42.0,112.0), vec3(132.0,176.0,255.0), C);
           vec3 cO = mix3(vec3(25.0,88.0,96.0), vec3(205.0,250.0,250.0), O);
-          vec3 col = cN*(N*0.85) + cC*(C*0.55) + cO*(O*0.80);
-          float shade = 1.0 - 0.42*D;
-          col = col*shade + vec3(95.0,62.0,50.0)*D;
+          vec3 col = cN*(N*1.05) + cC*(C*0.72) + cO*(O*1.00);
+          float shade = 1.0 - 0.58*D;
+          col = col*shade + vec3(126.0,58.0,64.0)*D;
           float a = max(max(N,C), max(O,D))>0.02 ? 0.85 : 0.0;
           gl_FragColor = vec4(clamp(col/255.0, 0.0, 1.0), a);
         }`;
@@ -3800,7 +3847,7 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,Z))
     if(!usedGpu) paintPixels();
     const prev = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = true;
-    ctx.globalAlpha = (typeof dayNight!=='undefined' && !dayNight.isNight) ? 0.32 : 0.42;
+    ctx.globalAlpha = (typeof dayNight!=='undefined' && !dayNight.isNight) ? 0.46 : 0.60;
     ctx.drawImage((usedGpu && gpuCanvas) ? gpuCanvas : pxCanvas, 0,0, W,H);
     ctx.globalAlpha = 1.0;
     ctx.imageSmoothingEnabled = prev;
@@ -3843,34 +3890,16 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,Z))
   },
   setViewMode: m => setViewMode(m),
   sinkAlgaeAt: function(x,y,amt){
-    ensure();
-    const cx=Math.min(ew-1, Math.max(0, (x/cell)|0));
-    const cy=Math.min(eh-1, Math.max(0, (y/cell)|0));
-    const i=idx(cx,cy);
-    fields.algae[i]=Math.max(0, fields.algae[i]-Math.max(0,amt||0));
+    applyLocal('algae',x,y,amt,-1,1);
   },
   sinkDetritusAt: function(x,y,amt){
-    ensure();
-    const cx=Math.min(ew-1, Math.max(0, (x/cell)|0));
-    const cy=Math.min(eh-1, Math.max(0, (y/cell)|0));
-    const i=idx(cx,cy);
-    fields.foul[i]=Math.max(0, fields.foul[i]-Math.max(0,amt||0));
+    applyLocal('foul',x,y,amt,-1,1);
   },
   sinkOxygenAt: function(x,y,amt){
-    ensure();
-    const cx=Math.min(ew-1, Math.max(0, (x/cell)|0));
-    const cy=Math.min(eh-1, Math.max(0, (y/cell)|0));
-    const i=idx(cx,cy);
-    fields.turbid[i]=Math.max(0, fields.turbid[i]-Math.max(0,amt||0));
+    applyLocal('turbid',x,y,amt,-1,1);
   },
   addAt: function(type, x, y, amt){
-    ensure();
-    const cx=Math.min(ew-1, Math.max(0, (x/cell)|0));
-    const cy=Math.min(eh-1, Math.max(0, (y/cell)|0));
-    const i=idx(cx,cy);
-    const a=Math.max(0, amt||0);
-    if(!fields[type]) return;
-    fields[type][i]=Math.max(0, Math.min(1, fields[type][i] + a));
+    applyLocal(type,x,y,amt,1,(amt||0)>0.010 ? 2 : 1);
   },
   addDetritusAt: function(x,y,amt){ this.addAt('foul', x,y, amt); },
   addOxygenAt: function(x,y,amt){ this.addAt('turbid', x,y, amt); }
