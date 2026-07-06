@@ -1289,6 +1289,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   const ADAPTATION_DEFS = [
     {id:'tentacle',label:'触手型',unlock:c=>c.se>0.70&&c.form.detail>0.42&&c.form.length>0.28,effect:o=>{o.senseR*=1.14;o.senseCost*=1.08;o.baseMetabolic*=1.04;},cost:0.04,visual:'触手で周囲を探れる',counter:'触手維持の負担が重い'},
     {id:'colonyBuilder',label:'コロニー形成',unlock:c=>(c.topology==='cluster'||c.flags?.colony||c.re>0.76)&&c.re>0.62&&c.sz<0.72,effect:o=>{o.reproThreshold*=0.96;o.maxSpeed*=0.88;o.protect=Math.max(o.protect||0,118);},cost:0.02,visual:'近接した子で群体を作る',counter:'過密で広がりにくい'},
+    {id:'sessileFarmer',label:'固着養藻型',unlock:c=>c.ef>0.70&&c.sp<0.34&&c.c<0.42&&(c.r==='filter'||c.c<0.33),effect:o=>{o.maxSpeed*=0.24;o.baseMetabolic*=0.96;o.senseCost*=0.92;o.localAlgaeFarm={grow:0.0075,graze:0.0048,oxygen:0.0022,radius:2};o.predationRiskMul=(o.predationRiskMul||1)*1.26;},cost:0.05,visual:'ほぼ動かず周囲の藻を育てて食べる',counter:'捕食に弱い'},
     {id:'adhesiveMat',label:'付着マット型',unlock:c=>c.ef>0.72&&c.sp<0.40&&c.c<0.58,effect:o=>{o.baseMetabolic*=0.84;o.maxSpeed*=0.70;o.senseCost*=0.90;},cost:-0.03,visual:'省エネで張り付く',counter:'環境変化から逃げにくい'},
     {id:'cyst',label:'休眠シスト型',unlock:c=>c.ef>0.70&&c.sz>0.52&&c.sp<0.58,effect:o=>{o.baseMetabolic*=0.88;o.reproThreshold*=1.04;},cost:-0.01,visual:null,counter:null},
     {id:'filterFan',label:'濾過扇型',unlock:c=>c.r==='filter'&&(c.se>0.38||c.form.detail>0.35),effect:o=>{o.senseR*=1.08;o.maxSpeed*=0.95;},cost:0.02,visual:null,counter:null},
@@ -1823,6 +1824,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       `希少形質：${rare}`,
       `保因：${carrier}`,
       `適応：${adaptationLabelText(o.genes,o.flags,o.morphologyTopology,o.role)}`,
+      `局所作用：${o.localAlgaeFarm?'藻を育てている':'なし'}`,
       `素材：${materialLabel(o.genes,o.morphologyTopology,o.flags)}`,
       `内部：${internalStructureLabel(o.genes,o.flags,o.morphologyTopology)}`,
       `特徴：${featureSummary(o.genes,o.flags,o.morphologyTopology)}`,
@@ -1955,6 +1957,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this.senseR = lerp(50, 140, this.genes.sense);
       this.senseCost = lerp(0.02, 0.08, this.genes.sense);
       this.reproThreshold = 60 + 50*this.genes.fecundity;
+      this.localAlgaeFarm=null; this.predationRiskMul=1;
 
       this.edgeCount = Math.round(lerp(0, 6, form.detail));
       this.edgeAmp   = lerp(0.0, 0.45, form.wave);
@@ -2603,6 +2606,24 @@ const Z = env.valueAt('detritus',  this.x,this.y); // D (detritus)
         env.sinkAlgaeAt(this.x,this.y, takeN);
         this.storeN = clamp(this.storeN + takeN*3.2, 0, 1);
       }
+      const farm=this.localAlgaeFarm;
+      if(farm && env && env.addNutrientAt){
+        const farmCalm=clamp(1 - Math.hypot(this.vx,this.vy)/Math.max(0.1,this.maxSpeed||1),0,1);
+        const farmK=clamp((0.45+0.55*farmCalm)*(0.55+0.75*Et-0.50*Z),0.08,1.25);
+        env.addNutrientAt(this.x,this.y,farm.grow*farmK);
+        if(env.addOxygenAt) env.addOxygenAt(this.x,this.y,farm.oxygen*farmK);
+        if(this.energy<this.reproThreshold*1.10 && env.grazeAlgaeAt){
+          const eaten=env.grazeAlgaeAt(this.x,this.y,farm.graze*farmK,farm.radius||1);
+          if(eaten>0){
+            const gain=eaten*(54+30*(1-this.genes.diet))*plantDigestFactor(this.genes.diet);
+            this.energy=clamp(this.energy+gain,0,160);
+            this.storeN=clamp((this.storeN||0)+0.055*(gain/20),0,1);
+            this.fitness+=0.04+eaten*4.2;
+            recordFoodUse('fieldAlgae',this,gain,1);
+            if(frame-(this._lastFarmAction||0)>240){ recordAction(this,'藻を育てて食べている'); this._lastFarmAction=frame; }
+          }
+        }
+      }
 
       // local oxygen consumption (respiration) -> lowers O in the cell
       const respO = 0.00105 * (0.65 + 0.7*this.genes.size) * (0.55 + 0.65*this.genes.speed) * (1 + 0.45*dirty);
@@ -2925,6 +2946,7 @@ if(Z>0.08){
         forEachOrgNeighbors(prey.x,prey.y,76,(o2)=>{ if(o2!==this && o2.speciesKey===this.speciesKey && (o2.role==='pack' || o2.socialMode==='hunt-pack')) mates++; });
         p*= (0.78 + 0.095*mates) * rareFactor('pack');
       }
+      p*=prey.predationRiskMul||1;
       p*= (worldEvent.predSuccessMul||1);
       if(prey.socialMode==='defense-school'){
         let herd=0, screen=0;
