@@ -269,10 +269,11 @@
         big: 0
       }),
       predatorBurst: Object.freeze({
+        role: 'ambusher',
         carnivoryMin: 0.66,
         triggerSenseScale: 0.62,
-        frames: 28,
-        speedMultiplier: 1.72,
+        frames: 22,
+        speedMultiplier: 1.65,
         energyCost: 0.012
       }),
       plankton: Object.freeze({
@@ -946,7 +947,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   }
   function isPredatorBursting(o){
     const cfg=CONFIG.ecology.predatorBurst;
-    return !!(o && o.burstTimer>0 && (o.genes?.carnivory ?? 0) >= cfg.carnivoryMin && (o.chaseTimer>0 || o.preyTargetId));
+    return !!(o && o.role===cfg.role && o.burstTimer>0 && (o.genes?.carnivory ?? 0) >= cfg.carnivoryMin && (o.chaseTimer>0 || o.preyTargetId));
   }
   function dietRareFactor(type){
     const s = dietShare[type] ?? 0.33;
@@ -2232,7 +2233,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         packBonus += Math.min(0.28, mates*0.06);
       }
       if(ambush && d<this.senseR*0.50) this.burstTimer=Math.max(this.burstTimer,20);
-      if(carn>=burstCfg.carnivoryMin && d<this.senseR*burstCfg.triggerSenseScale && intent>0.12 && this.energy>this.reproThreshold*0.30){
+      if(ambush && carn>=burstCfg.carnivoryMin && d<this.senseR*burstCfg.triggerSenseScale && intent>0.12 && this.energy>this.reproThreshold*0.30){
         this.burstTimer=Math.max(this.burstTimer,burstCfg.frames);
         if(frame-(this._lastBurstAction||0)>150){ recordAction(this,'捕食バースト'); this._lastBurstAction=frame; }
       }
@@ -2559,6 +2560,27 @@ if(Z>0.08){
             }
             corpses.splice(i,1);
             break;
+          }
+        }
+        if(window.env && window.env.sinkDetritusAt && Z>0.075 && this.energy<this.reproThreshold*1.12){
+          const carn=this.genes.carnivory;
+          const diet=dietTypeFromCarn(carn);
+          const detritusNeed=clamp((this.reproThreshold*1.12-this.energy)/Math.max(1,this.reproThreshold),0,1);
+          const detritusAmt=(0.0018 + 0.0032*this.genes.efficiency) * clamp((Z-0.05)/0.52,0,1) * (0.36 + 0.82*detritusNeed);
+          if(detritusAmt>0.0004){
+            window.env.sinkDetritusAt(this.x,this.y,detritusAmt);
+            const gain=detritusAmt * 44 * rareFactor('scav') * meatDigestFactor(carn) * dietRareFactor(diet) * (diet==='m'?1.0:(diet==='c'?0.88:0.72));
+            if(gain>0){
+              this.energy=clamp(this.energy+gain,0,160);
+              this.storeN = clamp((this.storeN||0) + 0.030*(gain/40), 0, 1);
+              this.fitness += 0.015 + detritusAmt*2.0;
+              recordFoodUse('fieldDetritus',this,gain,1);
+              if(gain>0.10 && frame-(this._lastDetritusAction||0)>96){ recordAction(this,'デトリタスを舐め取った'); this._lastDetritusAction=frame; }
+              if(gain>0.16 && frame-(this._lastDetritusRing||0)>76 && Math.random()<0.30){
+                pushRing(this.x,this.y,{r0:2,r1:12,color:'rgba(210,170,96,',t:22,width:0.9});
+                this._lastDetritusRing=frame;
+              }
+            }
           }
         }
       }
