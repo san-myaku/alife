@@ -75,6 +75,9 @@
   .species-avatar { width:28px; height:28px; }
   .species-key { flex:1; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .species-diet { opacity:0.8; }
+  .strategy-chip{ display:inline-flex; align-items:center; gap:5px; border:1px solid rgba(125,211,252,.28); background:rgba(14,30,58,.78); color:#dbeafe; border-radius:999px; padding:2px 7px; font-size:11px; font-weight:700; }
+  .strategy-line{ margin-top:4px; font-size:11px; color:#b8c7e6; line-height:1.35; }
+  .strategy-line b{ color:#e7f2ff; }
   .species-stats { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-bottom:6px; }
   .species-trend { opacity:0.8; }
   .species-bar { height:6px; background:linear-gradient(90deg, #98c0ff var(--value, 0%), rgba(255,255,255,.10) var(--value, 0%)); border-radius:4px; margin:2px 0; }
@@ -1000,8 +1003,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function announceNewSpecies(o){
     if(!o || !canAnnounceNewSpecies()) return false;
     const name=speciesNameFromGenes(o.genes,o.flags);
-    if(showToast('species', `新種：${name}が出現`)) markNewSpecies(o);
-    log(`新種：${name}（${o.speciesKey}）が出現。${featureSummary(o.genes,o.flags,o.morphologyTopology||topologyFromGenes(o.genes))}。`);
+    const topology=o.morphologyTopology||topologyFromGenes(o.genes);
+    const profile=speciesStrategyProfile(o.genes,o.flags,topology,o.role);
+    if(showToast('species', `新種：${name}｜${profile.title}。${profile.primary}を主食にする`)) markNewSpecies(o);
+    log(`新種：${name}（${o.speciesKey}）が出現。${profile.summary} 特徴：${featureSummary(o.genes,o.flags,topology)}。`);
     return true;
   }
   const roleShare={...CONFIG.ecology.initialRoleShare};
@@ -1209,6 +1214,56 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(c<=0.33) return '藻、浮遊栄養';
     return '藻、死骸、小型生命';
   }
+  function roleLabel(role){
+    return ({scav:'腐肉食',filter:'濾過食',ambusher:'待ち伏せ捕食',pack:'群れ捕食',other:'遊泳採餌'})[role] || '遊泳採餌';
+  }
+  function ledgerFoodLabel(food){
+    return ({
+      algae:'藻場',
+      plankton:'プランクトン',
+      'corpse-detritus':'死骸片',
+      prey:'他個体',
+      wild:'野良餌'
+    })[food] || '藻場';
+  }
+  function environmentalPreferenceLabel(g, flags=null, topology=topologyFromGenes(g), role=computeRole(g)){
+    if(flags?.chl) return '明るく酸素が戻る藻場';
+    if(role==='filter') return '酸素があり分解が進む水域';
+    if(role==='scav') return '死骸片が残る分解帯';
+    if(role==='ambusher') return '藻場の縁や個体密度の高い場所';
+    if(role==='pack') return '同種が集まれる開けた水域';
+    if(topology==='mesh') return '濁りや低酸素に耐える場所';
+    if((g?.speed??0)>0.70) return '広く移動できる薄い藻場';
+    if((g?.efficiency??0)>0.70) return '餌が薄い安定水域';
+    if((g?.reproduction??0)>0.70) return '藻が再生する繁殖地';
+    return '藻場と酸素が残る水域';
+  }
+  function strategyTitleFrom(role, diet, tags, flags=null){
+    if(role==='scav') return '腐肉循環型';
+    if(role==='filter') return '濾過遊泳型';
+    if(role==='ambusher') return '待ち伏せ捕食型';
+    if(role==='pack') return '群れ捕食型';
+    if(flags?.chl) return '光合成共生型';
+    if(tags.includes('colonyBuilder')) return 'コロニー繁殖型';
+    if(tags.includes('adhesiveMat')) return '省エネ定着型';
+    if(diet==='c') return '単独捕食型';
+    if(diet==='h') return '藻場採餌型';
+    return '混食適応型';
+  }
+  function speciesStrategyProfile(g, flags=null, topology=topologyFromGenes(g), role=computeRole(g)){
+    const diet=dietTypeFromCarn(g?.carnivory ?? 0.5);
+    const ledger=CONFIG.ecology.roleFoodLedger[foodLedgerKeyFor({genes:g,role})] || CONFIG.ecology.roleFoodLedger.other;
+    const tags=adaptationProfilesFromGenes(g, flags, topology, role);
+    const title=strategyTitleFrom(role,diet,tags,flags);
+    const primary=ledgerFoodLabel(ledger.main);
+    const secondary=ledger.secondary ? ledgerFoodLabel(ledger.secondary) : 'なし';
+    const env=environmentalPreferenceLabel(g,flags,topology,role);
+    const strength=prosperityLabel(g,topology,flags);
+    const risk=weaknessLabel(g,topology);
+    const adaptation=adaptationLabelText(g,flags,topology,role,'なし');
+    const summary=`${primary}を主食に、${env}で伸びる。弱点は${risk}。`;
+    return {title, role:roleLabel(role), primary, secondary, env, strength, risk, adaptation, summary, tags};
+  }
   function weaknessLabel(g, topology=topologyFromGenes(g)){
     const c=g?.carnivory ?? 0.5;
     const adapt=adaptationProfilesFromGenes(g, null, topology);
@@ -1360,6 +1415,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     }
     return {roles,diets,ledger};
   }
+  function strategyBreakdown(){
+    const out=Object.create(null);
+    for(const o of organisms){
+      const topo=o.morphologyTopology||topologyFromGenes(o.genes);
+      const p=speciesStrategyProfile(o.genes,o.flags,topo,o.role);
+      out[p.title]=(out[p.title]||0)+1;
+    }
+    return out;
+  }
   function buildFoodWebSummary(windowFrames=1800){
     const wf=Math.max(120, Math.min(7200, Number(windowFrames)||1800));
     const recentEat=summarizeCounters(foodWebStats.recent,'eat','count',wf);
@@ -1368,7 +1432,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     return {
       frame,
       windowFrames:wf,
-      population:populationFoodWebBreakdown(),
+      population:{...populationFoodWebBreakdown(), strategies:strategyBreakdown()},
       resources:{
         food:food.length,
         corpses:corpses.length,
@@ -1440,28 +1504,43 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(!o || !o.speciesKey) return;
     let s=speciesStats.get(o.speciesKey);
     if(!s){
+      const topo=o.morphologyTopology||topologyFromGenes(o.genes);
+      const profile=speciesStrategyProfile(o.genes,o.flags,topo,o.role);
       s={
         key:o.speciesKey,
         name:speciesNameFromGenes(o.genes,o.flags),
-        topology:topologyLabel(o.morphologyTopology||topologyFromGenes(o.genes)),
+        topology:topologyLabel(topo),
         diet:dietLabelFromGenes(o.genes),
+        strategy:profile.title,
+        strategySummary:profile.summary,
+        primaryFood:profile.primary,
+        environment:profile.env,
         firstGen:generation,
         firstFrame:frame,
         lastGen:generation,
         maxCount:0,
         deathCauses:{},
-        prosperity:prosperityLabel(o.genes,o.morphologyTopology,o.flags),
-        weakness:weaknessLabel(o.genes,o.morphologyTopology),
+        prosperity:profile.strength,
+        weakness:profile.risk,
         source:foodSourceLabel(o.genes,o.role),
-        feature:featureSummary(o.genes,o.flags,o.morphologyTopology),
-        material:materialLabel(o.genes,o.morphologyTopology,o.flags),
-        internal:internalStructureLabel(o.genes,o.flags,o.morphologyTopology),
+        feature:featureSummary(o.genes,o.flags,topo),
+        material:materialLabel(o.genes,topo,o.flags),
+        internal:internalStructureLabel(o.genes,o.flags,topo),
         rare:rareTraitNames(o.flags).join('、') || 'なし',
         carrier:traitCarrierNames(o.traits,o.flags).join('、') || 'なし',
         extinct:false
       };
       speciesStats.set(o.speciesKey,s);
     }
+    const topoNow=o.morphologyTopology||topologyFromGenes(o.genes);
+    const profileNow=speciesStrategyProfile(o.genes,o.flags,topoNow,o.role);
+    s.strategy=profileNow.title;
+    s.strategySummary=profileNow.summary;
+    s.primaryFood=profileNow.primary;
+    s.environment=profileNow.env;
+    s.prosperity=profileNow.strength;
+    s.weakness=profileNow.risk;
+    s.source=foodSourceLabel(o.genes,o.role);
     s.lastGen=generation;
     s.maxCount=Math.max(s.maxCount, speciesCount.get(o.speciesKey)||0);
     const rare=rareTraitNames(o.flags).join('、');
@@ -1495,6 +1574,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         const rec={
           key:s.key,name:s.name,topology:s.topology,diet:s.diet,
           firstGen:s.firstGen, extinctGen:generation, maxCount:s.maxCount,
+          strategy:s.strategy, strategySummary:s.strategySummary, primaryFood:s.primaryFood, environment:s.environment,
           cause:mainDeathCause(s), prosperity:s.prosperity, weakness:s.weakness, source:s.source,
           feature:s.feature, material:s.material, internal:s.internal, rare:s.rare, carrier:s.carrier
         };
@@ -1508,7 +1588,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function renderExtinctRecords(){
     const el=$('extinct-cards'); if(!el) return;
     if(!extinctRecords.length){ el.innerHTML='<div class="extinct-card">まだ絶滅記録はありません。</div>'; return; }
-    el.innerHTML=extinctRecords.slice(0,6).map(r=>`<div class="extinct-card"><b>${r.name}</b> <span style="opacity:.62">種コード ${r.key}</span><br>${r.topology} / ${r.diet}。第${r.firstGen}世代に出現し、第${r.extinctGen}世代に絶滅。最大${r.maxCount}個体。<br>主な栄養源：${r.source||'不明'}。主な死因：${r.cause}。<br>繁栄理由：${r.prosperity||'不明'}。弱点：${r.weakness||'不明'}。<br>特徴：${r.feature||'記録なし'}。素材：${r.material||'記録なし'}。内部：${r.internal||'記録なし'}。<br>希少形質：${r.rare||'なし'}。保因：${r.carrier||'なし'}</div>`).join('');
+    el.innerHTML=extinctRecords.slice(0,6).map(r=>`<div class="extinct-card"><b>${r.name}</b> <span style="opacity:.62">種コード ${r.key}</span><br>${r.topology} / ${r.diet} / ${r.strategy||'戦略不明'}。第${r.firstGen}世代に出現し、第${r.extinctGen}世代に絶滅。最大${r.maxCount}個体。<br>戦略：${r.strategySummary||'記録なし'}<br>主な栄養源：${r.source||r.primaryFood||'不明'}。主な死因：${r.cause}。<br>繁栄理由：${r.prosperity||'不明'}。弱点：${r.weakness||'不明'}。<br>特徴：${r.feature||'記録なし'}。素材：${r.material||'記録なし'}。内部：${r.internal||'記録なし'}。<br>希少形質：${r.rare||'なし'}。保因：${r.carrier||'なし'}</div>`).join('');
   }
   function waterStatusFromAverages(a){
     const water=a.D>0.42?'強い汚濁':(a.D>0.20?'やや汚濁':'良好');
@@ -1581,6 +1661,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const totals=fw.totals || {};
     const topEat=topCounter(recentEat);
     const topSupply=topCounter(fw.recent?.supplied || totals.supplied || {});
+    const topStrategy=topCounter(fw.population?.strategies || {});
     let signal='安定';
     if((a.oxygen??a.O)<0.32) signal='低酸素';
     else if((a.detritus??a.D)>0.28) signal='分解過多';
@@ -1609,6 +1690,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       const detEat=ecoCount(recentEat.detritusParticle || recentEat.corpse || 0);
       flow.innerHTML=[
         `<div>現在の主な摂食: <b>${topEat.label}</b> ${ecoCount(topEat.value)}/観察窓</div>`,
+        `<div>優勢な種戦略: <b>${topStrategy.label}</b> ${ecoCount(topStrategy.value)}体</div>`,
         `<div>供給の中心: <b>${topSupply.label}</b> ${ecoCount(topSupply.value)}件</div>`,
         `<div>藻場 → 個体 → 死骸片 → 分解 → プランクトン: ${detEat>0?'回り始めています':'観察待ち'}</div>`,
         `<div>捕食イベント: ${pred}/観察窓、平均エネルギー ${fw.resources?.averageEnergy ?? '-'}</div>`
@@ -1734,9 +1816,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const rare=rareTraitNames(o.flags).join('、') || 'なし';
     const carrier=traitCarrierNames(o.traits,o.flags).join('、') || 'なし';
     const recent=(o.recentEvents&&o.recentEvents.length) ? o.recentEvents[o.recentEvents.length-1].msg : (o.lastAction||'観察中');
+    const topo=o.morphologyTopology||topologyFromGenes(o.genes);
+    const profile=speciesStrategyProfile(o.genes,o.flags,topo,o.role);
     return [
       speciesNameFromGenes(o.genes,o.flags),
-      `形態：${topologyLabel(o.morphologyTopology||topologyFromGenes(o.genes))}`,
+      `戦略：${profile.title}（${profile.role}）`,
+      `主食：${profile.primary} / 副食：${profile.secondary}`,
+      `環境：${profile.env}`,
+      `形態：${topologyLabel(topo)}`,
       `食性：${dietLabelFromGenes(o.genes)}`,
       `状態：${statusLabel(o)}`,
       `エネルギー：${Math.round(o.energy)} / 年齢：${ageLabel(o)} / 世代：${generation}`,
@@ -1746,6 +1833,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       `素材：${materialLabel(o.genes,o.morphologyTopology,o.flags)}`,
       `内部：${internalStructureLabel(o.genes,o.flags,o.morphologyTopology)}`,
       `特徴：${featureSummary(o.genes,o.flags,o.morphologyTopology)}`,
+      `弱点：${profile.risk}`,
       `最近：${recent}`,
       `危険：${dangerLabel(o)}`
     ];
@@ -5292,6 +5380,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       const source = foodSourceLabel(it.g, computeRole(it.g));
       const prosperity = prosperityLabel(it.g, topo, flagBool);
       const weakness = weaknessLabel(it.g, topo);
+      const profile = speciesStrategyProfile(it.g, flagBool, topo, computeRole(it.g));
       const material = materialLabel(it.g, topo, flagBool);
       const internal = internalStructureLabel(it.g, flagBool, topo);
       const adaptation = adaptationLabelText(it.g, flagBool, topo, computeRole(it.g));
@@ -5307,6 +5396,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
           <div class="species-trend">${arrow}</div>
         </div>
         <div>${stars01(score)}</div>
+        <div class="strategy-line"><span class="strategy-chip">${profile.title}</span> <b>${profile.primary}</b>主食 / ${profile.env}</div>
         <div style="margin-top:4px; font-size:11px; opacity:.72;">
           形態: ${topologyLabel(topo)} ｜食性: ${dietLabelFromGenes(it.g)} ｜戦略: ${socialStrategyLabel(strat.mode)}
         </div>
@@ -5319,6 +5409,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
         <div style="margin-top:3px; font-size:11px; opacity:.72;">
           繁栄理由: ${prosperity} ｜弱点: ${weakness}
         </div>
+        <div class="strategy-line">要約: ${profile.summary}</div>
         <div style="margin-top:3px; font-size:11px; opacity:.72;">
           希少形質: ${rareText} ｜特徴: ${featureSummary(it.g,flagBool,topo)}
         </div>
@@ -5676,7 +5767,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       if(organisms.length===0){ log('💀 絶滅 → 再播種'); speciesAnnounceMuteUntil = frame + 600; initPopulation(Math.max(CONFIG.population.reseedMin, Math.round(CONFIG.population.starter*CONFIG.population.reseedRatio))); }
       peaceCounter++; evaluateChallenges();
       tickDayNight();
-      if(frame%300===0) rebuildSpeciesCards();
+      if(frame%120===0) rebuildSpeciesCards();
     }
   }
   function updateRoleShare(){ const n=organisms.length||1; const c={ambusher:0,pack:0,scav:0,filter:0,other:0}; for(const x of organisms){ c[x.role]++; } for(const k of Object.keys(c)){ roleShare[k]=c[k]/n; } }
@@ -5811,6 +5902,9 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
         totals:summary.totals,
         resources:summary.resources
       };
+    },
+    strategySummary(){
+      return strategyBreakdown();
     },
     selectFirst(){
       const o=organisms[0]||null;
