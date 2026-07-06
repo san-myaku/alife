@@ -24,6 +24,13 @@
 
 ## Change Log
 
+### 2026-07-06
+
+- Adopted the Obsidian refactoring direction as the forward development guide: simplify by making ecological cause/effect visible before adding more features.
+- Added a centralized `CONFIG` object for population, organism scale/speed, rendering caps, ecology tuning, and environment-grid settings.
+- Added the first ecology design ledger (`roleFoodLedger`) for the planned "one primary food per role" cleanup, exposed through `window.__alifeDebug.designLedger()`.
+- Kept behavior-preserving aliases out of the code path by replacing scattered tuning constants with `CONFIG.*` reads.
+
 ### 2026-06-30
 
 - Added a water-reflection toggle and made caustics default OFF so the experimental surface effect can be disabled without paying its drawing cost.

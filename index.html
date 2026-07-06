@@ -224,8 +224,63 @@
   const TAU=Math.PI*2; const rnd=(a,b)=>Math.random()*(b-a)+a; const clamp=(x,a,b)=>Math.max(a,Math.min(b,x)); const clamp01=(x)=>clamp(x,0,1); const lerp=(a,b,t)=>a+(b-a)*t; const sigmoid=x=>1/(1+Math.exp(-x));
   const hash01 = (s)=>{ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h>>>0)/2**32; };
 
+  // ===== Design config =====
+  // Keep tuning and ecology ledgers in one place before deeper model/render/ui splits.
+  const CONFIG = Object.freeze({
+    population: Object.freeze({
+      starter: 64,
+      maxDefault: 120,
+      reseedMin: 36,
+      reseedRatio: 0.65
+    }),
+    organism: Object.freeze({
+      movementSpeedScale: 0.25,
+      maxSizeScale: 2.0
+    }),
+    rendering: Object.freeze({
+      tinyEnterPop: 118,
+      tinyExitPop: 96,
+      mobileTinyEnterPop: 96,
+      mobileTinyExitPop: 72,
+      maxSparks: 190,
+      maxRings: 130,
+      maxCurrents: 90,
+      maxMembranes: 90,
+      planktonVisualScale: 0.5,
+      starvationParticleScale: 0.5,
+      starvationParticleAlpha: 0.5,
+      microView: Object.freeze({
+        baseScale: 0.34,
+        rareScale: 0.48,
+        discoveryScale: 0.72,
+        selectedScale: 1.0
+      })
+    }),
+    ecology: Object.freeze({
+      wildFoodSpawnScale: 0.18,
+      initialRoleShare: Object.freeze({ ambusher:0, pack:0, scav:0, filter:0, other:1 }),
+      initialDietShare: Object.freeze({ h:0.34, m:0.33, c:0.33 }),
+      roleFoodLedger: Object.freeze({
+        filter: Object.freeze({ main:'plankton', secondary:'algae' }),
+        grazer: Object.freeze({ main:'algae', secondary:null }),
+        scav: Object.freeze({ main:'corpse-detritus', secondary:'algae' }),
+        ambusher: Object.freeze({ main:'prey', secondary:'corpse' }),
+        pack: Object.freeze({ main:'prey', secondary:'corpse' }),
+        other: Object.freeze({ main:'algae', secondary:null })
+      })
+    }),
+    environment: Object.freeze({
+      cellSize: 18,
+      algaeVisualSubdiv: 5,
+      fieldTypes: Object.freeze(['algae','cold','turbid','foul']),
+      dotCaps: Object.freeze({ algae:240, cold:180, turbid:200 }),
+      thresholdsOn: Object.freeze({ algae:0.35, cold:0.35, turbid:0.30 }),
+      thresholdsOff: Object.freeze({ algae:0.20, cold:0.20, turbid:0.18 })
+    })
+  });
+
   // ===== UI State =====
-  const ui={ speed:1, mutation:0.03, showSense:false, tool:'food', popMax:120, parallax:1.0, roleViz:false, caustics:false, microView:true, forceFullRender:true };
+  const ui={ speed:1, mutation:0.03, showSense:false, tool:'food', popMax:CONFIG.population.maxDefault, parallax:1.0, roleViz:false, caustics:false, microView:true, forceFullRender:true };
   const renderPerf = { mobile:IS_MOBILE_VIEW, low:!ui.forceFullRender && IS_MOBILE_VIEW, tiny:false, mode:ui.forceFullRender?'full':(IS_MOBILE_VIEW?'low':'full'), meshCount:0, complexCount:0, heavyComplex:false };
   $('speed-slider').addEventListener('input',e=>{ ui.speed=+e.target.value; $('speed-value').textContent=ui.speed+'x'; });
   $('mutation-slider').addEventListener('input',e=>{ ui.mutation=(+e.target.value)/100; $('mutation-value').textContent=e.target.value+'%'; });
@@ -317,8 +372,6 @@
   const fpsHud = $('fps-hud');
   const fpsMeter = { last: performance.now(), frames: 0, fps: 0 };
   const perfStats = { updateMs:0, drawMs:0, speciesCardMs:0, neighborQueries:0, neighborQueriesLast:0, predationScans:0, predationScansLast:0 };
-  const TINY_RENDER_ENTER_POP = 118;
-  const TINY_RENDER_EXIT_POP = 96;
   function updateAdaptiveRenderMode(fps){
     const pop = organisms.length;
     let meshCount = 0, complexCount = 0;
@@ -327,11 +380,11 @@
       if(t==='mesh') meshCount++;
       if(t==='mesh' || t==='radial' || t==='ring' || t==='branch' || t==='cluster') complexCount++;
     }
-    const heavyComplex = (renderPerf.mobile && (pop >= 96 || meshCount >= 24 || complexCount >= 64))
+    const heavyComplex = (renderPerf.mobile && (pop >= CONFIG.rendering.mobileTinyEnterPop || meshCount >= 24 || complexCount >= 64))
       || meshCount >= 58
       || complexCount >= 112;
-    const enterPop = renderPerf.mobile ? 96 : TINY_RENDER_ENTER_POP;
-    const exitPop = renderPerf.mobile ? 72 : TINY_RENDER_EXIT_POP;
+    const enterPop = renderPerf.mobile ? CONFIG.rendering.mobileTinyEnterPop : CONFIG.rendering.tinyEnterPop;
+    const exitPop = renderPerf.mobile ? CONFIG.rendering.mobileTinyExitPop : CONFIG.rendering.tinyExitPop;
     const fpsEmergency = fps < (renderPerf.mobile ? 22 : 18) && pop > 68;
     renderPerf.meshCount = meshCount;
     renderPerf.complexCount = complexCount;
@@ -494,7 +547,7 @@
       }
     }
     draw(ctx){
-      const s=PLANKTON_VISUAL_SCALE;
+      const s=CONFIG.rendering.planktonVisualScale;
       const glow=(dayNight.isNight?0.62:0.26)*this.fade;
       const glowR=(dayNight.isNight?7:4)*s;
       ctx.save(); ctx.translate(this.x,this.y); ctx.rotate(this.spin);
@@ -761,11 +814,6 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   }
 let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food=[]; const corpses=[]; const plankton=[]; const patches=[]; const calls=[];
   const rings=[]; const waterCurrents=[]; const membranes=[];
-  const STARTER_POP = 64;
-  const MAX_SPARKS = 190;
-  const MAX_RINGS = 130;
-  const MAX_CURRENTS = 90;
-  const MAX_MEMBRANES = 90;
   let speciesAnnounceMuteUntil = 0;
   let selectedOrganism = null;
   let selectedDeadAt = 0;
@@ -773,24 +821,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   const speciesStats = new Map();
   const evolutionMilestones = new Set();
   const extinctRecords = [];
-  const MICRO_VIEW = {
-    baseScale: 0.34,
-    rareScale: 0.48,
-    discoveryScale: 0.72,
-    selectedScale: 1.0
-  };
-  const MOVEMENT_SPEED_SCALE = 0.25;
-  const PLANKTON_VISUAL_SCALE = 0.5;
-  const ORGANISM_MAX_SIZE_SCALE = 2.0;
-  const STARVATION_PARTICLE_SCALE = 0.5;
-  const STARVATION_PARTICLE_ALPHA = 0.5;
-  const WILD_FOOD_SPAWN_SCALE = 0.18;
   let lastWaterStatusKey = '';
   let lastCapacityKey = '';
   let lastCycleLogFrame = -9999;
   let lastCleanLogFrame = -9999;
   function trimSparks(){
-    if(sparks.length>MAX_SPARKS) sparks.splice(0, sparks.length-MAX_SPARKS);
+    if(sparks.length>CONFIG.rendering.maxSparks) sparks.splice(0, sparks.length-CONFIG.rendering.maxSparks);
   }
   function canAnnounceNewSpecies(){
     return frame >= speciesAnnounceMuteUntil;
@@ -802,8 +838,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     log(`新種：${name}（${o.speciesKey}）が出現。${featureSummary(o.genes,o.flags,o.morphologyTopology||topologyFromGenes(o.genes))}。`);
     return true;
   }
-  const roleShare={ ambusher:0, pack:0, scav:0, filter:0, other:1 };
-  const dietShare={ h:0.34, m:0.33, c:0.33 }; // herb / omni / carn
+  const roleShare={...CONFIG.ecology.initialRoleShare};
+  const dietShare={...CONFIG.ecology.initialDietShare}; // herb / omni / carn
   function dietTypeFromCarn(c){ return (c<0.33)?'h':(c<0.66?'m':'c'); }
   function dietRareFactor(type){
     const s = dietShare[type] ?? 0.33;
@@ -1029,14 +1065,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   }
   function organismVisualScale(o){
     if(!ui.microView) return 1;
-    if(!o) return MICRO_VIEW.baseScale;
-    let s=MICRO_VIEW.baseScale;
-    if(o.flags && rareTraitNames(o.flags).length) s=Math.max(s, MICRO_VIEW.rareScale);
+    const microView = CONFIG.rendering.microView;
+    if(!o) return microView.baseScale;
+    let s=microView.baseScale;
+    if(o.flags && rareTraitNames(o.flags).length) s=Math.max(s, microView.rareScale);
     if(o.newSpeciesFlash>0){
       const k=clamp(o.newSpeciesFlash/140,0,1);
-      s=Math.max(s, lerp(MICRO_VIEW.baseScale, MICRO_VIEW.discoveryScale, k));
+      s=Math.max(s, lerp(microView.baseScale, microView.discoveryScale, k));
     }
-    if(selectedOrganism && selectedOrganism.id===o.id) s=Math.max(s, MICRO_VIEW.selectedScale);
+    if(selectedOrganism && selectedOrganism.id===o.id) s=Math.max(s, microView.selectedScale);
     return s;
   }
   function prosperityLabel(g, topology=topologyFromGenes(g), flags=null){
@@ -1261,7 +1298,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   }
   function pushRing(x,y,opts){
     rings.push(new RingEffect(x,y,opts));
-    if(rings.length>MAX_RINGS) rings.splice(0,rings.length-MAX_RINGS);
+    if(rings.length>CONFIG.rendering.maxRings) rings.splice(0,rings.length-CONFIG.rendering.maxRings);
   }
   function distPointSegment(px,py,x1,y1,x2,y2){
     const vx=x2-x1, vy=y2-y1;
@@ -1338,7 +1375,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const dx=x-px, dy=y-py; const d=Math.hypot(dx,dy)||1;
     pushRing(x,y,{r0:3,r1:28+Math.min(34,d*1.4),color:'rgba(165,230,255,',t:42,width:1.2});
     waterCurrents.push({x,y,vx:(dx/d)*0.36,vy:(dy/d)*0.36,r:68,t:120,maxT:120});
-    if(waterCurrents.length>MAX_CURRENTS) waterCurrents.splice(0,waterCurrents.length-MAX_CURRENTS);
+    if(waterCurrents.length>CONFIG.rendering.maxCurrents) waterCurrents.splice(0,waterCurrents.length-CONFIG.rendering.maxCurrents);
     if(window.env){
       if(window.env.addOxygenAt) window.env.addOxygenAt(x,y,0.0025);
       if(window.env.sinkDetritusAt) window.env.sinkDetritusAt(x,y,0.0015);
@@ -1347,7 +1384,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function addMembraneStroke(x,y,px,py){
     if(Math.hypot(x-px,y-py)<6) return;
     membranes.push(new MembraneSegment(px,py,x,y,'wall'));
-    if(membranes.length>MAX_MEMBRANES) membranes.splice(0,membranes.length-MAX_MEMBRANES);
+    if(membranes.length>CONFIG.rendering.maxMembranes) membranes.splice(0,membranes.length-CONFIG.rendering.maxMembranes);
   }
   function selectedCardLines(o){
     const rare=rareTraitNames(o.flags).join('、') || 'なし';
@@ -1482,9 +1519,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     recalcPhenotype(){
       // === phenotype recompute (v1i) ===
       this.morphologyTopology = topologyFromGenes(this.genes);
-      this.maxSpeed = lerp(0.6, 3.2, this.genes.speed) * MOVEMENT_SPEED_SCALE;
+      this.maxSpeed = lerp(0.6, 3.2, this.genes.speed) * CONFIG.organism.movementSpeedScale;
       const geneHash = hash01('g:' + Object.values(this.genes).join(','));
-      const baseSize = lerp(3.0, 11.0*ORGANISM_MAX_SIZE_SCALE, Math.pow(this.genes.size, 0.85));
+      const baseSize = lerp(3.0, 11.0*CONFIG.organism.maxSizeScale, Math.pow(this.genes.size, 0.85));
       this.isMega = (this.genes.size > 0.97) || (geneHash > 0.985);
       this.size = baseSize * (this.isMega ? 1.65 : 1.0);
 
@@ -2382,7 +2419,7 @@ if(Z>0.08){
           this.energy = 0.5;
         }
       }
-      if(this.energy<=0){ const corpseE = 0.45*(8*this.size); corpses.push(new Corpse(this.x,this.y,corpseE)); eco.detritusMeter += corpseE; sparks.push(new Spark(this.x,this.y,0.9*STARVATION_PARTICLE_SCALE,'rgba(120,200,255,',STARVATION_PARTICLE_ALPHA)); this.deathCause='飢餓'; recordDeath(this,'飢餓'); this.dead=true; }
+      if(this.energy<=0){ const corpseE = 0.45*(8*this.size); corpses.push(new Corpse(this.x,this.y,corpseE)); eco.detritusMeter += corpseE; sparks.push(new Spark(this.x,this.y,0.9*CONFIG.rendering.starvationParticleScale,'rgba(120,200,255,',CONFIG.rendering.starvationParticleAlpha)); this.deathCause='飢餓'; recordDeath(this,'飢餓'); this.dead=true; }
       else if(this.age>12000){ const corpseE = 0.45*(0.6*this.energy + 8*this.size); corpses.push(new Corpse(this.x,this.y,corpseE)); eco.detritusMeter += corpseE; this.deathCause='老化'; recordDeath(this,'老化'); this.dead=true; }
     }
 
@@ -2656,7 +2693,7 @@ if(Z>0.08){
       }
       ctx.save();
       ctx.translate(this.x,this.y);
-      if(ui.microView && visualScale>MICRO_VIEW.baseScale+0.03){
+      if(ui.microView && visualScale>CONFIG.rendering.microView.baseScale+0.03){
         ctx.beginPath();
         ctx.arc(0,0,Math.max(4,r*3.2*visualScale),0,TAU);
         ctx.strokeStyle=`hsla(${hue},92%,86%,${this===selectedOrganism?0.32:0.16})`;
@@ -2728,7 +2765,7 @@ if(Z>0.08){
       }
       ctx.save();
       ctx.translate(this.x,this.y);
-      if(ui.microView && visualScale>MICRO_VIEW.baseScale+0.03){
+      if(ui.microView && visualScale>CONFIG.rendering.microView.baseScale+0.03){
         const hue=(sym.outlineHue ?? this.hue ?? 190);
         const rr=Math.max(4,(sym.visualR||this.size)*visualScale*1.22);
         ctx.beginPath();
@@ -3520,9 +3557,9 @@ if(Z>0.08){
   
 const env = (function(){
   // ---- Settings ----
-  const types = ['algae','cold','turbid','foul']; // foul = 忌避（腐敗/毒/低酸素）
-  let cell = 18, ew = 0, eh = 0;
-  const ALGAE_VISUAL_SUBDIV = 5;
+  const types = CONFIG.environment.fieldTypes;
+  let cell = CONFIG.environment.cellSize, ew = 0, eh = 0;
+  const ALGAE_VISUAL_SUBDIV = CONFIG.environment.algaeVisualSubdiv;
   let scarW = 0, scarH = 0;
   let fields = null;      // Float32Array per type
   let corpseGrid = null;  // Uint16 counts per cell
@@ -3531,9 +3568,9 @@ const env = (function(){
   let scavGrid = null;    // Uint16 counts per cell (scavengers)
   let grazeScar = null;   // visual-only dark green grazing marks at 5x env resolution
   let _avgN=0.25, _avgO=0.75, _avgD=0.05, _avgC=0.25;
-  const caps  = { algae:240, cold:180, turbid:200 }; // dot caps (used if viewMode==='dots')
-  const Th_on = { algae:0.35, cold:0.35, turbid:0.30 };
-  const Th_off= { algae:0.20, cold:0.20, turbid:0.18 };
+  const caps  = CONFIG.environment.dotCaps; // dot caps (used if viewMode==='dots')
+  const Th_on = CONFIG.environment.thresholdsOn;
+  const Th_off= CONFIG.environment.thresholdsOff;
   // pixel view
   let viewMode = 'pixels'; // 'pixels' | 'dots'
   let pxCanvas=null, pxCtx=null, lastPaint=-999;
@@ -4975,7 +5012,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     o.mateSeekT = 0;
     o.callCD = Math.floor(rnd(90,360));
   }
-  function initPopulation(n=STARTER_POP){
+  function initPopulation(n=CONFIG.population.starter){
   organisms.length=0;
   const topologySeeds = [
     {t:'single', g:{speed:0.32,size:0.42,efficiency:0.72,reproduction:0.34,sensory:0.36,carnivory:0.28,lobes:0.18,lobeAmp:0.20,elongation:0.18,pattern:0.18,morph:0.08}},
@@ -5057,7 +5094,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     });
     speciesAnnounceMuteUntil = frame + 600;
     // re-seed population and environment
-    initPopulation(STARTER_POP);
+    initPopulation(CONFIG.population.starter);
     seedPatches();
     if(window.env && window.env.reset){
       window.env.ensure();
@@ -5117,14 +5154,14 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     if(!dayNight.isNight){
       const a = (window.env.getAverages) ? window.env.getAverages() : {N:0.25,O:0.75,D:0.05};
       const prodMul = clamp(worldEvent.algaeFactor * (0.5 + 1.5*a.N) * (0.4 + 0.6*a.O), 0.25, 2.3);
-      const algaeMorsels = Math.max(0, Math.round(3*prodMul*WILD_FOOD_SPAWN_SCALE - 0.35 + Math.random()*0.70));
+      const algaeMorsels = Math.max(0, Math.round(3*prodMul*CONFIG.ecology.wildFoodSpawnScale - 0.35 + Math.random()*0.70));
       const pts = algaeMorsels>0 ? window.env.sampleAlgae(algaeMorsels) : [];
       for(const q of pts){
         food.push(new Food(clamp(q.x,8,W-8), clamp(q.y,8,H-8), 'algae'));
         window.env.sinkAlgaeAt(q.x,q.y,0.010);
       }
     } else {
-      const detritusMorsels = Math.random() < (0.65*WILD_FOOD_SPAWN_SCALE) ? 1 : 0;
+      const detritusMorsels = Math.random() < (0.65*CONFIG.ecology.wildFoodSpawnScale) ? 1 : 0;
       const pts = detritusMorsels>0 && window.env.sampleDetritus ? window.env.sampleDetritus(detritusMorsels) : [];
       for(const q of pts){
         food.push(new Food(clamp(q.x,8,W-8), clamp(q.y,8,H-8), 'detritus'));
@@ -5156,13 +5193,13 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
         log(`環境収容力：過密のため${removed.length}個体が淘汰されました。`);
       }
       // 餌の自然供給
-      if(frame%120===0){ const f=season(); const small=(Math.random()<0.55*f*WILD_FOOD_SPAWN_SCALE)?1:0; const big=(Math.random()<0.06*f*WILD_FOOD_SPAWN_SCALE)?1:0; if(small||big) addFood(small,big); const label = f<0.9 ? '🍂 飢饉期' : '🌱 豊作期'; if(label !== lastSeasonLabel){ showToast('season', f<0.9 ? '飢饉期。餌粒は少なく、藻場を食べられる個体や腐肉食が有利に働くだろう。' : '豊作期。緑の藻場が再生しやすく、草食と増殖力の高い種に追い風だろう。'); lastSeasonLabel = label; } }
+      if(frame%120===0){ const f=season(); const small=(Math.random()<0.55*f*CONFIG.ecology.wildFoodSpawnScale)?1:0; const big=(Math.random()<0.06*f*CONFIG.ecology.wildFoodSpawnScale)?1:0; if(small||big) addFood(small,big); const label = f<0.9 ? '🍂 飢饉期' : '🌱 豊作期'; if(label !== lastSeasonLabel){ showToast('season', f<0.9 ? '飢饉期。餌粒は少なく、藻場を食べられる個体や腐肉食が有利に働くだろう。' : '豊作期。緑の藻場が再生しやすく、草食と増殖力の高い種に追い風だろう。'); lastSeasonLabel = label; } }
       if(frame%60===0){ updateRoleShare(); updateWaterStatus(); }
       if(frame%180===0) refreshSpeciesStats();
       if(frame%240===0) checkEvolutionMilestones();
       if(frame%800===0 && organisms.length){ generation++; $('generation').textContent=String(generation); reportMix(); }
       tickEvent(); maybeTriggerEvent(); if((frame%10)===0) ecoTick();
-      if(organisms.length===0){ log('💀 絶滅 → 再播種'); speciesAnnounceMuteUntil = frame + 600; initPopulation(Math.max(36, Math.round(STARTER_POP*0.65))); }
+      if(organisms.length===0){ log('💀 絶滅 → 再播種'); speciesAnnounceMuteUntil = frame + 600; initPopulation(Math.max(CONFIG.population.reseedMin, Math.round(CONFIG.population.starter*CONFIG.population.reseedRatio))); }
       peaceCounter++; evaluateChallenges();
       tickDayNight();
       if(frame%300===0) rebuildSpeciesCards();
@@ -5205,6 +5242,16 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
   window.__alifeDebug = {
     counts(){
       return { organisms:organisms.length, sparks:sparks.length, rings:rings.length, membranes:membranes.length, corpses:corpses.length, species:new Set(organisms.map(o=>o.speciesKey)).size };
+    },
+    config(){
+      return CONFIG;
+    },
+    designLedger(){
+      return {
+        roleFoodLedger: CONFIG.ecology.roleFoodLedger,
+        roleShare: {...roleShare},
+        dietShare: {...dietShare}
+      };
     },
     starterSummary(){
       return {
@@ -5511,7 +5558,7 @@ organisms.push(u);
     try {
       toastBlockUntil = frame + 600; 
       speciesAnnounceMuteUntil = frame + 600;
-      initPopulation(STARTER_POP);
+      initPopulation(CONFIG.population.starter);
       seedPatches(); 
       if(window.env) window.env.seedFromPatches(patches);
       seedPlankton(); 
