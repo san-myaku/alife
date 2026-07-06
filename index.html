@@ -244,6 +244,7 @@
       mobileTinyExitPop: 72,
       maxSparks: 190,
       maxRings: 130,
+      maxPredationBlooms: 36,
       maxCurrents: 90,
       maxMembranes: 90,
       planktonVisualScale: 0.5,
@@ -606,6 +607,44 @@
     }
   }
 
+  class PredationBloom{
+    constructor(x,y,scale=1,hue=6){
+      this.x=x; this.y=y; this.scale=clamp(scale,0.55,2.1); this.hue=hue;
+      this.t=34+Math.round(8*this.scale); this.maxT=this.t;
+      this.lobes=[];
+      const n=renderPerf.low ? 4 : 6;
+      for(let i=0;i<n;i++){
+        const a=(i/n)*TAU + rnd(-0.34,0.34);
+        this.lobes.push({a,d:rnd(0.10,0.92),r:rnd(0.55,1.15),spin:rnd(-0.06,0.06)});
+      }
+    }
+    step(){ this.t--; }
+    draw(ctx){
+      const k=clamp(this.t/this.maxT,0,1);
+      const grow=1.0 + (1-k)*0.70;
+      const base=13*this.scale*grow;
+      ctx.save();
+      ctx.translate(this.x,this.y);
+      ctx.globalCompositeOperation='lighter';
+      for(const l of this.lobes){
+        const a=l.a + l.spin*(this.maxT-this.t);
+        const d=base*l.d;
+        const x=Math.cos(a)*d, y=Math.sin(a)*d;
+        const r=base*l.r*(0.75+0.45*k);
+        const g=ctx.createRadialGradient(x,y,0.2,x,y,r);
+        g.addColorStop(0,`hsla(${this.hue},95%,72%,${(0.26*k).toFixed(3)})`);
+        g.addColorStop(0.58,`hsla(${(this.hue+18)%360},85%,45%,${(0.13*k).toFixed(3)})`);
+        g.addColorStop(1,'rgba(0,0,0,0)');
+        ctx.fillStyle=g;
+        ctx.beginPath(); ctx.arc(x,y,r,0,TAU); ctx.fill();
+      }
+      ctx.strokeStyle=`hsla(${this.hue},95%,76%,${(0.24*k).toFixed(3)})`;
+      ctx.lineWidth=1.0+0.8*this.scale*k;
+      ctx.beginPath(); ctx.arc(0,0,base*(0.80+0.38*(1-k)),0,TAU); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   class MembraneSegment{
     constructor(x1,y1,x2,y2,type='wall'){
       this.x1=x1; this.y1=y1; this.x2=x2; this.y2=y2; this.type=type;
@@ -830,7 +869,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     return p;
   }
 let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food=[]; const corpses=[]; const plankton=[]; const patches=[]; const calls=[];
-  const rings=[]; const waterCurrents=[]; const membranes=[];
+  const rings=[]; const predationBlooms=[]; const waterCurrents=[]; const membranes=[];
   let speciesAnnounceMuteUntil = 0;
   let selectedOrganism = null;
   let selectedDeadAt = 0;
@@ -844,6 +883,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   let lastCleanLogFrame = -9999;
   function trimSparks(){
     if(sparks.length>CONFIG.rendering.maxSparks) sparks.splice(0, sparks.length-CONFIG.rendering.maxSparks);
+  }
+  function trimPredationBlooms(){
+    if(predationBlooms.length>CONFIG.rendering.maxPredationBlooms) predationBlooms.splice(0, predationBlooms.length-CONFIG.rendering.maxPredationBlooms);
   }
   function canAnnounceNewSpecies(){
     return frame >= speciesAnnounceMuteUntil;
@@ -1338,6 +1380,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function pushRing(x,y,opts){
     rings.push(new RingEffect(x,y,opts));
     if(rings.length>CONFIG.rendering.maxRings) rings.splice(0,rings.length-CONFIG.rendering.maxRings);
+  }
+  function pushPredationBloom(prey,predator,scale=1){
+    if(!prey) return;
+    const hue=((predator && (predator.hue || predator._symbol?.outlineHue)) || 8) % 360;
+    predationBlooms.push(new PredationBloom(prey.x,prey.y,scale,hue));
+    trimPredationBlooms();
   }
   function distPointSegment(px,py,x1,y1,x2,y2){
     const vx=x2-x1, vy=y2-y1;
@@ -2563,6 +2611,7 @@ if(Z>0.08){
         eco.detritusMeter += corpseE;
         if(window.env && window.env.addDetritusAt) window.env.addDetritusAt(prey.x,prey.y,0.012 + 0.010*scale);
         spawnPredationScatter(prey,this,scale);
+        pushPredationBloom(prey,this,scale);
         pushRing(prey.x,prey.y,{r0:4,r1:34*scale,color:'rgba(255,130,120,',t:44,width:1.7});
         if((predEvents%5)===0) log(`捕食：${topologyLabel(this.morphologyTopology)}が${topologyLabel(prey.morphologyTopology||topologyFromGenes(prey.genes))}を捕食。`);
         this.attackCD=105;
@@ -5137,6 +5186,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     sparks.length=0;
     effects.length=0;
     rings.length=0;
+    predationBlooms.length=0;
     waterCurrents.length=0;
     membranes.length=0;
     corpses.length=0;
@@ -5311,6 +5361,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       ctx.stroke();
     }
     for(const o of organisms){ o.draw(); }
+    for(let i=predationBlooms.length-1;i>=0;--i){ const b=predationBlooms[i]; b.step(); b.draw(ctx); if(b.t<=0) predationBlooms.splice(i,1); }
     for(let i=sparks.length-1;i>=0;--i){ const s=sparks[i]; s.step(); s.draw(ctx); if(s.t<=0) sparks.splice(i,1); }
     drawSelectionOverlay();
     drawHUD();
@@ -5323,7 +5374,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
 
   window.__alifeDebug = {
     counts(){
-      return { organisms:organisms.length, food:food.length, plankton:plankton.length, sparks:sparks.length, rings:rings.length, membranes:membranes.length, corpses:corpses.length, species:new Set(organisms.map(o=>o.speciesKey)).size };
+      return { organisms:organisms.length, food:food.length, plankton:plankton.length, sparks:sparks.length, rings:rings.length, predationBlooms:predationBlooms.length, membranes:membranes.length, corpses:corpses.length, species:new Set(organisms.map(o=>o.speciesKey)).size };
     },
     config(){
       return CONFIG;
@@ -5367,7 +5418,9 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     previewPredationEffect(){
       const prey=organisms[0];
       if(!prey) return false;
-      spawnPredationScatter(prey, organisms[1]||null, 1.2);
+      const predator=organisms[1]||null;
+      spawnPredationScatter(prey, predator, 1.2);
+      pushPredationBloom(prey, predator, 1.2);
       return true;
     },
     previewNewSpeciesEffect(){
@@ -5534,7 +5587,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       if(!s.startsWith('ALIFE2:')) throw new Error('ヘッダー不正');
       const body=s.split(':',2)[1]; const state=JSON.parse(decodeURIComponent(escape(atob(body))));
       running=false;
-      food.length=0; corpses.length=0; plankton.length=0; patches.length=0; organisms.length=0; sparks.length=0; effects.length=0; rings.length=0; waterCurrents.length=0; membranes.length=0; speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear(); selectedOrganism=null; selectedDeadAt=0;
+      food.length=0; corpses.length=0; plankton.length=0; patches.length=0; organisms.length=0; sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0; speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear(); selectedOrganism=null; selectedDeadAt=0;
       (state.patches||[]).forEach(p=>patches.push(new Patch(p.type,p.x,p.y,p.r)));
       (state.food||[]).forEach(f=>food.push(new Food(f.x,f.y,f.type)));
       (state.corpses||[]).forEach(c=>{ const q=new Corpse(c.x,c.y,c.energy); if(c.t!=null) q.t=c.t; corpses.push(q); });
