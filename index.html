@@ -1194,10 +1194,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     return parts.slice(0,4).join('、');
   }
   function materialLabel(g, topology=topologyFromGenes(g), flags=null){
-    if(hasAdaptationProfile(g, flags, topology, 'tentacle')) return '伸縮する触手を持つ透明膜';
-    if(hasAdaptationProfile(g, flags, topology, 'adhesiveMat')) return '基質に貼りつく薄い粘膜';
+    const adapt=adaptationProfilesFromGenes(g, flags, topology);
+    if(adapt.includes('tentacle')) return '伸縮する触手を持つ透明膜';
+    if(adapt.includes('adhesiveMat')) return '基質に貼りつく薄い粘膜';
     if(flags?.chl) return '葉緑粒を含む半透明膜';
-    if(hasAdaptationProfile(g, flags, topology, 'colonyBuilder')) return '小房がつながる群体膜';
+    if(adapt.includes('colonyBuilder')) return '小房がつながる群体膜';
     if(topology==='mesh') return '薄い膜が網目状につながる';
     if(topology==='ring') return '張りのある環状膜';
     if((g?.size??0)>0.68) return '厚めの寒天質';
@@ -1206,11 +1207,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     return '半透明の軟質膜';
   }
   function internalStructureLabel(g, flags=null, topology=topologyFromGenes(g)){
+    const adapt=adaptationProfilesFromGenes(g, flags, topology);
     const parts=['中心核'];
     if(flags?.chl) parts.push('葉緑粒');
-    if(hasAdaptationProfile(g, flags, topology, 'tentacle')) parts.push('触手基部');
+    if(adapt.includes('tentacle')) parts.push('触手基部');
     if(flags?.colony || topology==='cluster') parts.push('小房状の粒');
-    if(hasAdaptationProfile(g, flags, topology, 'adhesiveMat')) parts.push('粘着粒');
+    if(adapt.includes('adhesiveMat')) parts.push('粘着粒');
     if((g?.sense??0)>0.66) parts.push('感覚粒');
     if((g?.fecundity??0)>0.66) parts.push('小核が多い');
     if((g?.metabolism??0)>0.70) parts.push('粒子は少なめ');
@@ -1277,9 +1279,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function weaknessLabel(g, topology=topologyFromGenes(g)){
     const c=g?.diet ?? 0.5;
     const adapt=adaptationProfilesFromGenes(g, null, topology);
-    if(adapt.includes('adhesiveMat')) return '環境変化から逃げにくい';
-    if(adapt.includes('colonyBuilder')) return '過密で広がりにくい';
-    if(adapt.includes('tentacle')) return '触手維持の負担が重い';
+    const counter=adapt.map(k=>ADAPTATION_BY_ID[k]).find(d=>d?.counter)?.counter;
+    if(counter) return counter;
     if(topology==='cluster') return '単体の逃走が弱い';
     if(topology==='single') return '強い専門性がない';
     if(topology==='radial') return '低酸素に弱い';
@@ -1287,38 +1288,24 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if((g?.fecundity??0)>0.70) return '過密で失速しやすい';
     return '急な環境変化に弱い';
   }
-  const ADAPTATION_LABELS = {
-    tentacle:'触手型',
-    colonyBuilder:'コロニー形成',
-    adhesiveMat:'付着マット型',
-    cyst:'休眠シスト型',
-    filterFan:'濾過扇型',
-    toxin:'毒棘型',
-    symbiotic:'共生葉緑型',
-    nightGlow:'夜光遊泳型'
-  };
+  const ADAPTATION_DEFS = [
+    {id:'tentacle',label:'触手型',unlock:c=>c.se>0.70&&c.form.detail>0.42&&c.form.length>0.28,effect:o=>{o.senseR*=1.14;o.senseCost*=1.08;o.baseMetabolic*=1.04;},cost:0.04,visual:'触手で周囲を探れる',counter:'触手維持の負担が重い'},
+    {id:'colonyBuilder',label:'コロニー形成',unlock:c=>(c.topology==='cluster'||c.flags?.colony||c.re>0.76)&&c.re>0.62&&c.sz<0.72,effect:o=>{o.reproThreshold*=0.96;o.maxSpeed*=0.88;o.protect=Math.max(o.protect||0,118);},cost:0.02,visual:'近接した子で群体を作る',counter:'過密で広がりにくい'},
+    {id:'adhesiveMat',label:'付着マット型',unlock:c=>c.ef>0.72&&c.sp<0.40&&c.c<0.58,effect:o=>{o.baseMetabolic*=0.84;o.maxSpeed*=0.70;o.senseCost*=0.90;},cost:-0.03,visual:'省エネで張り付く',counter:'環境変化から逃げにくい'},
+    {id:'cyst',label:'休眠シスト型',unlock:c=>c.ef>0.70&&c.sz>0.52&&c.sp<0.58,effect:o=>{o.baseMetabolic*=0.88;o.reproThreshold*=1.04;},cost:-0.01,visual:null,counter:null},
+    {id:'filterFan',label:'濾過扇型',unlock:c=>c.r==='filter'&&(c.se>0.38||c.form.detail>0.35),effect:o=>{o.senseR*=1.08;o.maxSpeed*=0.95;},cost:0.02,visual:null,counter:null},
+    {id:'toxin',label:'毒棘型',unlock:c=>c.c>0.72&&c.form.detail>0.54,effect:o=>{o.baseMetabolic*=1.05;o.protect=Math.max(o.protect||0,105);},cost:0.03,visual:null,counter:null},
+    {id:'symbiotic',label:'共生葉緑型',unlock:c=>!!c.flags?.chl,effect:null,cost:0,visual:null,counter:null},
+    {id:'nightGlow',label:'夜光遊泳型',unlock:c=>!!c.flags?.glow,effect:null,cost:0,visual:null,counter:null}
+  ];
+  const ADAPTATION_BY_ID = Object.fromEntries(ADAPTATION_DEFS.map(d=>[d.id,d]));
   function adaptationProfilesFromGenes(g, flags=null, topology=topologyFromGenes(g), role=null){
     if(!g) return [];
-    const sp=g.speed??0.5, sz=g.size??0.5, ef=g.metabolism??0.5, re=g.fecundity??0.5;
-    const se=g.sense??0.5, c=g.diet??0.5, form=formFromGenes(g);
-    const r=role || computeRole(g);
-    const tags=[];
-    if(se>0.70 && form.detail>0.42 && form.length>0.28) tags.push('tentacle');
-    if((topology==='cluster' || flags?.colony || re>0.76) && re>0.62 && sz<0.72) tags.push('colonyBuilder');
-    if(ef>0.72 && sp<0.40 && c<0.58) tags.push('adhesiveMat');
-    if(ef>0.70 && sz>0.52 && sp<0.58) tags.push('cyst');
-    if(r==='filter' && (se>0.38 || form.detail>0.35)) tags.push('filterFan');
-    if(c>0.72 && form.detail>0.54) tags.push('toxin');
-    if(flags?.chl) tags.push('symbiotic');
-    if(flags?.glow) tags.push('nightGlow');
-    return tags;
+    const c={g,flags:flags||{},topology,role,r:role||computeRole(g),form:formFromGenes(g),sp:g.speed??0.5,sz:g.size??0.5,ef:g.metabolism??0.5,re:g.fecundity??0.5,se:g.sense??0.5,c:g.diet??0.5};
+    return ADAPTATION_DEFS.filter(d=>d.unlock(c)).slice(0,2).map(d=>d.id);
   }
   function adaptationLabelText(g, flags=null, topology=topologyFromGenes(g), role=null, empty='未分化'){
-    const tags=adaptationProfilesFromGenes(g, flags, topology, role);
-    return tags.map(k=>ADAPTATION_LABELS[k]||k).slice(0,3).join('、') || empty;
-  }
-  function hasAdaptationProfile(g, flags, topology, key, role=null){
-    return adaptationProfilesFromGenes(g, flags, topology, role).includes(key);
+    return adaptationProfilesFromGenes(g, flags, topology, role).map(k=>ADAPTATION_BY_ID[k]?.label||k).join('、') || empty;
   }
   function organismVisualScale(o){
     if(!ui.microView) return 1;
@@ -1334,9 +1321,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     return s;
   }
   function prosperityLabel(g, topology=topologyFromGenes(g), flags=null){
-    if(hasAdaptationProfile(g, flags, topology, 'tentacle')) return '触手で周囲を探れる';
-    if(hasAdaptationProfile(g, flags, topology, 'colonyBuilder')) return '近接した子で群体を作る';
-    if(hasAdaptationProfile(g, flags, topology, 'adhesiveMat')) return '省エネで張り付く';
+    const visual=adaptationProfilesFromGenes(g, flags, topology).map(k=>ADAPTATION_BY_ID[k]).find(d=>d?.visual)?.visual;
+    if(visual) return visual;
     if(flags?.chl) return '昼間の代謝が安定';
     if(topology==='mesh') return '汚濁と低酸素に強い';
     if(topology==='ring') return '防御力が高い';
@@ -1500,7 +1486,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     }
     for(const [tag,count] of adaptationCounts){
       const share=count/total;
-      const label=ADAPTATION_LABELS[tag]||tag;
+      const label=ADAPTATION_BY_ID[tag]?.label||tag;
       if(count>=3 && share>=0.08) announceEvolutionMilestone(`adapt:${tag}:seed`, `${label}が定着しはじめた`);
       if(count>=8 && share>=0.22) announceEvolutionMilestone(`adapt:${tag}:rise`, `${label}が個体群の一角を占めた`);
       if(share>=0.42) announceEvolutionMilestone(`adapt:${tag}:dominant`, `${label}が優勢になった`);
@@ -2012,13 +1998,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(this.morphologyTopology==='cluster'){ this.reproThreshold*=0.94; this.maxSpeed*=0.94; }
       if(this.morphologyTopology==='spiral'){ this.maxSpeed*=1.03; this.senseCost*=0.97; }
       if(this.morphologyTopology==='mesh'){ this.baseMetabolic*=0.94; this.senseCost*=0.92; }
-      const adaptations = adaptationProfilesFromGenes(this.genes, null, this.morphologyTopology, this.role);
-      if(adaptations.includes('tentacle')){ this.senseR*=1.14; this.senseCost*=1.08; this.baseMetabolic*=1.04; }
-      if(adaptations.includes('colonyBuilder')){ this.reproThreshold*=0.96; this.maxSpeed*=0.88; this.protect=Math.max(this.protect||0,118); }
-      if(adaptations.includes('adhesiveMat')){ this.baseMetabolic*=0.84; this.maxSpeed*=0.70; this.senseCost*=0.90; }
-      if(adaptations.includes('cyst')){ this.baseMetabolic*=0.88; this.reproThreshold*=1.04; }
-      if(adaptations.includes('filterFan')){ this.senseR*=1.08; this.maxSpeed*=0.95; }
-      if(adaptations.includes('toxin')){ this.baseMetabolic*=1.05; this.protect=Math.max(this.protect||0,105); }
+      for(const id of adaptationProfilesFromGenes(this.genes, null, this.morphologyTopology, this.role)) ADAPTATION_BY_ID[id]?.effect?.(this);
       // --- sea-glass micro-bubbles (impurities) precompute ---
       try{
         const bubN = Math.max(1, Math.min(6, Math.round(2 + 4*(1 - this.genes.size)*0.7 + 2*this.genes.fecundity*0.3)));
@@ -3044,7 +3024,7 @@ if(Z>0.08){
           g=Object.assign({}, this.genes);
           for(const k of Object.keys(g)){ g[k]=clamp(g[k]+(Math.random()*2-1)*baseMut,0,1); }
         }
-        const childSpread = hasAdaptationProfile(this.genes, this.flags, this.morphologyTopology, 'colonyBuilder', this.role) ? 8 : 20;
+        const childSpread = adaptationProfilesFromGenes(this.genes, this.flags, this.morphologyTopology, this.role).includes('colonyBuilder') ? 8 : 20;
         const c=new Organism(clamp(this.x+rnd(-childSpread,childSpread),10,W-10), clamp(this.y+rnd(-childSpread,childSpread),10,H-10), g, true, this.speciesKey, mate?.speciesKey||null);
         c.vx=this.vx*0.2; c.vy=this.vy*0.2;
 
