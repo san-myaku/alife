@@ -257,7 +257,23 @@
       })
     }),
     ecology: Object.freeze({
-      wildFoodSpawnScale: 0.18,
+      wildFoodSpawnScale: 0.06,
+      plankton: Object.freeze({
+        source: 'detritus-oxygen',
+        initialSeed: 70,
+        baseCap: 42,
+        detritusCapScale: 260,
+        nightCapBonus: 26,
+        oxygenMin: 0.32,
+        detritusSpawnThreshold: 0.075,
+        detritusCost: 0.016,
+        oxygenCost: 0.004
+      }),
+      photosynthesis: Object.freeze({
+        oxygenRelease: 0.0016,
+        calmMultiplier: 1.0,
+        movingMultiplier: 0.42
+      }),
       initialRoleShare: Object.freeze({ ambusher:0, pack:0, scav:0, filter:0, other:1 }),
       initialDietShare: Object.freeze({ h:0.34, m:0.33, c:0.33 }),
       roleFoodLedger: Object.freeze({
@@ -2164,6 +2180,7 @@ const Z = env.valueAt('foul',  this.x,this.y); // D (detritus)
       if(this.mem===undefined){ this.storeN=0; this.storeO=Et; this.storeD=0; this.mem=1.0; }
       const eff = (0.35 + 0.65*this.genes.efficiency);
       const herb = (1 - this.genes.carnivory);
+      const isPhotosynthetic = !!(this.flags && this.flags.chl && !dayNight.isNight && this.genes.carnivory<=0.25);
 
       // body oxygen follows local oxygen (with slight lag)
       this.storeO = clamp(this.storeO*0.86 + Et*(0.14*eff), 0, 1);
@@ -2178,6 +2195,21 @@ const Z = env.valueAt('foul',  this.x,this.y); // D (detritus)
       // local oxygen consumption (respiration) -> lowers O in the cell
       const respO = 0.00105 * (0.65 + 0.7*this.genes.size) * (0.55 + 0.65*this.genes.speed) * (1 + 0.45*dirty);
       if(env && env.sinkOxygenAt) env.sinkOxygenAt(this.x,this.y, respO);
+
+      // chloroplast bodies return oxygen to their local patch, making nearby algae more viable.
+      if(isPhotosynthetic && env && env.addOxygenAt){
+        const sp2 = this.vx*this.vx + this.vy*this.vy;
+        const calm = sp2 < (0.18*0.18);
+        const release = CONFIG.ecology.photosynthesis.oxygenRelease
+          * (calm ? CONFIG.ecology.photosynthesis.calmMultiplier : CONFIG.ecology.photosynthesis.movingMultiplier)
+          * (0.60 + 0.40*clamp01(En))
+          * clamp(0.45 + 0.55*this.mem, 0.25, 1.0);
+        env.addOxygenAt(this.x,this.y, release);
+        if(calm && frame-(this._lastPhotoAction||0)>900 && Math.random()<0.015){
+          recordAction(this,'酸素を放出した');
+          this._lastPhotoAction=frame;
+        }
+      }
 
       // waste accumulates with activity; low oxygen slows detox (more damaging)
       this.storeD = clamp(this.storeD + respO*(0.9 + 0.5*this.genes.carnivory), 0, 1);
@@ -2378,7 +2410,7 @@ if(Z>0.08){
 
       // chloroplast trait: in daytime, calm herbivores can suppress basal metabolism (survival only)
       let baseMeta = (this.baseMetabolic*metaMul*worldEvent.metaMul);
-      if(this.flags && this.flags.chl && !dayNight.isNight && this.genes.carnivory<=0.25){
+      if(isPhotosynthetic){
         const sp2 = this.vx*this.vx + this.vy*this.vy;
         const calm = sp2 < (0.18*0.18);
         baseMeta *= (calm ? 0.10 : 0.30);
@@ -2413,7 +2445,7 @@ if(Z>0.08){
 
       // 死亡
       // chloroplast trait: daytime survival when staying calm (no extra energy gain)
-      if(this.energy<=0 && this.flags && this.flags.chl && !dayNight.isNight && this.genes.carnivory<=0.25){
+      if(this.energy<=0 && isPhotosynthetic){
         const sp2 = this.vx*this.vx + this.vy*this.vy;
         if(sp2 < (0.18*0.18)){
           this.energy = 0.5;
@@ -3867,9 +3899,11 @@ if(p.type==='turbid'){
       // scavengers reduce detritus locally (clean-up)
       D = clamp01(D - 0.046*densScav * (0.25 + 0.75*D));
 
-      // --- Decomposition: D -> N, consumes O (stronger at night) ---
+      // --- Decomposition: D -> N, consumes O (stronger at night, gated by oxygen) ---
       const nightBoost = 0.48 + 0.62*(1 - L);
-      const decomp = 0.068 * D * tempF * nightBoost;
+      const decompOxygen = clamp01((O - CONFIG.ecology.plankton.oxygenMin) / Math.max(0.001, 1 - CONFIG.ecology.plankton.oxygenMin));
+      D = clamp01(D + 0.006 * (1 - decompOxygen) * D * (1 - D));
+      const decomp = 0.068 * D * tempF * nightBoost * (0.16 + 0.84*decompOxygen);
       D = clamp01(D - decomp);
       N = clamp01(N + 0.42*decomp);
 
@@ -4224,6 +4258,23 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,Z))
       const cx=(Math.random()*ew)|0, cy=(Math.random()*eh)|0;
       const v=fields.foul[idx(cx,cy)];
       if(v>0.25){ pts.push({x:(cx+Math.random())*cell, y:(cy+Math.random())*cell}); }
+    }
+    return pts;
+  },
+  samplePlanktonSource: function(n){
+    const pts=[]; let tries=0;
+    const cfg=CONFIG.ecology.plankton;
+    while(pts.length<n && tries<n*34){
+      tries++;
+      const cx=(Math.random()*ew)|0, cy=(Math.random()*eh)|0;
+      const i=idx(cx,cy);
+      const d=fields.foul[i] || 0;
+      const o=fields.turbid[i] || 0;
+      const oxygenGate=clamp01((o - cfg.oxygenMin) / Math.max(0.001, 1 - cfg.oxygenMin));
+      const source=d*oxygenGate;
+      if(d>cfg.detritusSpawnThreshold && oxygenGate>0.04 && Math.random()<clamp(source*4.2,0.04,0.92)){
+        pts.push({x:(cx+Math.random())*cell, y:(cy+Math.random())*cell, source, detritus:d, oxygen:o});
+      }
     }
     return pts;
   },
@@ -5130,19 +5181,26 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       for(let i=corpses.length-1;i>=0;--i){ const c=corpses[i]; c.step(); if(c.t<=0) corpses.splice(i,1); }
       for(const p of plankton){ p.step(); }
       if((frame & 15)===0){ if(window.env){ window.env.tickFields(); window.env.maintainDots('algae'); window.env.maintainDots('cold'); window.env.maintainDots('turbid'); } }
-      // プランクトン自然発生（N×O×光 で上限が変動）
+      // プランクトン自然発生（デトリタス分解×酸素で上限が変動）
 {
   const a = (window.env && window.env.getAverages) ? window.env.getAverages() : {N:0.25,O:0.75,D:0.05,C:0.25};
   const night = dayNight.night ?? (dayNight.isNight ? 1 : 0);
-  const prod = a.N * (0.35 + 0.65*a.O) * lerp(1.0,0.85,night);
-  const cap = 90 + worldEvent.planktonCapBonus + Math.round(45*night) + Math.floor(190*prod);
+  const planktonCfg = CONFIG.ecology.plankton;
+  const oxygenGate = clamp01((a.O - planktonCfg.oxygenMin) / Math.max(0.001, 1 - planktonCfg.oxygenMin));
+  const detritusSource = clamp01(a.D * oxygenGate * 4.0);
+  const cap = planktonCfg.baseCap + worldEvent.planktonCapBonus + Math.round(planktonCfg.nightCapBonus*night*oxygenGate) + Math.floor(planktonCfg.detritusCapScale*detritusSource);
   const rareMul = clamp(1 + 0.6*(0.2 - (roleShare['filter']||0)), 0.5, 1.8);
-  if(plankton.length < cap && frame%10===0){
-    const n = Math.max(1, Math.round(rareMul * clamp(0.6 + 1.6*prod, 0.4, 2.0)));
-    const pts = (window.env && window.env.sampleAlgae) ? window.env.sampleAlgae(n) : [];
-    for(let i=0;i<n;i++){
+  if(plankton.length < cap && frame%10===0 && detritusSource>0.015){
+    const n = Math.max(1, Math.round(rareMul * clamp(0.35 + 1.8*detritusSource, 0.25, 2.0)));
+    const pts = (window.env && window.env.samplePlanktonSource) ? window.env.samplePlanktonSource(n) : [];
+    for(let i=0;i<pts.length;i++){
       const q = new Plankton();
-      if(pts[i]){ q.x=clamp(pts[i].x,8,W-8); q.y=clamp(pts[i].y,8,H-8); if(window.env) window.env.sinkAlgaeAt(q.x,q.y,0.010); }
+      q.x=clamp(pts[i].x,8,W-8);
+      q.y=clamp(pts[i].y,8,H-8);
+      if(window.env){
+        if(window.env.sinkDetritusAt) window.env.sinkDetritusAt(q.x,q.y,planktonCfg.detritusCost);
+        if(window.env.sinkOxygenAt) window.env.sinkOxygenAt(q.x,q.y,planktonCfg.oxygenCost);
+      }
       plankton.push(q);
     }
   }
@@ -5241,7 +5299,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
 
   window.__alifeDebug = {
     counts(){
-      return { organisms:organisms.length, sparks:sparks.length, rings:rings.length, membranes:membranes.length, corpses:corpses.length, species:new Set(organisms.map(o=>o.speciesKey)).size };
+      return { organisms:organisms.length, food:food.length, plankton:plankton.length, sparks:sparks.length, rings:rings.length, membranes:membranes.length, corpses:corpses.length, species:new Set(organisms.map(o=>o.speciesKey)).size };
     },
     config(){
       return CONFIG;
@@ -5416,7 +5474,19 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
   }
 
   function seedPatches(){ patches.push(new Patch('algae', W*0.30, H*0.32, Math.min(W,H)*0.20)); patches.push(new Patch('turbid', W*0.55, H*0.75, Math.min(W,H)*0.18)); }
-  function seedPlankton(){ for(let i=0;i<110;i++){ const p=new Plankton(); p.fade=1; plankton.push(p); } }
+  function seedPlankton(){
+    const target=CONFIG.ecology.plankton.initialSeed;
+    const pts=(window.env && window.env.samplePlanktonSource) ? window.env.samplePlanktonSource(target) : [];
+    for(let i=0;i<target;i++){
+      const p=new Plankton();
+      if(pts[i]){
+        p.x=clamp(pts[i].x,8,W-8);
+        p.y=clamp(pts[i].y,8,H-8);
+      }
+      p.fade=1;
+      plankton.push(p);
+    }
+  }
 
   // ===== Save / Load =====
   function capture(){
