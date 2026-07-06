@@ -297,7 +297,7 @@
       }),
       predatorBurst: Object.freeze({
         role: 'ambusher',
-        carnivoryMin: 0.66,
+        dietMin: 0.66,
         triggerSenseScale: 0.62,
         frames: 22,
         speedMultiplier: 1.65,
@@ -715,11 +715,11 @@
     constructor(x,y,scale=1,hue=6){
       this.x=x; this.y=y; this.scale=clamp(scale,0.55,2.1); this.hue=hue;
       this.t=34+Math.round(8*this.scale); this.maxT=this.t;
-      this.lobes=[];
+      this.blobs=[];
       const n=renderPerf.low ? 4 : 6;
       for(let i=0;i<n;i++){
         const a=(i/n)*TAU + rnd(-0.34,0.34);
-        this.lobes.push({a,d:rnd(0.10,0.92),r:rnd(0.55,1.15),spin:rnd(-0.06,0.06)});
+        this.blobs.push({a,d:rnd(0.10,0.92),r:rnd(0.55,1.15),spin:rnd(-0.06,0.06)});
       }
     }
     step(){ this.t--; }
@@ -730,7 +730,7 @@
       ctx.save();
       ctx.translate(this.x,this.y);
       ctx.globalCompositeOperation='lighter';
-      for(const l of this.lobes){
+      for(const l of this.blobs){
         const a=l.a + l.spin*(this.maxT-this.t);
         const d=base*l.d;
         const x=Math.cos(a)*d, y=Math.sin(a)*d;
@@ -873,28 +873,34 @@
   function hashStr32(s){ let h=0x811c9dc5; for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = (h>>>0) * 0x01000193; h>>>0; } return h>>>0; }
   function rngFromKey(key){ let x = hashStr32(String(key))||1; return function(){ x ^= x<<13; x ^= x>>>17; x ^= x<<5; x>>>=0; return (x & 0xffffffff)/0x100000000; }; }
   const silhouetteCache = new Map();
-  function morphFromGenes(g, key){
-    const speed=clamp(g.speed??g.spd??0.5,0,1), sensory=clamp(g.sensory??g.sens??0.5,0,1), size=clamp(g.size??0.5,0,1), eff=clamp(g.efficiency??g.eff??0.5,0,1), carn=clamp(g.carnivory??g.carn??0.5,0,1), elong=clamp(g.elongation??g.elon??0.5,0,1);
-    let aspect=clamp(1.0 + 1.0*speed, 1.0, 2.0);
-    let pointiness=Math.pow(speed,0.8);
-    let lobesMain=Math.max(1, Math.min(8, Math.round(1 + sensory*7)));
-    let ampMean=0.4*(1.0 - size);
-    let ampIrregular=0.15 + 0.25*sensory;
-    let frontBias=(eff*2-1)*0.5;
-    let twist=(carn*2-1)*0.1;
-    let notchDepth=0.4*carn;
-    let lobeSplit=0.6 * (carn>0.6? (carn-0.6)/0.4 : 0);
-    const phaseJitter=rngFromKey('phase:'+key)()*0.2;
-    return {lobesMain, ampMean, pointiness, ampIrregular, frontBias, twist, lobeSplit, notchDepth, phaseJitter, aspect, elong};
-  
-    return {lobesMain, ampMean, pointiness, ampIrregular, frontBias, twist, lobeSplit, notchDepth, phaseJitter, aspect, elong};
+  function formFromGenes(g, key=''){
+    const speed=clamp(g.speed??0.5,0,1), sense=clamp(g.sense??0.5,0,1), size=clamp(g.size??0.5,0,1), met=clamp(g.metabolism??0.5,0,1), diet=clamp(g.diet??0.5,0,1), seed=clamp(g.formSeed??0.5,0,1);
+    const rv=salt=>hash01(`form:${salt}:${q4(seed)}:${q4(speed)}:${q4(size)}:${q4(sense)}:${q4(diet)}:${key}`);
+    const length=clamp(0.10+0.58*speed+0.22*(1-size)+0.10*rv('len'),0,1);
+    const detail=clamp(0.12+0.56*sense+0.18*diet+0.14*rv('detail'),0,1);
+    const wave=clamp(0.10+0.42*(1-size)+0.20*rv('wave'),0,1);
+    const layout=clamp(0.64*seed+0.36*rv('layout'),0,0.999);
+    const shape=clamp(0.58*seed+0.42*rv('shape'),0,0.999);
+    return {
+      points:Math.max(1,Math.min(8,Math.round(1+detail*7))),
+      ampMean:0.4*wave,
+      pointiness:Math.pow(speed,0.8),
+      ampIrregular:0.15+0.25*detail,
+      frontBias:(met*2-1)*0.5,
+      twist:(diet*2-1)*0.1,
+      split:0.6*(diet>0.6?(diet-0.6)/0.4:0),
+      notchDepth:0.4*diet,
+      phaseJitter:rv('phase')*0.2,
+      aspect:clamp(1.0+length,1.0,2.0),
+      length,detail,wave,layout,shape
+    };
   }
   
 function buildSilhouettePathCached(key, g, cx, cy, baseR){
   const sk=String(key);
   try{
     if(silhouetteCache.has(sk)) return silhouetteCache.get(sk);
-    let d=buildSilhouettePath(cx,cy,baseR, morphFromGenes(g,sk), sk);
+    let d=buildSilhouettePath(cx,cy,baseR, formFromGenes(g,sk), sk);
     if(!(typeof d==='string' && d.indexOf('NaN')===-1 && d.indexOf('undefined')===-1)){
       d = `M ${cx} ${cy} m -${baseR} 0 a ${baseR} ${baseR} 0 1 0 ${baseR*2} 0 a ${baseR} ${baseR} 0 1 0 -${baseR*2} 0`;
     }
@@ -906,19 +912,21 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
 }
 
   function buildSilhouettePath(cx,cy,baseR,m,key){
-    const N=72, TAU=Math.PI*2; const rng=rngFromKey('lobes:'+key);
+    const N=72, TAU=Math.PI*2; const rng=rngFromKey('edge:'+key);
     const irrLevels=[0,0.33,0.66,1], irr=[];
-    for(let k=0;k<m.lobesMain;k++){ const lvl=irrLevels[Math.floor(rng()*irrLevels.length)]; const sign=rng()<0.5?-1:1; irr.push(1 + sign*m.ampIrregular*lvl); }
-    function irrAt(theta){ const k=Math.floor(((theta/TAU)%1)*m.lobesMain)%m.lobesMain; return irr[k]; }
-    const rx = baseR * m.aspect; const ry = baseR / m.aspect * (0.75 + 0.25*(m.elong??0.5));
+    for(let k=0;k<m.points;k++){ const lvl=irrLevels[Math.floor(rng()*irrLevels.length)]; const sign=rng()<0.5?-1:1; irr.push(1 + sign*m.ampIrregular*lvl); }
+    function irrAt(theta){ const k=Math.floor(((theta/TAU)%1)*m.points)%m.points; return irr[k]; }
+    const rx = baseR * m.aspect; const ry = baseR / m.aspect * (0.75 + 0.25*(m.length??0.5));
     function sharpen(x,k){ return Math.sign(x)*Math.pow(Math.abs(x), 1+2*k); }
     function envelope(t){ const fb=1 + m.frontBias*0.6*Math.cos(t); return Math.max(0.6, fb); }
-    function splitNotch(t){ if(m.notchDepth<=0 && m.lobeSplit<=0) return 1; const wp=(t+m.phaseJitter+m.twist*t); const pos=(wp/TAU*m.lobesMain)%1; const pk=1-Math.min(1, Math.abs(pos-0.5)*2); const notch=1-m.notchDepth*pk*pk; const split=1-m.lobeSplit*pk*pk*pk; return Math.max(0.5, notch*split); }
-    let d='M'; for(let i=0;i<=N;i++){ const t=i/N*TAU; const wp=(t+m.phaseJitter+m.twist*t); const base=Math.sin(m.lobesMain*wp); const shaped=sharpen(base,m.pointiness); const lA=m.ampMean*irrAt(t); const lobed=1 + lA*shaped; const rX=rx*lobed*envelope(t)*splitNotch(t); const rY=ry*lobed*envelope(t)*splitNotch(t); const x=cx+Math.cos(t)*rX; const y=cy+Math.sin(t)*rY; d+=(i===0?`${x.toFixed(2)} ${y.toFixed(2)}`:` L ${x.toFixed(2)} ${y.toFixed(2)}`); }
+    function splitNotch(t){ if(m.notchDepth<=0 && m.split<=0) return 1; const wp=(t+m.phaseJitter+m.twist*t); const pos=(wp/TAU*m.points)%1; const pk=1-Math.min(1, Math.abs(pos-0.5)*2); const notch=1-m.notchDepth*pk*pk; const split=1-m.split*pk*pk*pk; return Math.max(0.5, notch*split); }
+    let d='M'; for(let i=0;i<=N;i++){ const t=i/N*TAU; const wp=(t+m.phaseJitter+m.twist*t); const base=Math.sin(m.points*wp); const shaped=sharpen(base,m.pointiness); const lA=m.ampMean*irrAt(t); const shapedEdge=1 + lA*shaped; const rX=rx*shapedEdge*envelope(t)*splitNotch(t); const rY=ry*shapedEdge*envelope(t)*splitNotch(t); const x=cx+Math.cos(t)*rX; const y=cy+Math.sin(t)*rY; d+=(i===0?`${x.toFixed(2)} ${y.toFixed(2)}`:` L ${x.toFixed(2)} ${y.toFixed(2)}`); }
     return d + ' Z';
   }
 
-  function speciesKey(g){ const base=`${q4(g.speed)}${q4(g.size)}${q4(g.sensory)}${q4(g.carnivory)}`; const m=morphFromGenes(g,base); const p=q3(m.pointiness); const a=m.aspect<1.33?0:(m.aspect<1.66?1:2); const l=Math.max(1,Math.min(8,Math.round(m.lobesMain))); return `${base}${p}${a}${l}`; }
+  function speciesKey(g){ const base=`${q4(g.speed)}${q4(g.size)}${q4(g.sense)}${q4(g.diet)}`; const m=formFromGenes(g,base); const p=q3(m.pointiness); const a=m.aspect<1.33?0:(m.aspect<1.66?1:2); const pts=Math.max(1,Math.min(8,Math.round(m.points))); return `${base}${p}${a}${pts}`; }
+  const GENE_KEYS=['speed','size','metabolism','fecundity','sense','diet','formSeed'], GENE_INDEX=[0,1,2,3,4,5,10];
+  function geneSet(src=null){ const v=src?Object.values(src):[], g={}; GENE_KEYS.forEach((k,i)=>g[k]=clamp(src?.[k]??v[GENE_INDEX[i]]??Math.random(),0,1)); return g; }
   function speciesPalette(key){
     const s=String(key||'0000000');
     const speedQ=Number(s[0]||1)/3;
@@ -950,7 +958,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   const speciesCount=new Map();
 
   
-  // ===== Species-level reproduction parameters (clutch: species difference) =====
+  // ===== Species-level fecundity parameters (clutch: species difference) =====
   const speciesRepro = new Map(); // key -> {clutchMax, upP, decay}
   function getSpeciesReproParams(key){
     let p = speciesRepro.get(key);
@@ -1015,7 +1023,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function foodLedgerKeyFor(o){
     if(!o) return 'other';
     if(o.role==='filter' || o.role==='scav' || o.role==='ambusher' || o.role==='pack') return o.role;
-    const diet=dietTypeFromCarn(o.genes?.carnivory ?? 0.5);
+    const diet=dietTypeFromCarn(o.genes?.diet ?? 0.5);
     if(diet==='h') return 'grazer';
     if(diet==='c') return 'carnivore';
     return 'other';
@@ -1036,7 +1044,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   }
   function isPredatorBursting(o){
     const cfg=CONFIG.ecology.predatorBurst;
-    return !!(o && o.role===cfg.role && o.burstTimer>0 && (o.genes?.carnivory ?? 0) >= cfg.carnivoryMin && (o.chaseTimer>0 || o.preyTargetId));
+    return !!(o && o.role===cfg.role && o.burstTimer>0 && (o.genes?.diet ?? 0) >= cfg.dietMin && (o.chaseTimer>0 || o.preyTargetId));
   }
   function dietRareFactor(type){
     const s = dietShare[type] ?? 0.33;
@@ -1050,7 +1058,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
 
   // Role is "foraging specialization" (movement & bonus). We constrain it to stay consistent with diet.
   function computeRole(g){
-    const c=g.carnivory, sp=g.speed, se=g.sensory, ef=g.efficiency, sz=g.size;
+    const c=g.diet, sp=g.speed, se=g.sense, ef=g.metabolism, sz=g.size;
 
     // Carnivores -> predator roles only (never filter)
     if(c>=0.66){
@@ -1074,13 +1082,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     return !!g && (g.size ?? 1) <= GROUP_MAX_SIZE_GENE;
   }
   function socialStrategyFromGenes(g){
-    const social = clamp(0.10 + g.sensory*0.38 + g.reproduction*0.24 + (1-g.carnivory)*0.16 + g.lobes*0.14 - g.size*0.10, 0, 1);
+    const form=formFromGenes(g);
+    const social = clamp(0.10 + g.sense*0.38 + g.fecundity*0.24 + (1-g.diet)*0.16 + form.detail*0.14 - g.size*0.10, 0, 1);
     if(social<0.34) return { mode:'solitary', sociality:social };
     if(!canUseGroupStrategy(g)) return { mode:'solitary', sociality:social*0.55 };
-    if(g.carnivory>0.62 && g.speed>0.52 && g.sensory>0.42) return { mode:'hunt-pack', sociality:social };
-    if(g.carnivory<=0.34 && social>=0.38 && (g.sensory>0.42 || g.reproduction>0.52)) return { mode:'defense-school', sociality:social };
-    if(g.elongation>0.66 && g.sensory>0.44) return { mode:'trail', sociality:social };
-    if(g.efficiency>0.62 && g.speed<0.58) return { mode:'cluster', sociality:social };
+    if(g.diet>0.62 && g.speed>0.52 && g.sense>0.42) return { mode:'hunt-pack', sociality:social };
+    if(g.diet<=0.34 && social>=0.38 && (g.sense>0.42 || g.fecundity>0.52)) return { mode:'defense-school', sociality:social };
+    if(form.length>0.66 && g.sense>0.44) return { mode:'trail', sociality:social };
+    if(g.metabolism>0.62 && g.speed<0.58) return { mode:'cluster', sociality:social };
     return { mode:'school', sociality:social };
   }
   function socialStrategyLabel(mode){
@@ -1096,13 +1105,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function topologyFromGenes(g){
     if(!g) return 'single';
     const h=hash01('topology:'+Object.values(g).map(v=>Math.round((v||0)*97)).join('.'));
-    if((g.pattern??0)>0.84 && (g.elongation??0)>0.42) return 'spiral';
-    if((g.efficiency??0)>0.70 && (g.sensory??0)>0.50 && (g.size??0)>0.40) return 'mesh';
-    if((g.lobes??0)>0.72 && (g.carnivory??0)>0.43) return 'radial';
-    if((g.efficiency??0)>0.62 && (g.lobes??0)>0.46 && (g.elongation??0)<0.68) return 'ring';
-    if((g.sensory??0)>0.66 && (g.lobes??0)>0.35) return 'branch';
-    if((g.reproduction??0)>0.66 && (g.size??0)<0.72) return 'cluster';
-    if((g.elongation??0)>0.60 || ((g.speed??0)>0.58 && (g.sensory??0)>0.42)) return 'chain';
+    const form=formFromGenes(g);
+    if(form.layout>0.84 && form.length>0.42) return 'spiral';
+    if((g.metabolism??0)>0.70 && (g.sense??0)>0.50 && (g.size??0)>0.40) return 'mesh';
+    if(form.detail>0.72 && (g.diet??0)>0.43) return 'radial';
+    if((g.metabolism??0)>0.62 && form.detail>0.46 && form.length<0.68) return 'ring';
+    if((g.sense??0)>0.66 && form.detail>0.35) return 'branch';
+    if((g.fecundity??0)>0.66 && (g.size??0)<0.72) return 'cluster';
+    if(form.length>0.60 || ((g.speed??0)>0.58 && (g.sense??0)>0.42)) return 'chain';
     const order=['single','chain','radial','ring','branch','cluster','spiral','mesh'];
     return order[Math.floor(h*order.length)] || 'single';
   }
@@ -1113,7 +1123,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     return ({single:'単核',chain:'数珠',radial:'放射',ring:'環状',branch:'分岐',cluster:'群体',spiral:'螺旋',mesh:'網目'})[t] || '単核';
   }
   function dietLabelFromGenes(g){
-    const c=g?.carnivory ?? 0.5;
+    const c=g?.diet ?? 0.5;
     if(c<0.26) return '藻食寄り';
     if(c<0.44) return '濾過食寄り';
     if(c<0.63) return '混合型';
@@ -1121,7 +1131,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     return '強捕食型';
   }
   function dietRoleName(g){
-    const c=g?.carnivory ?? 0.5;
+    const c=g?.diet ?? 0.5;
     if(c<0.26) return '藻食系';
     if(c<0.44) return '濾過型';
     if(c<0.63) return '混合系';
@@ -1175,9 +1185,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(adapt.includes('adhesiveMat')) parts.push('付着性');
     if(adapt.includes('cyst')) parts.push('休眠耐性');
     if((g?.speed??0)>0.68) parts.push('移動が速い');
-    if((g?.efficiency??0)>0.66) parts.push('低代謝');
-    if((g?.sensory??0)>0.66) parts.push('感覚が鋭い');
-    if((g?.reproduction??0)>0.66) parts.push('繁殖力が高い');
+    if((g?.metabolism??0)>0.66) parts.push('低代謝');
+    if((g?.sense??0)>0.66) parts.push('感覚が鋭い');
+    if((g?.fecundity??0)>0.66) parts.push('繁殖力が高い');
     if(topology==='mesh') parts.push('汚濁耐性');
     if(topology==='ring') parts.push('防御寄り');
     if(flags?.chl) parts.push('昼に安定');
@@ -1191,8 +1201,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(topology==='mesh') return '薄い膜が網目状につながる';
     if(topology==='ring') return '張りのある環状膜';
     if((g?.size??0)>0.68) return '厚めの寒天質';
-    if((g?.efficiency??0)>0.70) return '薄く省エネな透明膜';
-    if((g?.lobes??0)>0.70) return '縁が強く波打つ膜';
+    if((g?.metabolism??0)>0.70) return '薄く省エネな透明膜';
+    if(formFromGenes(g).wave>0.70) return '縁が強く波打つ膜';
     return '半透明の軟質膜';
   }
   function internalStructureLabel(g, flags=null, topology=topologyFromGenes(g)){
@@ -1201,15 +1211,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(hasAdaptationProfile(g, flags, topology, 'tentacle')) parts.push('触手基部');
     if(flags?.colony || topology==='cluster') parts.push('小房状の粒');
     if(hasAdaptationProfile(g, flags, topology, 'adhesiveMat')) parts.push('粘着粒');
-    if((g?.sensory??0)>0.66) parts.push('感覚粒');
-    if((g?.reproduction??0)>0.66) parts.push('小核が多い');
-    if((g?.efficiency??0)>0.70) parts.push('粒子は少なめ');
+    if((g?.sense??0)>0.66) parts.push('感覚粒');
+    if((g?.fecundity??0)>0.66) parts.push('小核が多い');
+    if((g?.metabolism??0)>0.70) parts.push('粒子は少なめ');
     return parts.slice(0,3).join('、');
   }
   function foodSourceLabel(g, role){
     if(role==='scav') return '死骸、デトリタス';
     if(role==='filter') return 'プランクトン、藻';
-    const c=g?.carnivory ?? 0.5;
+    const c=g?.diet ?? 0.5;
     if(c>=0.66) return '小型生命';
     if(c<=0.33) return '藻、浮遊栄養';
     return '藻、死骸、小型生命';
@@ -1234,8 +1244,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(role==='pack') return '同種が集まれる開けた水域';
     if(topology==='mesh') return '濁りや低酸素に耐える場所';
     if((g?.speed??0)>0.70) return '広く移動できる薄い藻場';
-    if((g?.efficiency??0)>0.70) return '餌が薄い安定水域';
-    if((g?.reproduction??0)>0.70) return '藻が再生する繁殖地';
+    if((g?.metabolism??0)>0.70) return '餌が薄い安定水域';
+    if((g?.fecundity??0)>0.70) return '藻が再生する繁殖地';
     return '藻場と酸素が残る水域';
   }
   function strategyTitleFrom(role, diet, tags, flags=null){
@@ -1251,7 +1261,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     return '混食適応型';
   }
   function speciesStrategyProfile(g, flags=null, topology=topologyFromGenes(g), role=computeRole(g)){
-    const diet=dietTypeFromCarn(g?.carnivory ?? 0.5);
+    const diet=dietTypeFromCarn(g?.diet ?? 0.5);
     const ledger=CONFIG.ecology.roleFoodLedger[foodLedgerKeyFor({genes:g,role})] || CONFIG.ecology.roleFoodLedger.other;
     const tags=adaptationProfilesFromGenes(g, flags, topology, role);
     const title=strategyTitleFrom(role,diet,tags,flags);
@@ -1265,7 +1275,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     return {title, role:roleLabel(role), primary, secondary, env, strength, risk, adaptation, summary, tags};
   }
   function weaknessLabel(g, topology=topologyFromGenes(g)){
-    const c=g?.carnivory ?? 0.5;
+    const c=g?.diet ?? 0.5;
     const adapt=adaptationProfilesFromGenes(g, null, topology);
     if(adapt.includes('adhesiveMat')) return '環境変化から逃げにくい';
     if(adapt.includes('colonyBuilder')) return '過密で広がりにくい';
@@ -1274,7 +1284,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(topology==='single') return '強い専門性がない';
     if(topology==='radial') return '低酸素に弱い';
     if(c>=0.66) return '獲物不足に弱い';
-    if((g?.reproduction??0)>0.70) return '過密で失速しやすい';
+    if((g?.fecundity??0)>0.70) return '過密で失速しやすい';
     return '急な環境変化に弱い';
   }
   const ADAPTATION_LABELS = {
@@ -1289,16 +1299,16 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   };
   function adaptationProfilesFromGenes(g, flags=null, topology=topologyFromGenes(g), role=null){
     if(!g) return [];
-    const sp=g.speed??0.5, sz=g.size??0.5, ef=g.efficiency??0.5, re=g.reproduction??0.5;
-    const se=g.sensory??0.5, c=g.carnivory??0.5, lob=g.lobes??0.5, el=g.elongation??0.5;
+    const sp=g.speed??0.5, sz=g.size??0.5, ef=g.metabolism??0.5, re=g.fecundity??0.5;
+    const se=g.sense??0.5, c=g.diet??0.5, form=formFromGenes(g);
     const r=role || computeRole(g);
     const tags=[];
-    if(se>0.70 && lob>0.42 && el>0.28) tags.push('tentacle');
+    if(se>0.70 && form.detail>0.42 && form.length>0.28) tags.push('tentacle');
     if((topology==='cluster' || flags?.colony || re>0.76) && re>0.62 && sz<0.72) tags.push('colonyBuilder');
     if(ef>0.72 && sp<0.40 && c<0.58) tags.push('adhesiveMat');
     if(ef>0.70 && sz>0.52 && sp<0.58) tags.push('cyst');
-    if(r==='filter' && (se>0.38 || lob>0.35)) tags.push('filterFan');
-    if(c>0.72 && lob>0.54) tags.push('toxin');
+    if(r==='filter' && (se>0.38 || form.detail>0.35)) tags.push('filterFan');
+    if(c>0.72 && form.detail>0.54) tags.push('toxin');
     if(flags?.chl) tags.push('symbiotic');
     if(flags?.glow) tags.push('nightGlow');
     return tags;
@@ -1331,7 +1341,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(topology==='mesh') return '汚濁と低酸素に強い';
     if(topology==='ring') return '防御力が高い';
     if(topology==='cluster') return '増殖が速い';
-    if((g?.efficiency??0)>0.68) return '低代謝で粘る';
+    if((g?.metabolism??0)>0.68) return '低代謝で粘る';
     if((g?.speed??0)>0.70) return '移動と逃走が速い';
     return '環境に広く適応';
   }
@@ -1382,7 +1392,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       kind:'eat',
       source,
       role:o?.role||'unknown',
-      diet:dietTypeFromCarn(o?.genes?.carnivory ?? 0.5),
+      diet:dietTypeFromCarn(o?.genes?.diet ?? 0.5),
       gain:Number(g.toFixed(3)),
       count:n
     });
@@ -1408,7 +1418,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const roles=Object.create(null), diets=Object.create(null), ledger=Object.create(null);
     for(const o of organisms){
       roles[o.role||'other']=(roles[o.role||'other']||0)+1;
-      const diet=dietTypeFromCarn(o.genes?.carnivory ?? 0.5);
+      const diet=dietTypeFromCarn(o.genes?.diet ?? 0.5);
       diets[diet]=(diets[diet]||0)+1;
       const key=foodLedgerKeyFor(o);
       ledger[key]=(ledger[key]||0)+1;
@@ -1891,10 +1901,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this.mateSeekT=0; this.callCD=0;
       this.restT=0; this.restCD=0;
       this.heading=Math.random()*TAU; this.gait=Math.random()*TAU; this.motionLevel=0; this.socialCount=0; this.herdThreat=0; this.newSpeciesFlash=0;
-      this.genes = genes ? genes : { speed:Math.random(), size:Math.random(), efficiency:Math.random(), reproduction:Math.random(), sensory:Math.random(), carnivory:Math.random(), lobes:Math.random(), lobeAmp:Math.random(), elongation:Math.random(), pattern:Math.random() , morph:Math.random()};
+      this.genes = geneSet(genes);
       this.speciesKey = speciesKey(this.genes);
       this.recalcPhenotype(); this.updateColor();
-      this.aff = { aN: clamp(0.3 + 0.7*(1-this.genes.carnivory), -1, 1), aC: clamp(-0.2 - 0.8*this.genes.speed, -1, 1), aT: clamp(-0.3 - 0.5*this.genes.sensory, -1, 1), aZ: (function(g){ let a=-0.7; if(g.carnivory>0.6) a+=0.4*(g.carnivory-0.6); if(g.speed<0.5) a+=0.2*(0.5-g.speed); return clamp(a,-1,1); })(this.genes) };;
+      this.aff = { aN: clamp(0.3 + 0.7*(1-this.genes.diet), -1, 1), aC: clamp(-0.2 - 0.8*this.genes.speed, -1, 1), aT: clamp(-0.3 - 0.5*this.genes.sense, -1, 1), aZ: (function(g){ let a=-0.7; if(g.diet>0.6) a+=0.4*(g.diet-0.6); if(g.speed<0.5) a+=0.2*(0.5-g.speed); return clamp(a,-1,1); })(this.genes) };;
       const c0 = speciesCount.get(this.speciesKey)||0; speciesCount.set(this.speciesKey, c0+1);
       noteSpeciesSeen(this.speciesKey);
       this._wasNewSpecies = bornByRepro && c0===0;
@@ -1951,42 +1961,43 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     recalcPhenotype(){
       // === phenotype recompute (v1i) ===
       this.morphologyTopology = topologyFromGenes(this.genes);
+      const form = this.form = formFromGenes(this.genes, this.speciesKey);
       this.maxSpeed = lerp(0.6, 3.2, this.genes.speed) * CONFIG.organism.movementSpeedScale;
       const geneHash = hash01('g:' + Object.values(this.genes).join(','));
       const baseSize = lerp(3.0, 11.0*CONFIG.organism.maxSizeScale, Math.pow(this.genes.size, 0.85));
       this.isMega = (this.genes.size > 0.97) || (geneHash > 0.985);
       this.size = baseSize * (this.isMega ? 1.65 : 1.0);
 
-      this.baseMetabolic = lerp(0.08, 0.35, this.genes.size) * lerp(1.2, 0.7, this.genes.efficiency);
-      this.senseR = lerp(50, 140, this.genes.sensory);
-      this.senseCost = lerp(0.02, 0.08, this.genes.sensory);
-      this.reproThreshold = 60 + 50*this.genes.reproduction;
+      this.baseMetabolic = lerp(0.08, 0.35, this.genes.size) * lerp(1.2, 0.7, this.genes.metabolism);
+      this.senseR = lerp(50, 140, this.genes.sense);
+      this.senseCost = lerp(0.02, 0.08, this.genes.sense);
+      this.reproThreshold = 60 + 50*this.genes.fecundity;
 
-      this.lobeCount = Math.round(lerp(0, 6, this.genes.lobes));
-      this.lobeAmp   = lerp(0.0, 0.45, this.genes.lobeAmp);
-      this.aspectBase = lerp(1.0, 3.2, this.genes.elongation);
-      this.patternType = this.genes.pattern;
+      this.edgeCount = Math.round(lerp(0, 6, form.detail));
+      this.edgeAmp   = lerp(0.0, 0.45, form.wave);
+      this.aspectBase = lerp(1.0, 3.2, form.length);
+      this.patternType = form.layout;
 
       // families: 0 mantle,1 leaf,2 segmented,3 jelly,4 star/flower,5 tube,6 ribbon,7 armored,8 disc,9 colony
       const familyCount = 10;
-      const m = (this.genes.morph!=null) ? this.genes.morph : (this.genes.elongation>0.72 ? 0.3 : (this.genes.lobes>0.66 ? 0.85 : 0.0));
+      const m = form.shape;
       this.family = Math.floor(clamp(m,0,0.999)*familyCount);
 
       this.aspect = this.aspectBase;
       if (this.family===1 || this.family===2 || this.family===6) {
         this.aspect = Math.max(1.2, this.aspectBase*1.6);
       }
-      if (this.family===3) { this.lobeCount = 0; this.lobeAmp = 0; }
-      if (this.family===4) { this.lobeCount = 5 + Math.round(this.genes.lobes*7); this.lobeAmp = Math.max(this.lobeAmp, 0.28); }
-      this.segCount = 7 + Math.round(this.genes.lobes*10);
-      this.tubeThickness = lerp(0.35, 0.8, this.genes.efficiency);
-      this.ribbonW = lerp(0.35, 0.8, 1-this.genes.efficiency);
+      if (this.family===3) { this.edgeCount = 0; this.edgeAmp = 0; }
+      if (this.family===4) { this.edgeCount = 5 + Math.round(form.detail*7); this.edgeAmp = Math.max(this.edgeAmp, 0.28); }
+      this.segCount = 7 + Math.round(form.detail*10);
+      this.tubeThickness = lerp(0.35, 0.8, this.genes.metabolism);
+      this.ribbonW = lerp(0.35, 0.8, 1-this.genes.metabolism);
       this.ribbonLen = this.size * this.aspect * 2.2;
-      this.facetN = 4 + Math.round(this.genes.lobes*8);
-      this.petalN = 8 + Math.round(this.genes.lobes*12);
-      this.colonyN = 6 + Math.round(this.genes.reproduction*10);
+      this.facetN = 4 + Math.round(form.detail*8);
+      this.petalN = 8 + Math.round(form.detail*12);
+      this.colonyN = 6 + Math.round(this.genes.fecundity*10);
 
-      this.isGold = this.isMega || (this.aspect>2.7) || (this.genes.sensory>0.95);
+      this.isGold = this.isMega || (this.aspect>2.7) || (this.genes.sense>0.95);
 
       this.hungerBias = this.reproThreshold;
       this.role = computeRole(this.genes);
@@ -2010,7 +2021,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(adaptations.includes('toxin')){ this.baseMetabolic*=1.05; this.protect=Math.max(this.protect||0,105); }
       // --- sea-glass micro-bubbles (impurities) precompute ---
       try{
-        const bubN = Math.max(1, Math.min(6, Math.round(2 + 4*(1 - this.genes.size)*0.7 + 2*this.genes.reproduction*0.3)));
+        const bubN = Math.max(1, Math.min(6, Math.round(2 + 4*(1 - this.genes.size)*0.7 + 2*this.genes.fecundity*0.3)));
         const rng = rngFromKey('bub:'+this.id);
         this._bubbles = [];
         for(let i=0;i<bubN;i++){
@@ -2033,10 +2044,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       const organelles = [];
       const granules = [];
       const colony = [];
-      const baseHue = Number.isFinite(this.hue) ? this.hue : ((lerp(195,6,this.genes.carnivory) + lerp(-14,14,this.genes.speed)*0.25 + 360) % 360);
+      const baseHue = Number.isFinite(this.hue) ? this.hue : ((lerp(195,6,this.genes.diet) + lerp(-14,14,this.genes.speed)*0.25 + 360) % 360);
       const bodyX = this.size*this.aspect;
       const bodyY = this.size;
-      const organelleN = Math.max(3, Math.min(16, Math.round(4 + 8*(1-this.genes.size) + 5*this.genes.sensory + 3*rng())));
+      const organelleN = Math.max(3, Math.min(16, Math.round(4 + 8*(1-this.genes.size) + 5*this.genes.sense + 3*rng())));
       for(let i=0;i<organelleN;i++){
         const a = rng()*TAU;
         const rr = Math.sqrt(rng())*0.72;
@@ -2050,7 +2061,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           a: 0.12 + 0.18*rng()
         });
       }
-      const granuleN = Math.max(5, Math.min(34, Math.round(8 + 18*this.genes.efficiency + 8*(1-this.genes.size))));
+      const granuleN = Math.max(5, Math.min(34, Math.round(8 + 18*this.genes.metabolism + 8*(1-this.genes.size))));
       for(let i=0;i<granuleN;i++){
         const a = rng()*TAU;
         const rr = Math.sqrt(rng())*0.88;
@@ -2063,7 +2074,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         });
       }
       if(this.family===9){
-        const n = 5 + Math.round(this.genes.reproduction*9);
+        const n = 5 + Math.round(this.genes.fecundity*9);
         for(let i=0;i<n;i++){
           const a = i/n*TAU + rng()*0.25;
           const rr = 0.28 + 0.42*rng();
@@ -2076,7 +2087,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         }
       }
       const fast = this.genes.speed;
-      const sens = this.genes.sensory;
+      const sens = this.genes.sense;
       const ciliaBias = (this.family===3 || this.family===4 || this.family===8) ? 1.0 : 0.55;
       const ciliaCount = Math.round((8 + 28*sens + 12*(1-this.genes.size))*ciliaBias);
       const flagellaN = (fast>0.58 || this.family===2 || this.family===6) ? (1 + Math.floor(rng()*3)) : 0;
@@ -2109,26 +2120,27 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       const shapeNames = ['circle','square','triangle','ellipse','pentagon','hexagon','leaf','diamond','sparkle4','star6','cloud5'];
       const shapeCount = shapeNames.length;
       const topology = this.morphologyTopology || topologyFromGenes(this.genes);
-      const primaryIndex = Math.max(0, Math.min(shapeCount-1, Math.floor(clamp(this.genes.morph ?? this.genes.elongation ?? 0.5,0,0.999)*shapeCount)));
-      const secondaryIndex = Math.max(0, Math.min(shapeCount-1, Math.floor(clamp((this.genes.lobes*0.55 + this.genes.pattern*0.45),0,0.999)*shapeCount)));
-      const solitaryChance = clamp(0.42 + 0.24*this.genes.size - 0.24*this.genes.elongation - 0.14*this.genes.reproduction + 0.08*(rng()-0.5), 0.16, 0.66);
-      const chainBase = 2 + this.genes.elongation*4.4 + this.genes.reproduction*1.9 + rng()*1.4;
-      const longChainChance = clamp(0.08 + this.genes.elongation*0.30 + this.genes.sensory*0.12 + this.genes.reproduction*0.10, 0.08, 0.54);
-      const longChainBonus = rng()<longChainChance ? Math.round(2 + rng()*4 + this.genes.elongation*2.2) : 0;
+      const form = this.form || formFromGenes(this.genes,this.speciesKey);
+      const primaryIndex = Math.max(0, Math.min(shapeCount-1, Math.floor(form.shape*shapeCount)));
+      const secondaryIndex = Math.max(0, Math.min(shapeCount-1, Math.floor(clamp((form.detail*0.55 + form.layout*0.45),0,0.999)*shapeCount)));
+      const solitaryChance = clamp(0.42 + 0.24*this.genes.size - 0.24*form.length - 0.14*this.genes.fecundity + 0.08*(rng()-0.5), 0.16, 0.66);
+      const chainBase = 2 + form.length*4.4 + this.genes.fecundity*1.9 + rng()*1.4;
+      const longChainChance = clamp(0.08 + form.length*0.30 + this.genes.sense*0.12 + this.genes.fecundity*0.10, 0.08, 0.54);
+      const longChainBonus = rng()<longChainChance ? Math.round(2 + rng()*4 + form.length*2.2) : 0;
       const chainLen = (rng()<solitaryChance)
         ? 1
         : Math.max(2, Math.min(13, Math.round(chainBase + longChainBonus)));
-      const ringBody = chainLen>=5 && rng()<clamp(0.05 + this.genes.lobes*0.30 + this.genes.efficiency*0.16 + this.genes.reproduction*0.08 - this.genes.elongation*0.06, 0.04, 0.48);
-      const tipFork = !ringBody && chainLen>=4 && rng()<clamp(0.10 + this.genes.sensory*0.28 + this.genes.lobes*0.20 + this.genes.elongation*0.12, 0.10, 0.58);
-      const branchCount = chainLen<=1 ? 0 : (ringBody ? (rng()<0.28 + this.genes.sensory*0.20 ? 1 : 0) : Math.max(0, Math.min(4, Math.round((this.genes.sensory*2.0 + this.genes.lobes*1.7 + rng()*0.8) - (tipFork ? 1.75 : 1.35)))));
-      const spacing = this.size*(0.78 + 0.38*this.genes.elongation);
+      const ringBody = chainLen>=5 && rng()<clamp(0.05 + form.detail*0.30 + this.genes.metabolism*0.16 + this.genes.fecundity*0.08 - form.length*0.06, 0.04, 0.48);
+      const tipFork = !ringBody && chainLen>=4 && rng()<clamp(0.10 + this.genes.sense*0.28 + form.detail*0.20 + form.length*0.12, 0.10, 0.58);
+      const branchCount = chainLen<=1 ? 0 : (ringBody ? (rng()<0.28 + this.genes.sense*0.20 ? 1 : 0) : Math.max(0, Math.min(4, Math.round((this.genes.sense*2.0 + form.detail*1.7 + rng()*0.8) - (tipFork ? 1.75 : 1.35)))));
+      const spacing = this.size*(0.78 + 0.38*form.length);
       const nodes = [];
       const extraLinks = [];
       const nodeR = this.size*(0.62 + 0.52*this.genes.size)*(0.92 + 0.12*rng());
       if(ringBody){
-        const ringLen = Math.max(6, Math.min(15, chainLen + Math.round(this.genes.lobes*3.2 + rng()*2.2)));
+        const ringLen = Math.max(6, Math.min(15, chainLen + Math.round(form.detail*3.2 + rng()*2.2)));
         const ringR = spacing*ringLen/TAU*(0.72 + 0.18*rng());
-        const oval = 0.82 + this.genes.elongation*0.30;
+        const oval = 0.82 + form.length*0.30;
         for(let i=0;i<ringLen;i++){
           const a = -Math.PI/2 + i/ringLen*TAU;
           const q = i/ringLen - 0.5;
@@ -2138,7 +2150,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
             r: nodeR,
             shape: primaryIndex,
             hue: baseHue,
-            alpha: 0.44 + 0.34*this.genes.efficiency + 0.10*rng(),
+            alpha: 0.44 + 0.34*this.genes.metabolism + 0.10*rng(),
             rot: rng()*TAU,
             parent: i>0 ? i-1 : -1,
             kind: 'ring'
@@ -2149,14 +2161,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         const mainStart = -spacing*(chainLen-1)*0.5;
         for(let i=0;i<chainLen;i++){
           const q = chainLen===1 ? 0 : (i/(chainLen-1)-0.5);
-          const wob = Math.sin((i*0.95 + rng()*2.0))*this.size*(0.10 + 0.24*this.genes.sensory);
+          const wob = Math.sin((i*0.95 + rng()*2.0))*this.size*(0.10 + 0.24*this.genes.sense);
           nodes.push({
             x: mainStart + i*spacing,
             y: wob,
             r: nodeR,
             shape: primaryIndex,
             hue: baseHue,
-            alpha: 0.46 + 0.34*this.genes.efficiency + 0.12*rng(),
+            alpha: 0.46 + 0.34*this.genes.metabolism + 0.12*rng(),
             rot: rng()*TAU,
             parent: i>0 ? i-1 : -1,
             kind: 'main'
@@ -2167,7 +2179,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       for(let b=0;b<branchCount;b++){
         const parent = Math.max(0, Math.min(mainLen-1, Math.floor((0.26 + rng()*0.64)*mainLen)));
         const side = rng()<0.5 ? -1 : 1;
-        const len = 1 + Math.floor(rng()*(1 + this.genes.reproduction*3));
+        const len = 1 + Math.floor(rng()*(1 + this.genes.fecundity*3));
         let px = nodes[parent].x;
         let py = nodes[parent].y;
         for(let j=0;j<len;j++){
@@ -2181,7 +2193,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
             r:nodeR,
             shape: primaryIndex,
             hue:baseHue,
-            alpha:0.38 + 0.30*this.genes.efficiency + 0.14*rng(),
+            alpha:0.38 + 0.30*this.genes.metabolism + 0.14*rng(),
             rot:rng()*TAU,
             parent:parentIndex,
             kind:'branch'
@@ -2194,7 +2206,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         const tip = nodes[parent];
         const baseAng = Math.atan2(tip.y-prev.y, tip.x-prev.x);
         for(const side of [-1,1]){
-          const len = 1 + (rng()<0.34 + this.genes.reproduction*0.28 ? 1 : 0);
+          const len = 1 + (rng()<0.34 + this.genes.fecundity*0.28 ? 1 : 0);
           let px = tip.x;
           let py = tip.y;
           let parentIndex = parent;
@@ -2209,7 +2221,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
               r:nodeR,
               shape: primaryIndex,
               hue:baseHue,
-              alpha:0.40 + 0.30*this.genes.efficiency + 0.12*rng(),
+              alpha:0.40 + 0.30*this.genes.metabolism + 0.12*rng(),
               rot:rng()*TAU,
               parent:parentIndex,
               kind:'tip'
@@ -2220,7 +2232,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       }
       const resetNodes = ()=>{ nodes.length=0; extraLinks.length=0; };
       const addNode = (x,y,r=nodeR,parent=-1,kind='main',shape=primaryIndex,alpha=null,rot=null)=>{
-        nodes.push({x,y,r,shape,hue:baseHue,alpha:alpha==null ? 0.46 + 0.34*this.genes.efficiency + 0.12*rng() : alpha,rot:rot==null ? rng()*TAU : rot,parent,kind});
+        nodes.push({x,y,r,shape,hue:baseHue,alpha:alpha==null ? 0.46 + 0.34*this.genes.metabolism + 0.12*rng() : alpha,rot:rot==null ? rng()*TAU : rot,parent,kind});
         return nodes.length-1;
       };
       if(topology==='single'){
@@ -2228,52 +2240,52 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         addNode(0,0,nodeR*1.18,-1,'single');
       } else if(topology==='radial'){
         resetNodes();
-        const center=addNode(0,0,nodeR*1.00,-1,'center',primaryIndex,0.56 + 0.26*this.genes.efficiency);
-        const arms=5 + Math.round(this.genes.lobes*5);
-        const rr=this.size*(1.25 + this.genes.sensory*1.35);
+        const center=addNode(0,0,nodeR*1.00,-1,'center',primaryIndex,0.56 + 0.26*this.genes.metabolism);
+        const arms=5 + Math.round(form.detail*5);
+        const rr=this.size*(1.25 + this.genes.sense*1.35);
         for(let i=0;i<arms;i++){
           const a=-Math.PI/2 + i/arms*TAU;
-          addNode(Math.cos(a)*rr,Math.sin(a)*rr,nodeR*0.82,center,'ray',primaryIndex,0.42 + 0.28*this.genes.efficiency,a);
+          addNode(Math.cos(a)*rr,Math.sin(a)*rr,nodeR*0.82,center,'ray',primaryIndex,0.42 + 0.28*this.genes.metabolism,a);
         }
       } else if(topology==='ring'){
         resetNodes();
-        const ringLen=7 + Math.round(this.genes.lobes*5 + this.genes.efficiency*3);
+        const ringLen=7 + Math.round(form.detail*5 + this.genes.metabolism*3);
         const ringR=spacing*ringLen/TAU*(0.74 + 0.12*rng());
-        const oval=0.88 + this.genes.elongation*0.18;
+        const oval=0.88 + form.length*0.18;
         for(let i=0;i<ringLen;i++){
           const a=-Math.PI/2 + i/ringLen*TAU;
-          addNode(Math.cos(a)*ringR*oval,Math.sin(a)*ringR,nodeR*0.92,i>0?i-1:-1,'ring',primaryIndex,0.46 + 0.30*this.genes.efficiency,a);
+          addNode(Math.cos(a)*ringR*oval,Math.sin(a)*ringR,nodeR*0.92,i>0?i-1:-1,'ring',primaryIndex,0.46 + 0.30*this.genes.metabolism,a);
         }
         extraLinks.push({a:ringLen-1,b:0,kind:'ring'});
       } else if(topology==='cluster'){
         resetNodes();
-        const n=6 + Math.round(this.genes.reproduction*9);
+        const n=6 + Math.round(this.genes.fecundity*9);
         addNode(0,0,nodeR*0.88,-1,'cluster-core');
         for(let i=1;i<n;i++){
           const a=i/n*TAU + rng()*0.42;
-          const rr=this.size*(0.55 + Math.sqrt(rng())*(1.4 + this.genes.reproduction*1.2));
-          addNode(Math.cos(a)*rr,Math.sin(a)*rr,nodeR*(0.74+0.18*rng()),0,'cluster',primaryIndex,0.38 + 0.30*this.genes.efficiency,a);
+          const rr=this.size*(0.55 + Math.sqrt(rng())*(1.4 + this.genes.fecundity*1.2));
+          addNode(Math.cos(a)*rr,Math.sin(a)*rr,nodeR*(0.74+0.18*rng()),0,'cluster',primaryIndex,0.38 + 0.30*this.genes.metabolism,a);
         }
       } else if(topology==='spiral'){
         resetNodes();
-        const n=5 + Math.round(this.genes.elongation*5 + this.genes.sensory*3);
+        const n=5 + Math.round(form.length*5 + this.genes.sense*3);
         let prev=-1;
         for(let i=0;i<n;i++){
           const q=n===1?0:i/(n-1);
-          const a=-Math.PI*1.15 + q*(TAU*1.45 + this.genes.pattern*TAU*0.55);
-          const rr=this.size*(0.35 + q*(2.0 + this.genes.elongation*2.0));
-          prev=addNode(Math.cos(a)*rr,Math.sin(a)*rr,nodeR*(0.88 - q*0.08),prev,'spiral',primaryIndex,0.44 + 0.30*this.genes.efficiency,a);
+          const a=-Math.PI*1.15 + q*(TAU*1.45 + form.layout*TAU*0.55);
+          const rr=this.size*(0.35 + q*(2.0 + form.length*2.0));
+          prev=addNode(Math.cos(a)*rr,Math.sin(a)*rr,nodeR*(0.88 - q*0.08),prev,'spiral',primaryIndex,0.44 + 0.30*this.genes.metabolism,a);
         }
       } else if(topology==='mesh'){
         resetNodes();
-        const cols=3, rows=2 + Math.round(this.genes.lobes*1.5);
+        const cols=3, rows=2 + Math.round(form.detail*1.5);
         const sx=spacing*0.92, sy=spacing*0.76;
         for(let y=0;y<rows;y++){
           for(let x=0;x<cols;x++){
             const i=y*cols+x;
             const xx=(x-(cols-1)/2)*sx + (y%2-0.5)*sx*0.35;
             const yy=(y-(rows-1)/2)*sy;
-            addNode(xx,yy,nodeR*0.72,i>0?Math.max(0,i-1):-1,'mesh',primaryIndex,0.40 + 0.30*this.genes.efficiency);
+            addNode(xx,yy,nodeR*0.72,i>0?Math.max(0,i-1):-1,'mesh',primaryIndex,0.40 + 0.30*this.genes.metabolism);
             if(x>0) extraLinks.push({a:i-1,b:i,kind:'mesh'});
             if(y>0) extraLinks.push({a:i-cols,b:i,kind:'mesh'});
           }
@@ -2304,14 +2316,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         primaryIndex,
         secondaryIndex,
         outlineHue: baseHue,
-        lineAlpha: 0.16 + 0.24*this.genes.sensory,
+        lineAlpha: 0.16 + 0.24*this.genes.sense,
         nucleusHue: pal.nucleusHue,
         gradientShift: pal.gradientShift,
-        transparency: clamp(0.42 + 0.34*this.genes.efficiency - 0.12*this.genes.size, 0.30, 0.82),
-        coreScale: 0.18 + 0.11*this.genes.reproduction,
+        transparency: clamp(0.42 + 0.34*this.genes.metabolism - 0.12*this.genes.size, 0.30, 0.82),
+        coreScale: 0.18 + 0.11*this.genes.fecundity,
         pulse: rng()*TAU,
         shapeRot: (rng()-0.5)*0.42,
-        wiggleAmp: 0.14 + 0.54*this.genes.speed + 0.24*this.genes.sensory,
+        wiggleAmp: 0.14 + 0.54*this.genes.speed + 0.24*this.genes.sense,
         wiggleSpeed: 0.030 + 0.060*this.genes.speed,
         wigglePhase: rng()*TAU
       };
@@ -2362,9 +2374,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       forEachOrgNeighbors(this.x,this.y,range,(o,dx,dy,d2)=>{
         if(o===this || o.dead) return;
         const d=Math.sqrt(d2)||1;
-        const predatorThreat = mode==='defense-school' && o.genes && o.genes.carnivory>0.62 && o.size>=this.size*0.62;
+        const predatorThreat = mode==='defense-school' && o.genes && o.genes.diet>0.62 && o.size>=this.size*0.62;
         if(predatorThreat){
-          const w = clamp(1 - d/range, 0.08, 1) * (0.85 + o.genes.carnivory*0.45);
+          const w = clamp(1 - d/range, 0.08, 1) * (0.85 + o.genes.diet*0.45);
           fleeX += (-dx/d)*w;
           fleeY += (-dy/d)*w;
           fleeW += w;
@@ -2425,9 +2437,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(this.dead) return;
       if(this.chaseTimer>0) this.chaseTimer--;
       if(this.predatorThreatId && this.fleeTimer<=0) this.predatorThreatId=null;
-      const carn=this.genes.carnivory;
+      const carn=this.genes.diet;
       const deficit=Math.max(0,this.reproThreshold*0.95-this.energy);
-      const intent=carnivoryIntent(carn,deficit);
+      const intent=dietIntent(carn,deficit);
       if(carn<0.42 || (carn<0.66 && intent<0.10) || this.attackCD>30){
         if(this.chaseTimer<=0) this.preyTargetId=null;
         return;
@@ -2474,7 +2486,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         packBonus += Math.min(0.28, mates*0.06);
       }
       if(ambush && d<this.senseR*0.50) this.burstTimer=Math.max(this.burstTimer,20);
-      if(ambush && carn>=burstCfg.carnivoryMin && d<this.senseR*burstCfg.triggerSenseScale && intent>0.12 && this.energy>this.reproThreshold*0.30){
+      if(ambush && carn>=burstCfg.dietMin && d<this.senseR*burstCfg.triggerSenseScale && intent>0.12 && this.energy>this.reproThreshold*0.30){
         this.burstTimer=Math.max(this.burstTimer,burstCfg.frames);
         if(frame-(this._lastBurstAction||0)>150){ recordAction(this,'捕食バースト'); this._lastBurstAction=frame; }
       }
@@ -2509,7 +2521,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this.separateFromNeighbors();
       const socialNeighbors = this.socialSteer();
       this.updatePredationIntent();
-      const carnGene=this.genes.carnivory;
+      const carnGene=this.genes.diet;
       const foodLedger=foodLedgerFor(this);
       const preyTarget=carnGene>=0.54 ? organismById(this.preyTargetId) : null;
       if(canGrazeFieldAlgae(this) && window.env && window.env.bestAlgaeNear && (this.energy<this.reproThreshold*1.08 || foodLedger.main==='algae')){
@@ -2585,7 +2597,7 @@ const Z = env.valueAt('detritus',  this.x,this.y); // D (detritus)
       // Stronger local steering: rich algae/oxygen attracts suitable bodies, dirty water repels most bodies.
       if(window.env){
         const ang=Math.atan2(this.vy,this.vx)||this.heading||0;
-        const probe=22 + this.genes.sensory*18;
+        const probe=22 + this.genes.sense*18;
         const sample=(type,a)=>window.env.valueAt(type,this.x+Math.cos(a)*probe,this.y+Math.sin(a)*probe);
         const left=ang+0.78, right=ang-0.78;
         const leftScore =
@@ -2601,9 +2613,9 @@ const Z = env.valueAt('detritus',  this.x,this.y); // D (detritus)
 
       // metabolism: local uptake / oxygen use / excretion (creates local gradients)
       if(this.mem===undefined){ this.storeN=0; this.storeO=Et; this.storeD=0; this.mem=1.0; }
-      const eff = (0.35 + 0.65*this.genes.efficiency);
-      const herb = (1 - this.genes.carnivory);
-      const isPhotosynthetic = !!(this.flags && this.flags.chl && !dayNight.isNight && this.genes.carnivory<=0.25);
+      const eff = (0.35 + 0.65*this.genes.metabolism);
+      const herb = (1 - this.genes.diet);
+      const isPhotosynthetic = !!(this.flags && this.flags.chl && !dayNight.isNight && this.genes.diet<=0.25);
 
       // body oxygen follows local oxygen (with slight lag)
       this.storeO = clamp(this.storeO*0.86 + Et*(0.14*eff), 0, 1);
@@ -2635,7 +2647,7 @@ const Z = env.valueAt('detritus',  this.x,this.y); // D (detritus)
       }
 
       // waste accumulates with activity; low oxygen slows detox (more damaging)
-      this.storeD = clamp(this.storeD + respO*(0.9 + 0.5*this.genes.carnivory), 0, 1);
+      this.storeD = clamp(this.storeD + respO*(0.9 + 0.5*this.genes.diet), 0, 1);
       const hyp = clamp01((0.28 - this.storeO)/0.28);
       this.mem = clamp(this.mem - (0.00125*hyp) - (0.00155*this.storeD*(1.22-Et)) - 0.00055*dirty, 0, 1);
 
@@ -2681,7 +2693,7 @@ if(Z>0.08){
         if(this.role==='ambusher') desired *= 0.35;
         if(this.energy < this.reproThreshold*0.45) desired *= 0.55;
         // chloroplast herbivores tend to "bask" calmly in daytime when not hungry enough to roam
-        if(this.flags && this.flags.chl && !dayNight.isNight && this.genes.carnivory<=0.25 && this.energy < this.reproThreshold*0.70){
+        if(this.flags && this.flags.chl && !dayNight.isNight && this.genes.diet<=0.25 && this.energy < this.reproThreshold*0.70){
           desired *= 0.35;
         }
         if(this.restT>0){
@@ -2727,14 +2739,14 @@ if(Z>0.08){
         const localN = window.env.valueAt('algae', this.x,this.y);
         const localO = window.env.valueAt('oxygen',this.x,this.y);
         const localD = window.env.valueAt('detritus',  this.x,this.y);
-        const grazeDrive = clamp((0.66-this.genes.carnivory)/0.66,0,1);
+        const grazeDrive = clamp((0.66-this.genes.diet)/0.66,0,1);
         const grazeNeed = clamp((this.reproThreshold*1.12-this.energy)/Math.max(1,this.reproThreshold),0,1);
         const grazeField = clamp((localN-0.08)/0.62,0,1);
         const grazeAmt = (0.0032 + 0.0042*eff + 0.0040*grazeDrive) * grazeField * (0.45 + 0.78*grazeNeed) * clamp(0.48 + 0.72*localO - 0.45*localD,0.10,1.18);
         const eaten = window.env.grazeAlgaeAt(this.x,this.y,grazeAmt,this.size>7?2:1);
         if(eaten>0){
-          const diet=dietTypeFromCarn(this.genes.carnivory);
-          const gain = eaten * (50 + 46*grazeDrive) * plantDigestFactor(this.genes.carnivory) * dietRareFactor(diet) * (diet==='h'?1.08:(diet==='m'?0.92:0.35));
+          const diet=dietTypeFromCarn(this.genes.diet);
+          const gain = eaten * (50 + 46*grazeDrive) * plantDigestFactor(this.genes.diet) * dietRareFactor(diet) * (diet==='h'?1.08:(diet==='m'?0.92:0.35));
           if(gain>0){
             this.energy=clamp(this.energy+gain,0,160);
             this.storeN = clamp((this.storeN||0) + 0.070*(gain/20), 0, 1);
@@ -2752,7 +2764,7 @@ if(Z>0.08){
       // 食事（餌）
       for(let i=food.length-1;i>=0;--i){
         const f=food[i];
-        const c=this.genes.carnivory;
+        const c=this.genes.diet;
         if(!canEatFoodParticle(this,f.type)) continue;
         const dx=f.x-this.x, dy=f.y-this.y;
         if(dx*dx+dy*dy <= (this.size+f.r)*(this.size+f.r)){
@@ -2792,7 +2804,7 @@ if(Z>0.08){
           const dx=c.x-this.x, dy=c.y-this.y;
           const rr=(this.size + c.radius);
           if(dx*dx+dy*dy <= rr*rr){
-            const carn=this.genes.carnivory;
+            const carn=this.genes.diet;
             const diet=dietTypeFromCarn(carn);
             const gain = c.energy*0.9 * clamp(0.82 + 0.78*Z, 0.55, 1.65) * rareFactor('scav') * meatDigestFactor(carn) * dietRareFactor(diet) * (diet==='m'?1.0:(diet==='c'?0.95:0.85));
             this.energy=clamp(this.energy+gain,0,160);
@@ -2813,9 +2825,9 @@ if(Z>0.08){
       }
       if(this.role==='filter'){
         let eaten=0;
-        const carn=this.genes.carnivory;
+        const carn=this.genes.diet;
         const diet=dietTypeFromCarn(carn);
-        // filter feeding is inefficient for high-carnivory bodies (keeps roles coherent)
+        // filter feeding is inefficient for high-diet bodies (keeps roles coherent)
         const filtEff = (carn>0.55) ? 0.25 : 1.0;
 
         for(let i=plankton.length-1;i>=0;--i){
@@ -2892,7 +2904,7 @@ if(Z>0.08){
 
     tryPredate(){
       if(this.attackCD>0) return;
-      const carnIntent=this.genes.carnivory;
+      const carnIntent=this.genes.diet;
       if(carnIntent<0.34) return;
       let repelHere=false;
       for(const e of effects){
@@ -2901,7 +2913,7 @@ if(Z>0.08){
         if(dx*dx+dy*dy < e.r*e.r){ repelHere=true; break; }
       }
       const deficit=Math.max(0, this.reproThreshold*1.04 - this.energy);
-      let intent=carnivoryIntent(carnIntent, deficit);
+      let intent=dietIntent(carnIntent, deficit);
       if(repelHere) intent*=0.2;
       if(intent<0.05) return;
       let prey=organismById(this.preyTargetId);
@@ -2941,7 +2953,7 @@ if(Z>0.08){
         let herd=0, screen=0;
         const preyToPred=Math.hypot(prey.x-this.x,prey.y-this.y)||1;
         forEachOrgNeighbors(prey.x,prey.y,82,(ally,dx,dy,d2)=>{
-          if(ally===prey || ally.dead || !ally.genes || ally.genes.carnivory>0.40) return;
+          if(ally===prey || ally.dead || !ally.genes || ally.genes.diet>0.40) return;
           if(!canUseGroupStrategy(ally.genes)) return;
           if(ally.speciesKey!==prey.speciesKey) return;
           herd++;
@@ -2957,7 +2969,7 @@ if(Z>0.08){
         }
       }
       if(Math.random()<p){
-        const carn=this.genes.carnivory;
+        const carn=this.genes.diet;
         const diet=dietTypeFromCarn(carn);
         const gainRaw=0.6*prey.energy + 8*prey.size;
         const rf=(this.role==='ambusher')? rareFactor('ambusher') : (this.role==='pack'? rareFactor('pack') : 1.0);
@@ -3026,18 +3038,7 @@ if(Z>0.08){
       for(let i=0;i<clutch;i++){
         let g;
         if(isSex){
-          g={
-            speed:pick(this.genes.speed,mate.genes.speed),
-            size:pick(this.genes.size,mate.genes.size),
-            efficiency:pick(this.genes.efficiency,mate.genes.efficiency),
-            reproduction:pick(this.genes.reproduction,mate.genes.reproduction),
-            sensory:pick(this.genes.sensory,mate.genes.sensory),
-            lobes:pick(this.genes.lobes,mate.genes.lobes),
-            lobeAmp:pick(this.genes.lobeAmp,mate.genes.lobeAmp),
-            elongation:pick(this.genes.elongation,mate.genes.elongation),
-            morph:pick(this.genes.morph,mate.genes.morph), pattern:pick(this.genes.pattern,mate.genes.pattern),
-            carnivory:pick(this.genes.carnivory,mate.genes.carnivory)
-          };
+          g={}; for(const k of GENE_KEYS){ g[k]=pick(this.genes[k],mate.genes[k]); }
           for(const k of Object.keys(g)){ g[k]=clamp(g[k]+(Math.random()-0.5)*baseMut,0,1); }
         } else {
           g=Object.assign({}, this.genes);
@@ -3071,7 +3072,7 @@ if(Z>0.08){
       else mult = 0.30 * Math.pow(3/clutch, 0.9);
       this.energy *= mult;
 
-      // reproduction leaves waste (clutch = heavier load)
+      // fecundity leaves waste (clutch = heavier load)
       const reproD = 0.010 + 0.004*clutch;
       this.storeN = clamp((this.storeN||0) - (0.06 + 0.02*(clutch-1)), 0, 1);
       if(window.env && window.env.addDetritusAt) window.env.addDetritusAt(this.x,this.y, reproD);
@@ -3110,11 +3111,11 @@ if(Z>0.08){
         c.quadraticCurveTo(-r*0.18,-r*0.34,0,-r*1.36);
         c.closePath();
       } else if(shape==='star6' || shape==='cloud5'){
-        const lobes = shape==='star6' ? 6 : 5;
-        const samples = lobes*14;
+        const points = shape==='star6' ? 6 : 5;
+        const samples = points*14;
         for(let i=0;i<=samples;i++){
           const a=-Math.PI/2 + i/samples*TAU;
-          const wave=Math.cos(lobes*a);
+          const wave=Math.cos(points*a);
           const rr = shape==='star6' ? r*(0.82 + 0.28*wave) : r*(0.92 + 0.18*wave);
           const x=Math.cos(a)*rr*(shape==='cloud5'?1.08:1.0);
           const y=Math.sin(a)*rr*(shape==='cloud5'?0.98:1.0);
@@ -3331,6 +3332,7 @@ if(Z>0.08){
 
       const adaptationTags = adaptationProfilesFromGenes(this.genes, this.flags, topo, this.role);
       if(adaptationTags.length && !renderPerf.tiny){
+        const form = this.form || formFromGenes(this.genes,this.speciesKey);
         const bodyR=Math.max(this.size*1.0,(sym.visualR||this.size)*0.48);
         if(adaptationTags.includes('adhesiveMat')){
           ctx.save();
@@ -3344,7 +3346,7 @@ if(Z>0.08){
         if(adaptationTags.includes('tentacle') || adaptationTags.includes('filterFan')){
           ctx.save();
           ctx.globalCompositeOperation='lighter';
-          const tentacleN = adaptationTags.includes('filterFan') ? 8 : (4 + Math.round(this.genes.sensory*5));
+          const tentacleN = adaptationTags.includes('filterFan') ? 8 : (4 + Math.round(this.genes.sense*5));
           const spread = adaptationTags.includes('filterFan') ? TAU : Math.PI*1.35;
           const startA = adaptationTags.includes('filterFan') ? sym.pulse : -spread*0.5;
           ctx.strokeStyle=`hsla(${outlineHue},92%,84%,${dayNight.isNight?0.30:0.20})`;
@@ -3354,10 +3356,10 @@ if(Z>0.08){
             const q=tentacleN===1?0.5:i/(tentacleN-1);
             const a=startA + q*spread + Math.sin(gait*0.09+i)*0.10;
             const rootR=bodyR*(0.72+0.08*Math.sin(i));
-            const len=this.size*(1.25 + this.genes.sensory*1.65 + (adaptationTags.includes('filterFan')?0.55:0));
+            const len=this.size*(1.25 + this.genes.sense*1.65 + (adaptationTags.includes('filterFan')?0.55:0));
             const sx=Math.cos(a)*rootR, sy=Math.sin(a)*rootR;
             const ex=Math.cos(a)*(rootR+len), ey=Math.sin(a)*(rootR+len);
-            const bend=Math.sin(gait*0.62 + i*1.7)*this.size*(0.28+this.genes.lobes*0.22);
+            const bend=Math.sin(gait*0.62 + i*1.7)*this.size*(0.28+form.detail*0.22);
             const mx=Math.cos(a)*(rootR+len*0.52) + Math.cos(a+Math.PI/2)*bend;
             const my=Math.sin(a)*(rootR+len*0.52) + Math.sin(a+Math.PI/2)*bend;
             ctx.beginPath();
@@ -3378,7 +3380,7 @@ if(Z>0.08){
           ctx.globalCompositeOperation='lighter';
           ctx.strokeStyle=`hsla(${(outlineHue+330)%360},95%,78%,${dayNight.isNight?0.28:0.20})`;
           ctx.lineWidth=Math.max(0.7,this.size*0.08);
-          const n=7 + Math.round(this.genes.lobes*5);
+          const n=7 + Math.round(form.detail*5);
           for(let i=0;i<n;i++){
             const a=i/n*TAU + sym.pulse*0.12;
             ctx.beginPath();
@@ -3390,7 +3392,7 @@ if(Z>0.08){
         }
         if(adaptationTags.includes('colonyBuilder')){
           ctx.save();
-          const n=5 + Math.round(this.genes.reproduction*5);
+          const n=5 + Math.round(this.genes.fecundity*5);
           for(let i=0;i<n;i++){
             const a=i/n*TAU + Math.sin(gait*0.18+i)*0.10;
             const rr=bodyR*(1.05+0.25*Math.sin(gait*0.22+i));
@@ -3654,7 +3656,7 @@ if(Z>0.08){
         if(dayNight.isNight){
           ctx.strokeStyle = `hsla(${hueG},95%,80%,${(0.25*pulse).toFixed(3)})`;
           ctx.lineWidth = 1.1;
-          const rays = 5 + (this.lobeCount?1:0);
+          const rays = 5 + (this.edgeCount?1:0);
           for(let i=0;i<rays;i++){
             const a = (i/rays)*TAU + this.phase*0.35;
             const L = this.size*(1.2 + 0.9*pulse);
@@ -3721,7 +3723,7 @@ if(Z>0.08){
       const segs = 80;
       for(let i=0;i<=segs;i++){
         const t=i/segs*TAU;
-        let wave= this.lobeCount>0 ? Math.sin(this.lobeCount*t + this.phase)*this.lobeAmp : 0;
+        let wave= this.edgeCount>0 ? Math.sin(this.edgeCount*t + this.phase)*this.edgeAmp : 0;
         let membrane = micro ? Math.sin((micro.membraneFreq||5)*t + micro.membranePhase + frame*0.006)*(micro.membraneRipple||0.04) : 0;
         let rx=this.size*this.aspect, ry=this.size;
         let r=1 + wave + membrane;
@@ -3742,7 +3744,7 @@ if(Z>0.08){
 
       // Gene-mapped optical properties
       const ageF = Math.min(1, this.age/9000);
-      const frost = Math.max(0, Math.min(0.65, 0.15 + 0.35*ageF*(0.5 + 0.5*(1 - this.genes.efficiency)) ));
+      const frost = Math.max(0, Math.min(0.65, 0.15 + 0.35*ageF*(0.5 + 0.5*(1 - this.genes.metabolism)) ));
       const clarity = Math.max(0.25, Math.min(0.95, 0.78 - frost + 0.05*(1 - this.genes.size) + 0.08*(this.energy/160) ));
       const rimK = 0.22 + 0.25*(1 - frost);
       const specK = 0.18 + 0.20*(1 - frost);
@@ -3944,13 +3946,13 @@ if(Z>0.08){
     }
   }
 
-  function carnivoryIntent(carnIntent, deficit){
+  function dietIntent(carnIntent, deficit){
     return clamp(carnIntent * (0.38 + 0.62*sigmoid(deficit/12)) + clamp((carnIntent-0.62)*0.42,0,0.18),0,1);
   }
   // ===== Simple Mendelian traits (glow/crown/colony/chloroplast) =====
   function __flagsFromTraits(t, g){
     const tt = t || {};
-    const carn = (g && g.carnivory!=null) ? g.carnivory : 0.5;
+    const carn = (g && g.diet!=null) ? g.diet : 0.5;
     const herb = carn <= 0.25;
     const chl = herb && ((tt.chlA1||'P')==='p' && (tt.chlA2||'P')==='p');
     return {
@@ -4848,7 +4850,7 @@ function triggerEvent(type){
   // ===== Mix chart =====
   const mixCanvas=$('mix-canvas'); const mixCtx=mixCanvas.getContext('2d'); let MX=0,MY=0; const mixHist=[];
   function resizeMix(){ const r=mixCanvas.getBoundingClientRect(); MX=r.width; MY=r.height; mixCanvas.width=Math.round(MX*DPR); mixCanvas.height=Math.round(MY*DPR); mixCtx.setTransform(DPR,0,0,DPR,0,0); } window.addEventListener('resize', resizeMix, {passive:true}); resizeMix();
-  function classifyDiet(o){ const c=o.genes.carnivory; if(c<0.33) return 0; if(c<0.66) return 1; return 2; }
+  function classifyDiet(o){ const c=o.genes.diet; if(c<0.33) return 0; if(c<0.66) return 1; return 2; }
   function reportMix(){
     const n=organisms.length||1;
     let h=0,m=0,c=0;
@@ -5235,12 +5237,12 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
 function nickFromGenes(g,flags){
   return speciesNameFromGenes(g,flags);
 }
-function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
+function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const segs=64;
     let d='M';
     for(let i=0;i<=segs;i++){
       const t=i/segs*TAU;
-      const wave = lobes>0? Math.sin(lobes*t + phase)*amp : 0;
+      const wave = points>0? Math.sin(points*t + phase)*amp : 0;
       const rX=rx*(1+wave), rY=ry*(1+wave);
       const x=cx + Math.cos(t)*rX, y=cy + Math.sin(t)*rY;
       d += (i===0? `${x.toFixed(2)} ${y.toFixed(2)}` : ` L ${x.toFixed(2)} ${y.toFixed(2)}`);
@@ -5256,12 +5258,13 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     const crown = flags?.crown? `<g stroke="${stroke}" stroke-width="1.2">${Array.from({length:8},(_,i)=>{const a=(i/8)*Math.PI*2;const x1=24+Math.cos(a)*16;const y1=24+Math.sin(a)*16;const x2=24+Math.cos(a)*20;const y2=24+Math.sin(a)*20;return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />`;}).join('')}</g>`:'';
     const colonyBadge = flags?.colony? `<circle cx="42" cy="42" r="3.2" fill="#89ffaa" stroke="rgba(10,20,30,.6)" stroke-width="1"/>`:'';
     const shapes=['circle','square','triangle','ellipse','pentagon','hexagon','leaf','diamond','sparkle4','star6','cloud5'];
-    const shape=shapes[Math.max(0,Math.min(shapes.length-1,Math.floor(clamp(g.morph??g.elongation??g.speed??0.5,0,0.999)*shapes.length)))];
-    const solitary=((g.size??0.5)*0.48 + (1-(g.elongation??0.5))*0.35 + hash01('avsingle:'+key)*0.22)>0.58;
-    const chain=solitary ? 1 : 2+Math.round(clamp((g.reproduction??0.5)*1.7 + (g.sensory??0.5)*1.25,0,4));
-    const branch=!solitary && (g.lobes??0)>0.55;
+    const form=formFromGenes(g,key);
+    const shape=shapes[Math.max(0,Math.min(shapes.length-1,Math.floor(form.shape*shapes.length)))];
+    const solitary=((g.size??0.5)*0.48 + (1-form.length)*0.35 + hash01('avsingle:'+key)*0.22)>0.58;
+    const chain=solitary ? 1 : 2+Math.round(clamp((g.fecundity??0.5)*1.7 + (g.sense??0.5)*1.25,0,4));
+    const branch=!solitary && form.detail>0.55;
     const baseR=(5.5 + (g.size??0.5)*1.7).toFixed(1);
-    const iconRot=((g.pattern??0.5)*34 - 17).toFixed(1);
+    const iconRot=(form.layout*34 - 17).toFixed(1);
     function nodeShape(cx,cy,r,rot){
       cx=Number(cx); cy=Number(cy); r=Number(r); rot=Number(rot)||0;
       if(shape==='circle') return `<circle cx="${cx}" cy="${cy}" r="${r}"/>`;
@@ -5285,9 +5288,9 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
         return `<polygon points="${pts.join(' ')}" transform="rotate(${rot} ${cx} ${cy})"/>`;
       }
       if(shape==='star6' || shape==='cloud5'){
-        const lobes=shape==='star6'?6:5;
+        const points=shape==='star6'?6:5;
         const pts=[];
-        const n=lobes*2;
+        const n=points*2;
         for(let i=0;i<n;i++){
           const a=-Math.PI/2 + rot*Math.PI/180 + i/n*TAU;
           const rr=shape==='star6' ? r*(i%2?0.62:1.12) : r*(i%2?0.86:1.14);
@@ -5334,8 +5337,8 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     const total=organisms.length||1, sums=new Map();
     for(const o of organisms){
       const k=o.speciesKey; let s=sums.get(k);
-      if(!s){ s={n:0,g:{speed:0,size:0,eff:0,repro:0,sens:0,carn:0, lobes:0,lobeAmp:0, elongation:0, pattern:0, morph:0},flags:{glow:0,crown:0,colony:0,chl:0},carriers:{glow:0,crown:0,colony:0,chl:0}}; sums.set(k,s); }
-      s.n++; s.g.speed+=o.genes.speed; s.g.size+=o.genes.size; s.g.eff+=o.genes.efficiency; s.g.repro+=o.genes.reproduction; s.g.sens+=o.genes.sensory; s.g.carn+=o.genes.carnivory; s.g.lobes+=o.genes.lobes; s.g.lobeAmp+=o.genes.lobeAmp; s.g.elongation+=o.genes.elongation; s.g.pattern+=o.genes.pattern; s.g.morph+=o.genes.morph??0;
+      if(!s){ s={n:0,g:Object.fromEntries(GENE_KEYS.map(k=>[k,0])),flags:{glow:0,crown:0,colony:0,chl:0},carriers:{glow:0,crown:0,colony:0,chl:0}}; sums.set(k,s); }
+      s.n++; for(const gene of GENE_KEYS) s.g[gene]+=o.genes[gene]??0.5;
       if(o.flags){ if(o.flags.glow) s.flags.glow++; if(o.flags.crown) s.flags.crown++; if(o.flags.colony) s.flags.colony++; if(o.flags.chl) s.flags.chl++; }
       const carriers=traitCarrierFlags(o.traits,o.flags);
       if(carriers.glow) s.carriers.glow++;
@@ -5344,7 +5347,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       if(carriers.chl) s.carriers.chl++;
       const node=lineage.nodes.get(k); if(node){ node.count = s.n; node.lastSeen=frame; }
     }
-    const rows=[]; sums.forEach((s,k)=>{ const n=s.n, inv=1/n; rows.push({key:k,n,share:n/total,g:{speed:s.g.speed*inv,size:s.g.size*inv,efficiency:s.g.eff*inv,reproduction:s.g.repro*inv,sensory:s.g.sens*inv,carnivory:s.g.carn*inv, lobes:s.g.lobes*inv, lobeAmp:s.g.lobeAmp*inv, elongation:s.g.elongation*inv, pattern:s.g.pattern*inv, morph:s.g.morph*inv}, flags:{glow:s.flags.glow/n,crown:s.flags.crown/n,colony:s.flags.colony/n, chl:s.flags.chl/n}, carriers:{glow:s.carriers.glow/n,crown:s.carriers.crown/n,colony:s.carriers.colony/n,chl:s.carriers.chl/n}}); });
+    const rows=[]; sums.forEach((s,k)=>{ const n=s.n, inv=1/n, g={}; for(const gene of GENE_KEYS) g[gene]=s.g[gene]*inv; rows.push({key:k,n,share:n/total,g, flags:{glow:s.flags.glow/n,crown:s.flags.crown/n,colony:s.flags.colony/n, chl:s.flags.chl/n}, carriers:{glow:s.carriers.glow/n,crown:s.carriers.crown/n,colony:s.carriers.colony/n,chl:s.carriers.chl/n}}); });
     const filtered = rows.filter(r=> r.share>=0.01); filtered.sort((a,b)=> b.n-a.n); const top=filtered.slice(0,6);
     let html=''; cont.__prev = cont.__prev || {};
     for(const it of top){
@@ -5372,7 +5375,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
         <div class="species-card-header">
           <div class="species-avatar">${av}</div>
           <div class="species-key">${nickFromGenes(it.g,flagBool)} <span style="opacity:.6;font-weight:600">(${it.key})</span></div>
-          <div class="species-diet">${it.g.carnivory>=0.66?"🍖":(it.g.carnivory<=0.33?"🌿":"🍽️")}</div>
+          <div class="species-diet">${it.g.diet>=0.66?"🍖":(it.g.diet<=0.33?"🌿":"🍽️")}</div>
         </div>
         <div class="species-stats">
           <div><b style="color:#cfe3ff">${it.n}</b> 個体</div>
@@ -5441,12 +5444,12 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       for(const o of organisms){
         const k=o.speciesKey; let s=sums.get(k);
         if(!s){ s={n:0, g:{speed:0,size:0,eff:0,repro:0,sens:0,carn:0}}; sums.set(k,s); }
-        s.n++; s.g.speed+=o.genes.speed; s.g.size+=o.genes.size; s.g.eff+=o.genes.efficiency; s.g.repro+=o.genes.reproduction; s.g.sens+=o.genes.sensory; s.g.carn+=o.genes.carnivory;
+        s.n++; s.g.speed+=o.genes.speed; s.g.size+=o.genes.size; s.g.eff+=o.genes.metabolism; s.g.repro+=o.genes.fecundity; s.g.sens+=o.genes.sense; s.g.carn+=o.genes.diet;
       }
       const nodes=[];
       sums.forEach((s,k)=>{
         const n=s.n; if(n<=0) return;
-        const g={speed:s.g.speed/n,size:s.g.size/n,eff:s.g.eff/n,reproduction:s.g.repro/n,sensory:s.g.sens/n,carnivory:s.g.carn/n};
+        const g={speed:s.g.speed/n,size:s.g.size/n,eff:s.g.eff/n,fecundity:s.g.repro/n,sense:s.g.sens/n,diet:s.g.carn/n};
         const hue = Math.floor(speciesPalette(k).hue);
         const ln = lineage.nodes.get(k) || {firstSeen:frame,lastSeen:frame,count:n};
         nodes.push({key:k,n,g,hue, first:ln.firstSeen, last:ln.lastSeen});
@@ -5466,7 +5469,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
               for(let j=0;j<top.length;j++){
                 if(vis.has(j)) continue;
                 const a=top[i].g, b=top[j].g;
-                const d=(a.speed-b.speed)**2+(a.size-b.size)**2+(a.eff-b.eff)**2+(a.reproduction-b.reproduction)**2+(a.sensory-b.sensory)**2+(a.carnivory-b.carnivory)**2;
+                const d=(a.speed-b.speed)**2+(a.size-b.size)**2+(a.eff-b.eff)**2+(a.fecundity-b.fecundity)**2+(a.sense-b.sense)**2+(a.diet-b.diet)**2;
                 if(d<bestD){ bestD=d; bestI=i; bestJ=j; }
               }
             }
@@ -5474,7 +5477,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
             vis.add(bestJ);
           }
         }
-        const proj=(g)=>({X: g.carnivory*ww, Y: (1-g.speed)*hh});
+        const proj=(g)=>({X: g.diet*ww, Y: (1-g.speed)*hh});
         c.save();
         c.translate(pad,pad+6);
         c.strokeStyle='rgba(200,220,255,0.25)'; c.lineWidth=1;
@@ -5482,7 +5485,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
         for(const n of top){ const p=proj(n.g); const r=Math.max(2, Math.log2(2+n.n)); c.beginPath(); c.arc(p.X,p.Y,r,0,Math.PI*2); c.fillStyle=`hsl(${n.hue} 70% 55% / 0.85)`; c.fill(); c.strokeStyle='rgba(255,255,255,0.22)'; c.stroke(); }
         c.restore();
       } else {
-        // lineage: x = firstSeen timeline, y = hashed lane or current carnivory
+        // lineage: x = firstSeen timeline, y = hashed lane or current diet
         const minT = Math.min(...nodes.map(n=>n.first));
         const maxT = frame + 1;
         const projT = (t)=> (t-minT)/(maxT-minT+1);
@@ -5531,14 +5534,14 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
   function initPopulation(n=CONFIG.population.starter){
   organisms.length=0;
   const topologySeeds = [
-    {t:'single', g:{speed:0.32,size:0.42,efficiency:0.72,reproduction:0.34,sensory:0.36,carnivory:0.28,lobes:0.18,lobeAmp:0.20,elongation:0.18,pattern:0.18,morph:0.08}},
-    {t:'chain', g:{speed:0.72,size:0.36,efficiency:0.44,reproduction:0.46,sensory:0.56,carnivory:0.36,lobes:0.30,lobeAmp:0.26,elongation:0.86,pattern:0.42,morph:0.22}},
-    {t:'radial', g:{speed:0.48,size:0.46,efficiency:0.48,reproduction:0.44,sensory:0.62,carnivory:0.72,lobes:0.88,lobeAmp:0.48,elongation:0.36,pattern:0.54,morph:0.78}},
-    {t:'ring', g:{speed:0.38,size:0.48,efficiency:0.76,reproduction:0.44,sensory:0.52,carnivory:0.34,lobes:0.62,lobeAmp:0.34,elongation:0.42,pattern:0.36,morph:0.52}},
-    {t:'branch', g:{speed:0.52,size:0.36,efficiency:0.50,reproduction:0.44,sensory:0.82,carnivory:0.46,lobes:0.58,lobeAmp:0.42,elongation:0.52,pattern:0.48,morph:0.66}},
-    {t:'cluster', g:{speed:0.34,size:0.34,efficiency:0.56,reproduction:0.84,sensory:0.52,carnivory:0.22,lobes:0.42,lobeAmp:0.30,elongation:0.30,pattern:0.28,morph:0.92}},
-    {t:'spiral', g:{speed:0.58,size:0.38,efficiency:0.58,reproduction:0.48,sensory:0.58,carnivory:0.38,lobes:0.48,lobeAmp:0.36,elongation:0.62,pattern:0.92,morph:0.34}},
-    {t:'mesh', g:{speed:0.40,size:0.62,efficiency:0.82,reproduction:0.42,sensory:0.66,carnivory:0.42,lobes:0.52,lobeAmp:0.34,elongation:0.42,pattern:0.62,morph:0.58}}
+    {t:'single', g:{speed:0.32,size:0.42,metabolism:0.72,fecundity:0.34,sense:0.36,diet:0.28,formSeed:0.08}},
+    {t:'chain', g:{speed:0.72,size:0.36,metabolism:0.44,fecundity:0.46,sense:0.56,diet:0.36,formSeed:0.22}},
+    {t:'radial', g:{speed:0.48,size:0.46,metabolism:0.48,fecundity:0.44,sense:0.62,diet:0.72,formSeed:0.78}},
+    {t:'ring', g:{speed:0.38,size:0.48,metabolism:0.76,fecundity:0.44,sense:0.52,diet:0.34,formSeed:0.52}},
+    {t:'branch', g:{speed:0.52,size:0.36,metabolism:0.50,fecundity:0.44,sense:0.82,diet:0.46,formSeed:0.66}},
+    {t:'cluster', g:{speed:0.34,size:0.34,metabolism:0.56,fecundity:0.84,sense:0.52,diet:0.22,formSeed:0.92}},
+    {t:'spiral', g:{speed:0.58,size:0.38,metabolism:0.58,fecundity:0.48,sense:0.58,diet:0.38,formSeed:0.34}},
+    {t:'mesh', g:{speed:0.40,size:0.62,metabolism:0.82,fecundity:0.42,sense:0.66,diet:0.42,formSeed:0.58}}
   ];
   const baseline = Math.max(0, (n|0) - 10 - topologySeeds.length);
   for(let i=0;i<baseline;i++){
@@ -5549,11 +5552,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
   // Guarantee at least one per family (0..9)
   const familyCount = 10;
   for(let f=0; f<familyCount; f++){
-    const g = { 
-      speed:Math.random(), size:Math.random(), efficiency:Math.random(), reproduction:Math.random(),
-      sensory:Math.random(), lobes:Math.random(), lobeAmp:Math.random(), elongation:Math.random(),
-      morph:(f+0.001)/familyCount, pattern:Math.random(), carnivory:Math.random()
-    };
+    const g = geneSet(); g.formSeed=(f+0.001)/familyCount;
     const o = new Organism(rnd(20,W-20), rnd(20,H-20), g);
     settleStarter(o);
     organisms.push(o);
@@ -5915,7 +5914,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
     grazingSummary(){
       let grazing=0,recentGrazing=0,herbivores=0,omnivores=0,carnivores=0;
       for(const o of organisms){
-        const c=o.genes?.carnivory ?? 0.5;
+        const c=o.genes?.diet ?? 0.5;
         if(c<0.33) herbivores++;
         else if(c<0.66) omnivores++;
         else carnivores++;
