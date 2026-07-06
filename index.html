@@ -258,7 +258,23 @@
       })
     }),
     ecology: Object.freeze({
-      wildFoodSpawnScale: 0.06,
+      wildFoodSpawnScale: 0.02,
+      rescueFood: Object.freeze({
+        enabled: true,
+        minPopulation: 42,
+        minAverageEnergy: 42,
+        maxFoodParticles: 7,
+        cooldownFrames: 240,
+        small: 4,
+        big: 0
+      }),
+      predatorBurst: Object.freeze({
+        carnivoryMin: 0.66,
+        triggerSenseScale: 0.62,
+        frames: 28,
+        speedMultiplier: 1.72,
+        energyCost: 0.012
+      }),
       plankton: Object.freeze({
         source: 'detritus-oxygen',
         initialSeed: 70,
@@ -928,6 +944,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(type==='detritus') return ledger.main==='corpse-detritus' || ledger.secondary==='corpse-detritus' || o?.role==='scav';
     return true;
   }
+  function isPredatorBursting(o){
+    const cfg=CONFIG.ecology.predatorBurst;
+    return !!(o && o.burstTimer>0 && (o.genes?.carnivory ?? 0) >= cfg.carnivoryMin && (o.chaseTimer>0 || o.preyTargetId));
+  }
   function dietRareFactor(type){
     const s = dietShare[type] ?? 0.33;
     // mild negative feedback: rare diets get a small boost on their primary energy source
@@ -1268,6 +1288,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         food:food.length,
         corpses:corpses.length,
         plankton:plankton.length,
+        averageEnergy:Number(averageLivingEnergy().toFixed(2)),
         env:window.env?.getAverages ? window.env.getAverages() : null
       },
       totals:{
@@ -2198,6 +2219,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       const dx=prey.x-this.x, dy=prey.y-this.y;
       const d=Math.hypot(dx,dy)||1;
       const ambush=this.role==='ambusher';
+      const burstCfg=CONFIG.ecology.predatorBurst;
       if(ambush && d>this.senseR*0.55){
         this.vx*=0.985; this.vy*=0.985;
         this.chaseTimer=Math.max(this.chaseTimer,20);
@@ -2210,6 +2232,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         packBonus += Math.min(0.28, mates*0.06);
       }
       if(ambush && d<this.senseR*0.50) this.burstTimer=Math.max(this.burstTimer,20);
+      if(carn>=burstCfg.carnivoryMin && d<this.senseR*burstCfg.triggerSenseScale && intent>0.12 && this.energy>this.reproThreshold*0.30){
+        this.burstTimer=Math.max(this.burstTimer,burstCfg.frames);
+        if(frame-(this._lastBurstAction||0)>150){ recordAction(this,'捕食バースト'); this._lastBurstAction=frame; }
+      }
       let chaseForce=(0.070 + 0.105*carn + 0.065*intent)*packBonus;
       if(this.morphologyTopology==='radial') chaseForce*=1.05;
       if(this.morphologyTopology==='chain') chaseForce*=0.98;
@@ -2402,7 +2428,9 @@ if(Z>0.08){
       const score = this.aff.aN*En - 0.35*Ec + 0.55*(Et-0.50) + (this.aff.aZ||-0.7)*Z;
 
       const fleeBoost=this.fleeTimer>0?1.35:1.0;
-      const burstBoost=(this.role==='ambusher' && this.burstTimer>0)? 1.65:1.0;
+      const predatorBursting=isPredatorBursting(this);
+      const burstBoost=predatorBursting ? CONFIG.ecology.predatorBurst.speedMultiplier : ((this.role==='ambusher' && this.burstTimer>0)?1.65:1.0);
+      if(predatorBursting) this.energy=Math.max(0,this.energy-CONFIG.ecology.predatorBurst.energyCost*(1+this.genes.speed));
       const sp=Math.hypot(this.vx,this.vy);
 
       // Speed variability + resting
@@ -2448,7 +2476,7 @@ if(Z>0.08){
       const speedIntent=clamp(actualSp/Math.max(0.1,this.maxSpeed*1.25),0,1);
       const forageIntent=nearest ? 0.18 : 0;
       const socialIntent=socialNeighbors ? clamp(socialNeighbors*0.035,0,0.26) : 0;
-      const stressIntent=(this.fleeTimer>0?0.50:0) + ((this.role==='ambusher' && this.burstTimer>0)?0.42:0) + socialIntent;
+      const stressIntent=(this.fleeTimer>0?0.50:0) + (predatorBursting?0.46:((this.role==='ambusher' && this.burstTimer>0)?0.42:0)) + socialIntent;
       this.motionLevel=clamp((this.motionLevel||0)*0.72 + (speedIntent+forageIntent+stressIntent)*0.28,0,1.65);
       this.gait=(this.gait + (0.020 + 0.125*this.motionLevel)*(0.75+0.60*this.genes.speed)) % TAU;
 
@@ -2930,8 +2958,8 @@ if(Z>0.08){
       }
       if(this.chaseTimer>0 || this.preyTargetId){
         ctx.beginPath(); ctx.arc(0,0,r*3.1,0,TAU);
-        ctx.strokeStyle='rgba(255,118,126,0.30)';
-        ctx.lineWidth=1.1;
+        ctx.strokeStyle=predatorBursting?'rgba(255,170,90,0.48)':'rgba(255,118,126,0.30)';
+        ctx.lineWidth=predatorBursting?1.6:1.1;
         ctx.stroke();
       }
       if(this.fleeTimer>0){
@@ -3000,8 +3028,9 @@ if(Z>0.08){
       const night = clamp01(dayNight.night ?? (dayNight.isNight ? 1 : 0));
       const dayContrast = 1 - night;
       const motion = clamp(this.motionLevel||0,0,1.65);
+      const predatorBursting=isPredatorBursting(this);
       const behavior = clamp(
-        motion + (this.fleeTimer>0?0.35:0) + ((this.role==='ambusher' && this.burstTimer>0)?0.30:0) + (this.mateSeekT>120?0.10:0),
+        motion + (this.fleeTimer>0?0.35:0) + (predatorBursting?0.34:((this.role==='ambusher' && this.burstTimer>0)?0.30:0)) + (this.mateSeekT>120?0.10:0),
         0, 1.9
       );
       const intent = clamp(0.18 + behavior, 0.16, 1.9);
@@ -3323,8 +3352,8 @@ if(Z>0.08){
       if(this.chaseTimer>0 || this.preyTargetId){
         ctx.beginPath();
         ctx.arc(0,0,Math.max(this.size*1.75,(sym.visualR||this.size)*0.80),0,TAU);
-        ctx.strokeStyle='rgba(255,118,126,0.34)';
-        ctx.lineWidth=1.4;
+        ctx.strokeStyle=predatorBursting?'rgba(255,170,90,0.52)':'rgba(255,118,126,0.34)';
+        ctx.lineWidth=predatorBursting?1.8:1.4;
         ctx.stroke();
       }
       if(this.fleeTimer>0){
@@ -5262,6 +5291,25 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
   }
 }
   function addFood(nSmall=10, nBig=2, source='wildFood'){ for(let i=0;i<nSmall;i++){ food.push(new Food(rnd(8,W-8), rnd(8,H-8),'small')); } for(let i=0;i<nBig;i++){ food.push(new Food(rnd(8,W-8), rnd(8,H-8),'big')); } recordFoodSupply(source, nSmall+nBig); if(food.length>120) food.splice(0, food.length-120); }
+  function averageLivingEnergy(){
+    if(!organisms.length) return 0;
+    let sum=0;
+    for(const o of organisms) sum+=o.energy||0;
+    return sum/organisms.length;
+  }
+  function maybeSpawnRescueFood(){
+    const cfg=CONFIG.ecology.rescueFood;
+    if(!cfg.enabled || frame<360 || frame%cfg.cooldownFrames!==0) return false;
+    const avg=averageLivingEnergy();
+    const scarcity = organisms.length<=cfg.minPopulation || avg<cfg.minAverageEnergy;
+    if(!scarcity || food.length>cfg.maxFoodParticles) return false;
+    addFood(cfg.small,cfg.big,'rescueFood');
+    if(frame-(maybeSpawnRescueFood._lastLog||0)>900){
+      log(`救済餌：個体数${organisms.length} / 平均エネルギー${avg.toFixed(1)} のため少量だけ発生。`);
+      maybeSpawnRescueFood._lastLog=frame;
+    }
+    return true;
+  }
 
   function start(){ if(running) return; running=true; $('start-btn').disabled=true; $('pause-btn').disabled=false; log('▶ 再開'); }
   function pause(){ if(!running) return; running=false; $('start-btn').disabled=false; $('pause-btn').disabled=true; log('⏸ 一時停止'); }
@@ -5417,6 +5465,7 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       }
       // 餌の自然供給
       if(frame%120===0){ const f=season(); const small=(Math.random()<0.55*f*CONFIG.ecology.wildFoodSpawnScale)?1:0; const big=(Math.random()<0.06*f*CONFIG.ecology.wildFoodSpawnScale)?1:0; if(small||big) addFood(small,big,'seasonalFood'); const label = f<0.9 ? '🍂 飢饉期' : '🌱 豊作期'; if(label !== lastSeasonLabel){ showToast('season', f<0.9 ? '飢饉期。餌粒は少なく、藻場を食べられる個体や腐肉食が有利に働くだろう。' : '豊作期。緑の藻場が再生しやすく、草食と増殖力の高い種に追い風だろう。'); lastSeasonLabel = label; } }
+      maybeSpawnRescueFood();
       if(frame%60===0){ updateRoleShare(); updateWaterStatus(); }
       if(frame%180===0) refreshSpeciesStats();
       if(frame%240===0) checkEvolutionMilestones();
@@ -5562,13 +5611,14 @@ function polyLobedPath(cx,cy,rx,ry,lobes,amp,phase){
       return selectedOrganism ? {id:selectedOrganism.id, dead:!!selectedOrganism.dead, lines:selectedCardLines(selectedOrganism)} : null;
     },
     predationSummary(){
-      let chasing=0,fleeing=0,targets=0;
+      let chasing=0,fleeing=0,targets=0,bursting=0;
       for(const o of organisms){
         if(o.chaseTimer>0) chasing++;
         if(o.fleeTimer>0) fleeing++;
         if(o.preyTargetId) targets++;
+        if(isPredatorBursting(o)) bursting++;
       }
-      return {chasing,fleeing,targets,predEvents};
+      return {chasing,fleeing,targets,bursting,predEvents};
     },
     grazingSummary(){
       let grazing=0,recentGrazing=0,herbivores=0,omnivores=0,carnivores=0;
