@@ -133,6 +133,9 @@
       <button id="caustics-btn" class="btn" style="width:100%">〰 水面反射: OFF</button>
     </div>
     <div class="row">
+      <button id="observe-btn" class="btn" style="width:100%">◎ 観察: OFF</button>
+    </div>
+    <div class="row">
       <button id="microview-btn" class="btn" style="width:100%">🔬 遠景観察: ON</button>
     </div>
     <div class="row">
@@ -342,7 +345,7 @@
   });
 
   // ===== UI State =====
-  const ui={ speed:1, mutation:0.03, showSense:false, tool:'food', popMax:CONFIG.population.maxDefault, parallax:1.0, roleViz:false, caustics:false, microView:true, forceFullRender:true };
+  const ui={ speed:1, mutation:0.03, showSense:false, tool:'food', popMax:CONFIG.population.maxDefault, parallax:1.0, roleViz:false, caustics:false, observeField:null, microView:true, forceFullRender:true };
   const renderPerf = { mobile:IS_MOBILE_VIEW, low:!ui.forceFullRender && IS_MOBILE_VIEW, tiny:false, mode:ui.forceFullRender?'full':(IS_MOBILE_VIEW?'low':'full'), meshCount:0, complexCount:0, heavyComplex:false };
   $('speed-slider').addEventListener('input',e=>{ ui.speed=+e.target.value; $('speed-value').textContent=ui.speed+'x'; });
   $('mutation-slider').addEventListener('input',e=>{ ui.mutation=(+e.target.value)/100; $('mutation-value').textContent=e.target.value+'%'; });
@@ -381,6 +384,28 @@
   if(causticsBtn){
     causticsBtn.addEventListener('click', ()=>{ ui.caustics = !ui.caustics; syncCausticsUI(); });
     syncCausticsUI();
+  }
+
+  const OBSERVE_FIELDS = [null,'oxygen','detritus','algae'];
+  const OBSERVE_META = {
+    oxygen:{label:'酸素',rgb:[84,232,226],maxAlpha:0.34},
+    detritus:{label:'デトリタス',rgb:[118,76,42],maxAlpha:0.42},
+    algae:{label:'藻場',rgb:[82,236,104],maxAlpha:0.36}
+  };
+  const observeBtn = $('observe-btn');
+  function syncObserveUI(){
+    if(!observeBtn) return;
+    const meta = OBSERVE_META[ui.observeField];
+    observeBtn.textContent = `◎ 観察: ${meta ? meta.label : 'OFF'}`;
+    observeBtn.classList.toggle('on', !!meta);
+  }
+  if(observeBtn){
+    observeBtn.addEventListener('click', ()=>{
+      const i = OBSERVE_FIELDS.indexOf(ui.observeField);
+      ui.observeField = OBSERVE_FIELDS[(i+1) % OBSERVE_FIELDS.length];
+      syncObserveUI();
+    });
+    syncObserveUI();
   }
 
   const microViewBtn = $('microview-btn');
@@ -5042,6 +5067,41 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
     ctx.restore();
   }
 
+  function drawObservationOverlay(){
+    const type=ui.observeField, meta=OBSERVE_META[type];
+    if(!meta || !window.env?.valueAt) return;
+    const step = renderPerf.tiny ? 36 : (renderPerf.low ? 28 : Math.max(18, CONFIG.environment.cellSize));
+    ctx.save();
+    ctx.globalCompositeOperation = type==='oxygen' ? 'lighter' : 'source-over';
+    for(let y=0;y<H;y+=step){
+      for(let x=0;x<W;x+=step){
+        const v=clamp01(window.env.valueAt(type,x+step*0.5,y+step*0.5));
+        if(v<0.025) continue;
+        const a=clamp(0.035 + Math.pow(v,1.28)*meta.maxAlpha,0,meta.maxAlpha);
+        ctx.fillStyle=`rgba(${meta.rgb[0]},${meta.rgb[1]},${meta.rgb[2]},${a.toFixed(3)})`;
+        ctx.fillRect(x,y,step+1,step+1);
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawObservationLabel(){
+    const meta=OBSERVE_META[ui.observeField];
+    if(!meta) return;
+    const text=`観察: ${meta.label}`;
+    ctx.save();
+    ctx.font='700 12px system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif';
+    ctx.textAlign='right'; ctx.textBaseline='top';
+    const pad=6, tx=W-8, ty=8, m=ctx.measureText(text), bw=m.width+pad*2, bh=19;
+    ctx.fillStyle='rgba(8,16,34,0.58)';
+    ctx.strokeStyle=`rgba(${meta.rgb[0]},${meta.rgb[1]},${meta.rgb[2]},0.48)`;
+    ctx.lineWidth=1;
+    if(ctx.roundRect){ ctx.beginPath(); ctx.roundRect(tx-bw,ty,bw,bh,8); ctx.fill(); ctx.stroke(); }
+    else { ctx.fillRect(tx-bw,ty,bw,bh); ctx.strokeRect(tx-bw,ty,bw,bh); }
+    ctx.fillStyle='#e6f4ff'; ctx.fillText(text,tx-pad,ty+3);
+    ctx.restore();
+  }
+
   function drawBackground(){
     // base
     ctx.setTransform(DPR,0,0,DPR,0,0);
@@ -5758,6 +5818,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     // レイヤー順：パッチ -> エフェクト -> 餌/死骸/プランクトン -> 個体 -> スパーク -> HUD -> 右下HUD
     // patches hidden; environment is visualized as dots
     if(window.env) window.env.draw(ctx);
+    drawObservationOverlay();
     drawSurfaceCaustics();
     for(const e of effects){ const k=e.t/e.maxT; ctx.beginPath(); ctx.arc(e.x,e.y,e.r*(0.98+0.02*Math.sin(frame*0.1)),0,TAU); ctx.strokeStyle = e.type==='repel'? `rgba(120,255,160,${0.18*k})` : `rgba(255,230,120,${0.18*k})`; ctx.lineWidth=2; ctx.stroke(); }
     for(const f of food){ if(f.type!=='detritus') f.draw(ctx); }
@@ -5779,6 +5840,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     for(let i=predationBlooms.length-1;i>=0;--i){ const b=predationBlooms[i]; b.step(); b.draw(ctx); if(b.t<=0) predationBlooms.splice(i,1); }
     for(let i=sparks.length-1;i>=0;--i){ const s=sparks[i]; s.step(); s.draw(ctx); if(s.t<=0) sparks.splice(i,1); }
     drawSelectionOverlay();
+    drawObservationLabel();
     drawHUD();
     if(phyDirty || frame - lastPhyDrawFrame >= 12){
       drawPhy();
