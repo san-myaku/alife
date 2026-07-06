@@ -895,6 +895,7 @@
   function q3(x){ return x<1/3?0: x<2/3?1:2; }
   function hashStr32(s){ let h=0x811c9dc5; for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = (h>>>0) * 0x01000193; h>>>0; } return h>>>0; }
   function rngFromKey(key){ let x = hashStr32(String(key))||1; return function(){ x ^= x<<13; x ^= x>>>17; x ^= x<<5; x>>>=0; return (x & 0xffffffff)/0x100000000; }; }
+  const SYMBOL_SHAPES = Object.freeze(['circle','square','triangle','ellipse','pentagon','hexagon','leaf','diamond','sparkle4','star6','cloud5','blob6','amoeba','pseudopod']);
   const silhouetteCache = new Map();
   function formFromGenes(g, key=''){
     const speed=clamp(g.speed??0.5,0,1), sense=clamp(g.sense??0.5,0,1), size=clamp(g.size??0.5,0,1), met=clamp(g.metabolism??0.5,0,1), diet=clamp(g.diet??0.5,0,1), seed=clamp(g.formSeed??0.5,0,1);
@@ -1059,6 +1060,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const ledger=foodLedgerFor(o);
     return ledger.main==='algae' || ledger.secondary==='algae';
   }
+  function algaeGrazeRadiusFor(o, base=1){
+    const sizeNorm=clamp(((o?.size??6)-3.0)/9.5,0,1);
+    return clamp(base*(0.58 + 1.02*sizeNorm),0.55,2.65);
+  }
   function canEatFoodParticle(o,type){
     const ledger=foodLedgerFor(o);
     if(type==='algae' || type==='small' || type==='big') return ledger.main==='algae' || ledger.secondary==='algae';
@@ -1129,21 +1134,21 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(!g) return 'single';
     const h=hash01('topology:'+Object.values(g).map(v=>Math.round((v||0)*97)).join('.'));
     const form=formFromGenes(g);
-    if(form.layout>0.84 && form.length>0.42) return 'spiral';
+    if(form.layout>0.84 && form.wave>0.26 && (g.diet??0)<0.68) return 'amoeba';
     if((g.metabolism??0)>0.70 && (g.sense??0)>0.50 && (g.size??0)>0.40) return 'mesh';
     if(form.detail>0.72 && (g.diet??0)>0.43) return 'radial';
     if((g.metabolism??0)>0.62 && form.detail>0.46 && form.length<0.68) return 'ring';
     if((g.sense??0)>0.66 && form.detail>0.35) return 'branch';
     if((g.fecundity??0)>0.66 && (g.size??0)<0.72) return 'cluster';
     if(form.length>0.60 || ((g.speed??0)>0.58 && (g.sense??0)>0.42)) return 'chain';
-    const order=['single','chain','radial','ring','branch','cluster','spiral','mesh'];
+    const order=['single','chain','radial','ring','branch','cluster','amoeba','mesh'];
     return order[Math.floor(h*order.length)] || 'single';
   }
   function topologyLabel(t){
-    return ({single:'単核型',chain:'数珠型',radial:'放射型',ring:'環状型',branch:'分岐型',cluster:'房型',spiral:'螺旋型',mesh:'網目型'})[t] || '単核型';
+    return ({single:'単核型',chain:'数珠型',radial:'放射型',ring:'環状型',branch:'分岐型',cluster:'房型',amoeba:'アメーバ型',mesh:'網目型'})[t] || '単核型';
   }
   function topologyNameCore(t){
-    return ({single:'単核',chain:'数珠',radial:'放射',ring:'環状',branch:'分岐',cluster:'群体',spiral:'螺旋',mesh:'網目'})[t] || '単核';
+    return ({single:'単核',chain:'数珠',radial:'放射',ring:'環状',branch:'分岐',cluster:'群体',amoeba:'アメーバ',mesh:'網目'})[t] || '単核';
   }
   function dietLabelFromGenes(g){
     const c=g?.diet ?? 0.5;
@@ -2058,7 +2063,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(this.morphologyTopology==='ring'){ this.baseMetabolic*=1.02; this.protect=Math.max(this.protect||0,110); }
       if(this.morphologyTopology==='branch'){ this.senseR*=1.10; this.senseCost*=1.04; }
       if(this.morphologyTopology==='cluster'){ this.reproThreshold*=0.94; this.maxSpeed*=0.94; }
-      if(this.morphologyTopology==='spiral'){ this.maxSpeed*=1.03; this.senseCost*=0.97; }
+      if(this.morphologyTopology==='amoeba'){ this.baseMetabolic*=0.96; this.maxSpeed*=0.97; this.senseCost*=0.98; }
       if(this.morphologyTopology==='mesh'){ this.baseMetabolic*=0.94; this.senseCost*=0.92; }
       for(const id of adaptationProfilesFromGenes(this.genes, null, this.morphologyTopology, this.role)) ADAPTATION_BY_ID[id]?.effect?.(this);
       // --- sea-glass micro-bubbles (impurities) precompute ---
@@ -2159,7 +2164,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       const rng = rngFromKey(seedKey);
       const pal = speciesPalette(this.speciesKey || speciesKey(this.genes));
       const baseHue = pal.hue;
-      const shapeNames = ['circle','square','triangle','ellipse','pentagon','hexagon','leaf','diamond','sparkle4','star6','cloud5'];
+      const shapeNames = SYMBOL_SHAPES;
       const shapeCount = shapeNames.length;
       const topology = this.morphologyTopology || topologyFromGenes(this.genes);
       const form = this.form || formFromGenes(this.genes,this.speciesKey);
@@ -2308,15 +2313,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           const rr=this.size*(0.55 + Math.sqrt(rng())*(1.4 + this.genes.fecundity*1.2));
           addNode(Math.cos(a)*rr,Math.sin(a)*rr,nodeR*(0.74+0.18*rng()),0,'cluster',primaryIndex,0.38 + 0.30*this.genes.metabolism,a);
         }
-      } else if(topology==='spiral'){
+      } else if(topology==='amoeba'){
         resetNodes();
-        const n=5 + Math.round(form.length*5 + this.genes.sense*3);
-        let prev=-1;
+        const n=5 + Math.round(form.detail*4 + this.genes.fecundity*3);
+        const core=addNode(0,0,nodeR*(1.04+0.18*rng()),-1,'amoeba-core',secondaryIndex,0.50 + 0.28*this.genes.metabolism);
         for(let i=0;i<n;i++){
-          const q=n===1?0:i/(n-1);
-          const a=-Math.PI*1.15 + q*(TAU*1.45 + form.layout*TAU*0.55);
-          const rr=this.size*(0.35 + q*(2.0 + form.length*2.0));
-          prev=addNode(Math.cos(a)*rr,Math.sin(a)*rr,nodeR*(0.88 - q*0.08),prev,'spiral',primaryIndex,0.44 + 0.30*this.genes.metabolism,a);
+          const a=i/n*TAU + rng()*0.50;
+          const rr=this.size*(0.55 + Math.sqrt(rng())*(1.25 + form.wave*1.65));
+          const lobeR=nodeR*(0.60 + 0.32*rng() + 0.10*form.wave);
+          addNode(Math.cos(a)*rr,Math.sin(a)*rr,lobeR,core,'amoeba-lobe',11 + Math.floor(rng()*3),0.38 + 0.30*this.genes.metabolism,a);
         }
       } else if(topology==='mesh'){
         resetNodes();
@@ -2675,7 +2680,7 @@ const Z = env.valueAt('detritus',  this.x,this.y); // D (detritus)
         env.addNutrientAt(this.x,this.y,farm.grow*farmK);
         if(env.addOxygenAt) env.addOxygenAt(this.x,this.y,farm.oxygen*farmK);
         if(this.energy<this.reproThreshold*1.10 && env.grazeAlgaeAt){
-          const eaten=env.grazeAlgaeAt(this.x,this.y,farm.graze*farmK,farm.radius||1);
+          const eaten=env.grazeAlgaeAt(this.x,this.y,farm.graze*farmK,algaeGrazeRadiusFor(this,farm.radius||1));
           if(eaten>0){
             const gain=eaten*(54+30*(1-this.genes.diet))*plantDigestFactor(this.genes.diet);
             this.energy=clamp(this.energy+gain,0,160);
@@ -2803,7 +2808,7 @@ if(Z>0.08){
         const grazeNeed = clamp((this.reproThreshold*1.12-this.energy)/Math.max(1,this.reproThreshold),0,1);
         const grazeField = clamp((localN-0.08)/0.62,0,1);
         const grazeAmt = (0.0032 + 0.0042*eff + 0.0040*grazeDrive) * grazeField * (0.45 + 0.78*grazeNeed) * clamp(0.48 + 0.72*localO - 0.45*localD,0.10,1.18);
-        const eaten = window.env.grazeAlgaeAt(this.x,this.y,grazeAmt,this.size>7?2:1);
+        const eaten = window.env.grazeAlgaeAt(this.x,this.y,grazeAmt,algaeGrazeRadiusFor(this,1.18));
         if(eaten>0){
           const diet=dietTypeFromCarn(this.genes.diet);
           const gain = eaten * (50 + 46*grazeDrive) * plantDigestFactor(this.genes.diet) * dietRareFactor(diet) * (diet==='h'?1.08:(diet==='m'?0.92:0.35));
@@ -3180,15 +3185,22 @@ if(Z>0.08){
         c.quadraticCurveTo(-r*0.18,r*0.34,-r*1.36,0);
         c.quadraticCurveTo(-r*0.18,-r*0.34,0,-r*1.36);
         c.closePath();
-      } else if(shape==='star6' || shape==='cloud5'){
-        const points = shape==='star6' ? 6 : 5;
+      } else if(shape==='star6' || shape==='cloud5' || shape==='blob6' || shape==='amoeba' || shape==='pseudopod'){
+        const points = shape==='star6' ? 6 : (shape==='cloud5' ? 5 : (shape==='pseudopod' ? 7 : 6));
         const samples = points*14;
         for(let i=0;i<=samples;i++){
           const a=-Math.PI/2 + i/samples*TAU;
           const wave=Math.cos(points*a);
-          const rr = shape==='star6' ? r*(0.82 + 0.28*wave) : r*(0.92 + 0.18*wave);
-          const x=Math.cos(a)*rr*(shape==='cloud5'?1.08:1.0);
-          const y=Math.sin(a)*rr*(shape==='cloud5'?0.98:1.0);
+          const soft=Math.sin((points-1)*a+0.72)*0.50 + Math.cos((points+2)*a-0.35)*0.30;
+          let rr = shape==='star6' ? r*(0.82 + 0.28*wave) : r*(0.92 + 0.18*wave);
+          if(shape==='blob6') rr = r*(0.96 + 0.13*wave + 0.08*soft);
+          if(shape==='amoeba') rr = r*(0.98 + 0.18*Math.sin(3*a+0.4) + 0.10*Math.cos(6*a-0.8));
+          if(shape==='pseudopod'){
+            const front=Math.max(0,Math.cos(a-0.35));
+            rr = r*(0.86 + 0.12*wave + 0.38*front*front + 0.08*soft);
+          }
+          const x=Math.cos(a)*rr*((shape==='cloud5'||shape==='amoeba')?1.08:(shape==='pseudopod'?1.18:1.0));
+          const y=Math.sin(a)*rr*(shape==='cloud5'?0.98:(shape==='pseudopod'?0.90:1.0));
           if(i===0) c.moveTo(x,y); else c.lineTo(x,y);
         }
         c.closePath();
@@ -3217,8 +3229,11 @@ if(Z>0.08){
       const visualScale=organismVisualScale(this);
       const r=Math.max(2.2,this.size*0.74);
       const pts=[];
-      if(topo==='chain' || topo==='spiral'){
+      if(topo==='chain'){
         for(let i=0;i<4;i++){ const q=i/3-0.5; pts.push({x:q*r*4.0,y:Math.sin(this.gait+i)*r*0.55,rr:r*(0.92-i*0.035)}); }
+      } else if(topo==='amoeba'){
+        pts.push({x:0,y:0,rr:r*1.00});
+        for(let i=0;i<5;i++){ const a=i/5*TAU + Math.sin(this.gait*0.25+i)*0.18; const rad=r*(1.05 + 0.28*Math.sin(i*1.7)); pts.push({x:Math.cos(a)*rad,y:Math.sin(a)*rad,rr:r*(0.48+0.14*(i%2))}); }
       } else if(topo==='ring'){
         for(let i=0;i<6;i++){ const a=i/6*TAU; pts.push({x:Math.cos(a)*r*1.65,y:Math.sin(a)*r*1.35,rr:r*0.72}); }
       } else if(topo==='radial'){
@@ -3358,7 +3373,7 @@ if(Z>0.08){
       const gait = this.gait || this.phase || 0;
       const topo = sym.bodyPlan || this.morphologyTopology || 'single';
       if(topo==='ring') ctx.rotate(Math.sin(gait*0.18 + sym.pulse)*0.10);
-      if(topo==='spiral') ctx.rotate(Math.sin(gait*0.24 + sym.pulse)*0.07);
+      if(topo==='amoeba') ctx.rotate(Math.sin(gait*0.16 + sym.pulse)*0.035);
       const pulse = 0.985 + 0.022*Math.sin(gait*0.65 + sym.pulse);
       const posed = [];
       for(let i=0;i<nodes.length;i++){
@@ -3380,12 +3395,13 @@ if(Z>0.08){
         if(topo==='radial') dynLen *= 1 + 0.070*Math.sin(gait*0.78 + i*0.62 + sym.pulse);
         else if(topo==='mesh') dynLen *= 0.965 + 0.045*Math.sin(gait*0.45 + sym.pulse);
         else if(topo==='cluster') dynLen *= 0.94 + 0.11*Math.sin(gait*0.72 + i*1.31);
-        else if(topo==='spiral') dynLen *= 0.985 + 0.030*Math.sin(gait*0.95 + i*0.56);
+        else if(topo==='amoeba') dynLen *= 0.90 + 0.14*Math.sin(gait*0.58 + i*0.81 + sym.pulse);
         const baseA=Math.atan2(dy,dx);
         let branchMul=n.kind==='ring'?0.34:(n.kind==='branch'||n.kind==='tip'?0.72:1.0);
         if(topo==='radial') branchMul=0.22;
         if(topo==='mesh') branchMul=0.18;
         if(topo==='cluster') branchMul=0.44;
+        if(topo==='amoeba') branchMul=0.58;
         if(topo==='branch') branchMul*=1.35;
         const wave1=Math.sin(gait*1.15 + sym.wigglePhase + i*0.95 + (n.kind==='branch'?0.7:0));
         const wave2=Math.sin(gait*0.52 + sym.wigglePhase*1.7 + i*0.41);
@@ -3585,7 +3601,7 @@ if(Z>0.08){
         ctx.stroke();
 
         // Round nucleus: centered and kept inside every shape.
-        const shapeLimit = (shape==='triangle'||shape==='leaf'||shape==='sparkle4'||shape==='star6') ? 0.20 : (shape==='diamond' ? 0.23 : (shape==='ellipse' ? 0.25 : 0.29));
+        const shapeLimit = (shape==='triangle'||shape==='leaf'||shape==='sparkle4'||shape==='star6') ? 0.20 : (shape==='diamond' ? 0.23 : ((shape==='blob6'||shape==='amoeba'||shape==='pseudopod') ? 0.27 : (shape==='ellipse' ? 0.25 : 0.29)));
         const nucR=Math.max(0.9, Math.min(r*shapeLimit, r*sym.coreScale));
         const nucX=0, nucY=0;
         const ng=ctx.createRadialGradient(nucX-nucR*0.25,nucY-nucR*0.25,0.2,nucX,nucY,nucR*1.45);
@@ -4227,15 +4243,17 @@ const env = (function(){
     const cy = Math.min(eh-1, Math.max(0, (y/cell)|0));
     const target = Math.max(0, appetite||0);
     if(target<=0) return 0;
+    const grazeR=clamp(Number(radius)||1,0.55,2.85);
+    const scanR=Math.max(1,Math.ceil(grazeR));
     const cells=[];
     let totalW=0;
-    for(let dy=-radius; dy<=radius; dy++){
+    for(let dy=-scanR; dy<=scanR; dy++){
       const yy=cy+dy; if(yy<0||yy>=eh) continue;
-      for(let dx=-radius; dx<=radius; dx++){
+      for(let dx=-scanR; dx<=scanR; dx++){
         const xx=cx+dx; if(xx<0||xx>=ew) continue;
         const d=Math.hypot(dx,dy);
-        if(d>radius+0.01) continue;
-        const w = d<0.01 ? 1.0 : (d<1.1 ? 0.48 : 0.20);
+        if(d>grazeR+0.01) continue;
+        const w = d<0.01 ? 1.0 : clamp(1 - d/(grazeR+0.001),0.16,0.62);
         const i=idx(xx,yy);
         const avail=Math.max(0, fields.algae[i] - 0.035);
         if(avail<=0) continue;
@@ -4252,7 +4270,7 @@ const env = (function(){
       taken+=take;
     }
     if(taken>0){
-      addGrazeScarAt(x,y,taken,radius);
+      addGrazeScarAt(x,y,taken,grazeR);
       lastPaint = -999;
       lastAlgaePaint = -999;
     }
@@ -4263,8 +4281,9 @@ const env = (function(){
     const subCell = cell / ALGAE_VISUAL_SUBDIV;
     const sx0 = Math.min(scarW-1, Math.max(0, (x/subCell)|0));
     const sy0 = Math.min(scarH-1, Math.max(0, (y/subCell)|0));
-    const r = Math.max(1, Math.ceil(ALGAE_VISUAL_SUBDIV*(0.42 + 0.32*(radius||1))));
-    const power = Math.max(0, amount||0) * 9.5;
+    const grazeR=clamp(Number(radius)||1,0.55,2.85);
+    const r = Math.max(1, Math.ceil(ALGAE_VISUAL_SUBDIV*(0.20 + 0.42*grazeR)));
+    const power = Math.max(0, amount||0) * (7.8 + 2.4/Math.sqrt(grazeR));
     for(let dy=-r; dy<=r; dy++){
       const yy=sy0+dy; if(yy<0||yy>=scarH) continue;
       for(let dx=-r; dx<=r; dx++){
@@ -5344,7 +5363,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const glowStroke = (flags?.glow && dayNight.isNight)? 'rgba(180,220,255,.55)' : 'transparent';
     const crown = flags?.crown? `<g stroke="${stroke}" stroke-width="1.2">${Array.from({length:8},(_,i)=>{const a=(i/8)*Math.PI*2;const x1=24+Math.cos(a)*16;const y1=24+Math.sin(a)*16;const x2=24+Math.cos(a)*20;const y2=24+Math.sin(a)*20;return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />`;}).join('')}</g>`:'';
     const colonyBadge = flags?.colony? `<circle cx="42" cy="42" r="3.2" fill="#89ffaa" stroke="rgba(10,20,30,.6)" stroke-width="1"/>`:'';
-    const shapes=['circle','square','triangle','ellipse','pentagon','hexagon','leaf','diamond','sparkle4','star6','cloud5'];
+    const shapes=SYMBOL_SHAPES;
     const form=formFromGenes(g,key);
     const shape=shapes[Math.max(0,Math.min(shapes.length-1,Math.floor(form.shape*shapes.length)))];
     const solitary=((g.size??0.5)*0.48 + (1-form.length)*0.35 + hash01('avsingle:'+key)*0.22)>0.58;
@@ -5374,14 +5393,24 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         const pts=[`${cx},${(cy-r*1.35).toFixed(1)}`,`${(cx+r*.34).toFixed(1)},${(cy-r*.34).toFixed(1)}`,`${(cx+r*1.35).toFixed(1)},${cy}`,`${(cx+r*.34).toFixed(1)},${(cy+r*.34).toFixed(1)}`,`${cx},${(cy+r*1.35).toFixed(1)}`,`${(cx-r*.34).toFixed(1)},${(cy+r*.34).toFixed(1)}`,`${(cx-r*1.35).toFixed(1)},${cy}`,`${(cx-r*.34).toFixed(1)},${(cy-r*.34).toFixed(1)}`];
         return `<polygon points="${pts.join(' ')}" transform="rotate(${rot} ${cx} ${cy})"/>`;
       }
-      if(shape==='star6' || shape==='cloud5'){
-        const points=shape==='star6'?6:5;
+      if(shape==='star6' || shape==='cloud5' || shape==='blob6' || shape==='amoeba' || shape==='pseudopod'){
+        const points=shape==='star6'?6:(shape==='cloud5'?5:(shape==='pseudopod'?7:6));
         const pts=[];
-        const n=points*2;
+        const n=(shape==='star6'||shape==='cloud5') ? points*2 : points*4;
         for(let i=0;i<n;i++){
           const a=-Math.PI/2 + rot*Math.PI/180 + i/n*TAU;
-          const rr=shape==='star6' ? r*(i%2?0.62:1.12) : r*(i%2?0.86:1.14);
-          pts.push(`${(cx+Math.cos(a)*rr).toFixed(1)},${(cy+Math.sin(a)*rr).toFixed(1)}`);
+          const wave=Math.cos(points*a);
+          const soft=Math.sin((points-1)*a+0.72)*0.50 + Math.cos((points+2)*a-0.35)*0.30;
+          let rr=shape==='star6' ? r*(i%2?0.62:1.12) : r*(i%2?0.86:1.14);
+          if(shape==='blob6') rr = r*(0.96 + 0.13*wave + 0.08*soft);
+          if(shape==='amoeba') rr = r*(0.98 + 0.18*Math.sin(3*a+0.4) + 0.10*Math.cos(6*a-0.8));
+          if(shape==='pseudopod'){
+            const front=Math.max(0,Math.cos(a-0.35));
+            rr = r*(0.86 + 0.12*wave + 0.38*front*front + 0.08*soft);
+          }
+          const px=cx+Math.cos(a)*rr*((shape==='cloud5'||shape==='amoeba')?1.08:(shape==='pseudopod'?1.18:1.0));
+          const py=cy+Math.sin(a)*rr*(shape==='cloud5'?0.98:(shape==='pseudopod'?0.90:1.0));
+          pts.push(`${px.toFixed(1)},${py.toFixed(1)}`);
         }
         return `<polygon points="${pts.join(' ')}"/>`;
       }
@@ -5396,12 +5425,12 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       const x=12+i*(24/(chain-1||1));
       const y=24 + Math.sin(i*1.3+hash01(key))*3.2;
       if(i>0){ const px=12+(i-1)*(24/(chain-1||1)); const py=24 + Math.sin((i-1)*1.3+hash01(key))*3.2; links.push(`<line x1="${px.toFixed(1)}" y1="${py.toFixed(1)}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}"/>`); }
-      const nucR=(Number(baseR)*((shape==='triangle'||shape==='leaf'||shape==='sparkle4'||shape==='star6')?0.20:(shape==='diamond'?0.23:0.26))).toFixed(1);
+      const nucR=(Number(baseR)*((shape==='triangle'||shape==='leaf'||shape==='sparkle4'||shape==='star6')?0.20:(shape==='diamond'?0.23:((shape==='blob6'||shape==='amoeba'||shape==='pseudopod')?0.27:0.26)))).toFixed(1);
       parts.push(`<g fill="url(#grad-${key})" stroke="${stroke}" stroke-opacity=".55" stroke-width=".9">${nodeShape(x.toFixed(1),y.toFixed(1),baseR,iconRot)}</g><circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="${nucR}" fill="hsl(${(hue+155)%360} 80% 75% / .82)" stroke="rgba(255,255,255,.45)" stroke-width=".5"/>`);
     }
     if(branch){
       links.push(`<line x1="24" y1="24" x2="32" y2="14"/>`);
-      const nucR=(Number(baseR)*((shape==='triangle'||shape==='leaf'||shape==='sparkle4'||shape==='star6')?0.20:(shape==='diamond'?0.23:0.26))).toFixed(1);
+      const nucR=(Number(baseR)*((shape==='triangle'||shape==='leaf'||shape==='sparkle4'||shape==='star6')?0.20:(shape==='diamond'?0.23:((shape==='blob6'||shape==='amoeba'||shape==='pseudopod')?0.27:0.26)))).toFixed(1);
       parts.push(`<g fill="url(#grad-${key})" stroke="${stroke}" stroke-opacity=".55" stroke-width=".9">${nodeShape('32','14',baseR,iconRot)}</g><circle cx="32" cy="14" r="${nucR}" fill="hsl(${(hue+155)%360} 80% 75% / .82)"/>`);
     }
     return `<svg width="28" height="28" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
@@ -5627,7 +5656,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     {t:'ring', g:{speed:0.38,size:0.48,metabolism:0.76,fecundity:0.44,sense:0.52,diet:0.34,formSeed:0.52}},
     {t:'branch', g:{speed:0.52,size:0.36,metabolism:0.50,fecundity:0.44,sense:0.82,diet:0.46,formSeed:0.66}},
     {t:'cluster', g:{speed:0.34,size:0.34,metabolism:0.56,fecundity:0.84,sense:0.52,diet:0.22,formSeed:0.92}},
-    {t:'spiral', g:{speed:0.58,size:0.38,metabolism:0.58,fecundity:0.48,sense:0.58,diet:0.38,formSeed:0.34}},
+    {t:'amoeba', g:{speed:0.42,size:0.46,metabolism:0.54,fecundity:0.50,sense:0.52,diet:0.28,formSeed:0.86}},
     {t:'mesh', g:{speed:0.40,size:0.62,metabolism:0.82,fecundity:0.42,sense:0.66,diet:0.42,formSeed:0.58}}
   ];
   const baseline = Math.max(0, (n|0) - 10 - topologySeeds.length);
