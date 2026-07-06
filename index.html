@@ -1313,6 +1313,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   }
   const ADAPTATION_DEFS = [
     {id:'tentacle',label:'触手型',unlock:c=>c.se>0.70&&c.form.detail>0.42&&c.form.length>0.28,effect:o=>{o.senseR*=1.14;o.senseCost*=1.08;o.baseMetabolic*=1.04;},cost:0.04,visual:'触手で周囲を探れる',counter:'触手維持の負担が重い'},
+    {id:'spines',label:'防御トゲ型',unlock:c=>c.c<0.58&&c.sp<0.56&&c.ef<0.64&&(c.r==='filter'||c.sz>0.42||c.topology==='ring'||c.topology==='mesh'),effect:o=>{o.maxSpeed*=0.78;o.baseMetabolic*=1.02;o.predationRiskMul=(o.predationRiskMul||1)*0.74;},cost:0.04,visual:'外周のトゲで直接つかむ捕食をはじく',counter:'直接掴む捕食者に強い／機動力が落ちる',defense:{avoidMul:0.78,ambusherAvoidMul:0.62,retaliate:8,cooldown:46},draw:(o,v)=>{const ctx=v.ctx,bodyR=v.bodyR,outlineHue=v.outlineHue,form=v.form,sym=v.sym;ctx.save();ctx.lineCap='round';ctx.globalCompositeOperation='lighter';ctx.strokeStyle=`hsla(${(outlineHue+32)%360},94%,84%,${v.dayNight.isNight?0.34:0.24})`;ctx.lineWidth=Math.max(0.75,o.size*0.10);const n=8+Math.round(form.detail*6);for(let i=0;i<n;i++){const a=i/n*TAU+sym.pulse*0.08;const inner=bodyR*(0.92+0.05*Math.sin(sym.pulse+i));const outer=bodyR*(1.34+0.10*((i%2)?form.detail:1-form.detail));ctx.beginPath();ctx.moveTo(Math.cos(a)*inner,Math.sin(a)*inner);ctx.lineTo(Math.cos(a)*outer,Math.sin(a)*outer);ctx.stroke();}ctx.restore();}},
     {id:'colonyBuilder',label:'コロニー形成',unlock:c=>(c.topology==='cluster'||c.flags?.colony||c.re>0.76)&&c.re>0.62&&c.sz<0.72,effect:o=>{o.reproThreshold*=0.96;o.maxSpeed*=0.88;o.protect=Math.max(o.protect||0,118);},cost:0.02,visual:'近接した子で群体を作る',counter:'過密で広がりにくい'},
     {id:'toxin',label:'防御毒型',unlock:c=>c.c<0.55&&c.ef>0.62&&(c.r==='filter'||c.sp<0.42||c.form.detail>0.58),effect:o=>{o.baseMetabolic*=1.08;o.reproThreshold*=1.04;o.predationRiskMul=(o.predationRiskMul||1)*0.56;},cost:0.06,visual:'食べた捕食者を弱らせる',counter:'捕食者に対して有利／維持コストが高い',defense:{avoidMul:0.58,energyLoss:14,memDamage:0.10,cooldown:72},draw:(o,v)=>{const ctx=v.ctx,bodyR=v.bodyR,outlineHue=v.outlineHue,form=v.form,sym=v.sym;ctx.save();ctx.globalCompositeOperation='lighter';ctx.strokeStyle=`hsla(${(outlineHue+330)%360},95%,78%,${v.dayNight.isNight?0.30:0.22})`;ctx.lineWidth=Math.max(0.7,o.size*0.08);const n=7+Math.round(form.detail*5);for(let i=0;i<n;i++){const a=i/n*TAU+sym.pulse*0.12;ctx.beginPath();ctx.moveTo(Math.cos(a)*bodyR*0.84,Math.sin(a)*bodyR*0.84);ctx.lineTo(Math.cos(a)*bodyR*1.28,Math.sin(a)*bodyR*1.28);ctx.stroke();}ctx.restore();}},
     {id:'sessileFarmer',label:'固着養藻型',unlock:c=>c.ef>0.70&&c.sp<0.34&&c.c<0.42&&(c.r==='filter'||c.c<0.33),effect:o=>{o.maxSpeed*=0.24;o.baseMetabolic*=0.96;o.senseCost*=0.92;o.localAlgaeFarm={grow:0.0075,graze:0.0048,oxygen:0.0022,radius:2};o.predationRiskMul=(o.predationRiskMul||1)*1.26;},cost:0.05,visual:'ほぼ動かず周囲の藻を育てて食べる',counter:'捕食に弱い'},
@@ -1343,9 +1344,20 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function notePredationRepelled(predator,prey,defs){
     if(!defs.length) return false;
     const d=defs[0];
+    let retaliated=false;
+    for(const d of defs){
+      const fx=d.defense; if(!fx) continue;
+      const hit=fx.retaliate||0;
+      if(hit>0){
+        predator.energy=clamp(predator.energy-hit,0,160);
+        predator.attackCD=Math.max(predator.attackCD||0,fx.cooldown||0);
+        recordAction(predator,`${d.label}の反撃を受けた`);
+        retaliated=true;
+      }
+    }
     recordAction(predator,`${d.label}を避けた`);
     recordAction(prey,`${d.label}で捕食を退けた`);
-    if(frame-(notePredationRepelled.lastToast||0)>520){ showToast('event',`${d.label}の獲物が捕食を退けた。`); notePredationRepelled.lastToast=frame; }
+    if(frame-(notePredationRepelled.lastToast||0)>520){ showToast('event',`${d.label}の獲物が捕食を退け${retaliated?'、反撃した':'た'}。`); notePredationRepelled.lastToast=frame; }
     return true;
   }
   function adaptationProfilesFromGenes(g, flags=null, topology=topologyFromGenes(g), role=null){
@@ -2997,7 +3009,11 @@ if(Z>0.08){
         p*= (0.78 + 0.095*mates) * rareFactor('pack');
       }
       const preyDefenses=predationDefensesFor(prey);
-      for(const d of preyDefenses) p*=d.defense.avoidMul??1;
+      for(const d of preyDefenses){
+        const fx=d.defense;
+        p*=fx.avoidMul??1;
+        if(this.role==='ambusher') p*=fx.ambusherAvoidMul??1;
+      }
       p*=prey.predationRiskMul||1;
       p*= (worldEvent.predSuccessMul||1);
       if(prey.socialMode==='defense-school'){
@@ -4195,8 +4211,8 @@ const env = (function(){
         if(dist>range) continue;
         const i=idx(xx,yy);
         const v=fields.algae[i] || 0;
-        const foulPenalty=0.22*(fields.detritus[i]||0);
-        const score=v*(0.72 + 0.28*(1-dist/range)) - foulPenalty;
+        const detritusPenalty=0.22*(fields.detritus[i]||0);
+        const score=v*(0.72 + 0.28*(1-dist/range)) - detritusPenalty;
         if(score>bestScore){
           bestScore=score;
           best={x:wx,y:wy,v,type:'fieldAlgae'};
