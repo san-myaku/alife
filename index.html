@@ -282,6 +282,7 @@
         scav: Object.freeze({ main:'corpse-detritus', secondary:'algae' }),
         ambusher: Object.freeze({ main:'prey', secondary:'corpse' }),
         pack: Object.freeze({ main:'prey', secondary:'corpse' }),
+        carnivore: Object.freeze({ main:'prey', secondary:'corpse' }),
         other: Object.freeze({ main:'algae', secondary:null })
       })
     }),
@@ -857,6 +858,28 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   const roleShare={...CONFIG.ecology.initialRoleShare};
   const dietShare={...CONFIG.ecology.initialDietShare}; // herb / omni / carn
   function dietTypeFromCarn(c){ return (c<0.33)?'h':(c<0.66?'m':'c'); }
+  function foodLedgerKeyFor(o){
+    if(!o) return 'other';
+    if(o.role==='filter' || o.role==='scav' || o.role==='ambusher' || o.role==='pack') return o.role;
+    const diet=dietTypeFromCarn(o.genes?.carnivory ?? 0.5);
+    if(diet==='h') return 'grazer';
+    if(diet==='c') return 'carnivore';
+    return 'other';
+  }
+  function foodLedgerFor(o){
+    const key=foodLedgerKeyFor(o);
+    return CONFIG.ecology.roleFoodLedger[key] || CONFIG.ecology.roleFoodLedger.other;
+  }
+  function canGrazeFieldAlgae(o){
+    const ledger=foodLedgerFor(o);
+    return ledger.main==='algae' || ledger.secondary==='algae';
+  }
+  function canEatFoodParticle(o,type){
+    const ledger=foodLedgerFor(o);
+    if(type==='algae' || type==='small' || type==='big') return ledger.main==='algae' || ledger.secondary==='algae';
+    if(type==='detritus') return ledger.main==='corpse-detritus' || ledger.secondary==='corpse-detritus' || o?.role==='scav';
+    return true;
+  }
   function dietRareFactor(type){
     const s = dietShare[type] ?? 0.33;
     // mild negative feedback: rare diets get a small boost on their primary energy source
@@ -2089,8 +2112,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       const socialNeighbors = this.socialSteer();
       this.updatePredationIntent();
       const carnGene=this.genes.carnivory;
+      const foodLedger=foodLedgerFor(this);
       const preyTarget=carnGene>=0.54 ? organismById(this.preyTargetId) : null;
-      if(carnGene<0.66 && window.env && window.env.bestAlgaeNear && (this.energy<this.reproThreshold*1.08 || carnGene<0.34)){
+      if(canGrazeFieldAlgae(this) && window.env && window.env.bestAlgaeNear && (this.energy<this.reproThreshold*1.08 || foodLedger.main==='algae')){
         const algaeTarget=window.env.bestAlgaeNear(this.x,this.y,this.senseR*(carnGene<0.34?1.05:0.72), carnGene<0.34?0.17:0.24);
         if(algaeTarget){
           const dx=algaeTarget.x-this.x, dy=algaeTarget.y-this.y, d2=dx*dx+dy*dy;
@@ -2099,22 +2123,23 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       }
       if(!preyTarget){
         for(const f of food){
-          const isPlantFood = f.type==='algae' || f.type==='small' || f.type==='big';
-          if(carnGene>=0.66 && isPlantFood) continue;
+          if(!canEatFoodParticle(this,f.type)) continue;
           const dx=f.x-this.x, dy=f.y-this.y, d2=dx*dx+dy*dy;
           if(d2<minD2){ minD2=d2; nearest=f; }
         }
       }
       if(this.role==='scav'){
-        for(const c of corpses){ const dx=c.x-this.x, dy=c.y-this.y, d2=dx*dx+dy*dy; if(d2<minD2*0.8){ minD2=d2; nearest=c; } }
+        const corpseBias=foodLedger.main==='corpse-detritus' ? 1.35 : 0.8;
+        for(const c of corpses){ const dx=c.x-this.x, dy=c.y-this.y, d2=dx*dx+dy*dy; if(d2<minD2*corpseBias){ minD2=d2; nearest=c; } }
       }
       if(this.role==='filter' && plankton.length){
         // Steer toward nearby plankton (random sampling, cheap)
         const samples = Math.min(12, plankton.length);
+        const planktonBias=foodLedger.main==='plankton' ? 1.45 : 0.85;
         for(let s=0;s<samples;s++){
           const p = plankton[(Math.random()*plankton.length)|0];
           const dx=p.x-this.x, dy=p.y-this.y, d2=dx*dx+dy*dy;
-          if(d2<minD2*0.85){ minD2=d2; nearest=p; }
+          if(d2<minD2*planktonBias){ minD2=d2; nearest=p; }
         }
       }
 
@@ -2298,7 +2323,7 @@ if(Z>0.08){
       this.gait=(this.gait + (0.020 + 0.125*this.motionLevel)*(0.75+0.60*this.genes.speed)) % TAU;
 
       // 食事（背景藻）：緑のフィールドそのものを削って食べる。
-      if(window.env && window.env.grazeAlgaeAt && this.genes.carnivory<0.66){
+      if(window.env && window.env.grazeAlgaeAt && canGrazeFieldAlgae(this)){
         const localN = window.env.valueAt('algae', this.x,this.y);
         const localO = window.env.valueAt('turbid',this.x,this.y);
         const localD = window.env.valueAt('foul',  this.x,this.y);
@@ -2327,8 +2352,7 @@ if(Z>0.08){
       for(let i=food.length-1;i>=0;--i){
         const f=food[i];
         const c=this.genes.carnivory;
-        const isPlantFood = f.type==='algae' || f.type==='small' || f.type==='big';
-        if(c>=0.66 && isPlantFood) continue;
+        if(!canEatFoodParticle(this,f.type)) continue;
         const dx=f.x-this.x, dy=f.y-this.y;
         if(dx*dx+dy*dy <= (this.size+f.r)*(this.size+f.r)){
           let gain=f.gain;
