@@ -1314,15 +1314,40 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   const ADAPTATION_DEFS = [
     {id:'tentacle',label:'触手型',unlock:c=>c.se>0.70&&c.form.detail>0.42&&c.form.length>0.28,effect:o=>{o.senseR*=1.14;o.senseCost*=1.08;o.baseMetabolic*=1.04;},cost:0.04,visual:'触手で周囲を探れる',counter:'触手維持の負担が重い'},
     {id:'colonyBuilder',label:'コロニー形成',unlock:c=>(c.topology==='cluster'||c.flags?.colony||c.re>0.76)&&c.re>0.62&&c.sz<0.72,effect:o=>{o.reproThreshold*=0.96;o.maxSpeed*=0.88;o.protect=Math.max(o.protect||0,118);},cost:0.02,visual:'近接した子で群体を作る',counter:'過密で広がりにくい'},
+    {id:'toxin',label:'防御毒型',unlock:c=>c.c<0.55&&c.ef>0.62&&(c.r==='filter'||c.sp<0.42||c.form.detail>0.58),effect:o=>{o.baseMetabolic*=1.08;o.reproThreshold*=1.04;o.predationRiskMul=(o.predationRiskMul||1)*0.56;},cost:0.06,visual:'食べた捕食者を弱らせる',counter:'捕食者に対して有利／維持コストが高い',defense:{avoidMul:0.58,energyLoss:14,memDamage:0.10,cooldown:72},draw:(o,v)=>{const ctx=v.ctx,bodyR=v.bodyR,outlineHue=v.outlineHue,form=v.form,sym=v.sym;ctx.save();ctx.globalCompositeOperation='lighter';ctx.strokeStyle=`hsla(${(outlineHue+330)%360},95%,78%,${v.dayNight.isNight?0.30:0.22})`;ctx.lineWidth=Math.max(0.7,o.size*0.08);const n=7+Math.round(form.detail*5);for(let i=0;i<n;i++){const a=i/n*TAU+sym.pulse*0.12;ctx.beginPath();ctx.moveTo(Math.cos(a)*bodyR*0.84,Math.sin(a)*bodyR*0.84);ctx.lineTo(Math.cos(a)*bodyR*1.28,Math.sin(a)*bodyR*1.28);ctx.stroke();}ctx.restore();}},
     {id:'sessileFarmer',label:'固着養藻型',unlock:c=>c.ef>0.70&&c.sp<0.34&&c.c<0.42&&(c.r==='filter'||c.c<0.33),effect:o=>{o.maxSpeed*=0.24;o.baseMetabolic*=0.96;o.senseCost*=0.92;o.localAlgaeFarm={grow:0.0075,graze:0.0048,oxygen:0.0022,radius:2};o.predationRiskMul=(o.predationRiskMul||1)*1.26;},cost:0.05,visual:'ほぼ動かず周囲の藻を育てて食べる',counter:'捕食に弱い'},
     {id:'adhesiveMat',label:'付着マット型',unlock:c=>c.ef>0.72&&c.sp<0.40&&c.c<0.58,effect:o=>{o.baseMetabolic*=0.84;o.maxSpeed*=0.70;o.senseCost*=0.90;},cost:-0.03,visual:'省エネで張り付く',counter:'環境変化から逃げにくい'},
     {id:'cyst',label:'休眠シスト型',unlock:c=>c.ef>0.70&&c.sz>0.52&&c.sp<0.58,effect:o=>{o.baseMetabolic*=0.88;o.reproThreshold*=1.04;},cost:-0.01,visual:null,counter:null},
     {id:'filterFan',label:'濾過扇型',unlock:c=>c.r==='filter'&&(c.se>0.38||c.form.detail>0.35),effect:o=>{o.senseR*=1.08;o.maxSpeed*=0.95;},cost:0.02,visual:null,counter:null},
-    {id:'toxin',label:'毒棘型',unlock:c=>c.c>0.72&&c.form.detail>0.54,effect:o=>{o.baseMetabolic*=1.05;o.protect=Math.max(o.protect||0,105);},cost:0.03,visual:null,counter:null},
     {id:'symbiotic',label:'共生葉緑型',unlock:c=>!!c.flags?.chl,effect:null,cost:0,visual:null,counter:null},
     {id:'nightGlow',label:'夜光遊泳型',unlock:c=>!!c.flags?.glow,effect:null,cost:0,visual:null,counter:null}
   ];
   const ADAPTATION_BY_ID = Object.fromEntries(ADAPTATION_DEFS.map(d=>[d.id,d]));
+  function adaptationDefsFor(o){ return adaptationProfilesFromGenes(o.genes,o.flags,o.morphologyTopology,o.role).map(k=>ADAPTATION_BY_ID[k]).filter(Boolean); }
+  function predationDefensesFor(o){ return adaptationDefsFor(o).filter(d=>d.defense); }
+  function applyPredationDefenses(predator,prey,defs,gainRaw){
+    let applied=false;
+    for(const d of defs){
+      const fx=d.defense; if(!fx) continue;
+      const loss=(fx.energyLoss||0) + 0.08*gainRaw;
+      predator.energy=clamp(predator.energy-loss,0,160);
+      predator.mem=clamp((predator.mem??1)-(fx.memDamage||0),0,1);
+      predator.attackCD=Math.max(predator.attackCD||0,fx.cooldown||0);
+      recordAction(predator,`${d.label}で弱った`);
+      recordAction(prey,`${d.label}で捕食者を弱らせた`);
+      applied=true;
+    }
+    if(applied && frame-(applyPredationDefenses.lastToast||0)>420){ showToast('event','毒を持つ獲物を食べた捕食者が弱った。'); applyPredationDefenses.lastToast=frame; }
+    return applied;
+  }
+  function notePredationRepelled(predator,prey,defs){
+    if(!defs.length) return false;
+    const d=defs[0];
+    recordAction(predator,`${d.label}を避けた`);
+    recordAction(prey,`${d.label}で捕食を退けた`);
+    if(frame-(notePredationRepelled.lastToast||0)>520){ showToast('event',`${d.label}の獲物が捕食を退けた。`); notePredationRepelled.lastToast=frame; }
+    return true;
+  }
   function adaptationProfilesFromGenes(g, flags=null, topology=topologyFromGenes(g), role=null){
     if(!g) return [];
     const c={g,flags:flags||{},topology,role,r:role||computeRole(g),form:formFromGenes(g),sp:g.speed??0.5,sz:g.size??0.5,ef:g.metabolism??0.5,re:g.fecundity??0.5,se:g.sense??0.5,c:g.diet??0.5};
@@ -2971,6 +2996,8 @@ if(Z>0.08){
         forEachOrgNeighbors(prey.x,prey.y,76,(o2)=>{ if(o2!==this && o2.speciesKey===this.speciesKey && (o2.role==='pack' || o2.socialMode==='hunt-pack')) mates++; });
         p*= (0.78 + 0.095*mates) * rareFactor('pack');
       }
+      const preyDefenses=predationDefensesFor(prey);
+      for(const d of preyDefenses) p*=d.defense.avoidMul??1;
       p*=prey.predationRiskMul||1;
       p*= (worldEvent.predSuccessMul||1);
       if(prey.socialMode==='defense-school'){
@@ -3000,6 +3027,7 @@ if(Z>0.08){
         const gain=gainRaw*rf*meatDigestFactor(carn)*dietRareFactor(diet)*(diet==='c'?1.0:(diet==='m'?0.92:0.80));
         const cost=6 + 0.05*this.maxSpeed*this.maxSpeed;
         this.energy=clamp(this.energy + gain - cost, 0, 160);
+        applyPredationDefenses(this,prey,preyDefenses,gainRaw);
         this.fitness+=0.6;
         recordFoodUse('prey',this,gain,1);
         prey.dead=true;
@@ -3027,8 +3055,10 @@ if(Z>0.08){
         prey.vx += (dx/d)*0.85;
         prey.vy += (dy/d)*0.85;
         prey.fleeTimer=Math.max(prey.fleeTimer||0,38);
-        recordAction(prey,'捕食を逃れた');
-        recordAction(this,'捕食に失敗した');
+        if(!notePredationRepelled(this,prey,preyDefenses)){
+          recordAction(prey,'捕食を逃れた');
+          recordAction(this,'捕食に失敗した');
+        }
         pushRing(prey.x,prey.y,{r0:3,r1:24,color:'rgba(185,230,255,',t:34,width:1.3});
         this.attackCD=34;
       }
@@ -3399,21 +3429,7 @@ if(Z>0.08){
           }
           ctx.restore();
         }
-        if(adaptationTags.includes('toxin')){
-          ctx.save();
-          ctx.globalCompositeOperation='lighter';
-          ctx.strokeStyle=`hsla(${(outlineHue+330)%360},95%,78%,${dayNight.isNight?0.28:0.20})`;
-          ctx.lineWidth=Math.max(0.7,this.size*0.08);
-          const n=7 + Math.round(form.detail*5);
-          for(let i=0;i<n;i++){
-            const a=i/n*TAU + sym.pulse*0.12;
-            ctx.beginPath();
-            ctx.moveTo(Math.cos(a)*bodyR*0.84,Math.sin(a)*bodyR*0.84);
-            ctx.lineTo(Math.cos(a)*bodyR*1.28,Math.sin(a)*bodyR*1.28);
-            ctx.stroke();
-          }
-          ctx.restore();
-        }
+        for(const d of adaptationTags.map(k=>ADAPTATION_BY_ID[k])) d?.draw?.(this,{ctx,bodyR,outlineHue,dayNight,form,sym});
         if(adaptationTags.includes('colonyBuilder')){
           ctx.save();
           const n=5 + Math.round(this.genes.fecundity*5);
