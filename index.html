@@ -4349,6 +4349,8 @@ const env = (function(){
   let viewMode = 'pixels'; // 'pixels' | 'dots'
   let pxCanvas=null, pxCtx=null, lastPaint=-999;
   let algaeCanvas=null, algaeCtx=null, lastAlgaePaint=-999;
+  let algaeDirtyCells=null, algaeDirtyCount=0, algaeFullDirty=true;
+  const algaeRenderStats = { full:0, dirty:0, cells:0 };
   let gpuCanvas=null, gpuGL=null, gpuProgram=null, gpuTex=null, gpuBuffer=null, gpuFieldBytes=null, gpuReady=false;
   // shared dot sprite
   let sprite = null;
@@ -4363,11 +4365,42 @@ const env = (function(){
     c.fillStyle = g; c.beginPath(); c.arc(16,16,16,0,TAU); c.fill();
     return s;
   }
+  function ensureAlgaeDirty(){
+    const len = Math.max(1, ew*eh);
+    if(!algaeDirtyCells || algaeDirtyCells.length!==len){
+      algaeDirtyCells = new Uint8Array(len);
+      algaeDirtyCount = 0;
+      algaeFullDirty = true;
+    }
+  }
+  function markAlgaeDirtyIndex(i){
+    if(i<0 || i>=ew*eh) return;
+    ensureAlgaeDirty();
+    if(!algaeDirtyCells[i]){
+      algaeDirtyCells[i]=1;
+      algaeDirtyCount++;
+    }
+  }
+  function markAlgaeDirtyCell(x,y){
+    if(x<0 || y<0 || x>=ew || y>=eh) return;
+    markAlgaeDirtyIndex(idx(x,y));
+  }
+  function markAlgaeAllDirty(){
+    ensureAlgaeDirty();
+    algaeDirtyCells.fill(0);
+    algaeDirtyCount = 0;
+    algaeFullDirty = true;
+    lastAlgaePaint = -999;
+  }
   function ensure(){
     if(!sprite) sprite = makeSprite();
     const w = Math.max(1, Math.ceil(W/cell));
     const h = Math.max(1, Math.ceil(H/cell));
     if(!fields || w!==ew || h!==eh){
+      const oldFields = fields;
+      const oldEw = ew, oldEh = eh;
+      const oldScar = grazeScar;
+      const oldScarW = scarW, oldScarH = scarH;
       ew=w; eh=h;
       fields = {
         algae: new Float32Array(ew*eh),   // N: nutrient (0..1)
@@ -4383,16 +4416,32 @@ const env = (function(){
       scarH = eh * ALGAE_VISUAL_SUBDIV;
       grazeScar = new Float32Array(scarW*scarH);
 
-      // Baseline world state (so it doesn't start "dead")
+      // Baseline world state for new cells; existing cells are copied below on resize.
       fields.algae.fill(0.25);
       fields.cold.fill(0.25);
       fields.oxygen.fill(0.75);
       fields.detritus.fill(0.05);
+      if(oldFields && oldEw>0 && oldEh>0){
+        const copyW=Math.min(oldEw,ew), copyH=Math.min(oldEh,eh);
+        for(const type of CONFIG.environment.fieldTypes){
+          const src=oldFields[type], dst=fields[type];
+          if(!src || !dst) continue;
+          for(let y=0;y<copyH;y++){
+            dst.set(src.subarray(y*oldEw,y*oldEw+copyW), y*ew);
+          }
+        }
+        if(oldScar && oldScarW>0 && oldScarH>0){
+          const copySW=Math.min(oldScarW,scarW), copySH=Math.min(oldScarH,scarH);
+          for(let y=0;y<copySH;y++){
+            grazeScar.set(oldScar.subarray(y*oldScarW,y*oldScarW+copySW), y*scarW);
+          }
+        }
+      }
       _avgN=0.25; _avgO=0.75; _avgD=0.05; _avgC=0.25;
 
       pxCanvas = document.createElement('canvas'); pxCanvas.width=ew; pxCanvas.height=eh; pxCtx = pxCanvas.getContext('2d', { willReadFrequently: true });
       gpuCanvas=null; gpuGL=null; gpuProgram=null; gpuTex=null; gpuBuffer=null; gpuFieldBytes=null; gpuReady=false;
-      algaeCanvas=null; algaeCtx=null; lastAlgaePaint=-999;
+      algaeCanvas=null; algaeCtx=null; markAlgaeAllDirty();
       lastPaint = -999;
     }
   }
@@ -4409,7 +4458,7 @@ const env = (function(){
     if(grazeScar) grazeScar.fill(0);
     _avgN=0.25; _avgO=0.75; _avgD=0.05; _avgC=0.25;
     lastPaint = -999;
-    lastAlgaePaint = -999;
+    markAlgaeAllDirty();
   }
   function setViewMode(m){ viewMode = m; }
   function idx(x,y){ return y*ew + x; }
@@ -4436,7 +4485,9 @@ const env = (function(){
         if(d>radius+0.01) continue;
         const w = d<0.01 ? 1.0 : (d<1.1 ? 0.46 : 0.22);
         const i=idx(xx,yy);
-        fields[type][i]=clamp01(fields[type][i] + sign*mag*w);
+        const delta=sign*mag*w;
+        fields[type][i]=clamp01(fields[type][i] + delta);
+        if(type==='algae' && Math.abs(delta)>0.004) markAlgaeDirtyIndex(i);
       }
     }
     lastPaint = -999;
@@ -4497,12 +4548,12 @@ const env = (function(){
       const take=Math.min(c.avail, target*(c.w/totalW));
       if(take<=0) continue;
       fields.algae[c.i]=clamp01(fields.algae[c.i]-take);
+      markAlgaeDirtyIndex(c.i);
       taken+=take;
     }
     if(taken>0){
       addGrazeScarAt(x,y,taken,grazeR);
       lastPaint = -999;
-      lastAlgaePaint = -999;
     }
     return taken;
   }
@@ -4522,7 +4573,10 @@ const env = (function(){
         if(d>r+0.01) continue;
         const w = 1 - d/(r+0.001);
         const i=scarIdx(xx,yy);
-        grazeScar[i]=clamp01((grazeScar[i]||0) + power*(0.30 + 0.70*w));
+        const before=grazeScar[i]||0;
+        const after=clamp01(before + power*(0.30 + 0.70*w));
+        if(Math.abs(after-before)>0.002) markAlgaeDirtyCell((xx/ALGAE_VISUAL_SUBDIV)|0,(yy/ALGAE_VISUAL_SUBDIV)|0);
+        grazeScar[i]=after;
       }
     }
   }
@@ -4537,10 +4591,12 @@ const env = (function(){
         const ex = Math.min(ew-1, (sx/ALGAE_VISUAL_SUBDIV)|0);
         const parent = fields.algae[idx(ex,ey)] || 0;
         const i=scarIdx(sx,sy);
-        grazeScar[i]=clamp01((grazeScar[i]||0)*fade - recoverBase*(0.35 + 0.65*parent));
+        const before=grazeScar[i]||0;
+        const after=clamp01(before*fade - recoverBase*(0.35 + 0.65*parent));
+        if(Math.abs(after-before)>0.010 || (before>0.030)!==(after>0.030)) markAlgaeDirtyCell(ex,ey);
+        grazeScar[i]=after;
       }
     }
-    lastAlgaePaint = -999;
   }
 
   // ---- Seeding from legacy patches ----
@@ -4571,6 +4627,7 @@ if(p.type==='oxygen'){
       }
     }
     lastPaint = -999;
+    markAlgaeAllDirty();
   }
 
   // ---- Diffusion/decay helpers ----
@@ -4596,6 +4653,7 @@ if(p.type==='oxygen'){
   
   function tickFields(){
     ensure();
+    const prevAlgae = fields.algae.slice();
 
     corpseGrid.fill(0);
     plankGrid.fill(0);
@@ -4702,6 +4760,12 @@ if(p.type==='oxygen'){
     diffuseOne(fields.oxygen,0.034, 0.000);
     diffuseOne(fields.cold,  0.016, 0.000);
 
+    for(let i=0;i<len;i++){
+      const before=prevAlgae[i] || 0;
+      const after=fields.algae[i] || 0;
+      if(Math.abs(after-before)>0.006 || ((before*32)|0)!==((after*32)|0)) markAlgaeDirtyIndex(i);
+    }
+
     // averages for HUD/logic
     let sN=0, sD=0, sO=0, sC=0;
     for(let i=0;i<len;i++){ sN+=fields.algae[i]; sD+=fields.detritus[i]; sO+=fields.oxygen[i]; sC+=fields.cold[i]; }
@@ -4752,29 +4816,44 @@ if(p.type==='oxygen'){
     if(!fields || !fields.algae) return;
     const cw = Math.max(1, Math.ceil(W));
     const ch = Math.max(1, Math.ceil(H));
+    ensureAlgaeDirty();
     if(!algaeCanvas || algaeCanvas.width!==cw || algaeCanvas.height!==ch){
       algaeCanvas = document.createElement('canvas');
       algaeCanvas.width = cw;
       algaeCanvas.height = ch;
       algaeCtx = algaeCanvas.getContext('2d');
-      lastAlgaePaint = -999;
+      markAlgaeAllDirty();
     }
-    const tiny = typeof renderPerf!=='undefined' && renderPerf.tiny;
-    const low = typeof renderPerf!=='undefined' && renderPerf.low;
-    const interval = tiny ? 10 : (low ? 6 : 3);
-    if(lastAlgaePaint<0 || frame-lastAlgaePaint>=interval){
+    let paintedCells=0;
+    if(algaeFullDirty){
       algaeCtx.setTransform(1,0,0,1,0,0);
       algaeCtx.clearRect(0,0,cw,ch);
-      paintAlgaeMosaic(algaeCtx);
+      paintedCells = paintAlgaeMosaic(algaeCtx,null);
+      if(algaeDirtyCells) algaeDirtyCells.fill(0);
+      algaeDirtyCount = 0;
+      algaeFullDirty = false;
+      algaeRenderStats.full++;
+      lastAlgaePaint = frame;
+    } else if(algaeDirtyCount>0){
+      const dirty=[];
+      for(let i=0;i<algaeDirtyCells.length;i++){
+        if(!algaeDirtyCells[i]) continue;
+        dirty.push(i);
+        algaeDirtyCells[i]=0;
+      }
+      algaeDirtyCount = 0;
+      paintedCells = paintAlgaeMosaic(algaeCtx,dirty);
+      algaeRenderStats.dirty++;
       lastAlgaePaint = frame;
     }
+    algaeRenderStats.cells = paintedCells;
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
     ctx.drawImage(algaeCanvas,0,0,W,H);
     ctx.restore();
   }
-  function paintAlgaeMosaic(ctx){
+  function paintAlgaeMosaic(ctx,cells=null){
     const saveOp = ctx.globalCompositeOperation;
     const prevSmooth = ctx.imageSmoothingEnabled;
     ctx.save();
@@ -4784,53 +4863,65 @@ if(p.type==='oxygen'){
     const sub = ALGAE_VISUAL_SUBDIV;
     const subCell = cell / sub;
     const fineStep = tiny ? 2 : 1;
-    for(let y=0;y<eh;y++){
-      for(let x=0;x<ew;x++){
-        const i=idx(x,y);
-        const n=fields.algae[i] || 0;
-        const baseEdible=clamp01((n-0.12)/0.62);
-        if(baseEdible<0.030 && !grazeScar) continue;
-        for(let sy=0; sy<sub; sy+=fineStep){
-          const fineY = y*sub + sy;
-          for(let sx=0; sx<sub; sx+=fineStep){
-            const fineX = x*sub + sx;
-            const scar=grazeScar ? (grazeScar[scarIdx(fineX,fineY)]||0) : 0;
-            const mark=clamp01(scar);
-            const h=((x*73856093)^(y*19349663)^(sx*83492791)^(sy*2971215073))>>>0;
-            const noise=((h & 255)/255 - 0.5);
-            const edible=clamp01(baseEdible + noise*0.18);
-            if(edible<0.045 && mark<0.030) continue;
-            const px=x*cell + sx*subCell;
-            const py=y*cell + sy*subCell;
-            const w=subCell*fineStep + 0.35;
-            const hh=subCell*fineStep + 0.35;
-            if(edible>0.045){
-              const a=clamp(0.11 + edible*0.38 + noise*0.030,0.07,0.50);
-              const light=44 + Math.round(edible*50 + noise*12);
-              ctx.globalAlpha = a;
-              ctx.fillStyle = `rgb(${18+Math.round(edible*34)},${102+light},${32+Math.round(edible*42)})`;
-              ctx.fillRect(px,py,w,hh);
-            }
-            if(mark>0.030){
-              const residual=clamp01(n/0.24);
-              const darkT=clamp01(mark * (0.22 + 0.78*(1-residual)));
-              ctx.globalAlpha = clamp(0.055 + mark*0.18 + darkT*0.30,0.05,0.50);
-              ctx.fillStyle = `rgb(${Math.round(82 + (3-82)*darkT)},${Math.round(118 + (7-118)*darkT)},${Math.round(48 + (4-48)*darkT)})`;
-              ctx.fillRect(px,py,w,hh);
-            }
-            if(edible>0.68 && !tiny && ((h>>>8)&7)===0){
-              ctx.globalAlpha = 0.10 + edible*0.10;
-              ctx.fillStyle = 'rgb(112,238,88)';
-              ctx.fillRect(px+subCell*0.20,py+subCell*0.20,subCell*0.56,subCell*0.56);
-            }
+    let painted=0;
+    const paintCell=(x,y,clearCell)=>{
+      if(clearCell) ctx.clearRect(x*cell,y*cell,cell+1,cell+1);
+      const i=idx(x,y);
+      const n=fields.algae[i] || 0;
+      const baseEdible=clamp01((n-0.12)/0.62);
+      if(baseEdible<0.030 && !grazeScar) return;
+      painted++;
+      for(let sy=0; sy<sub; sy+=fineStep){
+        const fineY = y*sub + sy;
+        for(let sx=0; sx<sub; sx+=fineStep){
+          const fineX = x*sub + sx;
+          const scar=grazeScar ? (grazeScar[scarIdx(fineX,fineY)]||0) : 0;
+          const mark=clamp01(scar);
+          const h=((x*73856093)^(y*19349663)^(sx*83492791)^(sy*2971215073))>>>0;
+          const noise=((h & 255)/255 - 0.5);
+          const edible=clamp01(baseEdible + noise*0.18);
+          if(edible<0.045 && mark<0.030) continue;
+          const px=x*cell + sx*subCell;
+          const py=y*cell + sy*subCell;
+          const w=subCell*fineStep + 0.35;
+          const hh=subCell*fineStep + 0.35;
+          if(edible>0.045){
+            const a=clamp(0.11 + edible*0.38 + noise*0.030,0.07,0.50);
+            const light=44 + Math.round(edible*50 + noise*12);
+            ctx.globalAlpha = a;
+            ctx.fillStyle = `rgb(${18+Math.round(edible*34)},${102+light},${32+Math.round(edible*42)})`;
+            ctx.fillRect(px,py,w,hh);
+          }
+          if(mark>0.030){
+            const residual=clamp01(n/0.24);
+            const darkT=clamp01(mark * (0.22 + 0.78*(1-residual)));
+            ctx.globalAlpha = clamp(0.055 + mark*0.18 + darkT*0.30,0.05,0.50);
+            ctx.fillStyle = `rgb(${Math.round(82 + (3-82)*darkT)},${Math.round(118 + (7-118)*darkT)},${Math.round(48 + (4-48)*darkT)})`;
+            ctx.fillRect(px,py,w,hh);
+          }
+          if(edible>0.68 && !tiny && ((h>>>8)&7)===0){
+            ctx.globalAlpha = 0.10 + edible*0.10;
+            ctx.fillStyle = 'rgb(112,238,88)';
+            ctx.fillRect(px+subCell*0.20,py+subCell*0.20,subCell*0.56,subCell*0.56);
           }
         }
+      }
+    };
+    if(cells){
+      for(const i of cells){
+        const x=i%ew, y=(i/ew)|0;
+        paintCell(x,y,true);
+      }
+    } else {
+      for(let y=0;y<eh;y++){
+        for(let x=0;x<ew;x++) paintCell(x,y,false);
       }
     }
     ctx.restore();
     ctx.globalAlpha=1;
     ctx.imageSmoothingEnabled = prevSmooth;
     ctx.globalCompositeOperation=saveOp;
+    return painted;
   }
 
   // ---- Pixels view ----
@@ -5002,6 +5093,14 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
   getAverages: ()=>averages(),
   semanticSnapshot: ()=>averages(),
   usesGpu: ()=>!!gpuReady,
+  algaeLayerSummary: ()=>({
+    full: algaeRenderStats.full,
+    dirty: algaeRenderStats.dirty,
+    cells: algaeRenderStats.cells,
+    pending: algaeDirtyCount,
+    fullDirty: algaeFullDirty,
+    canvas: algaeCanvas ? {w:algaeCanvas.width,h:algaeCanvas.height} : null
+  }),
   sampleAlgae: function(n){
     // N (nutrient) rich points
     const pts=[]; let tries=0;
@@ -6300,6 +6399,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         membranes: membranes.length,
         caustics: ui.caustics && waterCaustics.canvas ? {enabled:true,w:waterCaustics.w,h:waterCaustics.h,last:waterCaustics.last,loops:waterCaustics.loops.length} : {enabled:ui.caustics,ready:false},
         envGpu: !!(window.env && window.env.usesGpu && window.env.usesGpu()),
+        algaeLayer: window.env?.algaeLayerSummary ? window.env.algaeLayerSummary() : null,
         gridSize: GS,
         lowRender: renderPerf.low,
         tinyRender: renderPerf.tiny,
