@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>ALIFE 見た目ジェネレーター（旧デザイン・アーカイブ）</title>
+<style>
+  :root{ --bg1:#0c1445; --bg2:#1a2980; --panel:#111827; --border:#2a3352; --text:#e8eefc; --muted:#9fb3d1; --accent:#4fa3ff; }
+  *{box-sizing:border-box}
+  html,body{margin:0; height:100%}
+  body{ font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; color:var(--text);
+    background:radial-gradient(1000px 600px at 20% -10%, #26326855, transparent 60%), linear-gradient(135deg,var(--bg1),var(--bg2)); }
+  header{ position:sticky; top:0; z-index:10; backdrop-filter:blur(8px); background:rgba(10,16,38,.82);
+    border-bottom:1px solid var(--border); padding:10px 12px calc(10px + env(safe-area-inset-bottom,0)); }
+  h1{ font-size:1rem; margin:0 0 8px }
+  .bar{ display:flex; gap:8px; flex-wrap:wrap; align-items:center }
+  .btn{ appearance:none; border:1px solid var(--border); background:#0b122a; color:var(--text);
+    padding:10px 12px; border-radius:10px; font-weight:700; cursor:pointer; min-height:44px }
+  .btn.primary{ border-color:var(--accent); background:#12305c }
+  .btn:active{ transform:translateY(1px) }
+  .chip{ border:1px solid var(--border); background:#0b122a; color:var(--muted); padding:8px 10px;
+    border-radius:999px; cursor:pointer; min-height:40px; font-weight:600 }
+  .chip.on{ color:#fff; border-color:var(--accent); background:#12305c }
+  .slider{ display:flex; align-items:center; gap:6px; color:var(--muted); font-size:.8rem }
+  .slider input{ width:120px }
+  main{ padding:12px }
+  #grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:8px }
+  .cell{ position:relative; border:1px solid var(--border); border-radius:12px; background:#070e22;
+    aspect-ratio:1/1; overflow:hidden; cursor:pointer }
+  .cell canvas{ width:100%; height:100%; display:block }
+  .cell.locked{ border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset }
+  .cell .lock{ position:absolute; top:4px; right:4px; width:28px; height:28px; border-radius:8px;
+    border:1px solid var(--border); background:rgba(6,12,30,.7); color:var(--muted); font-size:.9rem;
+    display:flex; align-items:center; justify-content:center }
+  .cell.locked .lock{ color:var(--accent); border-color:var(--accent) }
+  .cell .tag{ position:absolute; left:4px; bottom:4px; font-size:.62rem; color:var(--muted);
+    background:rgba(6,12,30,.6); padding:1px 5px; border-radius:6px }
+  .hint{ color:var(--muted); font-size:.78rem; margin:4px 2px }
+  /* modal */
+  .overlay{ position:fixed; inset:0; z-index:50; background:rgba(4,8,20,.7); display:none;
+    align-items:flex-start; justify-content:center; padding:12px; overflow:auto }
+  .overlay.on{ display:flex }
+  .modal{ width:min(560px,100%); background:var(--panel); border:1px solid var(--border);
+    border-radius:16px; padding:14px; margin:auto }
+  .modal h2{ font-size:.95rem; margin:0 0 8px }
+  .preview{ width:100%; aspect-ratio:16/10; background:#070e22; border:1px solid var(--border);
+    border-radius:12px; display:block }
+  .ctl{ display:flex; align-items:center; gap:8px; margin:6px 0; font-size:.8rem; color:var(--muted) }
+  .ctl label{ flex:0 0 92px }
+  .ctl input[type=range]{ flex:1 }
+  .ctl .v{ flex:0 0 40px; text-align:right; color:#9bd0ff; font-variant-numeric:tabular-nums }
+  .toggles{ display:flex; flex-wrap:wrap; gap:6px; margin:8px 0 }
+  .sec{ margin-top:10px; border-top:1px solid var(--border); padding-top:8px }
+  textarea{ width:100%; height:180px; background:#070e22; color:var(--text); border:1px solid var(--border);
+    border-radius:10px; padding:8px; font-family:ui-monospace,monospace; font-size:.72rem }
+</style>
+</head>
+<body>
+<header>
+  <h1>🧬 見た目ジェネレーター（旧デザイン保存版）</h1>
+  <div class="bar">
+    <button class="btn primary" id="gen">🎲 生成</button>
+    <span class="chip" data-count="24">24</span>
+    <span class="chip on" data-count="48">48</span>
+    <span class="chip" data-count="96">96</span>
+    <span class="slider">ドリフト<input type="range" id="drift" min="0" max="0.4" step="0.01" value="0.12"><span id="driftv">0.12</span></span>
+    <button class="btn" id="export">⬇ 書き出し</button>
+    <button class="btn" id="exportPins">📌 ピンのみ</button>
+  </div>
+  <div class="hint">タップで拡大・微調整／右上📌で固定して残りだけ再生成。同じ種は同じ姿・同じ色。</div>
+</header>
+<main><div id="grid"></div></main>
+
+<div class="overlay" id="detail">
+  <div class="modal">
+    <h2 id="dTitle">種の調整</h2>
+    <canvas class="preview" id="dCanvas"></canvas>
+    <div class="sec" id="geneCtls"></div>
+    <div class="sec" id="agCtls"></div>
+    <div class="sec">
+      <div class="hint">特殊適応</div>
+      <div class="toggles" id="adaptToggles"></div>
+      <div class="hint">レア形質</div>
+      <div class="toggles" id="rareToggles"></div>
+    </div>
+    <div class="sec bar">
+      <button class="btn" id="dReroll">🎲 この種を再生成</button>
+      <button class="btn" id="dDrift">🌱 複製してドリフト</button>
+      <button class="btn primary" id="dClose">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="exp">
+  <div class="modal">
+    <h2>書き出し（JSON）</h2>
+    <div class="hint">この JSON をゲームの初期集団などに読み込む想定。コピーして共有できます。</div>
+    <textarea id="expText" readonly></textarea>
+    <div class="sec bar">
+      <button class="btn primary" id="copyBtn">📋 コピー</button>
+      <button class="btn" id="expClose">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<script src="render_organism_stylized.js"></script>
+<script>
+(function(){
+  'use strict';
+  var R = window.RenderOrganism;
+  var ADAPTATIONS = ['sessileFarmer','toxin','spines','symbiotic','filterFan','colonyBuilder','adhesiveMat','cyst'];
+  var RARE = ['glow','crown','colony','chl'];
+  var GENE_LABEL = { speed:'速さ', size:'大きさ', metabolism:'代謝', fecundity:'繁殖', sense:'感知', diet:'食性', formSeed:'形シード' };
+  var AG_LABEL = { waviness:'うねり', waveFreq:'うねり数', asymmetry:'非対称', ciliaDensity:'繊毛密度',
+    ciliaLength:'繊毛長', patternType:'模様', patternStrength:'模様強', membraneOpacity:'膜濃度',
+    accentHue:'差し色', iridescence:'虹彩', coreSeed:'核' };
+
+  var grid = document.getElementById('grid');
+  var count = 48, species = [], activeIdx = -1;
+  var DPR = Math.min(2, window.devicePixelRatio || 1);
+
+  function randSeed(){ return (Math.random()*4294967296)>>>0; }
+
+  function sizeCanvas(cv, cssW, cssH){
+    cv.width = Math.round(cssW*DPR); cv.height = Math.round(cssH*DPR);
+    var ctx = cv.getContext('2d'); ctx.setTransform(DPR,0,0,DPR,0,0); return ctx;
+  }
+
+  function drawInto(cv, sp){
+    var rect = cv.getBoundingClientRect();
+    var w = Math.round(rect.width), h = Math.round(rect.height);
+    if(w < 2 || h < 2) return false; // not laid out yet; caller retries
+    var ctx = sizeCanvas(cv, w, h);
+    ctx.clearRect(0,0,w,h);
+    ctx.save(); ctx.translate(w/2, h/2);
+    var baseR = Math.min(w,h) * 0.30;
+    R.draw(ctx, sp, baseR, {});
+    ctx.restore();
+    return true;
+  }
+
+  function drawAll(){
+    var ok = true;
+    for(var i=0;i<grid.children.length;i++){
+      var cv = grid.children[i].querySelector('canvas');
+      if(cv && species[i]) { if(!drawInto(cv, species[i])) ok = false; }
+    }
+    if(!ok) requestAnimationFrame(drawAll); // retry until laid out
+  }
+
+  function tagText(sp){
+    return R.topologyFromGenes(sp.genes) + '・' + ({herb:'草',omni:'雑',carn:'肉'})[R.dietClass(sp.genes.diet)];
+  }
+
+  function buildGrid(){
+    grid.innerHTML='';
+    for(var i=0;i<species.length;i++){
+      (function(i){
+        var sp = species[i];
+        var cell = document.createElement('div');
+        cell.className = 'cell' + (sp.locked?' locked':'');
+        var cv = document.createElement('canvas'); cell.appendChild(cv);
+        var lock = document.createElement('div'); lock.className='lock'; lock.textContent = sp.locked?'📌':'○';
+        var tag = document.createElement('div'); tag.className='tag'; tag.textContent = tagText(sp);
+        cell.appendChild(lock); cell.appendChild(tag);
+        lock.addEventListener('click', function(e){ e.stopPropagation(); sp.locked=!sp.locked;
+          cell.classList.toggle('locked', sp.locked); lock.textContent = sp.locked?'📌':'○'; });
+        cell.addEventListener('click', function(){ openDetail(i); });
+        grid.appendChild(cell);
+      })(i);
+    }
+    requestAnimationFrame(function(){ requestAnimationFrame(drawAll); });
+  }
+
+  function generate(){
+    var next = [];
+    for(var i=0;i<count;i++){
+      if(species[i] && species[i].locked) next.push(species[i]);
+      else { var sp = R.makeSpecies(randSeed()); sp.locked=false; next.push(sp); }
+    }
+    species = next;
+    buildGrid();
+  }
+
+  // ---- detail modal ----
+  var detail = document.getElementById('detail');
+  var dCanvas = document.getElementById('dCanvas');
+  function renderDetail(){
+    var sp = species[activeIdx]; if(!sp) return;
+    document.getElementById('dTitle').textContent = '種 ' + tagText(sp) + '（seed ' + sp.seed + '）';
+    var rect = dCanvas.getBoundingClientRect();
+    var w = Math.round(rect.width), h = Math.round(rect.height);
+    if(w < 2 || h < 2){ requestAnimationFrame(renderDetail); return; } // modal not laid out yet
+    var ctx = sizeCanvas(dCanvas, w, h);
+    ctx.clearRect(0,0,w,h);
+    ctx.save(); ctx.translate(w/2, h/2);
+    R.draw(ctx, sp, Math.min(w,h)*0.34, {});
+    ctx.restore();
+  }
+  function refreshCell(){ // redraw the grid cell for the active species
+    var cell = grid.children[activeIdx]; if(!cell) return;
+    drawInto(cell.querySelector('canvas'), species[activeIdx]);
+    cell.querySelector('.tag').textContent = tagText(species[activeIdx]);
+  }
+  function slider(label, val, min, max, step, on){
+    var row = document.createElement('div'); row.className='ctl';
+    var l = document.createElement('label'); l.textContent=label;
+    var inp = document.createElement('input'); inp.type='range'; inp.min=min; inp.max=max; inp.step=step; inp.value=val;
+    var v = document.createElement('span'); v.className='v'; v.textContent=(+val).toFixed(2);
+    inp.addEventListener('input', function(){ v.textContent=(+inp.value).toFixed(2); on(+inp.value); renderDetail(); refreshCell(); });
+    row.appendChild(l); row.appendChild(inp); row.appendChild(v); return row;
+  }
+  function toggle(list, key, arr){
+    var b = document.createElement('span'); b.className='chip'+(arr.indexOf(key)>=0?' on':''); b.textContent=key;
+    b.addEventListener('click', function(){
+      var k = arr.indexOf(key); if(k>=0) arr.splice(k,1); else arr.push(key);
+      b.classList.toggle('on'); renderDetail(); refreshCell();
+    });
+    return b;
+  }
+  function openDetail(i){
+    activeIdx = i; var sp = species[i];
+    var gc = document.getElementById('geneCtls'); gc.innerHTML='';
+    R.GENE_KEYS.forEach(function(k){ gc.appendChild(slider(GENE_LABEL[k]||k, sp.genes[k], 0, 1, 0.01, function(v){ sp.genes[k]=v; })); });
+    var ac = document.getElementById('agCtls'); ac.innerHTML='';
+    Object.keys(sp.appearanceGenome).forEach(function(k){
+      var isFreq = (k==='waveFreq'), isPat=(k==='patternType'), isHue=(k==='accentHue');
+      var min = isHue?0:(0), max = isHue?360:(isFreq?11:(isPat?4:1)), step = (isFreq||isPat)?1:0.01;
+      ac.appendChild(slider(AG_LABEL[k]||k, sp.appearanceGenome[k], min, max, step, function(v){ sp.appearanceGenome[k]=v; }));
+    });
+    var at = document.getElementById('adaptToggles'); at.innerHTML='';
+    ADAPTATIONS.forEach(function(a){ at.appendChild(toggle(ADAPTATIONS, a, sp.adaptations)); });
+    var rt = document.getElementById('rareToggles'); rt.innerHTML='';
+    RARE.forEach(function(a){ rt.appendChild(toggle(RARE, a, sp.rareTraits)); });
+    detail.classList.add('on');
+    renderDetail(); // sets title now; internal guard retries canvas draw once laid out
+  }
+  document.getElementById('dClose').addEventListener('click', function(){ detail.classList.remove('on'); });
+  detail.addEventListener('click', function(e){ if(e.target===detail) detail.classList.remove('on'); });
+  document.getElementById('dReroll').addEventListener('click', function(){
+    var was = species[activeIdx].locked; species[activeIdx] = R.makeSpecies(randSeed()); species[activeIdx].locked=was;
+    openDetail(activeIdx); refreshCell();
+  });
+  document.getElementById('dDrift').addEventListener('click', function(){
+    var amt = +document.getElementById('drift').value;
+    var child = R.driftSpecies(species[activeIdx], amt); child.locked=false;
+    // place child into first unlocked slot (or append via regen of that cell)
+    var placed=false;
+    for(var i=0;i<species.length;i++){ if(!species[i].locked && i!==activeIdx){ species[i]=child; placed=true; buildGrid(); break; } }
+    if(!placed){ species.push(child); count=species.length; buildGrid(); }
+    detail.classList.remove('on');
+  });
+
+  // ---- export ----
+  function payload(list){
+    return JSON.stringify(list.map(function(s){
+      return { seed:s.seed, genes:s.genes, appearanceGenome:s.appearanceGenome, adaptations:s.adaptations, rareTraits:s.rareTraits };
+    }), null, 2);
+  }
+  var exp = document.getElementById('exp');
+  function showExport(list){
+    if(!list.length){ alert('対象がありません（ピンが0件）。'); return; }
+    document.getElementById('expText').value = payload(list); exp.classList.add('on');
+  }
+  document.getElementById('export').addEventListener('click', function(){ showExport(species); });
+  document.getElementById('exportPins').addEventListener('click', function(){ showExport(species.filter(function(s){return s.locked;})); });
+  document.getElementById('expClose').addEventListener('click', function(){ exp.classList.remove('on'); });
+  exp.addEventListener('click', function(e){ if(e.target===exp) exp.classList.remove('on'); });
+  document.getElementById('copyBtn').addEventListener('click', function(){
+    var ta = document.getElementById('expText'); ta.select();
+    if(navigator.clipboard){ navigator.clipboard.writeText(ta.value).then(function(){ this && 0; }); }
+    try{ document.execCommand('copy'); }catch(e){}
+    this.textContent='✓ コピー済';
+    var self=this; setTimeout(function(){ self.textContent='📋 コピー'; },1200);
+  });
+
+  // ---- controls ----
+  document.getElementById('gen').addEventListener('click', generate);
+  document.getElementById('drift').addEventListener('input', function(){ document.getElementById('driftv').textContent=(+this.value).toFixed(2); });
+  Array.prototype.forEach.call(document.querySelectorAll('.chip[data-count]'), function(ch){
+    ch.addEventListener('click', function(){
+      document.querySelectorAll('.chip[data-count]').forEach(function(c){ c.classList.remove('on'); });
+      ch.classList.add('on'); count = +ch.getAttribute('data-count'); generate();
+    });
+  });
+  window.addEventListener('resize', drawAll);
+  window.addEventListener('load', drawAll);
+
+  generate();
+})();
+</script>
+</body>
+</html>
