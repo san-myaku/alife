@@ -4635,8 +4635,10 @@ if(p.type==='oxygen'){
               ctx.fillRect(px,py,w,hh);
             }
             if(mark>0.030){
-              ctx.globalAlpha = clamp(0.18 + mark*0.55,0.15,0.72);
-              ctx.fillStyle = 'rgb(9,38,16)';
+              const residual=clamp01(n/0.24);
+              const darkT=clamp01(mark * (0.22 + 0.78*(1-residual)));
+              ctx.globalAlpha = clamp(0.055 + mark*0.18 + darkT*0.30,0.05,0.50);
+              ctx.fillStyle = `rgb(${Math.round(82 + (3-82)*darkT)},${Math.round(118 + (7-118)*darkT)},${Math.round(48 + (4-48)*darkT)})`;
               ctx.fillRect(px,py,w,hh);
             }
             if(edible>0.68 && !tiny && ((h>>>8)&7)===0){
