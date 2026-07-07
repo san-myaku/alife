@@ -265,7 +265,7 @@
     }),
     organism: Object.freeze({
       movementSpeedScale: 0.25,
-      maxSizeScale: 2.0
+      maxSizeScale: IS_MOBILE_VIEW ? 2.0 * 0.7 : 2.0
     }),
     rendering: Object.freeze({
       tinyEnterPop: 118,
