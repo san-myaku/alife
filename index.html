@@ -2109,23 +2109,6 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       };
       this.flags = __flagsFromTraits(this.traits, this.genes);
 
-      // precompute chloroplast spots (only when expressed)
-      if(this.flags && this.flags.chl){
-        try{
-          const rng = rngFromKey('chl:'+this.id);
-          const n = 4 + Math.floor(6*rng()); // 4..9
-          this._chlSpots = [];
-          for(let i=0;i<n;i++){
-            const a = rng()*Math.PI*2;
-            const r = (0.15 + 0.75*rng()) * this.size;
-            const x = Math.cos(a)*r*this.aspect*0.9;
-            const y = Math.sin(a)*r*0.9;
-            const rr = 0.6 + 1.6*rng();
-            const aa = 0.05 + 0.09*rng();
-            this._chlSpots.push({x, y, r: rr, a: aa});
-          }
-        }catch(_){ /* ignore */ }
-      }
       if(!bornByRepro){
         recordRareTraitDiscovery(this);
         registerSpeciesStats(this);
@@ -2157,31 +2140,6 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this.reproThreshold = 60 + 50*this.genes.fecundity;
       this.localAlgaeFarm=null; this.predationRiskMul=1;
 
-      this.edgeCount = Math.round(lerp(0, 6, form.detail));
-      this.edgeAmp   = lerp(0.0, 0.45, form.wave);
-      this.aspectBase = lerp(1.0, 3.2, form.length);
-      this.patternType = form.layout;
-
-      // families: 0 mantle,1 leaf,2 segmented,3 jelly,4 star/flower,5 tube,6 ribbon,7 armored,8 disc,9 colony
-      const familyCount = 10;
-      const m = form.shape;
-      this.family = Math.floor(clamp(m,0,0.999)*familyCount);
-
-      this.aspect = this.aspectBase;
-      if (this.family===1 || this.family===2 || this.family===6) {
-        this.aspect = Math.max(1.2, this.aspectBase*1.6);
-      }
-      if (this.family===3) { this.edgeCount = 0; this.edgeAmp = 0; }
-      if (this.family===4) { this.edgeCount = 5 + Math.round(form.detail*7); this.edgeAmp = Math.max(this.edgeAmp, 0.28); }
-      this.segCount = 7 + Math.round(form.detail*10);
-      this.tubeThickness = lerp(0.35, 0.8, this.genes.metabolism);
-      this.ribbonW = lerp(0.35, 0.8, 1-this.genes.metabolism);
-      this.ribbonLen = this.size * this.aspect * 2.2;
-      this.facetN = 4 + Math.round(form.detail*8);
-      this.petalN = 8 + Math.round(form.detail*12);
-      this.colonyN = 6 + Math.round(this.genes.fecundity*10);
-
-      this.isGold = this.isMega || (this.aspect>2.7) || (this.genes.sense>0.95);
 
       this.hungerBias = this.reproThreshold;
       this.role = computeRole(this.genes);
@@ -2197,97 +2155,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(this.morphologyTopology==='amoeba'){ this.baseMetabolic*=0.96; this.maxSpeed*=0.97; this.senseCost*=0.98; }
       if(this.morphologyTopology==='mesh'){ this.baseMetabolic*=0.94; this.senseCost*=0.92; }
       for(const id of adaptationProfilesFromGenes(this.genes, null, this.morphologyTopology, this.role)) ADAPTATION_BY_ID[id]?.effect?.(this);
-      // --- sea-glass micro-bubbles (impurities) precompute ---
-      try{
-        const bubN = Math.max(1, Math.min(6, Math.round(2 + 4*(1 - this.genes.size)*0.7 + 2*this.genes.fecundity*0.3)));
-        const rng = rngFromKey('bub:'+this.id);
-        this._bubbles = [];
-        for(let i=0;i<bubN;i++){
-          const a = rng()*Math.PI*2;
-          const r = (0.25 + 0.6*rng()) * this.size; // within body
-          // bias bubbles slightly toward top-left like trapped air
-          const bx = Math.cos(a)*r * this.aspect * 0.9 - 0.2*this.size;
-          const by = Math.sin(a)*r * 0.9 - 0.15*this.size;
-          let br = 0.8 + 1.8 * rng(); br = Math.max(0.5, Math.abs(br));
-          const balpha = 0.06 + 0.10 * rng();
-          this._bubbles.push({x:bx,y:by,r:br,a:balpha});
-        }
-      }catch(_){ /* ignore */ }
 
       this.prepareSymbolDetails();
-    }
-    prepareMicroDetails(){
-      const key = 'micro:'+this.id+':'+Object.values(this.genes).map(v=>Math.round(v*99)).join('.');
-      const rng = rngFromKey(key);
-      const organelles = [];
-      const granules = [];
-      const colony = [];
-      const baseHue = Number.isFinite(this.hue) ? this.hue : ((lerp(195,6,this.genes.diet) + lerp(-14,14,this.genes.speed)*0.25 + 360) % 360);
-      const bodyX = this.size*this.aspect;
-      const bodyY = this.size;
-      const organelleN = Math.max(3, Math.min(16, Math.round(4 + 8*(1-this.genes.size) + 5*this.genes.sense + 3*rng())));
-      for(let i=0;i<organelleN;i++){
-        const a = rng()*TAU;
-        const rr = Math.sqrt(rng())*0.72;
-        organelles.push({
-          x: Math.cos(a)*bodyX*rr*0.72,
-          y: Math.sin(a)*bodyY*rr*0.72,
-          rx: Math.max(0.9, this.size*(0.10 + 0.18*rng())),
-          ry: Math.max(0.6, this.size*(0.06 + 0.13*rng())),
-          rot: rng()*TAU,
-          hue: (baseHue + 80 + rng()*120) % 360,
-          a: 0.12 + 0.18*rng()
-        });
-      }
-      const granuleN = Math.max(5, Math.min(34, Math.round(8 + 18*this.genes.metabolism + 8*(1-this.genes.size))));
-      for(let i=0;i<granuleN;i++){
-        const a = rng()*TAU;
-        const rr = Math.sqrt(rng())*0.88;
-        granules.push({
-          x: Math.cos(a)*bodyX*rr*0.78,
-          y: Math.sin(a)*bodyY*rr*0.78,
-          r: Math.max(0.35, this.size*(0.025 + 0.045*rng())),
-          hue: (baseHue + 35 + rng()*180) % 360,
-          a: 0.10 + 0.18*rng()
-        });
-      }
-      if(this.family===9){
-        const n = 5 + Math.round(this.genes.fecundity*9);
-        for(let i=0;i<n;i++){
-          const a = i/n*TAU + rng()*0.25;
-          const rr = 0.28 + 0.42*rng();
-          colony.push({
-            x: Math.cos(a)*bodyX*rr,
-            y: Math.sin(a)*bodyY*rr,
-            r: Math.max(1.2, this.size*(0.18 + 0.16*rng())),
-            a: 0.22 + 0.18*rng()
-          });
-        }
-      }
-      const fast = this.genes.speed;
-      const sens = this.genes.sense;
-      const ciliaBias = (this.family===3 || this.family===4 || this.family===8) ? 1.0 : 0.55;
-      const ciliaCount = Math.round((8 + 28*sens + 12*(1-this.genes.size))*ciliaBias);
-      const flagellaN = (fast>0.58 || this.family===2 || this.family===6) ? (1 + Math.floor(rng()*3)) : 0;
-      this._micro = {
-        membranePhase: rng()*TAU,
-        membraneRipple: 0.025 + 0.075*rng(),
-        membraneFreq: 3 + Math.floor(rng()*8),
-        nucleus:{
-          x: (rng()-0.5)*bodyX*0.38,
-          y: (rng()-0.5)*bodyY*0.38,
-          r: Math.max(1.6, this.size*(0.22 + 0.16*rng())),
-          hue: (baseHue + 150 + 80*rng()) % 360
-        },
-        organelles,
-        granules,
-        colony,
-        ciliaCount,
-        ciliaLen: this.size*(0.45 + 0.85*sens),
-        flagellaN,
-        flagellaLen: this.size*(1.8 + 1.8*fast),
-        striation: 3 + Math.floor(9*rng())
-      };
     }
     prepareSymbolDetails(){
       const geneKey = Object.values(this.genes).map(v=>Math.round(v*101)).join('.');
@@ -3259,7 +3128,6 @@ if(Z>0.08){
           const mutRate = 0.005 + (this.mutagenBoost>0?0.004:0);
           c.traits = __inheritTraits(this.traits, mate?.traits, mutRate);
           c.flags = __flagsFromTraits(c.traits, c.genes);
-                  __ensureChlSpots(c);
           recordRareTraitDiscovery(c);
           registerSpeciesStats(c);
 }catch(_){ /* ignore */ }
@@ -3953,27 +3821,6 @@ if(Z>0.08){
   }
 
 
-  function __ensureChlSpots(o){
-    if(o.flags && o.flags.chl){
-      if(o._chlSpots && o._chlSpots.length) return;
-      try{
-        const rng = rngFromKey('chl:'+o.id);
-        const n = 4 + Math.floor(6*rng()); // 4..9
-        o._chlSpots = [];
-        for(let i=0;i<n;i++){
-          const a = rng()*Math.PI*2;
-          const r = (0.15 + 0.75*rng()) * o.size;
-          const x = Math.cos(a)*r*o.aspect*0.9;
-          const y = Math.sin(a)*r*0.9;
-          const rr = 0.6 + 1.6*rng();
-          const aa = 0.05 + 0.09*rng();
-          o._chlSpots.push({x, y, r: rr, a: aa});
-        }
-      }catch(_){ /* ignore */ }
-    } else {
-      o._chlSpots = null;
-    }
-  }
   function __inheritAllele(a1,a2){ return (Math.random()<0.5? a1: a2); }
   function __maybeMutateAllele(allele, mutRate, locus){
     if(Math.random()<mutRate){
@@ -6197,7 +6044,6 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         u.morphologyTopology = o.morphologyTopology || topologyFromGenes(u.genes);
         u.recentEvents = Array.isArray(o.recentEvents) ? o.recentEvents.slice(-5) : [];
         u.lastAction = o.lastAction || u.lastAction || 'ロードされた';
-                __ensureChlSpots(u);
         recordRareTraitDiscovery(u);
         registerSpeciesStats(u);
 organisms.push(u);
