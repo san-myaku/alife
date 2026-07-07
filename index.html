@@ -3423,6 +3423,7 @@ if(Z>0.08){
         ctx.lineWidth=1;
         ctx.stroke();
       }
+      const predatorBursting=isPredatorBursting(this);
       if(this.chaseTimer>0 || this.preyTargetId){
         ctx.beginPath(); ctx.arc(0,0,r*3.1,0,TAU);
         ctx.strokeStyle=predatorBursting?'rgba(255,170,90,0.48)':'rgba(255,118,126,0.30)';
