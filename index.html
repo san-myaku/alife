@@ -441,17 +441,70 @@
   const toastsEl = $('toasts');
   const recentToast = new Map();
   const toastQueue = [];
+  const activeToastPointers = [];
   let toastBlockUntil=0;
-  function showToast(type, text){
+  function toastTargetPoint(target){
+    const t = typeof target === 'function' ? target() : target;
+    if(!t) return null;
+    const x = Number(t.x), y = Number(t.y);
+    if(!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return {x, y};
+  }
+  function dropToastPointer(el){
+    for(let i=activeToastPointers.length-1;i>=0;i--){
+      if(activeToastPointers[i].el===el) activeToastPointers.splice(i,1);
+    }
+  }
+  function toastPointerColor(type){
+    if(type==='species') return 'rgba(111,185,255,0.72)';
+    if(type==='event') return 'rgba(255,183,82,0.68)';
+    if(type==='season') return 'rgba(151,224,131,0.58)';
+    return 'rgba(190,230,255,0.52)';
+  }
+  function showToast(type, text, target=null){
     if(type!=='cycle' && type!=='species' && type!=='event' && frame < toastBlockUntil) return false;
     const key = type+':'+text; const now = frame;
     if(recentToast.has(key) && now - recentToast.get(key) < 900) return false;
     recentToast.set(key, now);
-    toastQueue.push({type,text});
+    toastQueue.push({type,text,target});
     if(!inModelUpdate) flushToasts();
     return true;
   }
-  function flushToasts(){ if(!toastsEl) return; while(toastQueue.length){ const {type,text}=toastQueue.shift(); const el=document.createElement('div'); el.className='toast '+type; el.textContent=text; toastsEl.appendChild(el); requestAnimationFrame(()=>el.classList.add('show')); const duration=(type==='cycle'||type==='event'||type==='season')?4200:(type==='species'?2600:1400); setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>el.remove(),200); },duration); while(toastsEl.children.length>3) toastsEl.removeChild(toastsEl.firstChild); } }
+  function flushToasts(){ if(!toastsEl) return; while(toastQueue.length){ const {type,text,target}=toastQueue.shift(); const el=document.createElement('div'); el.className='toast '+type; el.textContent=text; toastsEl.appendChild(el); if(toastTargetPoint(target)) activeToastPointers.push({el,type,target}); requestAnimationFrame(()=>el.classList.add('show')); const duration=(type==='cycle'||type==='event'||type==='season')?4200:(type==='species'?2600:1400); setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>{ dropToastPointer(el); el.remove(); },200); },duration); while(toastsEl.children.length>3){ const first=toastsEl.firstChild; dropToastPointer(first); toastsEl.removeChild(first); } } }
+  function drawToastTargetLines(){
+    if(!activeToastPointers.length || !toastsEl || !W || !H) return;
+    const viewRect=view.getBoundingClientRect();
+    ctx.save();
+    ctx.lineWidth=1.15;
+    ctx.lineCap='round';
+    ctx.setLineDash([4,4]);
+    for(let i=activeToastPointers.length-1;i>=0;i--){
+      const item=activeToastPointers[i];
+      if(!item.el.isConnected){ activeToastPointers.splice(i,1); continue; }
+      const target=toastTargetPoint(item.target);
+      if(!target) continue;
+      const r=item.el.getBoundingClientRect();
+      const sx=clamp(r.left + r.width*0.5 - viewRect.left, 0, W);
+      const sy=clamp(r.bottom - viewRect.top, 0, H);
+      const tx=clamp(target.x, 0, W);
+      const ty=clamp(target.y, 0, H);
+      if(Math.hypot(tx-sx,ty-sy)<8) continue;
+      ctx.strokeStyle=toastPointerColor(item.type);
+      ctx.beginPath();
+      ctx.moveTo(sx,sy);
+      ctx.lineTo(tx,ty);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha=0.68;
+      ctx.beginPath();
+      ctx.arc(tx,ty,2.4,0,TAU);
+      ctx.fillStyle=toastPointerColor(item.type);
+      ctx.fill();
+      ctx.globalAlpha=1;
+      ctx.setLineDash([4,4]);
+    }
+    ctx.restore();
+  }
 
   // ===== Lightweight FPS HUD =====
   const fpsHud = $('fps-hud');
@@ -1037,7 +1090,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const name=speciesNameFromGenes(o.genes,o.flags);
     const topology=o.morphologyTopology||topologyFromGenes(o.genes);
     const profile=speciesStrategyProfile(o.genes,o.flags,topology,o.role);
-    if(showToast('species', `新種：${name}｜${profile.title}。${profile.primary}を主食にする`)) markNewSpecies(o);
+    if(showToast('species', `新種：${name}｜${profile.title}。${profile.primary}を主食にする`, o)) markNewSpecies(o);
     log(`新種：${name}（${o.speciesKey}）が出現。${profile.summary} 特徴：${featureSummary(o.genes,o.flags,topology)}。`);
     return true;
   }
@@ -1343,7 +1396,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       recordAction(prey,`${d.label}で捕食者を弱らせた`);
       applied=true;
     }
-    if(applied && frame-(applyPredationDefenses.lastToast||0)>420){ showToast('event','毒を持つ獲物を食べた捕食者が弱った。'); applyPredationDefenses.lastToast=frame; }
+    if(applied && frame-(applyPredationDefenses.lastToast||0)>420){ showToast('event','毒を持つ獲物を食べた捕食者が弱った。', predator); applyPredationDefenses.lastToast=frame; }
     return applied;
   }
   function notePredationRepelled(predator,prey,defs){
@@ -1362,7 +1415,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     }
     recordAction(predator,`${d.label}を避けた`);
     recordAction(prey,`${d.label}で捕食を退けた`);
-    if(frame-(notePredationRepelled.lastToast||0)>520){ showToast('event',`${d.label}の獲物が捕食を退け${retaliated?'、反撃した':'た'}。`); notePredationRepelled.lastToast=frame; }
+    if(frame-(notePredationRepelled.lastToast||0)>520){ showToast('event',`${d.label}の獲物が捕食を退け${retaliated?'、反撃した':'た'}。`, prey); notePredationRepelled.lastToast=frame; }
     return true;
   }
   function adaptationProfilesFromGenes(g, flags=null, topology=topologyFromGenes(g), role=null){
@@ -1524,7 +1577,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       discoveredRareTraits.add(name);
       if(frame>=speciesAnnounceMuteUntil){
         log(`希少形質：${name}が初めて発現した。${speciesNameFromGenes(o.genes,o.flags)}で観察できる。`);
-        showToast('species', `希少形質：${name}を発見`);
+        showToast('species', `希少形質：${name}を発見`, o);
       }
     }
   }
@@ -4866,7 +4919,7 @@ function reportEventEnd(type,start){
   } else if(type==='drought'){
     msg=corpseDelta>1 ? '乾燥期後、死骸が増え、腐肉食が一時的に安定した。' : '乾燥期後、繁殖依存型は伸びにくく、蓄えのある個体が残った。';
   }
-  if(msg){ log(`イベント結果：${msg}`); showToast('event',msg); }
+  if(msg){ log(`イベント結果：${msg}`); showToast('event',msg, worldEvent.mx!=null ? {x:worldEvent.mx,y:worldEvent.my} : null); }
 }
 
 function triggerEvent(type){
@@ -4878,13 +4931,13 @@ function triggerEvent(type){
       worldEvent.mx = rnd(0.25*W, 0.75*W); worldEvent.my = rnd(0.25*H, 0.75*H);
       worldEvent.rx = Math.min(W,H) * 0.28; worldEvent.ry = Math.min(W,H) * 0.22; worldEvent.rot = Math.random()*Math.PI; worldEvent.dx = rnd(-0.15,0.15); worldEvent.dy = rnd(-0.10,0.10);
       Object.assign(worldEvent, {t:600, maxT:600, speedMul:0.85, metaMul:0.9, planktonCapBonus:-10, algaeFactor:0.35, corpseDecayExtra:0.15, veilColor:'rgba(80,110,160,0.18)', predSuccessMul:0.9, reproMul:1, reproT:0});
-      showToast('event','寒冷化。移動と捕食が鈍り、藻の伸びも弱まる。省エネでゆっくり動く個体に有利に働くだろう。');
+      showToast('event','寒冷化。移動と捕食が鈍り、藻の伸びも弱まる。省エネでゆっくり動く個体に有利に働くだろう。',{x:worldEvent.mx,y:worldEvent.my});
     } else if(type==='bloom'){
       // place a local bloom patch
       worldEvent.mx = rnd(0.25*W, 0.75*W); worldEvent.my = rnd(0.25*H, 0.75*H);
       worldEvent.rx = Math.min(W,H) * 0.26; worldEvent.ry = Math.min(W,H) * 0.20; worldEvent.rot = Math.random()*Math.PI; worldEvent.dx = rnd(-0.12,0.12); worldEvent.dy = rnd(-0.08,0.08);
       Object.assign(worldEvent, {t:500, maxT:500, speedMul:1.08, metaMul:1.18, planktonCapBonus:30, algaeFactor:1.0, corpseDecayExtra:0, veilColor:'rgba(120,200,120,0.12)', predSuccessMul:1.05, reproMul:1.2, reproT:300});
-      showToast('event','ブルーム。藻とプランクトンが増え、繁殖も少し進みやすい。草食と濾過食に追い風だろう。');
+      showToast('event','ブルーム。藻とプランクトンが増え、繁殖も少し進みやすい。草食と濾過食に追い風だろう。',{x:worldEvent.mx,y:worldEvent.my});
     } else if(type==='drought'){
       worldEvent.mx = null; worldEvent.my=null;
       Object.assign(worldEvent, {t:450, maxT:450, speedMul:0.92, metaMul:0.95, planktonCapBonus:-20, algaeFactor:0.6, corpseDecayExtra:0.25, veilColor:'rgba(180,120,80,0.14)', predSuccessMul:1.0, reproMul:0.7, reproT:400});
@@ -5903,6 +5956,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     drawSelectionOverlay();
     drawObservationLabel();
     drawHUD();
+    drawToastTargetLines();
     if(phyDirty || frame - lastPhyDrawFrame >= 12){
       drawPhy();
       lastPhyDrawFrame = frame;
