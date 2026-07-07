@@ -1,20 +1,25 @@
 /*
  * render_organism.js — canonical organism appearance renderer (ALIFE)
  *
- * Single source of truth for "how a creature looks", shared by:
- *   - generator.html (design/curate the visual vocabulary)
- *   - index.html (the game) — integration is a later step
+ * Shared by generator.html (design/curate) and, later, index.html (the game).
  *
- * Design rules (see Obsidian: 2026-07-07_次期バックログとロードマップ):
+ * This version reproduces the game's "Sea-Glass" look: family-based silhouette,
+ * translucent gene-tinted body, interior frost / ambient occlusion / rim, a
+ * round nucleus, and cilia — ported faithfully from the game's draw code
+ * (index.html: formFromGenes / prepareSymbolDetails / drawSymbolicLive) so the
+ * generator matches the game. The appearanceGenome is layered on top as
+ * cosmetic-only detail.
+ *
+ * Design rules:
  *   - Appearance = f(genes, appearanceGenome). Nothing here touches stats.
- *   - Same species => same look & colour. A species is identified by its genes;
- *     its appearanceGenome is derived from the same seed, so it is stable.
- *   - Base colour stays diet-driven (herbivore cyan 195 -> carnivore red 6) so
- *     players can still read strategy from colour. appearanceGenome only adds
- *     accent hue / iridescence / surface detail on top.
+ *   - Same species => same look & colour (everything derives from genes/seed).
+ *   - Base look/colour is gene-driven (diet -> hue). appearanceGenome only adds
+ *     accent hue / pattern / cilia detail on top.
  *
- * Plain global (window.RenderOrganism) on purpose: works from file:// and
- * GitHub Pages with a simple <script src>, no ES-module CORS headaches on phones.
+ * NOTE: not yet byte-identical to the game's full symbol/node system; the true
+ * single-source unification is planned together with the render perf work.
+ *
+ * Plain global (window.RenderOrganism): works from file:// and GitHub Pages.
  */
 (function (global) {
   'use strict';
@@ -22,22 +27,14 @@
 
   function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
   function lerp(a, b, t) { return a + (b - a) * t; }
+  function q4(v) { return Math.round(clamp(v, 0, 1) * 4) / 4; }
 
-  // deterministic string -> [0,1)
   function hash01(str) {
-    var h = 2166136261 >>> 0;
-    str = String(str);
-    for (var i = 0; i < str.length; i++) {
-      h ^= str.charCodeAt(i);
-      h = Math.imul(h, 16777619);
-    }
-    h ^= h >>> 15; h = Math.imul(h, 2246822507);
-    h ^= h >>> 13; h = Math.imul(h, 3266489909);
-    h ^= h >>> 16;
+    var h = 2166136261 >>> 0; str = String(str);
+    for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    h ^= h >>> 15; h = Math.imul(h, 2246822507); h ^= h >>> 13; h = Math.imul(h, 3266489909); h ^= h >>> 16;
     return (h >>> 0) / 4294967296;
   }
-
-  // seeded RNG (mulberry32) from a 32-bit uint seed
   function rngFromSeed(seed) {
     var a = seed >>> 0;
     return function () {
@@ -49,282 +46,260 @@
   }
 
   var GENE_KEYS = ['speed', 'size', 'metabolism', 'fecundity', 'sense', 'diet', 'formSeed'];
+  var PATTERNS = ['none', 'spots', 'stripes', 'spiral', 'reticulate'];
+  // family index -> name (ported from the game's comment at prepareSymbolDetails)
+  var FAMILIES = ['mantle', 'leaf', 'segmented', 'jelly', 'star', 'tube', 'ribbon', 'armored', 'disc', 'colony'];
 
-  // ---- genes ---------------------------------------------------------------
-  function genesFromSeed(seed) {
-    var r = rngFromSeed(seed);
-    var g = {};
-    for (var i = 0; i < GENE_KEYS.length; i++) g[GENE_KEYS[i]] = r();
-    return g;
+  // ---- form (ported from index.html formFromGenes) -------------------------
+  function formFromGenes(g, key) {
+    key = key || '';
+    var speed = clamp(g.speed, 0, 1), sense = clamp(g.sense, 0, 1), size = clamp(g.size, 0, 1),
+        met = clamp(g.metabolism, 0, 1), diet = clamp(g.diet, 0, 1), seed = clamp(g.formSeed, 0, 1);
+    function rv(salt) { return hash01('form:' + salt + ':' + q4(seed) + ':' + q4(speed) + ':' + q4(size) + ':' + q4(sense) + ':' + q4(diet) + ':' + key); }
+    var length = clamp(0.10 + 0.58 * speed + 0.22 * (1 - size) + 0.10 * rv('len'), 0, 1);
+    var detail = clamp(0.12 + 0.56 * sense + 0.18 * diet + 0.14 * rv('detail'), 0, 1);
+    var wave = clamp(0.10 + 0.42 * (1 - size) + 0.20 * rv('wave'), 0, 1);
+    var layout = clamp(0.64 * seed + 0.36 * rv('layout'), 0, 0.999);
+    var shape = clamp(0.58 * seed + 0.42 * rv('shape'), 0, 0.999);
+    return { length: length, detail: detail, wave: wave, layout: layout, shape: shape, phaseJitter: rv('phase') * 0.2 };
   }
 
-  // stable species id from genes (quantised — mirrors the game's speciesKey idea)
+  // resolve the full render spec (family, edges, aspect...) from genes
+  function morphFromGenes(g) {
+    var form = formFromGenes(g);
+    var fam = Math.floor(clamp(form.shape, 0, 0.999) * 10);
+    var edgeCount = Math.round(lerp(0, 6, form.detail));
+    var edgeAmp = lerp(0.0, 0.45, form.wave);
+    var aspect = lerp(1.0, 3.2, form.length);
+    if (fam === 1 || fam === 2 || fam === 6) aspect = Math.max(1.2, aspect * 1.6);
+    if (fam === 3) { edgeCount = 0; edgeAmp = 0; }
+    if (fam === 4) { edgeCount = 5 + Math.round(form.detail * 7); edgeAmp = Math.max(edgeAmp, 0.28); }
+    return {
+      form: form, family: fam, edgeCount: edgeCount, edgeAmp: edgeAmp, aspect: aspect,
+      segCount: 7 + Math.round(form.detail * 10),
+      facetN: 4 + Math.round(form.detail * 8),
+      petalN: 8 + Math.round(form.detail * 12)
+    };
+  }
+
   function speciesId(genes) {
-    function q(v) { return Math.round(clamp(v, 0, 1) * 3); }
-    return q(genes.speed) + '' + q(genes.size) + '' + q(genes.sense) + '' + q(genes.diet) + '' + Math.round((genes.formSeed || 0) * 7);
+    return q4(genes.speed) + ':' + q4(genes.size) + ':' + q4(genes.sense) + ':' + q4(genes.diet) + ':' + q4(genes.formSeed);
   }
-
-  // ---- silhouette family (topology) ---------------------------------------
-  // Derived from functional genes only, so shape reflects strategy.
-  function topologyFromGenes(g) {
-    var detail = clamp((g.sense || 0) * 0.6 + (g.metabolism || 0) * 0.4, 0, 1);
-    var length = clamp((g.speed || 0) * 0.6 + (g.formSeed || 0) * 0.4, 0, 1);
-    if ((g.metabolism || 0) > 0.70 && (g.sense || 0) > 0.50 && (g.size || 0) > 0.40) return 'mesh';
-    if (detail > 0.72 && (g.diet || 0) > 0.43) return 'radial';
-    if ((g.metabolism || 0) > 0.62 && detail > 0.46 && length < 0.68) return 'ring';
-    if ((g.sense || 0) > 0.66 && detail > 0.35) return 'branch';
-    if ((g.fecundity || 0) > 0.66 && (g.size || 0) < 0.72) return 'cluster';
-    if (length > 0.60 || ((g.speed || 0) > 0.58 && (g.sense || 0) > 0.42)) return 'chain';
-    if ((g.metabolism || 0) > 0.55 && (g.speed || 0) < 0.40) return 'amoeba';
-    return 'single';
-  }
-
+  function topologyFromGenes(g) { return FAMILIES[morphFromGenes(g).family] || 'mantle'; }
   function dietClass(diet) { return diet < 0.33 ? 'herb' : (diet < 0.66 ? 'omni' : 'carn'); }
 
-  // ---- palette (same species => same colour) ------------------------------
+  // ---- palette (ported from index.html speciesPalette) ---------------------
   function palette(genes) {
     var sid = speciesId(genes);
-    var dietHue = lerp(195, 6, clamp(genes.diet, 0, 1));          // cyan -> red
+    var dietHue = lerp(195, 6, clamp(genes.diet, 0, 1));   // herbivore cyan -> carnivore red
     var speedTint = lerp(-18, 18, clamp(genes.speed, 0, 1));
-    var hue = (dietHue + speedTint * 0.25 + (hash01('hue:' + sid) - 0.5) * 90 + 360) % 360;
-    var sat = 62 + Math.round(hash01('sat:' + sid) * 20);
-    var light = 48 + Math.round(hash01('light:' + sid) * 14);
-    var nucleusHue = (hue + 132 + hash01('nuc:' + sid) * 80) % 360;
-    return { hue: hue, sat: sat, light: light, nucleusHue: nucleusHue, sid: sid };
+    var hue = (dietHue + speedTint * 0.25 + (hash01('speciesHue:' + sid) - 0.5) * 96 + 360) % 360;
+    var sat = 58 + Math.round(hash01('speciesSat:' + sid) * 16);
+    var nucleusHue = (hue + 132 + hash01('speciesNucleus:' + sid) * 86) % 360;
+    return { hue: hue, sat: sat, nucleusHue: nucleusHue, sid: sid };
   }
 
   // ---- appearance genome (cosmetic only) ----------------------------------
-  // Derived from the species seed so it is stable per species; the generator
-  // may override any field by hand. Speciation drift = new seed => new genome.
-  var PATTERNS = ['none', 'spots', 'stripes', 'spiral', 'reticulate'];
-
   function appearanceFromSeed(seed) {
     var r = rngFromSeed((seed >>> 0) ^ 0x9e3779b9);
     return {
-      waviness: 0.06 + r() * 0.34,      // outline undulation amount
-      waveFreq: 3 + Math.floor(r() * 8), // undulation frequency
-      asymmetry: r() * 0.30,             // left/right imbalance
-      ciliaDensity: r(),                 // 0 none .. 1 dense fringe
-      ciliaLength: 0.12 + r() * 0.55,    // relative hair length
-      patternType: Math.floor(r() * PATTERNS.length),
-      patternStrength: r() * 0.9,
-      membraneOpacity: 0.45 + r() * 0.55,
-      accentHue: r() * 360,              // decorative accent offset
-      iridescence: r() * 0.8,
-      coreSeed: r()                      // nucleus / organelle detail
+      waviness: 0.06 + r() * 0.34, waveFreq: 3 + Math.floor(r() * 8), asymmetry: r() * 0.30,
+      ciliaDensity: r(), ciliaLength: 0.12 + r() * 0.55,
+      // bias toward none/spots so surface markings stay a subtle accent, not a dominant overlay
+      patternType: Math.floor(Math.pow(r(), 2) * PATTERNS.length), patternStrength: r() * 0.5,
+      membraneOpacity: 0.45 + r() * 0.55, accentHue: r() * 360, iridescence: r() * 0.8, coreSeed: r()
     };
   }
-
+  function genesFromSeed(seed) { var r = rngFromSeed(seed), g = {}; for (var i = 0; i < GENE_KEYS.length; i++) g[GENE_KEYS[i]] = r(); return g; }
   function makeSpecies(seed) {
     seed = (seed >>> 0);
-    var genes = genesFromSeed(seed);
-    return {
-      seed: seed,
-      genes: genes,
-      appearanceGenome: appearanceFromSeed(seed),
-      adaptations: [],   // e.g. ['toxin','spines','sessileFarmer','symbiotic']
-      rareTraits: []     // e.g. ['glow','crown','colony','chl']
-    };
+    return { seed: seed, genes: genesFromSeed(seed), appearanceGenome: appearanceFromSeed(seed), adaptations: [], rareTraits: [] };
   }
-
-  // slightly perturb a species -> a "child species" that resembles the parent
   function driftSpecies(parent, amount) {
     amount = amount == null ? 0.12 : amount;
-    var r = rngFromSeed((parent.seed >>> 0) ^ (0xabcdef | 0));
-    var genes = {};
-    for (var i = 0; i < GENE_KEYS.length; i++) {
-      var k = GENE_KEYS[i];
-      genes[k] = clamp(parent.genes[k] + (r() - 0.5) * 2 * amount, 0, 1);
-    }
-    var ag = {};
-    var pag = parent.appearanceGenome;
+    var r = rngFromSeed((parent.seed >>> 0) ^ 0xabcdef);
+    var genes = {}, i;
+    for (i = 0; i < GENE_KEYS.length; i++) { var k = GENE_KEYS[i]; genes[k] = clamp(parent.genes[k] + (r() - 0.5) * 2 * amount, 0, 1); }
+    var ag = {}, pag = parent.appearanceGenome;
     for (var f in pag) if (pag.hasOwnProperty(f)) {
-      if (typeof pag[f] === 'number') {
-        if (f === 'waveFreq') ag[f] = clamp(Math.round(pag[f] + (r() - 0.5) * 4), 3, 11);
-        else if (f === 'patternType') ag[f] = clamp(Math.round(pag[f] + (r() - 0.5) * 2), 0, PATTERNS.length - 1);
-        else ag[f] = pag[f] + (r() - 0.5) * 2 * amount * (f === 'accentHue' ? 60 : 0.35);
-      } else ag[f] = pag[f];
+      if (typeof pag[f] !== 'number') { ag[f] = pag[f]; }
+      else if (f === 'waveFreq') ag[f] = clamp(Math.round(pag[f] + (r() - 0.5) * 4), 3, 11);
+      else if (f === 'patternType') ag[f] = clamp(Math.round(pag[f] + (r() - 0.5) * 2), 0, PATTERNS.length - 1);
+      else ag[f] = pag[f] + (r() - 0.5) * 2 * amount * (f === 'accentHue' ? 60 : 0.35);
     }
     return { seed: (parent.seed ^ Math.floor(r() * 1e9)) >>> 0, genes: genes, appearanceGenome: ag, adaptations: parent.adaptations.slice(), rareTraits: parent.rareTraits.slice() };
   }
 
-  // ---- drawing -------------------------------------------------------------
-  // draws centred at (0,0); caller sets up translate/scale. `size` is body radius px.
+  // ---- Sea-Glass silhouette (ported from drawSymbolicLive body loop) -------
+  function familyRadius(fam, t, m, phase, frame) {
+    var r = 1, ry = 1, rx = 1;
+    if (fam === 1) { r *= 1 + 0.18 * Math.cos(t - 0.45); ry *= 0.74; }
+    else if (fam === 2) { r *= 1 + 0.05 * Math.sin(m.segCount * t + frame * 0.01); ry *= 0.58; rx *= 1.12; }
+    else if (fam === 3) { r *= 1 + 0.06 * Math.sin(8 * t + phase); ry *= 0.92 + 0.08 * Math.cos(t); }
+    else if (fam === 4) { r *= 1 + 0.28 * Math.sin(m.petalN * 0.5 * t + phase); }
+    else if (fam === 5) { r *= 1 + 0.05 * Math.sin(6 * t); ry *= 0.42; rx *= 1.25; }
+    else if (fam === 6) { r *= 1 + 0.12 * Math.sin(3 * t + phase); ry *= 0.34; rx *= 1.55; }
+    else if (fam === 7) { r *= 0.95 + 0.10 * (Math.sin(m.facetN * t + 0.3) >= 0 ? 1 : -1); }
+    else if (fam === 8) { r *= 1 + 0.05 * Math.sin(14 * t + phase); ry *= 0.82; rx *= 0.98; }
+    else if (fam === 9) { r *= 1 + 0.08 * Math.sin(5 * t + phase) + 0.05 * Math.sin(11 * t); }
+    return { r: r, rx: rx, ry: ry };
+  }
+
+  // draws centred at (0,0); `size` ~ body radius px.
   function draw(ctx, spec, size, opts) {
     opts = opts || {};
-    var genes = spec.genes;
-    var ag = spec.appearanceGenome;
-    var pal = palette(genes);
-    var topo = topologyFromGenes(genes);
-    var pts = Math.max(28, (ag.waveFreq || 5) * 6);
-    var baseR = size;
-    var glow = (spec.rareTraits && spec.rareTraits.indexOf('glow') >= 0);
+    var genes = spec.genes, ag = spec.appearanceGenome;
+    var m = morphFromGenes(genes), pal = palette(genes);
+    var frame = opts.frame || 0;
+    var phase = hash01('phase:' + pal.sid) * TAU + (ag.coreSeed || 0) * 0.6;
+    var glow = spec.rareTraits && spec.rareTraits.indexOf('glow') >= 0;
 
-    // radius function of angle for the wavy microbial membrane
-    function radiusAt(t) {
-      var w = ag.waviness * Math.sin((ag.waveFreq) * t + ag.coreSeed * TAU);
-      var a = ag.asymmetry * Math.sin(t + 1.3);
-      var shape = 1;
-      if (topo === 'chain') shape = 0.62 + 0.5 * Math.abs(Math.cos(t));      // elongated
-      else if (topo === 'ring') shape = 1;                                    // handled by donut hole
-      else if (topo === 'radial') shape = 1 + 0.22 * Math.cos((ag.waveFreq | 0) * t); // lobed
-      else if (topo === 'amoeba') shape = 1 + 0.18 * Math.sin(3 * t + 0.7) + 0.12 * Math.sin(7 * t);
-      return baseR * shape * (1 + w + a);
+    // Sea-glass optical properties (representative fresh adult; age-driven frost simplified)
+    var ageF = 0.12;
+    var frost = clamp(0.15 + 0.35 * ageF * (0.5 + 0.5 * (1 - genes.metabolism)), 0, 0.65);
+    var clarity = clamp(0.80 - frost + 0.05 * (1 - genes.size) + 0.05, 0.30, 0.95);
+    var hue = pal.hue, sat = pal.sat;
+    var dispAspect = Math.min(m.aspect, 3.2); // keep ribbons from becoming hair-thin cell-wide streaks
+
+    // unit silhouette (rx = aspect, ry = 1); scaled to fit the cell afterwards
+    function unitAt(t) {
+      var wave = m.edgeCount > 0 ? Math.sin(m.edgeCount * t + phase) * m.edgeAmp : 0;
+      var membrane = Math.sin((ag.waveFreq || 5) * t + phase + frame * 0.006) * (0.02 + ag.waviness * 0.06);
+      var fm = familyRadius(m.family, t, m, phase, frame);
+      var r = Math.max(0.48, 1 + wave + membrane) * fm.r;
+      return { x: Math.cos(t) * dispAspect * fm.rx * r, y: Math.sin(t) * fm.ry * r };
     }
+    var segs = 80, pts = [], hw = 0.001, hh = 0.001;
+    for (var pi = 0; pi <= segs; pi++) {
+      var pt = unitAt(pi / segs * TAU); pts.push(pt);
+      if (Math.abs(pt.x) > hw) hw = Math.abs(pt.x);
+      if (Math.abs(pt.y) > hh) hh = Math.abs(pt.y);
+    }
+    var k = size / Math.max(hw, hh);           // uniform fit into a box of half-size `size`
+    for (var pk = 0; pk < pts.length; pk++) { pts[pk].x *= k; pts[pk].y *= k; }
+    var s = size;                              // interior layers are clipped to the silhouette
 
     ctx.save();
 
-    // cilia (drawn under the body so they read as a fringe)
-    if (ag.ciliaDensity > 0.04) {
-      var nc = Math.round(lerp(8, 60, ag.ciliaDensity));
-      ctx.strokeStyle = 'hsla(' + pal.hue + ',' + pal.sat + '%,' + (pal.light + 22) + '%,0.5)';
-      ctx.lineWidth = Math.max(0.6, baseR * 0.03);
-      for (var c = 0; c < nc; c++) {
-        var ct = (c / nc) * TAU;
-        var rr = radiusAt(ct);
-        var len = baseR * ag.ciliaLength * (0.6 + 0.4 * ((c * 7) % 5) / 5);
-        var wob = 0.25 * Math.sin(c * 1.7 + (opts.phase || 0));
+    // cilia under the body (lighter blend) — family bias + genome density
+    var ciliaBias = (m.family === 3 || m.family === 4 || m.family === 8) ? 1.0 : 0.55;
+    var nc = Math.round(lerp(6, 44, clamp(ciliaBias * (0.4 + 0.6 * ag.ciliaDensity), 0, 1)));
+    if (nc > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = 'hsla(' + ((hue + 35) % 360) + ',86%,84%,0.16)';
+      ctx.lineWidth = Math.max(0.5, s * 0.03);
+      for (var ci = 0; ci < nc; ci++) {
+        var p = pts[Math.floor(ci / nc * segs)];
+        var pulse = 0.75 + 0.25 * Math.sin(ci * 0.9 + phase);
+        var len = s * (0.14 + ag.ciliaLength * 0.34) * pulse;
+        var mag = Math.sqrt(p.x * p.x + p.y * p.y) || 1;
         ctx.beginPath();
-        ctx.moveTo(Math.cos(ct) * rr, Math.sin(ct) * rr);
-        ctx.lineTo(Math.cos(ct + wob) * (rr + len), Math.sin(ct + wob) * (rr + len));
+        ctx.moveTo(p.x * 0.98, p.y * 0.98);
+        ctx.lineTo(p.x + p.x / mag * len, p.y + p.y / mag * len);
         ctx.stroke();
       }
+      ctx.restore();
     }
 
-    // body path
+    // body silhouette (precomputed, fitted points)
     ctx.beginPath();
-    for (var i = 0; i <= pts; i++) {
-      var t = (i / pts) * TAU;
-      var r = radiusAt(t);
-      var x = Math.cos(t) * r, y = Math.sin(t) * r;
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    for (var i = 0; i < pts.length; i++) {
+      if (i === 0) ctx.moveTo(pts[i].x, pts[i].y); else ctx.lineTo(pts[i].x, pts[i].y);
     }
     ctx.closePath();
 
-    // body fill: radial gradient in species colour
-    var grad = ctx.createRadialGradient(0, 0, baseR * 0.1, 0, 0, baseR * 1.15);
-    grad.addColorStop(0, 'hsla(' + pal.hue + ',' + pal.sat + '%,' + (pal.light + 18) + '%,0.96)');
-    grad.addColorStop(0.6, 'hsla(' + pal.hue + ',' + pal.sat + '%,' + pal.light + '%,0.9)');
-    grad.addColorStop(1, 'hsla(' + ((pal.hue + ag.accentHue * 0.15) % 360) + ',' + pal.sat + '%,' + (pal.light - 14) + '%,0.86)');
-    ctx.fillStyle = grad;
-    if (glow) { ctx.shadowColor = 'hsla(' + pal.hue + ',90%,70%,0.9)'; ctx.shadowBlur = baseR * 0.9; }
-    ctx.fill();
+    // BASE: translucent radial gradient (transmitted colour)
+    var c1 = 'hsla(' + hue + ',' + sat + '%,70%,' + (0.65 * clarity) + ')';
+    var c2 = 'hsla(' + hue + ',' + sat + '%,40%,' + (0.85 * clarity) + ')';
+    var rg = ctx.createRadialGradient(-s * 0.25, -s * 0.25, Math.max(1, s * 0.2), 0, 0, s * 1.2);
+    rg.addColorStop(0, c1); rg.addColorStop(1, c2);
+    if (glow) { ctx.shadowColor = 'hsla(' + hue + ',90%,70%,0.9)'; ctx.shadowBlur = s * 0.8; }
+    ctx.fillStyle = rg; ctx.fill();
     ctx.shadowBlur = 0;
 
-    // iridescent accent rim
+    // clip to silhouette for interior layers
+    ctx.save(); ctx.clip();
+
+    // FROST interior haze
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-atop';
+    var fog = ctx.createRadialGradient(0, 0, 1, 0, 0, s * 1.05);
+    fog.addColorStop(0, 'rgba(255,255,255,' + (0.18 * frost) + ')');
+    fog.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = fog; ctx.fillRect(-s * 3, -s * 3, s * 6, s * 6);
+    ctx.restore();
+
+    // INNER ambient occlusion (bottom darkening)
+    var ao = ctx.createRadialGradient(0, s * 0.35, 1, 0, s * 0.35, s * 1.1);
+    ao.addColorStop(0, 'rgba(0,0,0,0.06)'); ao.addColorStop(1, 'rgba(0,0,0,0.22)');
+    ctx.globalAlpha = 0.6; ctx.fillStyle = ao; ctx.fillRect(-s * 3, -s * 3, s * 6, s * 6);
+    ctx.globalAlpha = 1;
+
+    // cosmetic surface pattern (appearanceGenome), subtle, clipped to the body polygon
+    if (ag.patternType > 0 && ag.patternStrength > 0.05) drawPattern(ctx, ag, pal, s, pts);
+
+    ctx.restore(); // end clip
+
+    // membrane rim
+    ctx.strokeStyle = 'hsla(' + hue + ',' + sat + '%,82%,' + (0.30 * ag.membraneOpacity + 0.12) + ')';
+    ctx.lineWidth = Math.max(0.6, s * 0.03);
+    ctx.stroke();
+
+    // iridescent accent rim (cosmetic)
     if (ag.iridescence > 0.05) {
-      ctx.strokeStyle = 'hsla(' + (ag.accentHue % 360) + ',90%,72%,' + (0.15 + ag.iridescence * 0.5) + ')';
-      ctx.lineWidth = Math.max(0.8, baseR * 0.05);
+      ctx.strokeStyle = 'hsla(' + (ag.accentHue % 360) + ',90%,76%,' + (0.10 + ag.iridescence * 0.28) + ')';
+      ctx.lineWidth = Math.max(0.5, s * 0.02);
       ctx.stroke();
     }
 
-    // membrane outline
-    ctx.strokeStyle = 'hsla(' + pal.hue + ',' + Math.min(90, pal.sat + 12) + '%,' + (pal.light + 26) + '%,' + ag.membraneOpacity + ')';
-    ctx.lineWidth = Math.max(0.8, baseR * 0.045);
-    ctx.stroke();
-
-    // surface pattern (clipped to body)
-    if (ag.patternType > 0 && ag.patternStrength > 0.05) {
-      ctx.save();
-      ctx.clip();
-      drawPattern(ctx, ag, pal, baseR);
-      ctx.restore();
-    }
-
-    // ring topology: punch a lighter hole to read as a torus
-    if (topo === 'ring') {
-      ctx.save(); ctx.clip();
-      var hg = ctx.createRadialGradient(0, 0, 0, 0, 0, baseR * 0.55);
-      hg.addColorStop(0, 'rgba(6,12,30,0.85)');
-      hg.addColorStop(1, 'rgba(6,12,30,0)');
-      ctx.fillStyle = hg; ctx.beginPath(); ctx.arc(0, 0, baseR * 0.55, 0, TAU); ctx.fill();
-      ctx.restore();
-    }
-
-    // cluster/colony: extra small blobs
-    if (topo === 'cluster' || (spec.rareTraits && spec.rareTraits.indexOf('colony') >= 0)) {
-      var nb = 4;
-      for (var b = 0; b < nb; b++) {
-        var bt = (b / nb) * TAU + 0.5;
-        var bx = Math.cos(bt) * baseR * 0.8, by = Math.sin(bt) * baseR * 0.8;
-        ctx.beginPath(); ctx.arc(bx, by, baseR * 0.3, 0, TAU);
-        ctx.fillStyle = 'hsla(' + pal.hue + ',' + pal.sat + '%,' + (pal.light + 6) + '%,0.9)';
-        ctx.fill();
-      }
-    }
-
-    // nucleus (round, kept inside)
-    if (topo !== 'ring') {
-      var ng = ctx.createRadialGradient(0, 0, 0, 0, 0, baseR * 0.42);
-      ng.addColorStop(0, 'hsla(' + pal.nucleusHue + ',90%,88%,0.92)');
-      ng.addColorStop(0.55, 'hsla(' + pal.nucleusHue + ',75%,52%,0.7)');
-      ng.addColorStop(1, 'hsla(' + pal.nucleusHue + ',70%,40%,0)');
-      ctx.fillStyle = ng;
-      ctx.beginPath(); ctx.arc(0, 0, baseR * 0.42, 0, TAU); ctx.fill();
-    }
-
-    // crown rare trait: little spikes on top
-    if (spec.rareTraits && spec.rareTraits.indexOf('crown') >= 0) {
-      ctx.strokeStyle = 'hsla(' + ((pal.hue + 40) % 360) + ',90%,75%,0.9)';
-      ctx.lineWidth = Math.max(0.8, baseR * 0.05);
-      for (var k = 0; k < 5; k++) {
-        var kt = -Math.PI / 2 + (k - 2) * 0.28;
-        var kr = radiusAt(kt);
-        ctx.beginPath();
-        ctx.moveTo(Math.cos(kt) * kr, Math.sin(kt) * kr);
-        ctx.lineTo(Math.cos(kt) * (kr + baseR * 0.3), Math.sin(kt) * (kr + baseR * 0.3));
-        ctx.stroke();
-      }
-    }
+    // NUCLEUS / vacuole
+    var nx = (hash01('nx:' + pal.sid) - 0.5) * s * 0.3, ny = (hash01('ny:' + pal.sid) - 0.5) * s * 0.3;
+    var nr = s * (0.26 + 0.1 * hash01('nr:' + pal.sid));
+    var ng = ctx.createRadialGradient(nx - s * 0.08, ny - s * 0.10, 0.5, nx, ny, nr * 1.45);
+    ng.addColorStop(0, 'hsla(' + pal.nucleusHue + ',92%,86%,0.40)');
+    ng.addColorStop(0.55, 'hsla(' + pal.nucleusHue + ',70%,58%,0.22)');
+    ng.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = ng; ctx.beginPath(); ctx.arc(nx, ny, nr * 1.45, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'hsla(' + pal.nucleusHue + ',90%,88%,0.26)';
+    ctx.lineWidth = 0.8; ctx.beginPath(); ctx.arc(nx, ny, nr, 0, TAU); ctx.stroke();
 
     ctx.restore();
   }
 
-  function drawPattern(ctx, ag, pal, R) {
+  function drawPattern(ctx, ag, pal, R, pts) {
     var type = PATTERNS[ag.patternType];
-    var alpha = 0.15 + ag.patternStrength * 0.5;
-    ctx.fillStyle = 'hsla(' + ((pal.nucleusHue + 20) % 360) + ',80%,70%,' + alpha + ')';
-    ctx.strokeStyle = 'hsla(' + ((pal.nucleusHue + 20) % 360) + ',80%,72%,' + alpha + ')';
-    ctx.lineWidth = Math.max(0.6, R * 0.04);
+    var alpha = 0.05 + ag.patternStrength * 0.13;   // subtle interior texture
+    ctx.save();
+    // clip to the body's bounding box (reliable even for thin/self-intersecting silhouettes)
+    var minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+    for (var pp = 0; pp < pts.length; pp++) {
+      if (pts[pp].x < minX) minX = pts[pp].x; if (pts[pp].x > maxX) maxX = pts[pp].x;
+      if (pts[pp].y < minY) minY = pts[pp].y; if (pts[pp].y > maxY) maxY = pts[pp].y;
+    }
+    ctx.beginPath(); ctx.rect(minX, minY, maxX - minX, maxY - minY); ctx.clip();
+    ctx.fillStyle = 'hsla(' + ((pal.nucleusHue + 20) % 360) + ',80%,72%,' + alpha + ')';
+    ctx.strokeStyle = 'hsla(' + ((pal.nucleusHue + 20) % 360) + ',80%,74%,' + alpha + ')';
+    ctx.lineWidth = Math.max(0.5, R * 0.025);
     var i;
     if (type === 'spots') {
-      for (i = 0; i < 14; i++) {
-        var a = hash01('spx' + i) * TAU, d = hash01('spd' + i) * R * 0.9;
-        ctx.beginPath(); ctx.arc(Math.cos(a) * d, Math.sin(a) * d, R * (0.06 + 0.08 * hash01('spr' + i)), 0, TAU); ctx.fill();
-      }
+      for (i = 0; i < 10; i++) { var a = hash01('spx' + i) * TAU, d = hash01('spd' + i) * R * 0.5; ctx.beginPath(); ctx.arc(Math.cos(a) * d, Math.sin(a) * d, R * (0.04 + 0.05 * hash01('spr' + i)), 0, TAU); ctx.fill(); }
     } else if (type === 'stripes') {
-      for (i = -6; i <= 6; i++) {
-        ctx.beginPath(); ctx.moveTo(-R * 1.2, i * R * 0.22); ctx.lineTo(R * 1.2, i * R * 0.22); ctx.stroke();
-      }
+      for (i = -3; i <= 3; i++) { ctx.beginPath(); ctx.moveTo(-R * 0.7, i * R * 0.2); ctx.lineTo(R * 0.7, i * R * 0.2); ctx.stroke(); }
     } else if (type === 'spiral') {
-      ctx.beginPath();
-      for (i = 0; i < 120; i++) {
-        var th = i * 0.28, rr = (i / 120) * R * 1.1;
-        var x = Math.cos(th) * rr, y = Math.sin(th) * rr;
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
+      ctx.beginPath(); for (i = 0; i < 70; i++) { var th = i * 0.34, rr = (i / 70) * R * 0.6; var x = Math.cos(th) * rr, y = Math.sin(th) * rr; if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); } ctx.stroke();
     } else if (type === 'reticulate') {
-      for (i = -6; i <= 6; i++) {
-        ctx.beginPath(); ctx.moveTo(-R * 1.2, i * R * 0.24); ctx.lineTo(R * 1.2, i * R * 0.24); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(i * R * 0.24, -R * 1.2); ctx.lineTo(i * R * 0.24, R * 1.2); ctx.stroke();
-      }
+      for (i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(-R * 0.6, i * R * 0.24); ctx.lineTo(R * 0.6, i * R * 0.24); ctx.stroke(); ctx.beginPath(); ctx.moveTo(i * R * 0.24, -R * 0.6); ctx.lineTo(i * R * 0.24, R * 0.6); ctx.stroke(); }
     }
+    ctx.restore();
   }
 
   global.RenderOrganism = {
-    GENE_KEYS: GENE_KEYS,
-    PATTERNS: PATTERNS,
-    clamp: clamp,
-    hash01: hash01,
-    genesFromSeed: genesFromSeed,
-    appearanceFromSeed: appearanceFromSeed,
-    makeSpecies: makeSpecies,
-    driftSpecies: driftSpecies,
-    speciesId: speciesId,
-    topologyFromGenes: topologyFromGenes,
-    dietClass: dietClass,
-    palette: palette,
-    draw: draw
+    GENE_KEYS: GENE_KEYS, PATTERNS: PATTERNS, FAMILIES: FAMILIES,
+    clamp: clamp, hash01: hash01,
+    genesFromSeed: genesFromSeed, appearanceFromSeed: appearanceFromSeed,
+    makeSpecies: makeSpecies, driftSpecies: driftSpecies, speciesId: speciesId,
+    morphFromGenes: morphFromGenes, topologyFromGenes: topologyFromGenes, dietClass: dietClass,
+    palette: palette, draw: draw
   };
 })(typeof window !== 'undefined' ? window : this);
