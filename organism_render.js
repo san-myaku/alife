@@ -7,6 +7,121 @@
 (function (global) {
   'use strict';
   var TAU = Math.PI * 2;
+  function clampLocal(x, a, b){ return Math.max(a, Math.min(b, x)); }
+  function geneValue(o, key, fallback){
+    return o && o.genes && Number.isFinite(o.genes[key]) ? o.genes[key] : fallback;
+  }
+  function det01(seed){
+    var x = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+    return x - Math.floor(x);
+  }
+  function nodeInnerLimit(shape){
+    if(shape==='triangle' || shape==='leaf' || shape==='sparkle4' || shape==='star6') return 0.20;
+    if(shape==='diamond') return 0.23;
+    if(shape==='blob6' || shape==='amoeba' || shape==='pseudopod') return 0.27;
+    if(shape==='ellipse') return 0.25;
+    return 0.29;
+  }
+  function drawPeripheralFilaments(c, o, posed, nodes, sym, outlineHue, topo, gait, dayNight, renderPerf, adaptationTags){
+    if(!nodes.length || renderPerf.tiny) return;
+    var diet = geneValue(o, 'diet', 0.5);
+    var sense = geneValue(o, 'sense', 0.5);
+    var speed = geneValue(o, 'speed', 0.5);
+    var metabolism = geneValue(o, 'metabolism', 0.5);
+    var predator = diet >= 0.66 || o.role === 'ambusher' || o.role === 'pack';
+    var filterish = o.role === 'filter' || diet <= 0.34 || adaptationTags.indexOf('filterFan') >= 0;
+    var special = topo === 'mesh' || topo === 'amoeba' || (o.flags && (o.flags.glow || o.flags.chl));
+    var shouldDraw = predator || filterish || special || sense > 0.62;
+    if(!shouldDraw) return;
+
+    var visualR = Math.max(o.size, sym.visualR || o.size);
+    var outer = [];
+    for(var i=0;i<nodes.length;i++){
+      var p = posed[i] || nodes[i];
+      if(Math.hypot(p.x, p.y) + nodes[i].r >= visualR * 0.42) outer.push(i);
+    }
+    if(!outer.length) outer = nodes.map(function(_, i){ return i; });
+    var maxN = renderPerf.low ? 12 : (predator ? 22 : 30);
+    var step = Math.max(1, Math.ceil(outer.length / maxN));
+    var nightAlpha = dayNight.isNight ? 0.72 : 1;
+    c.save();
+    c.lineCap = 'round';
+    c.lineJoin = 'round';
+    c.globalCompositeOperation = 'lighter';
+    c.strokeStyle = predator
+      ? `hsla(${(outlineHue + 338) % 360},96%,78%,${0.16 * nightAlpha})`
+      : (special
+        ? `hsla(${(outlineHue + 80) % 360},92%,82%,${0.15 * nightAlpha})`
+        : `hsla(${(outlineHue + 42) % 360},88%,84%,${0.13 * nightAlpha})`);
+    c.lineWidth = Math.max(0.45, o.size * (predator ? 0.060 : 0.042));
+    for(var oi=0; oi<outer.length; oi+=step){
+      var idx = outer[oi];
+      var n = nodes[idx], p = posed[idx] || n;
+      var baseA = Math.atan2(p.y, p.x);
+      if(!Number.isFinite(baseA) || Math.hypot(p.x, p.y) < o.size * 0.08) baseA = idx / Math.max(1, nodes.length) * TAU + sym.pulse;
+      var fans = predator ? 1 : (filterish ? 2 : 1);
+      for(var f=0; f<fans; f++){
+        var fanOffset = fans === 1 ? 0 : (f - 0.5) * 0.26;
+        var wobble = Math.sin(gait * 0.38 + idx * 1.41 + f) * 0.12;
+        var a = baseA + fanOffset + wobble;
+        var root = n.r * (predator ? 0.78 : 0.70);
+        var len = o.size * (predator ? (0.52 + diet * 0.70 + speed * 0.18) : (0.34 + sense * 0.58 + metabolism * 0.12));
+        var sx = p.x + Math.cos(a) * root;
+        var sy = p.y + Math.sin(a) * root;
+        var ex = p.x + Math.cos(a) * (root + len);
+        var ey = p.y + Math.sin(a) * (root + len);
+        var bend = Math.sin(gait * 0.70 + idx * 0.83 + f * 2.1) * len * (predator ? 0.10 : 0.26);
+        c.beginPath();
+        c.moveTo(sx, sy);
+        if(predator){
+          c.lineTo(ex, ey);
+        } else {
+          var mx = p.x + Math.cos(a) * (root + len * 0.54) + Math.cos(a + Math.PI / 2) * bend;
+          var my = p.y + Math.sin(a) * (root + len * 0.54) + Math.sin(a + Math.PI / 2) * bend;
+          c.quadraticCurveTo(mx, my, ex, ey);
+        }
+        c.stroke();
+      }
+    }
+    c.restore();
+  }
+  function drawNodeInterior(c, o, shape, r, hue, sym, nodeIndex, energy, night, topo, outlineHue){
+    if(r < 2.3) return;
+    var diet = geneValue(o, 'diet', 0.5);
+    var sense = geneValue(o, 'sense', 0.5);
+    var metabolism = geneValue(o, 'metabolism', 0.5);
+    var fecundity = geneValue(o, 'fecundity', 0.5);
+    var limit = nodeInnerLimit(shape);
+    var detailR = r * (limit + 0.22);
+    var grainCount = Math.min(5, 1 + Math.round(sense * 2 + metabolism * 1.4 + (topo === 'cluster' ? 1 : 0)));
+    var grainHue = diet < 0.34 ? 132 : (diet > 0.66 ? (hue + 338) % 360 : 44);
+    c.save();
+    c.globalCompositeOperation = 'lighter';
+    for(var g=0; g<grainCount; g++){
+      var seed = (nodeIndex + 1) * 31 + g * 17 + Math.round((o.size || 1) * 13);
+      var a = det01(seed) * TAU;
+      var dist = detailR * (0.18 + 0.58 * det01(seed + 3.7));
+      var gx = Math.cos(a) * dist;
+      var gy = Math.sin(a) * dist;
+      var gr = Math.max(0.32, r * (0.040 + 0.055 * det01(seed + 9.1) + (topo === 'cluster' ? 0.016 : 0)));
+      c.beginPath();
+      c.arc(gx, gy, gr, 0, TAU);
+      c.fillStyle = `hsla(${grainHue},88%,${diet > 0.66 ? 72 : 76}%,${clampLocal(0.13 + 0.10 * energy - 0.06 * night, 0.06, 0.24)})`;
+      c.fill();
+    }
+    if(metabolism > 0.55 || topo === 'ring' || topo === 'mesh'){
+      c.strokeStyle = `hsla(${(outlineHue + 96) % 360},78%,86%,${clampLocal(0.09 + metabolism * 0.09 - night * 0.05, 0.06, 0.18)})`;
+      c.lineWidth = Math.max(0.35, r * 0.034);
+      var arcs = topo === 'mesh' ? 3 : 2;
+      for(var s=0; s<arcs; s++){
+        var rr = r * (0.38 + s * 0.17 + fecundity * 0.05);
+        c.beginPath();
+        c.arc(0, 0, rr, sym.pulse + s * 1.4, sym.pulse + s * 1.4 + Math.PI * (0.70 + sense * 0.30));
+        c.stroke();
+      }
+    }
+    c.restore();
+  }
   function symbolShapePath(c, shape, r){
       c.beginPath();
       if(shape==='circle'){
@@ -453,6 +568,8 @@
         }
       }
 
+      drawPeripheralFilaments(c, o, posed, nodes, sym, outlineHue, topo, gait, dayNight, renderPerf, adaptationTags);
+
       // Soft aura for readable overlap.
       if(!renderPerf.low){
         c.save();
@@ -576,8 +693,12 @@
         o.symbolShapePath(c, shape, r);
         c.stroke();
 
+        if(!renderPerf.tiny){
+          drawNodeInterior(c, o, shape, r, hue, sym, i, energy, night, topo, outlineHue);
+        }
+
         // Round nucleus: centered and kept inside every shape.
-        const shapeLimit = (shape==='triangle'||shape==='leaf'||shape==='sparkle4'||shape==='star6') ? 0.20 : (shape==='diamond' ? 0.23 : ((shape==='blob6'||shape==='amoeba'||shape==='pseudopod') ? 0.27 : (shape==='ellipse' ? 0.25 : 0.29)));
+        const shapeLimit = nodeInnerLimit(shape);
         const nucR=Math.max(0.9, Math.min(r*shapeLimit, r*sym.coreScale));
         const nucX=0, nucY=0;
         const ng=c.createRadialGradient(nucX-nucR*0.25,nucY-nucR*0.25,0.2,nucX,nucY,nucR*1.45);
