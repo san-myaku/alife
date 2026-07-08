@@ -25,6 +25,7 @@
   .slider input{ width:120px }
   main{ padding:12px }
   #grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(96px,1fr)); gap:8px }
+  body.roster-mode #grid{ display:none }
   .cell{ position:relative; border:1px solid var(--border); border-radius:12px; background:#070e22;
     aspect-ratio:1/1; overflow:hidden; cursor:pointer }
   .cell canvas{ width:100%; height:100%; display:block }
@@ -54,6 +55,39 @@
   .info b{ color:#bcd4ff; font-weight:600 }
   textarea{ width:100%; height:180px; background:#070e22; color:var(--text); border:1px solid var(--border);
     border-radius:10px; padding:8px; font-family:ui-monospace,monospace; font-size:.72rem }
+  #roster{ display:none }
+  body.roster-mode #roster{ display:block }
+  .roster-sheet{ min-height:calc(100vh - 104px); border:1px solid #b9cbd6; border-radius:14px; background:
+    radial-gradient(900px 500px at 50% 12%, rgba(150,212,220,.30), transparent 68%),
+    linear-gradient(180deg,#eef8fb 0%,#dceef4 100%); color:#234154; padding:18px 22px 16px;
+    box-shadow:0 20px 70px rgba(3,10,28,.32); overflow:hidden }
+  .roster-head{ display:flex; align-items:flex-end; justify-content:space-between; gap:12px; margin-bottom:16px;
+    color:#174456; text-transform:uppercase; letter-spacing:.08em; font-weight:800 }
+  .roster-title{ font-size:clamp(1rem,2.2vw,1.35rem) }
+  .roster-sub{ font-size:.72rem; color:#547083; white-space:nowrap }
+  .roster-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(112px,1fr)); gap:14px 12px }
+  .roster-card{ position:relative; min-height:118px; border-radius:8px; cursor:pointer; outline:0;
+    border:1px solid rgba(82,119,137,.20); background:rgba(255,255,255,.22) }
+  .roster-card canvas{ width:100%; height:88px; display:block }
+  .roster-card.locked{ border-color:#2e9bd8; box-shadow:0 0 0 1px rgba(46,155,216,.45) inset }
+  .roster-num{ position:absolute; top:6px; left:7px; min-width:22px; height:22px; border:1px solid #8aa6b5;
+    border-radius:999px; display:flex; align-items:center; justify-content:center; color:#486273;
+    background:rgba(245,252,255,.76); font-size:.72rem; font-weight:800 }
+  .roster-pin{ position:absolute; top:6px; right:7px; color:#476477; font-size:.82rem }
+  .roster-label{ display:flex; align-items:center; justify-content:center; gap:5px; min-height:24px;
+    padding:0 5px 6px; color:#4e6878; font-size:.66rem; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+  .roster-dot{ flex:0 0 9px; width:9px; height:9px; border-radius:50%; background:var(--group,#5bb8aa); box-shadow:0 0 0 2px rgba(255,255,255,.58) }
+  .roster-legend{ display:flex; justify-content:center; gap:20px; flex-wrap:wrap; margin-top:18px; padding-top:12px;
+    border-top:1px solid rgba(82,119,137,.30); color:#547083; font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.05em }
+  .legend-item{ display:flex; align-items:center; gap:7px }
+  @media (max-width:680px){
+    .roster-sheet{ min-height:calc(100vh - 138px); padding:14px 12px }
+    .roster-head{ align-items:flex-start; flex-direction:column; margin-bottom:12px }
+    .roster-sub{ white-space:normal }
+    .roster-grid{ grid-template-columns:repeat(auto-fill,minmax(86px,1fr)); gap:10px 8px }
+    .roster-card{ min-height:104px }
+    .roster-card canvas{ height:76px }
+  }
 </style>
 </head>
 <body>
@@ -65,12 +99,25 @@
     <span class="chip on" data-count="48">48</span>
     <span class="chip" data-count="96">96</span>
     <span class="slider">ドリフト<input type="range" id="drift" min="0" max="0.4" step="0.01" value="0.12"><span id="driftv">0.12</span></span>
+    <button class="btn" id="viewToggle">▦ Roster</button>
     <button class="btn" id="export">⬇ 書き出し</button>
     <button class="btn" id="exportPins">📌 ピンのみ</button>
   </div>
   <div class="hint">タップで拡大・遺伝子を調整／右上📌で固定して残りだけ再生成。同じ遺伝子＝同じ姿・同じ色。</div>
 </header>
-<main><div id="grid"></div></main>
+<main>
+  <div id="grid"></div>
+  <section id="roster">
+    <div class="roster-sheet">
+      <div class="roster-head">
+        <div class="roster-title">Microverse // Lifeform Roster</div>
+        <div class="roster-sub">Diversity through evolution</div>
+      </div>
+      <div class="roster-grid" id="rosterGrid"></div>
+      <div class="roster-legend" id="rosterLegend"></div>
+    </div>
+  </section>
+</main>
 
 <div class="overlay" id="detail">
   <div class="modal">
@@ -130,8 +177,16 @@
   };
 
   var grid = document.getElementById('grid');
-  var count = 48, species = [], activeIdx = -1;
+  var rosterGrid = document.getElementById('rosterGrid');
+  var rosterLegend = document.getElementById('rosterLegend');
+  var count = 48, species = [], activeIdx = -1, viewMode = 'grid';
   var DPR = Math.min(2, window.devicePixelRatio || 1);
+  var GROUPS = [
+    { id:'grazer', label:'Herbivore / Filter', color:'#33b999', order:0 },
+    { id:'scav', label:'Omnivore / Scavenger', color:'#c79a17', order:1 },
+    { id:'predator', label:'Predator', color:'#d9436a', order:2 },
+    { id:'special', label:'Special / Symbiotic / Mega', color:'#8e63d7', order:3 }
+  ];
 
   function randSeed(){ return (Math.random()*4294967296)>>>0; }
   function genesFromSeed(seed){
@@ -147,6 +202,14 @@
   }
 
   function dietClass(d){ return d<0.33?'草':(d<0.66?'雑':'肉'); }
+  function groupFor(sp, o){
+    var flags = sp.flags || {};
+    var special = o.isMega || flags.glow || flags.crown || flags.colony || flags.chl || o.morphologyTopology==='mesh';
+    if(special) return GROUPS[3];
+    if((sp.genes.diet||0)>=0.66 || o.role==='ambusher' || o.role==='pack') return GROUPS[2];
+    if((sp.genes.diet||0)>0.33 || o.role==='scav') return GROUPS[1];
+    return GROUPS[0];
+  }
 
   // build a full organism from a species, ready to draw
   function buildCreature(sp){
@@ -165,12 +228,42 @@
     var g=ctx.createRadialGradient(w*0.5,h*0.42,2,w*0.5,h*0.5,Math.max(w,h)*0.72);
     g.addColorStop(0,'#12365a'); g.addColorStop(1,'#071022'); ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
   }
+  function paintRosterBackdrop(ctx, w, h, group){
+    var g=ctx.createRadialGradient(w*0.52,h*0.44,2,w*0.5,h*0.5,Math.max(w,h)*0.72);
+    g.addColorStop(0,'rgba(255,255,255,.96)');
+    g.addColorStop(0.62,'rgba(236,249,252,.74)');
+    g.addColorStop(1,'rgba(210,232,240,.78)');
+    ctx.fillStyle=g; ctx.fillRect(0,0,w,h);
+    ctx.save();
+    ctx.globalAlpha=.14;
+    ctx.fillStyle=group.color;
+    ctx.beginPath();
+    ctx.ellipse(w*0.50,h*0.70,w*0.26,h*0.08,0,0,TAU);
+    ctx.fill();
+    ctx.restore();
+  }
   function drawCreature(ctx, o, w, h, fill){
     var vr = Math.max(o._symbol.visualR || o.size, o.size*1.2);
     var k = (Math.min(w,h)*(fill||0.42)) / vr;
     ctx.save(); ctx.translate(w/2, h/2); ctx.scale(k,k); o.x=0; o.y=0;
     R.drawOrganism(o, ctx, null, drawEnv);
     ctx.restore();
+  }
+  function drawRosterInto(cv, sp){
+    var rect=cv.getBoundingClientRect(); var w=Math.round(rect.width), h=Math.round(rect.height);
+    if(w<2||h<2) return false;
+    var o=buildCreature(sp), group=groupFor(sp,o);
+    var ctx=sizeCanvas(cv,w,h); ctx.clearRect(0,0,w,h); paintRosterBackdrop(ctx,w,h,group);
+    ctx.save();
+    ctx.globalAlpha=.26;
+    ctx.fillStyle='rgba(35,65,84,.28)';
+    ctx.beginPath();
+    ctx.ellipse(w*0.5,h*0.78,w*0.24,h*0.055,0,0,TAU);
+    ctx.fill();
+    ctx.restore();
+    drawCreature(ctx,o,w,h,0.30);
+    cv.__o=o;
+    return true;
   }
   function drawInto(cv, sp){
     var rect=cv.getBoundingClientRect(); var w=Math.round(rect.width), h=Math.round(rect.height);
@@ -182,8 +275,41 @@
   function tagText(sp){ var o=buildCreature(sp); return o.morphologyTopology+'・'+dietClass(sp.genes.diet); }
   function drawAll(){
     var ok=true;
-    for(var i=0;i<grid.children.length;i++){ var cv=grid.children[i].querySelector('canvas'); if(cv&&species[i]){ if(!drawInto(cv,species[i])) ok=false; } }
+    if(viewMode==='grid'){
+      for(var i=0;i<grid.children.length;i++){ var cv=grid.children[i].querySelector('canvas'); if(cv&&species[i]){ if(!drawInto(cv,species[i])) ok=false; } }
+    } else {
+      for(var j=0;j<rosterGrid.children.length;j++){
+        var rcv=rosterGrid.children[j].querySelector('canvas');
+        var idx=+(rosterGrid.children[j].getAttribute('data-index')||0);
+        if(rcv&&species[idx]){ if(!drawRosterInto(rcv,species[idx])) ok=false; }
+      }
+    }
     if(!ok) requestAnimationFrame(drawAll);
+  }
+  function buildRoster(){
+    rosterGrid.innerHTML='';
+    rosterLegend.innerHTML='';
+    GROUPS.forEach(function(g){
+      var item=document.createElement('div'); item.className='legend-item';
+      item.innerHTML='<span class="roster-dot" style="--group:'+g.color+'"></span><span>'+g.label+'</span>';
+      rosterLegend.appendChild(item);
+    });
+    var order=species.map(function(sp,i){ var o=buildCreature(sp), group=groupFor(sp,o); return {i:i,o:o,group:group}; });
+    order.sort(function(a,b){ return a.group.order-b.group.order || a.o.morphologyTopology.localeCompare(b.o.morphologyTopology) || a.i-b.i; });
+    order.forEach(function(row,pos){
+      var sp=species[row.i], card=document.createElement('div'), group=row.group;
+      card.className='roster-card'+(sp.locked?' locked':'');
+      card.setAttribute('data-index', row.i);
+      card.style.setProperty('--group', group.color);
+      var num=document.createElement('div'); num.className='roster-num'; num.textContent=String(pos+1);
+      var pin=document.createElement('div'); pin.className='roster-pin'; pin.textContent=sp.locked?'📌':'';
+      var cv=document.createElement('canvas');
+      var label=document.createElement('div'); label.className='roster-label';
+      label.innerHTML='<span class="roster-dot"></span><span>'+row.o.morphologyTopology+'・'+dietClass(sp.genes.diet)+'</span>';
+      card.appendChild(num); card.appendChild(pin); card.appendChild(cv); card.appendChild(label);
+      card.addEventListener('click',function(){ openDetail(row.i); });
+      rosterGrid.appendChild(card);
+    });
   }
 
   function buildGrid(){
@@ -199,6 +325,7 @@
       cell.addEventListener('click',function(){ openDetail(i); });
       grid.appendChild(cell);
     })(i); }
+    buildRoster();
     requestAnimationFrame(function(){ requestAnimationFrame(drawAll); });
   }
   function generate(){
@@ -222,7 +349,11 @@
     var ctx=sizeCanvas(dCanvas,w,h); ctx.clearRect(0,0,w,h); paintBackdrop(ctx,w,h);
     drawCreature(ctx,o,w,h,0.40);
   }
-  function refreshCell(){ var cell=grid.children[activeIdx]; if(!cell) return; drawInto(cell.querySelector('canvas'),species[activeIdx]); cell.querySelector('.tag').textContent=tagText(species[activeIdx]); }
+  function refreshCell(){
+    var cell=grid.children[activeIdx];
+    if(cell){ drawInto(cell.querySelector('canvas'),species[activeIdx]); cell.querySelector('.tag').textContent=tagText(species[activeIdx]); }
+    buildRoster(); requestAnimationFrame(drawAll);
+  }
   function slider(label,val,on){
     var row=document.createElement('div'); row.className='ctl';
     var l=document.createElement('label'); l.textContent=label;
@@ -274,6 +405,12 @@
 
   // ---- controls ----
   document.getElementById('gen').addEventListener('click',generate);
+  document.getElementById('viewToggle').addEventListener('click',function(){
+    viewMode = viewMode==='grid' ? 'roster' : 'grid';
+    document.body.classList.toggle('roster-mode', viewMode==='roster');
+    this.textContent = viewMode==='roster' ? '▦ Grid' : '▦ Roster';
+    requestAnimationFrame(function(){ requestAnimationFrame(drawAll); });
+  });
   document.getElementById('drift').addEventListener('input',function(){ document.getElementById('driftv').textContent=(+this.value).toFixed(2); });
   Array.prototype.forEach.call(document.querySelectorAll('.chip[data-count]'),function(ch){
     ch.addEventListener('click',function(){ document.querySelectorAll('.chip[data-count]').forEach(function(c){ c.classList.remove('on'); }); ch.classList.add('on'); count=+ch.getAttribute('data-count'); generate(); });
