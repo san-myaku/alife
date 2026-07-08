@@ -412,9 +412,25 @@
     buildRoster();
     requestAnimationFrame(function(){ requestAnimationFrame(drawAll); });
   }
+  // even-coverage: when generating "all", spread cells across every form
+  // instead of following the (skewed) gene->topology distribution.
+  function coverageForms(n){
+    var forms = (A && A.visualTypes ? A.visualTypes : []).map(function(t){return t.id;}).filter(function(id){return id && id!=='all';});
+    if(!forms.length) return null;
+    var seq=[], pool=[];
+    function reshuffle(){ pool=forms.slice(); for(var k=pool.length-1;k>0;k--){ var j=Math.floor(Math.random()*(k+1)); var t=pool[k]; pool[k]=pool[j]; pool[j]=t; } }
+    reshuffle();
+    for(var i=0;i<n;i++){ if(!pool.length) reshuffle(); seq.push(pool.pop()); }
+    return seq;
+  }
   function generate(){
     var next=[];
-    for(var i=0;i<count;i++){ if(species[i]&&species[i].locked) next.push(species[i]); else next.push(makeSpeciesForType(selectedType)); }
+    var cover = (selectedType==='all') ? coverageForms(count) : null;
+    for(var i=0;i<count;i++){
+      if(species[i]&&species[i].locked){ next.push(species[i]); }
+      else if(cover){ next.push(makeSpeciesForType(cover[i])); }
+      else { next.push(makeSpeciesForType(selectedType)); }
+    }
     species=next; buildGrid();
   }
 
