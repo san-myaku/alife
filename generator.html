@@ -158,7 +158,7 @@
   var M = window.OrganismModel, R = window.OrganismRender, A = window.OrganismRosterArt;
   var GENE_KEYS = ['speed','size','metabolism','fecundity','sense','diet','formSeed'];
   var GENE_LABEL = { speed:'速さ', size:'大きさ', metabolism:'代謝', fecundity:'繁殖', sense:'感知', diet:'食性', formSeed:'形' };
-  var RARE = [['glow','発光'],['crown','冠'],['colony','群体'],['chl','葉緑体']];
+  var RARE = [['glow','発光'],['chl','葉緑体']];
   var TAU = Math.PI*2;
 
   // stub environment for the shared renderer (no live game state in the tool)
@@ -212,7 +212,7 @@
   function dietClass(d){ return d<0.33?'草':(d<0.66?'雑':'肉'); }
   function groupFor(sp, o){
     var flags = sp.flags || {};
-    var special = o.isMega || flags.glow || flags.crown || flags.colony || flags.chl || o.morphologyTopology==='mesh';
+    var special = o.isMega || flags.glow || flags.chl || o.morphologyTopology==='mesh';
     if(special) return GROUPS[3];
     if((sp.genes.diet||0)>=0.66 || o.role==='ambusher' || o.role==='pack') return GROUPS[2];
     if((sp.genes.diet||0)>0.33 || o.role==='scav') return GROUPS[1];
@@ -223,6 +223,8 @@
   function buildCreature(sp){
     var o = M.buildOrganismBase(sp.genes, (sp.seed>>>0)||1);
     o.flags = Object.assign({}, sp.flags);
+    delete o.flags.crown;
+    delete o.flags.colony;
     var b = R.buildSymbol(o, buildEnv);
     o._symbol = b.symbol; o.personalSpaceR = b.personalSpaceR;
     o.symbolShapePath = R.symbolShapePath;

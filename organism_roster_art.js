@@ -42,7 +42,7 @@
 
   function isSpecial(o) {
     const f = o.flags || {};
-    return !!(o.isMega || f.glow || f.crown || f.colony || f.chl || o.morphologyTopology === "mesh");
+    return !!(o.isMega || f.glow || f.chl || o.morphologyTopology === "mesh");
   }
 
   function paletteFor(o, opts) {
@@ -198,7 +198,7 @@
     ctx.lineWidth = Math.max(0.55, r * 0.014);
     for (let i = 0; i < count; i++) {
       const a = (i / count) * TAU + (rng() - 0.5) * 0.10;
-      const inner = r * (0.84 + rng() * 0.10);
+      const inner = r * (0.76 + rng() * 0.10);
       const outer = r * (1.02 + len * (0.22 + rng() * 0.42));
       ctx.beginPath();
       ctx.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
@@ -234,6 +234,51 @@
     ctx.restore();
   }
 
+  function variantIndex(o, salt, count) {
+    const key = String(o.speciesKey || o.id || "x") + ":" + salt + ":" + Math.round(((o.genes || {}).formSeed || 0) * 997);
+    return hashStr32(key) % count;
+  }
+
+  function drawAttachedFlagellum(ctx, sx, sy, angle, length, pal, rng, alpha) {
+    const root = Math.max(1.0, length * 0.030);
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.strokeStyle = hsla(pal.hue + 18, 64, 42, alpha || 0.42);
+    ctx.lineWidth = root;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    const c1x = sx + Math.cos(angle) * length * 0.34 - Math.sin(angle) * length * 0.12;
+    const c1y = sy + Math.sin(angle) * length * 0.34 + Math.cos(angle) * length * 0.12;
+    const c2x = sx + Math.cos(angle) * length * 0.66 + Math.sin(angle) * length * 0.18;
+    const c2y = sy + Math.sin(angle) * length * 0.66 - Math.cos(angle) * length * 0.18;
+    const ex = sx + Math.cos(angle) * length;
+    const ey = sy + Math.sin(angle) * length;
+    ctx.bezierCurveTo(c1x, c1y, c2x, c2y, ex, ey);
+    ctx.stroke();
+    ctx.strokeStyle = hsla(pal.hue + 34, 66, 88, 0.22);
+    ctx.lineWidth = Math.max(0.55, root * 0.45);
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.bezierCurveTo(c1x, c1y, c2x, c2y, ex, ey);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawSegmentationLines(ctx, r, pal, count, angle) {
+    ctx.save();
+    ctx.rotate(angle || 0);
+    ctx.strokeStyle = hsla(pal.hue - 8, 50, 34, 0.18);
+    ctx.lineWidth = Math.max(0.55, r * 0.018);
+    for (let i = 1; i < count; i++) {
+      const x = lerp(-r * 0.58, r * 0.58, i / count);
+      ctx.beginPath();
+      ctx.moveTo(x, -r * 0.32);
+      ctx.quadraticCurveTo(x + r * 0.05, 0, x, r * 0.32);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawCilia(ctx, r, pal, rng, count, len, alpha) {
     ctx.save();
     ctx.lineCap = "round";
@@ -241,7 +286,7 @@
     ctx.lineWidth = Math.max(0.65, r * 0.025);
     for (let i = 0; i < count; i++) {
       const a = (i / count) * TAU + rng() * 0.08;
-      const inner = r * (0.86 + rng() * 0.08);
+      const inner = r * (0.76 + rng() * 0.10);
       const outer = r * (1 + len * (0.32 + rng() * 0.32));
       const bend = (rng() - 0.5) * r * 0.14;
       ctx.beginPath();
@@ -315,16 +360,6 @@
       }
       ctx.restore();
     }
-    if (f.crown) drawSpines(ctx, r * 1.05, pal, rng, 10, 0.38);
-    if (f.colony) {
-      ctx.save();
-      for (let i = 0; i < 5; i++) {
-        const a = (i / 5) * TAU + rng() * 0.2;
-        const d = r * (1.10 + rng() * 0.18);
-        drawNucleus(ctx, Math.cos(a) * d, Math.sin(a) * d, r * 0.13, pal, rng, 0.76);
-      }
-      ctx.restore();
-    }
   }
 
   function drawCellBlob(ctx, o, r, pal, rng) {
@@ -369,12 +404,7 @@
     drawSurfaceSpeckles(ctx, r, pal, rng, 12, 0.20);
     ctx.restore();
     if ((g.sense || 0.5) > 0.62) {
-      ctx.strokeStyle = hsla(pal.hue + 18, 80, 40, 0.50);
-      ctx.lineWidth = Math.max(0.8, r * 0.028);
-      ctx.beginPath();
-      ctx.moveTo(r * 0.92, -r * 0.12);
-      ctx.quadraticCurveTo(r * 1.42, -r * 0.68, r * 1.26, -r * 1.06);
-      ctx.stroke();
+      drawAttachedFlagellum(ctx, r * 0.86, -r * 0.10, -0.86, r * 0.92, pal, rng, 0.44);
     }
     drawNucleus(ctx, -r * 0.05, -r * 0.02, r * 0.17, pal, rng, 0.85);
     drawFineHalo(ctx, r * 0.78, pal, rng, 10, 0.24, 0.14);
@@ -415,8 +445,25 @@
     const g = genesOf(o);
     const n = 3 + Math.round(clamp((g.fecundity || 0.5) * 5 + (o.form ? o.form.length : 0.5) * 2, 0, 7));
     const step = r * lerp(0.48, 0.64, g.speed || 0.5);
+    const variant = variantIndex(o, "chain", 3);
     ctx.save();
     ctx.rotate(-0.42 + rng() * 0.55);
+
+    if (variant === 1) {
+      drawBlobPath(ctx, r * 0.80, 1.85, 0.18, (g.diet || 0.5) > 0.62 ? 0.44 : 0.18, rng);
+      fillAndStroke(ctx, r, pal, 0.54);
+      ctx.save();
+      ctx.clip();
+      drawGranules(ctx, r * 0.75, pal, rng, 7 + Math.round((g.sense || 0.5) * 6), !!(o.flags && o.flags.chl));
+      drawSurfaceSpeckles(ctx, r, pal, rng, 16, 0.16);
+      drawSegmentationLines(ctx, r, pal, 5 + Math.round((g.fecundity || 0.5) * 3), 0);
+      ctx.restore();
+      drawNucleus(ctx, -r * 0.42, -r * 0.03, r * 0.18, pal, rng, 0.82);
+      if ((g.speed || 0.5) > 0.48) drawAttachedFlagellum(ctx, r * 1.12, -r * 0.03, -0.16, r * 0.70, pal, rng, 0.38);
+      ctx.restore();
+      return;
+    }
+
     ctx.lineCap = "round";
     ctx.strokeStyle = hsla(pal.hue - 10, 52, 52, 0.16);
     ctx.lineWidth = r * 0.12;
@@ -437,6 +484,11 @@
     }
     if ((g.diet || 0.5) > 0.64) drawFineHalo(ctx, r * 0.85, pal, rng, 16, 0.42, 0.24);
     else drawFineHalo(ctx, r * 0.90, pal, rng, 22, 0.30, 0.18);
+    if (variant === 2 && (g.speed || 0.5) > 0.40) {
+      const endX = (n - 1) * 0.5 * step;
+      const endY = Math.sin((n - 1) * 0.9) * r * 0.18;
+      drawAttachedFlagellum(ctx, endX + r * 0.26, endY, -0.12, r * 0.66, pal, rng, 0.34);
+    }
     ctx.restore();
   }
 
@@ -564,18 +616,39 @@
 
   function drawCluster(ctx, o, r, pal, rng) {
     const g = genesOf(o);
+    const variant = variantIndex(o, "cluster", 3);
     const n = 8 + Math.round((g.fecundity || 0.5) * 10);
     ctx.save();
+
+    if (variant === 1) {
+      const petals = 5 + Math.round((g.fecundity || 0.5) * 4);
+      for (let i = 0; i < petals; i++) {
+        const a = (i / petals) * TAU + rng() * 0.08;
+        const d = r * (0.34 + rng() * 0.08);
+        drawOvalCell(ctx, Math.cos(a) * d, Math.sin(a) * d, r * 0.22, r * 0.29, a, pal, rng, 0.68);
+      }
+      drawOvalCell(ctx, 0, 0, r * 0.24, r * 0.24, 0, pal, rng, 0.78);
+      drawFineHalo(ctx, r * 0.70, pal, rng, 18, 0.18, 0.12);
+      ctx.restore();
+      return;
+    }
+
+    if (variant === 2) {
+      drawBlobPath(ctx, r * 0.72, 1.02, 0.62, 0.02, rng);
+      fillAndStroke(ctx, r, pal, 0.34);
+      ctx.clip();
+    }
+
     for (let i = 0; i < n; i++) {
       const a = rng() * TAU;
-      const d = Math.sqrt(rng()) * r * 0.66;
+      const d = Math.sqrt(rng()) * r * (variant === 2 ? 0.58 : 0.66);
       const x = Math.cos(a) * d;
       const y = Math.sin(a) * d;
-      const rr = r * (0.19 + rng() * 0.13);
+      const rr = r * (variant === 2 ? 0.15 + rng() * 0.10 : 0.19 + rng() * 0.13);
       ctx.save();
       ctx.translate(x, y);
       drawBlobPath(ctx, rr, 1.0 + (rng() - 0.5) * 0.25, 0.28, 0.1, rng);
-      fillAndStroke(ctx, rr, pal, 0.72);
+      fillAndStroke(ctx, rr, pal, variant === 2 ? 0.58 : 0.72);
       drawNucleus(ctx, 0, 0, rr * 0.32, pal, rng, 0.70);
       ctx.restore();
     }
@@ -609,34 +682,61 @@
 
   function drawMesh(ctx, o, r, pal, rng) {
     const g = genesOf(o);
-    const rings = 2 + Math.round((g.metabolism || 0.5) * 2);
-    const nodes = [];
-    for (let ring = 0; ring < rings; ring++) {
-      const n = 6 + ring * 4;
-      const d = r * (0.22 + ring * 0.24);
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * TAU + ring * 0.18;
-        nodes.push({ x: Math.cos(a) * d, y: Math.sin(a) * d, ring, i, n });
-      }
-    }
     ctx.save();
-    ctx.strokeStyle = hsla(pal.hue + 8, 64, 48, 0.44);
-    ctx.lineWidth = Math.max(0.9, r * 0.035);
-    for (let i = 0; i < nodes.length; i++) {
-      for (let j = i + 1; j < nodes.length; j++) {
-        const a = nodes[i], b = nodes[j];
+
+    drawBlobPath(ctx, r * 0.84, 1.08, 0.42, 0.04, rng);
+    fillAndStroke(ctx, r, pal, 0.20);
+    ctx.clip();
+
+    const holes = [];
+    const holeCount = 8 + Math.round((g.sense || 0.5) * 5);
+    for (let i = 0; i < holeCount; i++) {
+      const a = (i / holeCount) * TAU + (rng() - 0.5) * 0.46;
+      const d = r * (0.18 + rng() * 0.52);
+      holes.push({
+        x: Math.cos(a) * d * (0.94 + rng() * 0.24),
+        y: Math.sin(a) * d * (0.78 + rng() * 0.20),
+        rr: r * (0.105 + rng() * 0.070)
+      });
+    }
+
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    for (let i = 0; i < holes.length; i++) {
+      for (let j = i + 1; j < holes.length; j++) {
+        const a = holes[i], b = holes[j];
         const dx = a.x - b.x, dy = a.y - b.y;
-        const d = Math.sqrt(dx * dx + dy * dy);
-        if (d < r * 0.35) {
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < r * 0.50) {
+          ctx.strokeStyle = hsla(pal.hue + 8, 62, 56, 0.36);
+          ctx.lineWidth = Math.max(1.1, r * 0.075);
           ctx.beginPath();
           ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
+          ctx.quadraticCurveTo((a.x + b.x) * 0.5 + (rng() - 0.5) * r * 0.10, (a.y + b.y) * 0.5 + (rng() - 0.5) * r * 0.10, b.x, b.y);
           ctx.stroke();
         }
       }
     }
-    for (const node of nodes) drawNucleus(ctx, node.x, node.y, r * 0.055, pal, rng, 0.70);
-    drawNucleus(ctx, 0, 0, r * 0.18, pal, rng, 0.86);
+
+    for (const h of holes) {
+      const bg = ctx.createRadialGradient(h.x - h.rr * 0.2, h.y - h.rr * 0.2, h.rr * 0.1, h.x, h.y, h.rr * 1.3);
+      bg.addColorStop(0, "rgba(246,254,255,.88)");
+      bg.addColorStop(1, hsla(pal.hue + 20, 42, 94, 0.46));
+      ctx.fillStyle = bg;
+      ctx.strokeStyle = hsla(pal.hue - 12, 56, 38, 0.42);
+      ctx.lineWidth = Math.max(0.8, r * 0.024);
+      ctx.beginPath();
+      ctx.ellipse(h.x, h.y, h.rr * (1.18 + rng() * 0.18), h.rr * (0.86 + rng() * 0.22), rng() * TAU, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+      if (rng() > 0.55) {
+        ctx.fillStyle = hsla(pal.hue + 12, 62, 62, 0.38);
+        ctx.beginPath();
+        ctx.arc(h.x + h.rr * 0.48, h.y - h.rr * 0.24, h.rr * 0.16, 0, TAU);
+        ctx.fill();
+      }
+    }
+    drawSurfaceSpeckles(ctx, r, pal, rng, 20, 0.18);
     ctx.restore();
   }
 
@@ -691,7 +791,8 @@
     if (topology === "branch") ctx.translate(0, r * 0.08);
     if (topology !== "branch" && topology !== "mesh") ctx.rotate((rng() - 0.5) * 0.28);
 
-    if (topology === "chain") drawChain(ctx, o, r, pal, rng);
+    if ((o.isMega || ((o.flags || {}).glow && (g.sense || 0.5) > 0.62)) && variantIndex(o, "jelly", 3) === 0) drawJelly(ctx, o, r, pal, rng);
+    else if (topology === "chain") drawChain(ctx, o, r, pal, rng);
     else if (topology === "ring") drawRing(ctx, o, r, pal, rng);
     else if (topology === "radial") drawRadial(ctx, o, r, pal, rng);
     else if (topology === "branch") drawBranch(ctx, o, r, pal, rng);
