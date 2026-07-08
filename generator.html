@@ -151,10 +151,11 @@
 
 <script src="organism_model.js"></script>
 <script src="organism_render.js"></script>
+<script src="organism_roster_art.js"></script>
 <script>
 (function(){
   'use strict';
-  var M = window.OrganismModel, R = window.OrganismRender;
+  var M = window.OrganismModel, R = window.OrganismRender, A = window.OrganismRosterArt;
   var GENE_KEYS = ['speed','size','metabolism','fecundity','sense','diet','formSeed'];
   var GENE_LABEL = { speed:'速さ', size:'大きさ', metabolism:'代謝', fecundity:'繁殖', sense:'感知', diet:'食性', formSeed:'形' };
   var RARE = [['glow','発光'],['crown','冠'],['colony','群体'],['chl','葉緑体']];
@@ -179,7 +180,14 @@
   var grid = document.getElementById('grid');
   var rosterGrid = document.getElementById('rosterGrid');
   var rosterLegend = document.getElementById('rosterLegend');
-  var count = 48, species = [], activeIdx = -1, viewMode = 'grid';
+  var viewToggle = document.getElementById('viewToggle');
+  var artToggle = document.createElement('button');
+  artToggle.className = 'btn primary';
+  artToggle.id = 'artToggle';
+  artToggle.type = 'button';
+  artToggle.textContent = 'Art Lab';
+  if(viewToggle) viewToggle.insertAdjacentElement('afterend', artToggle);
+  var count = 48, species = [], activeIdx = -1, viewMode = 'grid', artMode = true;
   var DPR = Math.min(2, window.devicePixelRatio || 1);
   var GROUPS = [
     { id:'grazer', label:'Herbivore / Filter', color:'#33b999', order:0 },
@@ -242,7 +250,11 @@
     ctx.fill();
     ctx.restore();
   }
-  function drawCreature(ctx, o, w, h, fill){
+  function drawCreature(ctx, o, w, h, fill, group){
+    if(artMode && A && A.drawOrganism){
+      A.drawOrganism(ctx, o, w, h, { fill:fill||0.42, groupColor:group&&group.color, roster:viewMode==='roster' });
+      return;
+    }
     var vr = Math.max(o._symbol.visualR || o.size, o.size*1.2);
     var k = (Math.min(w,h)*(fill||0.42)) / vr;
     ctx.save(); ctx.translate(w/2, h/2); ctx.scale(k,k); o.x=0; o.y=0;
@@ -261,7 +273,7 @@
     ctx.ellipse(w*0.5,h*0.78,w*0.24,h*0.055,0,0,TAU);
     ctx.fill();
     ctx.restore();
-    drawCreature(ctx,o,w,h,0.30);
+    drawCreature(ctx,o,w,h,0.30,group);
     cv.__o=o;
     return true;
   }
@@ -269,7 +281,7 @@
     var rect=cv.getBoundingClientRect(); var w=Math.round(rect.width), h=Math.round(rect.height);
     if(w<2||h<2) return false;
     var ctx=sizeCanvas(cv,w,h); ctx.clearRect(0,0,w,h); paintBackdrop(ctx,w,h);
-    var o=buildCreature(sp); drawCreature(ctx,o,w,h,0.42); cv.__o=o;
+    var o=buildCreature(sp), group=groupFor(sp,o); drawCreature(ctx,o,w,h,0.42,group); cv.__o=o;
     return true;
   }
   function tagText(sp){ var o=buildCreature(sp); return o.morphologyTopology+'・'+dietClass(sp.genes.diet); }
@@ -347,7 +359,7 @@
     var rect=dCanvas.getBoundingClientRect(); var w=Math.round(rect.width), h=Math.round(rect.height);
     if(w<2||h<2){ requestAnimationFrame(renderDetail); return; }
     var ctx=sizeCanvas(dCanvas,w,h); ctx.clearRect(0,0,w,h); paintBackdrop(ctx,w,h);
-    drawCreature(ctx,o,w,h,0.40);
+    drawCreature(ctx,o,w,h,0.40,groupFor(sp,o));
   }
   function refreshCell(){
     var cell=grid.children[activeIdx];
@@ -405,7 +417,19 @@
 
   // ---- controls ----
   document.getElementById('gen').addEventListener('click',generate);
-  document.getElementById('viewToggle').addEventListener('click',function(){
+  function syncArtToggle(){
+    artToggle.classList.toggle('primary', artMode);
+    artToggle.textContent = artMode ? 'Art Lab' : 'Game Renderer';
+    artToggle.title = artMode ? 'Generator-only concept renderer' : 'Current shared game renderer';
+  }
+  syncArtToggle();
+  artToggle.addEventListener('click',function(){
+    artMode = !artMode;
+    syncArtToggle();
+    requestAnimationFrame(function(){ requestAnimationFrame(drawAll); });
+    if(detail.classList.contains('on')) renderDetail();
+  });
+  viewToggle.addEventListener('click',function(){
     viewMode = viewMode==='grid' ? 'roster' : 'grid';
     document.body.classList.toggle('roster-mode', viewMode==='roster');
     this.textContent = viewMode==='roster' ? '▦ Grid' : '▦ Roster';
