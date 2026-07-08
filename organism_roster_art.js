@@ -51,7 +51,7 @@
     const speed = clamp(g.speed == null ? 0.5 : g.speed, 0, 1);
     const sense = clamp(g.sense == null ? 0.5 : g.sense, 0, 1);
     const key = String(o.speciesKey || o.id || "organism");
-    const hJitter = (hashStr32("h:" + key) / 4294967296 - 0.5) * 30;
+    const hJitter = (hashStr32("h:" + key) / 4294967296 - 0.5) * 20;
     let hue;
     if (isSpecial(o)) hue = 270 + hJitter;
     else if (diet < 0.33) hue = lerp(150, 186, speed) + hJitter;
@@ -62,12 +62,12 @@
     }
     return {
       hue,
-      sat: 58 + Math.round(18 * sense),
-      light: 48 + Math.round(10 * (1 - diet)),
-      dark: hsla(hue - 8, 62, 28, 0.82),
-      line: hsla(hue - 12, 70, 28, 0.62),
-      bright: hsla(hue + 18, 88, 76, 0.86),
-      faint: hsla(hue + 10, 80, 78, 0.16),
+      sat: 52 + Math.round(15 * sense),
+      light: 53 + Math.round(9 * (1 - diet)),
+      dark: hsla(hue - 8, 54, 30, 0.54),
+      line: hsla(hue - 12, 58, 30, 0.38),
+      bright: hsla(hue + 18, 78, 84, 0.72),
+      faint: hsla(hue + 10, 74, 80, 0.13),
       coreHue: hue + 125 + (hashStr32("c:" + key) / 4294967296) * 70
     };
   }
@@ -89,10 +89,10 @@
   }
 
   function bodyGradient(ctx, r, pal, alpha) {
-    const g = ctx.createRadialGradient(-r * 0.22, -r * 0.30, r * 0.08, 0, 0, r * 1.25);
-    g.addColorStop(0, hsla(pal.hue + 28, 74, 92, alpha));
-    g.addColorStop(0.48, hsla(pal.hue, pal.sat, pal.light + 12, alpha * 0.92));
-    g.addColorStop(1, hsla(pal.hue - 18, pal.sat + 8, Math.max(24, pal.light - 12), alpha));
+    const g = ctx.createRadialGradient(-r * 0.25, -r * 0.34, r * 0.06, 0, 0, r * 1.24);
+    g.addColorStop(0, hsla(pal.hue + 26, 66, 94, alpha * 0.92));
+    g.addColorStop(0.45, hsla(pal.hue, pal.sat, pal.light + 13, alpha * 0.82));
+    g.addColorStop(1, hsla(pal.hue - 18, pal.sat + 4, Math.max(30, pal.light - 10), alpha));
     return g;
   }
 
@@ -125,9 +125,15 @@
   function fillAndStroke(ctx, r, pal, alpha) {
     ctx.fillStyle = bodyGradient(ctx, r, pal, alpha == null ? 0.82 : alpha);
     ctx.strokeStyle = pal.line;
-    ctx.lineWidth = Math.max(1.1, r * 0.055);
+    ctx.lineWidth = Math.max(0.9, r * 0.038);
     ctx.fill();
     ctx.stroke();
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    ctx.strokeStyle = hsla(pal.hue + 24, 60, 94, 0.20);
+    ctx.lineWidth = Math.max(0.6, r * 0.018);
+    ctx.stroke();
+    ctx.restore();
   }
 
   function drawNucleus(ctx, x, y, r, pal, rng, alpha) {
@@ -167,6 +173,64 @@
       ctx.lineWidth = Math.max(0.35, rr * 0.14);
       ctx.stroke();
     }
+    ctx.restore();
+  }
+
+  function drawSurfaceSpeckles(ctx, r, pal, rng, count, alpha) {
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    for (let i = 0; i < count; i++) {
+      const a = rng() * TAU;
+      const d = Math.sqrt(rng()) * r * (0.28 + rng() * 0.50);
+      const rr = r * (0.010 + rng() * 0.026);
+      ctx.fillStyle = hsla(pal.hue + 28, 48, 96, (alpha || 0.20) * (0.45 + rng() * 0.55));
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * d, Math.sin(a) * d, rr, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawFineHalo(ctx, r, pal, rng, count, len, alpha) {
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.strokeStyle = hsla(pal.hue + 16, 52, 70, alpha || 0.20);
+    ctx.lineWidth = Math.max(0.55, r * 0.014);
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * TAU + (rng() - 0.5) * 0.10;
+      const inner = r * (0.84 + rng() * 0.10);
+      const outer = r * (1.02 + len * (0.22 + rng() * 0.42));
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
+      ctx.quadraticCurveTo(
+        Math.cos(a + 0.06) * (inner + outer) * 0.5,
+        Math.sin(a + 0.06) * (inner + outer) * 0.5,
+        Math.cos(a + (rng() - 0.5) * 0.10) * outer,
+        Math.sin(a + (rng() - 0.5) * 0.10) * outer
+      );
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawOvalCell(ctx, x, y, rx, ry, angle, pal, rng, alpha) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle || 0);
+    const rr = Math.max(rx, ry);
+    const g = ctx.createRadialGradient(-rx * 0.26, -ry * 0.30, rr * 0.05, 0, 0, rr);
+    g.addColorStop(0, hsla(pal.hue + 24, 64, 94, alpha || 0.78));
+    g.addColorStop(0.52, hsla(pal.hue, pal.sat, pal.light + 12, (alpha || 0.78) * 0.86));
+    g.addColorStop(1, hsla(pal.hue - 14, pal.sat + 4, pal.light - 8, (alpha || 0.78) * 0.92));
+    ctx.fillStyle = g;
+    ctx.strokeStyle = pal.line;
+    ctx.lineWidth = Math.max(0.45, rr * 0.035);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx, ry, 0, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    drawSurfaceSpeckles(ctx, rr, pal, rng, 3, 0.22);
+    drawNucleus(ctx, -rx * 0.10, -ry * 0.02, Math.min(rx, ry) * 0.24, pal, rng, 0.70);
     ctx.restore();
   }
 
@@ -272,9 +336,10 @@
     ctx.save();
     if ((g.speed || 0.5) > 0.62) ctx.rotate(-0.24 + rng() * 0.18);
     drawBlobPath(ctx, r, aspect, irregular, point, rng);
-    fillAndStroke(ctx, r, pal, 0.82);
+    fillAndStroke(ctx, r, pal, 0.68);
     ctx.clip();
     drawGranules(ctx, r, pal, rng, 7 + Math.round((form.detail || 0.5) * 10), !!(o.flags && o.flags.chl));
+    drawSurfaceSpeckles(ctx, r, pal, rng, 18, 0.24);
     drawNucleus(ctx, -r * 0.12, -r * 0.03, r * 0.23, pal, rng, 0.92);
     ctx.restore();
   }
@@ -288,7 +353,7 @@
     ctx.bezierCurveTo(-r * 0.40, -r * 0.78, r * 0.42, -r * 0.92, r * 1.12, -r * 0.10);
     ctx.bezierCurveTo(r * 0.42, r * 0.75, -r * 0.42, r * 0.74, -r * 0.92, r * 0.05);
     ctx.closePath();
-    fillAndStroke(ctx, r, pal, 0.72);
+    fillAndStroke(ctx, r, pal, 0.60);
     ctx.save();
     ctx.clip();
     ctx.strokeStyle = hsla(pal.hue - 18, 78, 36, 0.30);
@@ -301,6 +366,7 @@
       ctx.stroke();
     }
     drawGranules(ctx, r, pal, rng, 5 + Math.round((g.metabolism || 0.5) * 10), !!(o.flags && o.flags.chl));
+    drawSurfaceSpeckles(ctx, r, pal, rng, 12, 0.20);
     ctx.restore();
     if ((g.sense || 0.5) > 0.62) {
       ctx.strokeStyle = hsla(pal.hue + 18, 80, 40, 0.50);
@@ -311,6 +377,7 @@
       ctx.stroke();
     }
     drawNucleus(ctx, -r * 0.05, -r * 0.02, r * 0.17, pal, rng, 0.85);
+    drawFineHalo(ctx, r * 0.78, pal, rng, 10, 0.24, 0.14);
     ctx.restore();
   }
 
@@ -327,8 +394,9 @@
       ctx.lineTo(r * 0.32 + Math.cos(a) * r * 0.55, Math.sin(a) * r * 0.52);
     }
     ctx.closePath();
-    fillAndStroke(ctx, r, pal, 0.80);
-    drawSpines(ctx, r * 0.76, pal, rng, 7, 0.42);
+    fillAndStroke(ctx, r, pal, 0.64);
+    drawFineHalo(ctx, r * 0.78, pal, rng, 9, 0.48, 0.27);
+    drawSurfaceSpeckles(ctx, r, pal, rng, 10, 0.18);
     drawNucleus(ctx, -r * 0.22, 0, r * 0.18, pal, rng, 0.92);
     ctx.restore();
   }
@@ -346,12 +414,12 @@
   function drawChain(ctx, o, r, pal, rng) {
     const g = genesOf(o);
     const n = 3 + Math.round(clamp((g.fecundity || 0.5) * 5 + (o.form ? o.form.length : 0.5) * 2, 0, 7));
-    const step = r * lerp(0.42, 0.68, g.speed || 0.5);
+    const step = r * lerp(0.48, 0.64, g.speed || 0.5);
     ctx.save();
     ctx.rotate(-0.42 + rng() * 0.55);
     ctx.lineCap = "round";
-    ctx.strokeStyle = hsla(pal.hue - 10, 58, 38, 0.18);
-    ctx.lineWidth = r * 0.34;
+    ctx.strokeStyle = hsla(pal.hue - 10, 52, 52, 0.16);
+    ctx.lineWidth = r * 0.12;
     ctx.beginPath();
     for (let i = 0; i < n; i++) {
       const x = (i - (n - 1) / 2) * step;
@@ -364,16 +432,11 @@
       const t = i / Math.max(1, n - 1);
       const x = (i - (n - 1) / 2) * step;
       const y = Math.sin(i * 0.9) * r * 0.18;
-      const rr = r * lerp(0.34, 0.48, 1 - Math.abs(t - 0.5) * 1.2);
-      ctx.save();
-      ctx.translate(x, y);
-      drawBlobPath(ctx, rr, 1.04, 0.32, 0.24, rng);
-      fillAndStroke(ctx, rr, pal, 0.80);
-      drawNucleus(ctx, -rr * 0.06, 0, rr * 0.24, pal, rng, 0.78);
-      ctx.restore();
+      const rr = r * lerp(0.30, 0.43, 1 - Math.abs(t - 0.5) * 1.2);
+      drawOvalCell(ctx, x, y, rr * 1.06, rr * 0.88, (rng() - 0.5) * 0.34, pal, rng, 0.70);
     }
-    if ((g.diet || 0.5) > 0.64) drawSpines(ctx, r * 0.82, pal, rng, 10, 0.28);
-    else drawCilia(ctx, r * 0.90, pal, rng, 18, 0.36, 0.24);
+    if ((g.diet || 0.5) > 0.64) drawFineHalo(ctx, r * 0.85, pal, rng, 16, 0.42, 0.24);
+    else drawFineHalo(ctx, r * 0.90, pal, rng, 22, 0.30, 0.18);
     ctx.restore();
   }
 
@@ -381,23 +444,18 @@
     const g = genesOf(o);
     const n = 8 + Math.round((g.fecundity || 0.5) * 6);
     ctx.save();
-    ctx.strokeStyle = hsla(pal.hue - 6, 62, 36, 0.30);
-    ctx.lineWidth = Math.max(2, r * 0.10);
+    ctx.strokeStyle = hsla(pal.hue - 6, 48, 50, 0.20);
+    ctx.lineWidth = Math.max(1, r * 0.050);
     ctx.beginPath();
     ctx.arc(0, 0, r * 0.68, 0, TAU);
     ctx.stroke();
     for (let i = 0; i < n; i++) {
       const a = (i / n) * TAU;
       const d = r * (0.66 + 0.04 * Math.sin(i * 1.7));
-      const rr = r * (0.18 + rng() * 0.035);
-      ctx.save();
-      ctx.translate(Math.cos(a) * d, Math.sin(a) * d);
-      drawBlobPath(ctx, rr, 1.02, 0.22, 0.12, rng);
-      fillAndStroke(ctx, rr, pal, 0.80);
-      drawGranules(ctx, rr, pal, rng, 2, !!(o.flags && o.flags.chl));
-      ctx.restore();
+      const rr = r * (0.17 + rng() * 0.035);
+      drawOvalCell(ctx, Math.cos(a) * d, Math.sin(a) * d, rr * 1.08, rr * 0.92, a + Math.PI * 0.5, pal, rng, 0.68);
     }
-    drawCilia(ctx, r * 0.78, pal, rng, 32, 0.22, 0.22);
+    drawFineHalo(ctx, r * 0.78, pal, rng, 34, 0.16, 0.15);
     ctx.restore();
   }
 
@@ -405,54 +463,102 @@
     const g = genesOf(o);
     const pred = (g.diet || 0.5) > 0.62;
     const points = 9 + Math.round((g.sense || 0.5) * 8);
-    if (pred) drawSpines(ctx, r * 0.82, pal, rng, points, 0.86);
-    else drawCilia(ctx, r * 0.86, pal, rng, points * 2, 0.58, 0.30);
     ctx.save();
-    ctx.beginPath();
-    for (let i = 0; i <= points * 2; i++) {
-      const a = (i / (points * 2)) * TAU;
-      const rr = i % 2 ? r * 0.58 : r * (0.82 + (pred ? 0.10 : 0.04));
-      const x = Math.cos(a) * rr;
-      const y = Math.sin(a) * rr;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+    ctx.lineCap = "round";
+    ctx.strokeStyle = hsla(pal.hue - 8, pred ? 70 : 56, pred ? 48 : 58, pred ? 0.42 : 0.28);
+    ctx.lineWidth = Math.max(0.7, r * (pred ? 0.025 : 0.018));
+    for (let i = 0; i < points; i++) {
+      const a = (i / points) * TAU + (rng() - 0.5) * 0.08;
+      const inner = r * (0.62 + rng() * 0.07);
+      const outer = r * (pred ? 1.24 + rng() * 0.24 : 1.06 + rng() * 0.14);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
+      ctx.quadraticCurveTo(
+        Math.cos(a + 0.04) * (inner + outer) * 0.5,
+        Math.sin(a + 0.04) * (inner + outer) * 0.5,
+        Math.cos(a) * outer,
+        Math.sin(a) * outer
+      );
+      ctx.stroke();
+      if (!pred && i % 2 === 0) {
+        drawNucleus(ctx, Math.cos(a) * outer, Math.sin(a) * outer, r * 0.045, pal, rng, 0.58);
+      }
     }
-    ctx.closePath();
-    fillAndStroke(ctx, r, pal, 0.78);
-    drawGranules(ctx, r * 0.70, pal, rng, 8 + Math.round((g.sense || 0.5) * 8), !!(o.flags && o.flags.chl));
+    ctx.restore();
+    if (pred) drawFineHalo(ctx, r * 0.84, pal, rng, points, 0.62, 0.24);
+    else drawFineHalo(ctx, r * 0.86, pal, rng, points * 2, 0.34, 0.16);
+    ctx.save();
+    drawBlobPath(ctx, r * 0.82, 1.02, 0.18, pred ? 0.26 : 0.08, rng);
+    fillAndStroke(ctx, r, pal, 0.62);
+    ctx.clip();
+    drawGranules(ctx, r * 0.70, pal, rng, 10 + Math.round((g.sense || 0.5) * 10), !!(o.flags && o.flags.chl));
+    drawSurfaceSpeckles(ctx, r, pal, rng, 22, 0.22);
     drawNucleus(ctx, 0, 0, r * 0.22, pal, rng, 0.95);
     ctx.restore();
   }
 
   function drawBranch(ctx, o, r, pal, rng) {
     const g = genesOf(o);
-    const branchCount = 5 + Math.round((g.sense || 0.5) * 5);
+    const branchCount = 5 + Math.round((g.sense || 0.5) * 4);
     ctx.save();
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    ctx.strokeStyle = hsla(pal.hue - 6, 66, 34, 0.62);
-    ctx.lineWidth = Math.max(2.5, r * 0.16);
+    ctx.rotate((rng() - 0.5) * 0.20);
+
+    const trunk = [];
+    for (let i = 0; i < 5; i++) {
+      const t = i / 4;
+      trunk.push({
+        x: Math.sin(t * Math.PI * 1.15) * r * 0.10,
+        y: lerp(r * 0.70, -r * 0.48, t)
+      });
+    }
+
+    ctx.strokeStyle = hsla(pal.hue - 4, 56, 44, 0.28);
+    ctx.lineWidth = Math.max(3.4, r * 0.20);
     ctx.beginPath();
-    ctx.moveTo(0, r * 0.78);
-    ctx.bezierCurveTo(-r * 0.20, r * 0.22, r * 0.15, -r * 0.12, 0, -r * 0.78);
+    trunk.forEach((p, i) => {
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    });
     ctx.stroke();
-    ctx.strokeStyle = hsla(pal.hue + 8, 78, 58, 0.62);
-    ctx.lineWidth = Math.max(1.6, r * 0.075);
+
+    ctx.strokeStyle = hsla(pal.hue + 10, 66, 76, 0.48);
+    ctx.lineWidth = Math.max(1.2, r * 0.060);
+    ctx.beginPath();
+    trunk.forEach((p, i) => {
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    });
+    ctx.stroke();
+
     for (let i = 0; i < branchCount; i++) {
       const t = (i + 0.5) / branchCount;
       const side = i % 2 ? 1 : -1;
-      const y = lerp(r * 0.50, -r * 0.64, t);
-      const x = Math.sin(t * Math.PI * 1.4) * r * 0.12;
-      const len = r * (0.45 + rng() * 0.42);
+      const y = lerp(r * 0.46, -r * 0.42, t);
+      const x = Math.sin(t * Math.PI * 1.15) * r * 0.10;
+      const len = r * (0.34 + rng() * 0.34);
       const tipX = x + side * len;
-      const tipY = y - r * (0.16 + rng() * 0.22);
+      const tipY = y - r * (0.10 + rng() * 0.20);
+      ctx.strokeStyle = hsla(pal.hue - 4, 54, 44, 0.26);
+      ctx.lineWidth = Math.max(2.1, r * 0.12);
       ctx.beginPath();
       ctx.moveTo(x, y);
-      ctx.quadraticCurveTo(x + side * len * 0.38, y - r * 0.10, tipX, tipY);
+      ctx.quadraticCurveTo(x + side * len * 0.35, y - r * 0.05, tipX, tipY);
       ctx.stroke();
-      drawNucleus(ctx, tipX, tipY, r * 0.11, pal, rng, 0.82);
+      ctx.strokeStyle = hsla(pal.hue + 10, 66, 76, 0.46);
+      ctx.lineWidth = Math.max(0.9, r * 0.048);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x + side * len * 0.35, y - r * 0.05, tipX, tipY);
+      ctx.stroke();
+      drawOvalCell(ctx, tipX, tipY, r * (0.17 + rng() * 0.04), r * (0.22 + rng() * 0.05), side * 0.28, pal, rng, 0.74);
     }
-    drawNucleus(ctx, 0, -r * 0.04, r * 0.19, pal, rng, 0.88);
+    for (let i = 1; i < trunk.length - 1; i += 2) {
+      drawOvalCell(ctx, trunk[i].x + (rng() - 0.5) * r * 0.05, trunk[i].y, r * 0.12, r * 0.16, 0, pal, rng, 0.54);
+    }
+    drawOvalCell(ctx, trunk[0].x, trunk[0].y + r * 0.05, r * 0.18, r * 0.22, 0, pal, rng, 0.60);
+    drawOvalCell(ctx, trunk[trunk.length - 1].x, trunk[trunk.length - 1].y - r * 0.04, r * 0.17, r * 0.22, 0, pal, rng, 0.72);
     ctx.restore();
   }
 

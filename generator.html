@@ -252,7 +252,8 @@
   }
   function drawCreature(ctx, o, w, h, fill, group){
     if(artMode && A && A.drawOrganism){
-      A.drawOrganism(ctx, o, w, h, { fill:fill||0.42, groupColor:group&&group.color, roster:viewMode==='roster' });
+      var artFill = viewMode==='roster' ? Math.max(fill||0.42, 0.38) : (fill||0.42);
+      A.drawOrganism(ctx, o, w, h, { fill:artFill, groupColor:group&&group.color, roster:viewMode==='roster' });
       return;
     }
     var vr = Math.max(o._symbol.visualR || o.size, o.size*1.2);
