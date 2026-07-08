@@ -41,8 +41,9 @@
   }
 
   function isSpecial(o) {
-    const f = o.flags || {};
-    return !!(o.isMega || f.glow || f.chl || o.morphologyTopology === "mesh");
+    // Only genuine "mega" specials take the purple trophic category.
+    // Diet drives colour otherwise, so mesh/glow/chl no longer hijack the hue.
+    return !!o.isMega;
   }
 
   function paletteFor(o, opts) {

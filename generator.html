@@ -212,7 +212,7 @@
   function dietClass(d){ return d<0.33?'草':(d<0.66?'雑':'肉'); }
   function groupFor(sp, o){
     var flags = sp.flags || {};
-    var special = o.isMega || flags.glow || flags.chl || o.morphologyTopology==='mesh';
+    var special = o.isMega; // only genuine mega -> purple group; diet drives the rest
     if(special) return GROUPS[3];
     if((sp.genes.diet||0)>=0.66 || o.role==='ambusher' || o.role==='pack') return GROUPS[2];
     if((sp.genes.diet||0)>0.33 || o.role==='scav') return GROUPS[1];
@@ -259,7 +259,7 @@
     if(type==='jelly'){
       sp.flags.glow = true;
       sp.genes.sense = 0.84 + rr()*0.14;
-      sp.genes.size = 0.70 + rr()*0.28;
+      sp.genes.size = 0.66 + rr()*0.22; // keep below the isMega(>0.97) threshold
     } else if(type==='single-leaf'){
       sp.flags.chl = true;
       sp.genes.speed = Math.max(sp.genes.speed, 0.66 + rr()*0.25);
