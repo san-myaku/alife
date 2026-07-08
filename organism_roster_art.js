@@ -122,6 +122,26 @@
     ctx.closePath();
   }
 
+  function drawSoftMembranePath(ctx, r, aspect, wobble, rng) {
+    const n = 72;
+    const p1 = rng() * TAU;
+    const p2 = rng() * TAU;
+    const p3 = rng() * TAU;
+    ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const a = (i / n) * TAU;
+      const lobe = 1 +
+        wobble * 0.13 * Math.sin(a * 2 + p1) +
+        wobble * 0.08 * Math.sin(a * 3 + p2) +
+        wobble * 0.05 * Math.sin(a * 5 + p3);
+      const x = Math.cos(a) * r * aspect * lobe;
+      const y = Math.sin(a) * r * (1 + wobble * 0.05 * Math.sin(a * 2 + p2));
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  }
+
   function fillAndStroke(ctx, r, pal, alpha) {
     ctx.fillStyle = bodyGradient(ctx, r, pal, alpha == null ? 0.82 : alpha);
     ctx.strokeStyle = pal.line;
@@ -239,6 +259,35 @@
     return hashStr32(key) % count;
   }
 
+  function visualKind(o) {
+    const g = genesOf(o);
+    const flags = o.flags || {};
+    const topology = o.morphologyTopology || "single";
+    if ((o.isMega || (flags.glow && (g.sense || 0.5) > 0.62)) && variantIndex(o, "jelly", 3) === 0) return "jelly";
+    if (topology === "chain") {
+      const v = variantIndex(o, "chain", 3);
+      return v === 1 ? "chain-segment" : (v === 2 ? "chain-flagella" : "chain-beads");
+    }
+    if (topology === "cluster") {
+      const v = variantIndex(o, "cluster", 3);
+      return v === 1 ? "cluster-rosette" : (v === 2 ? "cluster-membrane" : "cluster-bubbles");
+    }
+    if (topology === "single") {
+      if ((g.diet || 0.5) > 0.68 && (g.speed || 0.5) > 0.42) return "single-crescent";
+      if ((g.speed || 0.5) > 0.62 || flags.chl) return "single-leaf";
+      if ((g.sense || 0.5) > 0.78 && (g.size || 0.5) > 0.55) return "jelly";
+      if ((o.form && o.form.aspect > 1.46) && (g.size || 0.5) > 0.38) return "single-spindle";
+      return "single-cell";
+    }
+    if (topology === "radial") return (g.diet || 0.5) > 0.62 ? "radial-spines" : "radial-beads";
+    if (topology === "branch") return "branch-vesicles";
+    if (topology === "ring") return "ring";
+    if (topology === "amoeba") return "amoeba";
+    if (topology === "mesh") return "mesh-lace";
+    if ((g.sense || 0.5) > 0.78 && (g.size || 0.5) > 0.55) return "jelly";
+    return "single-cell";
+  }
+
   function drawAttachedFlagellum(ctx, sx, sy, angle, length, pal, rng, alpha) {
     const root = Math.max(1.0, length * 0.030);
     ctx.save();
@@ -274,6 +323,58 @@
       ctx.beginPath();
       ctx.moveTo(x, -r * 0.32);
       ctx.quadraticCurveTo(x + r * 0.05, 0, x, r * 0.32);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawChainEdgeCilia(ctx, n, step, r, pal, rng, pred) {
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.strokeStyle = hsla(pal.hue + 16, 62, pred ? 58 : 74, pred ? 0.42 : 0.32);
+    ctx.lineWidth = Math.max(0.65, r * 0.014);
+    for (let i = 0; i < n; i++) {
+      const x = (i - (n - 1) / 2) * step;
+      const y = Math.sin(i * 0.9) * r * 0.18;
+      const rr = r * lerp(0.30, 0.43, 1 - Math.abs(i / Math.max(1, n - 1) - 0.5) * 1.2);
+      const roots = pred ? [-0.84, 0.84] : [-0.88, -0.55, 0.55, 0.88];
+      for (const side of roots) {
+        if (rng() < (pred ? 0.16 : 0.12)) continue;
+        const sx = x + (rng() - 0.5) * rr * 0.70;
+        const sy = y + side * rr * 0.72;
+        const len = r * (0.16 + rng() * (pred ? 0.22 : 0.16));
+        const outward = side < 0 ? -Math.PI / 2 : Math.PI / 2;
+        const bend = (rng() - 0.5) * 0.44;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.quadraticCurveTo(
+          sx + Math.cos(outward + bend) * len * 0.50,
+          sy + Math.sin(outward + bend) * len * 0.50,
+          sx + Math.cos(outward + bend * 0.6) * len,
+          sy + Math.sin(outward + bend * 0.6) * len
+        );
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawSegmentBodyCilia(ctx, r, pal, rng, pred) {
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.strokeStyle = hsla(pal.hue + 16, 54, pred ? 52 : 70, pred ? 0.28 : 0.20);
+    ctx.lineWidth = Math.max(0.55, r * 0.010);
+    const count = 12;
+    for (let i = 0; i < count; i++) {
+      const t = (i + 0.5) / count;
+      const x = lerp(-r * 0.82, r * 0.82, t);
+      const top = i % 2 === 0 ? -1 : 1;
+      const y = top * r * (0.28 + rng() * 0.08);
+      const len = r * (0.15 + rng() * 0.14);
+      const a = top < 0 ? -Math.PI / 2 : Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x + (rng() - 0.5) * r * 0.07, y + Math.sin(a) * len * 0.48, x + (rng() - 0.5) * r * 0.10, y + Math.sin(a) * len);
       ctx.stroke();
     }
     ctx.restore();
@@ -411,6 +512,54 @@
     ctx.restore();
   }
 
+  function drawSpindle(ctx, o, r, pal, rng) {
+    const g = genesOf(o);
+    ctx.save();
+    ctx.rotate(-0.24 + rng() * 0.20);
+    ctx.beginPath();
+    ctx.moveTo(-r * 1.02, r * 0.02);
+    ctx.bezierCurveTo(-r * 0.62, -r * 0.46, r * 0.32, -r * 0.52, r * 1.12, -r * 0.08);
+    ctx.bezierCurveTo(r * 0.52, r * 0.48, -r * 0.54, r * 0.48, -r * 1.02, r * 0.02);
+    ctx.closePath();
+    fillAndStroke(ctx, r, pal, 0.58);
+    ctx.save();
+    ctx.clip();
+    ctx.strokeStyle = hsla(pal.hue - 8, 62, 42, 0.20);
+    ctx.lineWidth = Math.max(0.8, r * 0.024);
+    for (let i = 0; i < 5; i++) {
+      const y = -r * 0.22 + i * r * 0.11;
+      ctx.beginPath();
+      ctx.moveTo(-r * 0.62, y);
+      ctx.bezierCurveTo(-r * 0.12, y - r * 0.08, r * 0.42, y + r * 0.04, r * 0.78, y * 0.45);
+      ctx.stroke();
+    }
+    drawGranules(ctx, r * 0.82, pal, rng, 6 + Math.round((g.metabolism || 0.5) * 8), !!(o.flags && o.flags.chl));
+    drawSurfaceSpeckles(ctx, r, pal, rng, 14, 0.18);
+    ctx.restore();
+
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.strokeStyle = hsla(pal.hue + 16, 82, 74, 0.22);
+    ctx.lineWidth = Math.max(0.55, r * 0.014);
+    for (let i = 0; i < 14; i++) {
+      const t = (i + 0.5) / 14;
+      const x = lerp(-r * 0.76, r * 0.82, t);
+      const edge = Math.sin(t * Math.PI) * r * 0.40;
+      const side = i % 2 ? 1 : -1;
+      const y = side * edge * (0.72 + rng() * 0.18);
+      const len = r * (0.14 + rng() * 0.10);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x + (rng() - 0.5) * r * 0.07, y + side * len * 0.46, x + (rng() - 0.5) * r * 0.10, y + side * len);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    if ((g.sense || 0.5) > 0.40) drawAttachedFlagellum(ctx, r * 0.96, -r * 0.04, -0.08, r * 0.54, pal, rng, 0.32);
+    drawNucleus(ctx, -r * 0.22, -r * 0.02, r * 0.17, pal, rng, 0.88);
+    ctx.restore();
+  }
+
   function drawCrescent(ctx, o, r, pal, rng) {
     ctx.save();
     ctx.rotate(-0.20 + rng() * 0.24);
@@ -433,10 +582,12 @@
 
   function drawSingle(ctx, o, r, pal, rng) {
     const g = genesOf(o);
-    if ((g.diet || 0.5) > 0.68 && (g.speed || 0.5) > 0.42) drawCrescent(ctx, o, r, pal, rng);
-    else if ((g.speed || 0.5) > 0.62 || (o.flags && o.flags.chl)) drawLeaf(ctx, o, r, pal, rng);
+    const kind = visualKind(o);
+    if (kind === "single-crescent") drawCrescent(ctx, o, r, pal, rng);
+    else if (kind === "single-leaf") drawLeaf(ctx, o, r, pal, rng);
+    else if (kind === "single-spindle") drawSpindle(ctx, o, r, pal, rng);
     else drawCellBlob(ctx, o, r, pal, rng);
-    if ((g.diet || 0.5) < 0.42) drawCilia(ctx, r, pal, rng, 24, 0.45, 0.28);
+    if (kind === "single-cell" && (g.diet || 0.5) < 0.42) drawCilia(ctx, r, pal, rng, 24, 0.45, 0.28);
     if ((g.sense || 0.5) > 0.72) drawAntennae(ctx, r, pal, rng, 5);
     drawRare(ctx, o, r, pal, rng);
   }
@@ -450,7 +601,8 @@
     ctx.rotate(-0.42 + rng() * 0.55);
 
     if (variant === 1) {
-      drawBlobPath(ctx, r * 0.80, 1.85, 0.18, (g.diet || 0.5) > 0.62 ? 0.44 : 0.18, rng);
+      const pred = (g.diet || 0.5) > 0.62;
+      drawBlobPath(ctx, r * 0.80, 1.85, 0.18, pred ? 0.44 : 0.18, rng);
       fillAndStroke(ctx, r, pal, 0.54);
       ctx.save();
       ctx.clip();
@@ -459,6 +611,7 @@
       drawSegmentationLines(ctx, r, pal, 5 + Math.round((g.fecundity || 0.5) * 3), 0);
       ctx.restore();
       drawNucleus(ctx, -r * 0.42, -r * 0.03, r * 0.18, pal, rng, 0.82);
+      drawSegmentBodyCilia(ctx, r, pal, rng, pred);
       if ((g.speed || 0.5) > 0.48) drawAttachedFlagellum(ctx, r * 1.12, -r * 0.03, -0.16, r * 0.70, pal, rng, 0.38);
       ctx.restore();
       return;
@@ -482,8 +635,7 @@
       const rr = r * lerp(0.30, 0.43, 1 - Math.abs(t - 0.5) * 1.2);
       drawOvalCell(ctx, x, y, rr * 1.06, rr * 0.88, (rng() - 0.5) * 0.34, pal, rng, 0.70);
     }
-    if ((g.diet || 0.5) > 0.64) drawFineHalo(ctx, r * 0.85, pal, rng, 16, 0.42, 0.24);
-    else drawFineHalo(ctx, r * 0.90, pal, rng, 22, 0.30, 0.18);
+    drawChainEdgeCilia(ctx, n, step, r, pal, rng, (g.diet || 0.5) > 0.64);
     if (variant === 2 && (g.speed || 0.5) > 0.40) {
       const endX = (n - 1) * 0.5 * step;
       const endY = Math.sin((n - 1) * 0.9) * r * 0.18;
@@ -634,8 +786,8 @@
     }
 
     if (variant === 2) {
-      drawBlobPath(ctx, r * 0.72, 1.02, 0.62, 0.02, rng);
-      fillAndStroke(ctx, r, pal, 0.34);
+      drawSoftMembranePath(ctx, r * 0.74, 1.04, 0.54, rng);
+      fillAndStroke(ctx, r, pal, 0.30);
       ctx.clip();
     }
 
@@ -816,6 +968,27 @@
 
   global.OrganismRosterArt = {
     version: "generator-art-v1",
-    drawOrganism
+    drawOrganism,
+    visualKind,
+    visualTypes: [
+      { id:"all", label:"All forms" },
+      { id:"single-cell", label:"single cell" },
+      { id:"single-leaf", label:"leaf swimmer" },
+      { id:"single-spindle", label:"spindle cell" },
+      { id:"single-crescent", label:"crescent predator" },
+      { id:"chain-beads", label:"bead chain" },
+      { id:"chain-segment", label:"segmented long body" },
+      { id:"chain-flagella", label:"flagellated chain" },
+      { id:"ring", label:"cell ring" },
+      { id:"radial-spines", label:"radial spines" },
+      { id:"radial-beads", label:"radial beads" },
+      { id:"branch-vesicles", label:"branch vesicles" },
+      { id:"cluster-bubbles", label:"bubble cluster" },
+      { id:"cluster-rosette", label:"rosette cluster" },
+      { id:"cluster-membrane", label:"membrane cluster" },
+      { id:"amoeba", label:"amoeba" },
+      { id:"mesh-lace", label:"lace mesh" },
+      { id:"jelly", label:"jelly special" }
+    ]
   };
 })(typeof window !== "undefined" ? window : globalThis);

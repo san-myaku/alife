@@ -16,6 +16,7 @@
   .bar{ display:flex; gap:8px; flex-wrap:wrap; align-items:center }
   .btn{ appearance:none; border:1px solid var(--border); background:#0b122a; color:var(--text);
     padding:10px 12px; border-radius:10px; font-weight:700; cursor:pointer; min-height:44px }
+  select.btn{ max-width:210px; padding-right:28px }
   .btn.primary{ border-color:var(--accent); background:#12305c }
   .btn:active{ transform:translateY(1px) }
   .chip{ border:1px solid var(--border); background:#0b122a; color:var(--muted); padding:8px 10px;
@@ -99,7 +100,7 @@
     <span class="chip on" data-count="48">48</span>
     <span class="chip" data-count="96">96</span>
     <span class="slider">ドリフト<input type="range" id="drift" min="0" max="0.4" step="0.01" value="0.12"><span id="driftv">0.12</span></span>
-    <button class="btn" id="viewToggle">▦ Roster</button>
+    <button class="btn" id="viewToggle">▦ Sheet view</button>
     <button class="btn" id="export">⬇ 書き出し</button>
     <button class="btn" id="exportPins">📌 ピンのみ</button>
   </div>
@@ -181,13 +182,12 @@
   var rosterGrid = document.getElementById('rosterGrid');
   var rosterLegend = document.getElementById('rosterLegend');
   var viewToggle = document.getElementById('viewToggle');
-  var artToggle = document.createElement('button');
-  artToggle.className = 'btn primary';
-  artToggle.id = 'artToggle';
-  artToggle.type = 'button';
-  artToggle.textContent = 'Art Lab';
-  if(viewToggle) viewToggle.insertAdjacentElement('afterend', artToggle);
-  var count = 48, species = [], activeIdx = -1, viewMode = 'grid', artMode = true;
+  var typeSelect = document.createElement('select');
+  typeSelect.className = 'btn';
+  typeSelect.id = 'typeSelect';
+  typeSelect.title = 'Generate by visual form';
+  if(viewToggle) viewToggle.insertAdjacentElement('afterend', typeSelect);
+  var count = 48, species = [], activeIdx = -1, viewMode = 'grid', selectedType = 'all';
   var DPR = Math.min(2, window.devicePixelRatio || 1);
   var GROUPS = [
     { id:'grazer', label:'Herbivore / Filter', color:'#33b999', order:0 },
@@ -233,6 +233,71 @@
     return o;
   }
 
+  function visualKindFor(sp){
+    var o = buildCreature(sp);
+    return A && A.visualKind ? A.visualKind(o) : o.morphologyTopology;
+  }
+
+  function prepareTypeSelect(){
+    var types = (A && A.visualTypes) ? A.visualTypes : [{ id:'all', label:'All forms' }];
+    typeSelect.innerHTML = '';
+    types.forEach(function(t){
+      var opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.label;
+      typeSelect.appendChild(opt);
+    });
+    typeSelect.value = selectedType;
+  }
+
+  function typeRng(sp, type){
+    return M.rngFromKey('generator-type:'+type+':'+((sp.seed>>>0)||1));
+  }
+
+  function biasSpeciesForType(sp, type){
+    var rr = typeRng(sp, type);
+    if(type==='jelly'){
+      sp.flags.glow = true;
+      sp.genes.sense = 0.84 + rr()*0.14;
+      sp.genes.size = 0.70 + rr()*0.28;
+    } else if(type==='single-leaf'){
+      sp.flags.chl = true;
+      sp.genes.speed = Math.max(sp.genes.speed, 0.66 + rr()*0.25);
+      sp.genes.diet = Math.min(sp.genes.diet, 0.42);
+    } else if(type==='single-spindle'){
+      sp.genes.speed = 0.42 + rr()*0.18;
+      sp.genes.size = Math.max(sp.genes.size, 0.48 + rr()*0.20);
+      sp.genes.metabolism = Math.min(sp.genes.metabolism, 0.54);
+      sp.genes.fecundity = Math.min(sp.genes.fecundity, 0.56);
+      sp.genes.sense = Math.min(sp.genes.sense, 0.48);
+      sp.genes.diet = 0.36 + rr()*0.24;
+      sp.genes.formSeed = Math.max(sp.genes.formSeed, 0.66 + rr()*0.22);
+    } else if(type==='single-crescent' || type==='radial-spines'){
+      sp.genes.diet = Math.max(sp.genes.diet, 0.72);
+      sp.genes.speed = Math.max(sp.genes.speed, 0.48);
+    } else if(type==='mesh-lace'){
+      sp.genes.metabolism = Math.max(sp.genes.metabolism, 0.76);
+      sp.genes.sense = Math.max(sp.genes.sense, 0.58);
+      sp.genes.size = Math.max(sp.genes.size, 0.50);
+    } else if(type.indexOf('cluster-')===0){
+      sp.genes.fecundity = Math.max(sp.genes.fecundity, 0.72);
+      sp.genes.size = Math.min(sp.genes.size, 0.68);
+    } else if(type.indexOf('chain-')===0){
+      sp.genes.speed = Math.max(sp.genes.speed, 0.54);
+      sp.genes.sense = Math.max(sp.genes.sense, 0.42);
+    }
+    return sp;
+  }
+
+  function makeSpeciesForType(type){
+    if(type==='all') return makeSpecies(randSeed());
+    for(var tries=0; tries<1800; tries++){
+      var sp = biasSpeciesForType(makeSpecies(randSeed()), type);
+      if(visualKindFor(sp)===type) return sp;
+    }
+    return biasSpeciesForType(makeSpecies(randSeed()), type);
+  }
+
   function sizeCanvas(cv, w, h){ cv.width=Math.round(w*DPR); cv.height=Math.round(h*DPR); var ctx=cv.getContext('2d'); ctx.setTransform(DPR,0,0,DPR,0,0); return ctx; }
   function paintBackdrop(ctx, w, h){
     var g=ctx.createRadialGradient(w*0.5,h*0.42,2,w*0.5,h*0.5,Math.max(w,h)*0.72);
@@ -253,7 +318,7 @@
     ctx.restore();
   }
   function drawCreature(ctx, o, w, h, fill, group){
-    if(artMode && A && A.drawOrganism){
+    if(A && A.drawOrganism){
       var artFill = viewMode==='roster' ? Math.max(fill||0.42, 0.38) : (fill||0.42);
       A.drawOrganism(ctx, o, w, h, { fill:artFill, groupColor:group&&group.color, roster:viewMode==='roster' });
       return;
@@ -287,7 +352,11 @@
     var o=buildCreature(sp), group=groupFor(sp,o); drawCreature(ctx,o,w,h,0.42,group); cv.__o=o;
     return true;
   }
-  function tagText(sp){ var o=buildCreature(sp); return o.morphologyTopology+'・'+dietClass(sp.genes.diet); }
+  function visualLabelFor(sp){
+    var o=buildCreature(sp);
+    return (A&&A.visualKind?A.visualKind(o):o.morphologyTopology)+' / '+dietClass(sp.genes.diet);
+  }
+  function tagText(sp){ return visualLabelFor(sp); }
   function drawAll(){
     var ok=true;
     if(viewMode==='grid'){
@@ -320,7 +389,7 @@
       var pin=document.createElement('div'); pin.className='roster-pin'; pin.textContent=sp.locked?'📌':'';
       var cv=document.createElement('canvas');
       var label=document.createElement('div'); label.className='roster-label';
-      label.innerHTML='<span class="roster-dot"></span><span>'+row.o.morphologyTopology+'・'+dietClass(sp.genes.diet)+'</span>';
+      label.innerHTML='<span class="roster-dot"></span><span>'+visualLabelFor(sp)+'</span>';
       card.appendChild(num); card.appendChild(pin); card.appendChild(cv); card.appendChild(label);
       card.addEventListener('click',function(){ openDetail(row.i); });
       rosterGrid.appendChild(card);
@@ -345,7 +414,7 @@
   }
   function generate(){
     var next=[];
-    for(var i=0;i<count;i++){ if(species[i]&&species[i].locked) next.push(species[i]); else next.push(makeSpecies(randSeed())); }
+    for(var i=0;i<count;i++){ if(species[i]&&species[i].locked) next.push(species[i]); else next.push(makeSpeciesForType(selectedType)); }
     species=next; buildGrid();
   }
 
@@ -354,7 +423,7 @@
   function renderDetail(){
     var sp=species[activeIdx]; if(!sp) return;
     var o=buildCreature(sp);
-    document.getElementById('dTitle').textContent='種 '+o.morphologyTopology+'・'+dietClass(sp.genes.diet)+'（seed '+sp.seed+'）';
+    document.getElementById('dTitle').textContent='Type '+(A&&A.visualKind?A.visualKind(o):o.morphologyTopology)+' / '+dietClass(sp.genes.diet)+' (seed '+sp.seed+')';
     var adapts=M.adaptationProfilesFromGenes(sp.genes, o.flags, o.morphologyTopology, o.role);
     document.getElementById('derived').innerHTML =
       '<b>種ID</b> '+o.speciesKey+' ／ <b>形態</b> '+o.morphologyTopology+' ／ <b>ロール</b> '+o.role+'<br>'+
@@ -393,7 +462,7 @@
   document.getElementById('dClose').addEventListener('click',function(){ detail.classList.remove('on'); });
   detail.addEventListener('click',function(e){ if(e.target===detail) detail.classList.remove('on'); });
   document.getElementById('dReroll').addEventListener('click',function(){
-    var was=species[activeIdx].locked; species[activeIdx]=makeSpecies(randSeed()); species[activeIdx].locked=was; openDetail(activeIdx); refreshCell();
+    var was=species[activeIdx].locked; species[activeIdx]=makeSpeciesForType(selectedType); species[activeIdx].locked=was; openDetail(activeIdx); refreshCell();
   });
   document.getElementById('dDrift').addEventListener('click',function(){
     var child=driftSpecies(species[activeIdx], +document.getElementById('drift').value);
@@ -420,22 +489,12 @@
 
   // ---- controls ----
   document.getElementById('gen').addEventListener('click',generate);
-  function syncArtToggle(){
-    artToggle.classList.toggle('primary', artMode);
-    artToggle.textContent = artMode ? 'Art Lab' : 'Game Renderer';
-    artToggle.title = artMode ? 'Generator-only concept renderer' : 'Current shared game renderer';
-  }
-  syncArtToggle();
-  artToggle.addEventListener('click',function(){
-    artMode = !artMode;
-    syncArtToggle();
-    requestAnimationFrame(function(){ requestAnimationFrame(drawAll); });
-    if(detail.classList.contains('on')) renderDetail();
-  });
+  prepareTypeSelect();
+  typeSelect.addEventListener('change',function(){ selectedType=this.value||'all'; generate(); });
   viewToggle.addEventListener('click',function(){
     viewMode = viewMode==='grid' ? 'roster' : 'grid';
     document.body.classList.toggle('roster-mode', viewMode==='roster');
-    this.textContent = viewMode==='roster' ? '▦ Grid' : '▦ Roster';
+    this.textContent = viewMode==='roster' ? '▦ Card view' : '▦ Sheet view';
     requestAnimationFrame(function(){ requestAnimationFrame(drawAll); });
   });
   document.getElementById('drift').addEventListener('input',function(){ document.getElementById('driftv').textContent=(+this.value).toFixed(2); });
