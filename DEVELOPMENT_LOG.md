@@ -26,9 +26,8 @@
 
 ### 2026-07-08
 
-- Polished the shared organism renderer with deterministic appearance details: role/topology-driven peripheral cilia or spines, tiny internal granules, and subtle membrane arcs inside each symbolic node. The gene model and gameplay logic were left unchanged.
 - Added a Lifeform Roster mode to `generator.html`, using the real shared renderer to arrange generated organisms into a pale reference-sheet view with numbering, role-color dots, group legend, and modal drill-in.
-- The roster remains a generator-side visual exploration surface; the later renderer polish affects both the game and generator through the shared drawing module without changing genes, saves, or ecology logic.
+- Kept the game files and shared renderer/model behavior unchanged for this pass; the roster is a generator-only visual exploration surface for refining organism appearance before gameplay integration.
 
 ### 2026-07-06
 
