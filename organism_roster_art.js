@@ -146,14 +146,27 @@
 
   function fillAndStroke(ctx, r, pal, alpha) {
     ctx.fillStyle = bodyGradient(ctx, r, pal, alpha == null ? 0.82 : alpha);
-    ctx.strokeStyle = pal.line;
-    ctx.lineWidth = Math.max(0.9, r * 0.038);
     ctx.fill();
+    // glassy top-left glaze: light passing through the translucent membrane (clipped to body)
+    ctx.save();
+    ctx.clip();
+    ctx.globalCompositeOperation = "screen";
+    const gl = ctx.createRadialGradient(-r * 0.34, -r * 0.44, r * 0.04, -r * 0.18, -r * 0.26, r * 1.16);
+    gl.addColorStop(0, hsla(pal.hue + 30, 72, 96, 0.30));
+    gl.addColorStop(0.5, hsla(pal.hue + 20, 60, 90, 0.06));
+    gl.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = gl;
+    ctx.fillRect(-r * 2, -r * 2, r * 4, r * 4);
+    ctx.restore();
+    // crisp ink outline (confident dark contour, like a field-guide plate)
+    ctx.strokeStyle = hsla(pal.hue - 14, 46, 22, 0.66);
+    ctx.lineWidth = Math.max(1, r * 0.05);
     ctx.stroke();
+    // bright glass rim on the lit edge
     ctx.save();
     ctx.globalCompositeOperation = "screen";
-    ctx.strokeStyle = hsla(pal.hue + 24, 60, 94, 0.20);
-    ctx.lineWidth = Math.max(0.6, r * 0.018);
+    ctx.strokeStyle = hsla(pal.hue + 26, 62, 95, 0.24);
+    ctx.lineWidth = Math.max(0.6, r * 0.02);
     ctx.stroke();
     ctx.restore();
   }
