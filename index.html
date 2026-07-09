@@ -779,7 +779,7 @@
 
   class RingEffect{
     constructor(x,y,opts={}){
-      this.x=x; this.y=y; this.t=opts.t||48; this.maxT=this.t; this.r0=opts.r0||4; this.r1=opts.r1||42; this.color=opts.color||'rgba(180,230,255,'; this.width=opts.width||1.4;
+      this.x=x; this.y=y; this.t=opts.t||48; this.maxT=this.t; this.r0=opts.r0||4; this.r1=opts.r1||42; this.color=opts.color||'rgba(120,224,150,'; this.width=opts.width||1.4;
     }
     step(){ this.t--; }
     draw(ctx){
@@ -844,10 +844,10 @@
       ctx.save();
       ctx.lineCap='round';
       ctx.lineJoin='round';
-      ctx.strokeStyle=`rgba(186,230,255,${(0.19*k).toFixed(3)})`;
+      ctx.strokeStyle=`rgba(32,76,44,${(0.24*k).toFixed(3)})`;
       ctx.lineWidth=this.width;
       ctx.beginPath(); ctx.moveTo(this.x1,this.y1); ctx.lineTo(this.x2,this.y2); ctx.stroke();
-      ctx.strokeStyle=`rgba(238,252,255,${(0.36*k).toFixed(3)})`;
+      ctx.strokeStyle=`rgba(166,226,136,${(0.20*k).toFixed(3)})`;
       ctx.lineWidth=1.6;
       ctx.stroke();
       ctx.restore();
@@ -3011,7 +3011,7 @@ if(Z>0.08){
       if(!renderPerf.low && this.trail.length>1){
         ctx.beginPath();
         for(let i=0;i<this.trail.length;i++){ const p=this.trail[i]; if(i===0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y); }
-        ctx.strokeStyle='rgba(150,190,255,0.10)';
+        ctx.strokeStyle='rgba(18,58,34,0.07)';
         ctx.lineWidth=Math.max(0.45,1.6*visualScale);
         ctx.stroke();
       }
@@ -3030,7 +3030,7 @@ if(Z>0.08){
       ctx.rotate(Number.isFinite(this.heading) ? this.heading : 0);
       if(ui.showSense){
         ctx.beginPath(); ctx.arc(0,0,this.senseR,0,TAU);
-        ctx.strokeStyle='rgba(100,180,255,0.08)';
+        ctx.strokeStyle='rgba(74,150,104,0.07)';
         ctx.lineWidth=1;
         ctx.stroke();
       }
@@ -3738,8 +3738,9 @@ if(p.type==='oxygen'){
             const residual=clamp01(n/0.20);
             const empty=clamp01((0.18-n)/0.18);
             const darkT=clamp01(mark*1.38 * (0.34 + 0.66*empty) + (mark>0.22 ? empty*0.20 : 0));
-            ctx.globalAlpha = clamp(0.10 + mark*0.30 + darkT*0.42,0.08,0.72);
-            ctx.fillStyle = `rgb(${Math.round(70 + (0-70)*darkT)},${Math.round(98 + (2-98)*darkT)},${Math.round(34 + (0-34)*darkT)})`;
+            const scarAlpha = clamp(0.18 + mark*0.42 + darkT*0.56 + empty*mark*0.08,0.16,0.94);
+            ctx.globalAlpha = scarAlpha;
+            ctx.fillStyle = `rgb(${Math.round(48 + (0-48)*darkT)},${Math.round(74 + (2-74)*darkT + residual*4)},${Math.round(20 + (0-20)*darkT)})`;
             ctx.fillRect(px,py,w,hh);
           }
           if(edible>0.68 && !tiny && ((h>>>8)&7)===0){
@@ -4208,14 +4209,12 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
 
   // ===== Background / HUD with Parallax =====
   const season=()=> 0.6 + 0.6*Math.max(0, Math.sin(frame/3000*TAU));
-  const parallax = { stars:[], blobs:[], streaks:[] };
+  const parallax = { stars:[], blobs:[] };
   function initParallax(){
     const starN = renderPerf.mobile ? 70 : 110;
     const blobN = renderPerf.mobile ? 10 : 18;
-    const streakN = renderPerf.mobile ? 6 : 10;
     parallax.stars.length=0; for(let i=0;i<starN;i++){ parallax.stars.push({x:Math.random(), y:Math.random(), z:rnd(0.2,1)}); }
     parallax.blobs.length=0; for(let i=0;i<blobN;i++){ parallax.blobs.push({x:Math.random(), y:Math.random(), r:rnd(40,160), z:rnd(0.3,0.9)}); }
-    parallax.streaks.length=0; for(let i=0;i<streakN;i++){ parallax.streaks.push({x:Math.random(), y:Math.random(), len:rnd(60,200), z:rnd(0.4,0.95), a:rnd(0,TAU)}); }
   }
   initParallax();
 
@@ -4308,17 +4307,6 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
     }
     ctx.restore();
 
-    // layer 3: streaks (parallax drift)
-    ctx.save();
-    ctx.globalAlpha = lerp(0.07,0.12,night);
-    ctx.strokeStyle = `rgba(160,210,255,${lerp(0.07,0.10,night)})`;
-    ctx.lineWidth=2;
-    for(const t of parallax.streaks){
-      const len=t.len; const x=(t.x*W + (frame*0.12*t.z))%W; const y=(t.y*H + Math.sin(frame*0.002+t.x*13)*18*t.z);
-      const dx=Math.cos(t.a)*len, dy=Math.sin(t.a)*len;
-      ctx.beginPath(); ctx.moveTo(x-dx*0.5, y-dy*0.5); ctx.lineTo(x+dx*0.5, y+dy*0.5); ctx.stroke();
-    }
-    ctx.restore();
   }
   function drawHUD(){
     try {
@@ -4427,7 +4415,7 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
   function endPointerStroke(ev){
     if(!pointerStroke) return;
     if(!pointerStroke.moved && pointerStroke.tool==='membrane'){
-      pushRing(pointerStroke.x,pointerStroke.y,{r0:4,r1:20,color:'rgba(186,230,255,',t:38,width:1.2});
+      pushRing(pointerStroke.x,pointerStroke.y,{r0:4,r1:20,color:'rgba(120,224,150,',t:38,width:1.2});
     }
     try{ view.releasePointerCapture(ev.pointerId); }catch(_){}
     pointerStroke=null;
