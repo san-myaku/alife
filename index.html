@@ -140,9 +140,6 @@
       <button id="roleviz-btn" class="btn" style="width:100%">🎭 ロール色分け: OFF</button>
     </div>
     <div class="row">
-      <button id="caustics-btn" class="btn" style="width:100%">〰 水面反射: OFF</button>
-    </div>
-    <div class="row">
       <button id="observe-btn" class="btn" style="width:100%">◎ 観察: OFF</button>
     </div>
     <div class="row">
@@ -250,7 +247,6 @@
       <button data-tool="food">🍞 エサ（既定）</button>
       <button data-tool="repel">💨 リペレント煙</button>
       <button data-tool="mutagen">☢ ミュータジェン・パルス</button>
-      <button data-tool="water">〰 水面を撫でる</button>
       <button data-tool="membrane">◌ 一時壁</button>
     </div>
   </aside>
@@ -367,7 +363,7 @@
   });
 
   // ===== UI State =====
-  const ui={ speed:1, mutation:0.03, showSense:false, tool:'food', popMax:CONFIG.population.maxDefault, parallax:1.0, roleViz:false, caustics:false, observeField:null, microView:true, forceFullRender:true };
+  const ui={ speed:1, mutation:0.03, showSense:false, tool:'food', popMax:CONFIG.population.maxDefault, parallax:1.0, roleViz:false, observeField:null, microView:true, forceFullRender:true };
   const renderPerf = { mobile:IS_MOBILE_VIEW, low:!ui.forceFullRender && IS_MOBILE_VIEW, tiny:false, mode:ui.forceFullRender?'full':(IS_MOBILE_VIEW?'low':'full'), meshCount:0, complexCount:0, heavyComplex:false };
   $('speed-slider').addEventListener('input',e=>{ ui.speed=+e.target.value; $('speed-value').textContent=ui.speed+'x'; });
   $('mutation-slider').addEventListener('input',e=>{ ui.mutation=(+e.target.value)/100; $('mutation-value').textContent=e.target.value+'%'; });
@@ -397,16 +393,6 @@
     syncRoleVizUI();
   }
 
-  const causticsBtn = $('caustics-btn');
-  function syncCausticsUI(){
-    if(!causticsBtn) return;
-    causticsBtn.textContent = ui.caustics ? '〰 水面反射: ON' : '〰 水面反射: OFF';
-    causticsBtn.classList.toggle('on', ui.caustics);
-  }
-  if(causticsBtn){
-    causticsBtn.addEventListener('click', ()=>{ ui.caustics = !ui.caustics; syncCausticsUI(); });
-    syncCausticsUI();
-  }
 
   const OBSERVE_FIELDS = [null,'oxygen','detritus','algae'];
   const OBSERVE_META = {
@@ -576,7 +562,7 @@
     perfStats.predationScans = 0;
     updateAdaptiveRenderMode(fps);
     fpsHud.textContent = `FPS ${fps}｜${renderPerf.mode}｜個体 ${organisms.length}｜U${perfStats.updateMs.toFixed(1)} D${perfStats.drawMs.toFixed(1)}`;
-    fpsHud.title = `FPS ${fps}\n描画 ${renderPerf.mode}\n個体 ${organisms.length}\nmesh ${renderPerf.meshCount}\n複雑形態 ${renderPerf.complexCount}\n餌 ${food.length}\n死骸 ${corpses.length}\nプランクトン ${plankton.length}\n粒子 ${sparks.length + rings.length}\n近傍探索 ${perfStats.neighborQueriesLast}/秒\n捕食探索 ${perfStats.predationScansLast}/秒\n種カード更新 ${perfStats.speciesCardMs.toFixed(1)}ms\n水面反射 ${ui.caustics ? 'ON' : 'OFF'}`;
+    fpsHud.title = `FPS ${fps}\n描画 ${renderPerf.mode}\n個体 ${organisms.length}\nmesh ${renderPerf.meshCount}\n複雑形態 ${renderPerf.complexCount}\n餌 ${food.length}\n死骸 ${corpses.length}\nプランクトン ${plankton.length}\n粒子 ${sparks.length + rings.length}\n近傍探索 ${perfStats.neighborQueriesLast}/秒\n捕食探索 ${perfStats.predationScansLast}/秒\n種カード更新 ${perfStats.speciesCardMs.toFixed(1)}ms`;
     fpsHud.dataset.level = fps < 28 ? 'low' : (fps < 45 ? 'mid' : 'ok');
     fpsMeter.last = now;
     fpsMeter.frames = 0;
@@ -1975,48 +1961,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     for(const f of food) applyWaterCurrentTo(f,0.22);
     for(const p of plankton) applyWaterCurrentTo(p,0.42);
   }
-  function drawWaterCurrents(ctx){
-    if(!waterCurrents.length) return;
-    ctx.save();
-    ctx.lineCap='round';
-    ctx.globalCompositeOperation='lighter';
-    const skip = renderPerf.low ? 2 : 1;
-    for(let i=0;i<waterCurrents.length;i+=skip){
-      const c=waterCurrents[i];
-      const k=clamp(c.t/c.maxT,0,1);
-      const speed=Math.hypot(c.vx,c.vy)||0.001;
-      const nx=c.vx/speed, ny=c.vy/speed;
-      const len=22 + 42*k;
-      ctx.strokeStyle=`rgba(155,225,255,${(0.10*k).toFixed(3)})`;
-      ctx.lineWidth=1.1 + 1.2*k;
-      ctx.beginPath();
-      ctx.moveTo(c.x-nx*len*0.55, c.y-ny*len*0.55);
-      ctx.quadraticCurveTo(c.x-ny*8*k, c.y+nx*8*k, c.x+nx*len*0.65, c.y+ny*len*0.65);
-      ctx.stroke();
-      if(!renderPerf.low){
-        ctx.beginPath();
-        ctx.arc(c.x,c.y,c.r*(0.18+0.22*(1-k)),0,TAU);
-        ctx.strokeStyle=`rgba(185,238,255,${(0.045*k).toFixed(3)})`;
-        ctx.lineWidth=0.8;
-        ctx.stroke();
-      }
-    }
-    ctx.restore();
-  }
   function drawTransientFields(){
-    drawWaterCurrents(ctx);
     for(const m of membranes) m.draw(ctx);
     for(const r of rings) r.draw(ctx);
-  }
-  function addWaterStroke(x,y,px,py){
-    const dx=x-px, dy=y-py; const d=Math.hypot(dx,dy)||1;
-    pushRing(x,y,{r0:3,r1:28+Math.min(34,d*1.4),color:'rgba(165,230,255,',t:42,width:1.2});
-    waterCurrents.push({x,y,vx:(dx/d)*0.36,vy:(dy/d)*0.36,r:68,t:120,maxT:120});
-    if(waterCurrents.length>CONFIG.rendering.maxCurrents) waterCurrents.splice(0,waterCurrents.length-CONFIG.rendering.maxCurrents);
-    if(window.env){
-      if(window.env.addOxygenAt) window.env.addOxygenAt(x,y,0.0025);
-      if(window.env.sinkDetritusAt) window.env.sinkDetritusAt(x,y,0.0015);
-    }
   }
   function addMembraneStroke(x,y,px,py){
     if(Math.hypot(x-px,y-py)<6) return;
@@ -4272,146 +4219,6 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
   }
   initParallax();
 
-  const waterCaustics = { canvas:null, ctx:null, scale:0, w:0, h:0, last:-999, loops:[] };
-  function ensureWaterCaustics(){
-    const scale = renderPerf.mobile ? 0.38 : 0.52;
-    const w = Math.max(120, Math.round(W*scale));
-    const h = Math.max(90, Math.round(H*scale));
-    if(waterCaustics.canvas && waterCaustics.w===w && waterCaustics.h===h) return;
-    const c = document.createElement('canvas');
-    c.width=w; c.height=h;
-    waterCaustics.canvas=c;
-    waterCaustics.ctx=c.getContext('2d');
-    waterCaustics.scale=scale;
-    waterCaustics.w=w;
-    waterCaustics.h=h;
-    waterCaustics.last=-999;
-    waterCaustics.loops.length=0;
-    const rng=rngFromKey(`caustics:${w}x${h}`);
-    const loopN=renderPerf.mobile ? 14 : 24;
-    for(let i=0;i<loopN;i++){
-      waterCaustics.loops.push({
-        x:rng()*w,
-        y:rng()*h,
-        rx:(18+rng()*46)*scale,
-        ry:(8+rng()*24)*scale,
-        rot:rng()*TAU,
-        phase:rng()*TAU,
-        drift:rng()*TAU
-      });
-    }
-  }
-  function drawCausticPath(c,horizontal,base,phase,amp,w,h,seed){
-    const step=renderPerf.low ? 18 : 13;
-    c.beginPath();
-    if(horizontal){
-      for(let x=-40,i=0; x<=w+40; x+=step,i++){
-        const y=base + Math.sin(x*0.030 + phase + seed)*amp + Math.sin(x*0.071 - phase*0.72 + seed*1.7)*amp*0.34;
-        if(i===0) c.moveTo(x,y); else c.lineTo(x,y);
-      }
-    } else {
-      for(let y=-40,i=0; y<=h+40; y+=step,i++){
-        const x=base + Math.sin(y*0.028 - phase + seed)*amp + Math.sin(y*0.066 + phase*0.58 + seed*1.3)*amp*0.36;
-        if(i===0) c.moveTo(x,y); else c.lineTo(x,y);
-      }
-    }
-  }
-  function repaintWaterCaustics(){
-    ensureWaterCaustics();
-    const c=waterCaustics.ctx;
-    const w=waterCaustics.w, h=waterCaustics.h;
-    c.clearRect(0,0,w,h);
-    const phase=frame*0.012;
-    c.save();
-    c.globalCompositeOperation='lighter';
-    c.lineCap='round';
-    c.lineJoin='round';
-    const strandN=renderPerf.low ? 18 : 34;
-    for(let pass=0; pass<2; pass++){
-      const wide=pass===0;
-      c.strokeStyle=wide?'rgba(152,232,235,0.14)':'rgba(245,255,236,0.42)';
-      c.lineWidth=wide?(renderPerf.low?2.0:2.7):(renderPerf.low?0.55:0.82);
-      c.globalAlpha=wide?0.78:0.54;
-      const step=renderPerf.low ? 2 : 1;
-      for(let i=pass; i<strandN; i+=step){
-        const hx=hash01(`ca-x:${i}:${w}`);
-        const hy=hash01(`ca-y:${i}:${h}`);
-        const ha=hash01(`ca-a:${i}:${w}:${h}`);
-        const hl=hash01(`ca-l:${i}`);
-        const cx=(hx*w + Math.sin(phase*0.55+i*0.77)*18 + w) % w;
-        const cy=(hy*h + Math.cos(phase*0.48+i*0.63)*14 + h) % h;
-        const angle=ha*TAU + Math.sin(phase*0.35+i)*0.42;
-        const len=(renderPerf.low?18:24) + hl*(renderPerf.low?34:52);
-        const wave=4 + hash01(`ca-b:${i}`)*10;
-        const dx=Math.cos(angle), dy=Math.sin(angle);
-        const nx=-dy, ny=dx;
-        c.beginPath();
-        c.moveTo(cx-dx*len*0.50 + nx*Math.sin(i+phase)*wave*0.28, cy-dy*len*0.50 + ny*Math.cos(i-phase)*wave*0.28);
-        c.quadraticCurveTo(
-          cx + nx*Math.sin(phase+i*1.7)*wave,
-          cy + ny*Math.cos(phase*0.8+i*1.3)*wave,
-          cx+dx*len*0.50 - nx*Math.cos(i+phase)*wave*0.22,
-          cy+dy*len*0.50 - ny*Math.sin(i-phase)*wave*0.22
-        );
-        c.stroke();
-      }
-      c.globalAlpha=1;
-    }
-    if(!renderPerf.tiny){
-      c.strokeStyle='rgba(250,255,245,0.46)';
-      c.lineWidth=renderPerf.low?0.75:1.05;
-      const loopSkip=renderPerf.low ? 2 : 1;
-      for(let i=0;i<waterCaustics.loops.length;i+=loopSkip){
-        const q=waterCaustics.loops[i];
-        const cx=(q.x + Math.sin(phase*0.45+q.drift)*12 + w) % w;
-        const cy=(q.y + Math.cos(phase*0.38+q.drift)*9 + h) % h;
-        c.beginPath();
-        const samples=36;
-        for(let j=0;j<=samples;j++){
-          const a=j/samples*TAU;
-          const ripple=1 + 0.10*Math.sin(a*3 + phase + q.phase) + 0.05*Math.sin(a*7 - phase*0.7);
-          const ca=Math.cos(q.rot), sa=Math.sin(q.rot);
-          const lx=Math.cos(a)*q.rx*ripple;
-          const ly=Math.sin(a)*q.ry*ripple;
-          const x=cx + lx*ca - ly*sa;
-          const y=cy + lx*sa + ly*ca;
-          if(j===0) c.moveTo(x,y); else c.lineTo(x,y);
-        }
-        c.stroke();
-      }
-    }
-    const glow=c.createRadialGradient(w*0.52,h*0.32,0,w*0.52,h*0.32,Math.max(w,h)*0.62);
-    glow.addColorStop(0,'rgba(255,255,240,0.13)');
-    glow.addColorStop(0.52,'rgba(160,240,255,0.04)');
-    glow.addColorStop(1,'rgba(0,0,0,0)');
-    c.fillStyle=glow;
-    c.fillRect(0,0,w,h);
-    c.restore();
-    waterCaustics.last=frame;
-  }
-  function drawSurfaceCaustics(){
-    if(!ui.caustics) return;
-    const a = window.env?.getAverages ? window.env.getAverages() : {O:0.75,N:0.28,D:0.05};
-    const night = clamp01(dayNight.night ?? (dayNight.isNight ? 1 : 0));
-    const day = 1-night;
-    const clarity = clamp(0.22 + 0.48*(a.O??0.7) + 0.16*(a.N??0.25) - 0.42*(a.D??0.05), 0.12, 0.78);
-    const alpha = clamp((0.10 + 0.24*day + 0.035*Math.sin(frame*0.006))*clarity, 0.02, 0.30) * (renderPerf.tiny?0.55:1);
-    if(alpha<=0.018) return;
-    ensureWaterCaustics();
-    const repaintEvery = renderPerf.low ? 8 : 4;
-    if(frame-waterCaustics.last>=repaintEvery) repaintWaterCaustics();
-    ctx.save();
-    ctx.globalCompositeOperation='lighter';
-    ctx.globalAlpha=alpha;
-    ctx.drawImage(waterCaustics.canvas,0,0,W,H);
-    if(!renderPerf.low){
-      ctx.globalAlpha=alpha*0.34;
-      ctx.translate(Math.sin(frame*0.006)*8, Math.cos(frame*0.004)*6);
-      ctx.drawImage(waterCaustics.canvas,0,0,W,H);
-    }
-    ctx.restore();
-  }
-
   function drawObservationOverlay(){
     const type=ui.observeField, meta=OBSERVE_META[type];
     if(!meta || !window.env?.valueAt) return;
@@ -4579,8 +4386,8 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
   // ===== Tools UI =====
   const toolBtn=$('tool-btn'); const toolMenu=$('tool-menu'); const toolPill=$('tool-pill');
   let pressTimer=null; function openMenu(){ toolMenu.style.display='block'; } function closeMenu(){ toolMenu.style.display='none'; }
-  function toolLabel(name){ return name==='food'?'エサ': name==='repel'?'煙': name==='mutagen'?'変異': name==='water'?'水面': name==='membrane'?'壁':'ツール'; }
-  function setTool(name){ ui.tool=name; toolPill.textContent='ツール: '+toolLabel(name); toolBtn.textContent=name==='food'?'＋ エサ追加':(name==='water'?'〰 水面':(name==='membrane'?'◌ 壁':(name==='repel'?'💨 煙':'☢ 変異'))); closeMenu(); }
+  function toolLabel(name){ return name==='food'?'エサ': name==='repel'?'煙': name==='mutagen'?'変異': name==='membrane'?'壁':'ツール'; }
+  function setTool(name){ ui.tool=name; toolPill.textContent='ツール: '+toolLabel(name); toolBtn.textContent=name==='food'?'＋ エサ追加':(name==='membrane'?'◌ 壁':(name==='repel'?'💨 煙':'☢ 変異')); closeMenu(); }
   toolMenu.addEventListener('click',e=>{ const t=e.target.closest('button'); if(!t) return; setTool(t.dataset.tool); });
   const startPress=()=>{ clearTimeout(pressTimer); pressTimer=setTimeout(openMenu,550); };
   const endPress=(fireClick)=>{ if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; if(toolMenu.style.display==='block') return; if(fireClick) defaultToolAction(); } };
@@ -4597,10 +4404,9 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
   view.addEventListener('pointerdown',ev=>{
     ev.preventDefault();
     const p=canvasPoint(ev);
-    if(ui.tool==='water' || ui.tool==='membrane'){
+    if(ui.tool==='membrane'){
       pointerStroke={tool:ui.tool,x:p.x,y:p.y,lastX:p.x,lastY:p.y,moved:false};
       try{ view.setPointerCapture(ev.pointerId); }catch(_){}
-      if(ui.tool==='water') addWaterStroke(p.x,p.y,p.x-0.1,p.y);
       return;
     }
     const hit=nearestOrganismAt(p.x,p.y,IS_MOBILE_VIEW?48:36);
@@ -4615,8 +4421,7 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
     const d=Math.hypot(p.x-pointerStroke.lastX,p.y-pointerStroke.lastY);
     if(d<5) return;
     pointerStroke.moved=true;
-    if(pointerStroke.tool==='water') addWaterStroke(p.x,p.y,pointerStroke.lastX,pointerStroke.lastY);
-    else if(pointerStroke.tool==='membrane') addMembraneStroke(p.x,p.y,pointerStroke.lastX,pointerStroke.lastY);
+    if(pointerStroke.tool==='membrane') addMembraneStroke(p.x,p.y,pointerStroke.lastX,pointerStroke.lastY);
     pointerStroke.lastX=p.x; pointerStroke.lastY=p.y;
   });
   function endPointerStroke(ev){
@@ -4629,7 +4434,7 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
   }
   view.addEventListener('pointerup',endPointerStroke);
   view.addEventListener('pointercancel',endPointerStroke);
-  function defaultToolAction(){ if(ui.tool==='food'){ for(let i=0;i<16;i++){ const t=Math.random()<0.8?'small':'big'; food.push(new Food(rnd(8,W-8), rnd(8,H-8), t)); } log('＋ エサを広域追加'); } else if(ui.tool==='water'){ addWaterStroke(W*0.52,H*0.5,W*0.48,H*0.5); } else if(ui.tool==='membrane'){ addMembraneStroke(W*0.45,H*0.48,W*0.58,H*0.54); } else addEffect(ui.tool, W*0.6, H*0.5); }
+  function defaultToolAction(){ if(ui.tool==='food'){ for(let i=0;i<16;i++){ const t=Math.random()<0.8?'small':'big'; food.push(new Food(rnd(8,W-8), rnd(8,H-8), t)); } log('＋ エサを広域追加'); } else if(ui.tool==='membrane'){ addMembraneStroke(W*0.45,H*0.48,W*0.58,H*0.54); } else addEffect(ui.tool, W*0.6, H*0.5); }
 
   // ===== Species Cards (rich avatar) =====
   function stars01(x){ const s=Math.round(clamp(x,0,1)*5); return '★★★★★'.slice(0,s)+'<span style="opacity:.25">'+ '★★★★★'.slice(s)+'</span>'; }
@@ -5056,8 +4861,6 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     ui.mutation = 0.03;
     if($('mutation-slider')) $('mutation-slider').value='3';
     if($('mutation-value')) $('mutation-value').textContent='3%';
-    ui.caustics = false;
-    syncCausticsUI();
     log('↺ リセット');
     drawMix(true);
     renderExtinctRecords();
@@ -5174,7 +4977,6 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     // patches hidden; environment is visualized as dots
     if(window.env) window.env.draw(ctx);
     drawObservationOverlay();
-    drawSurfaceCaustics();
     for(const e of effects){ const k=e.t/e.maxT; ctx.beginPath(); ctx.arc(e.x,e.y,e.r*(0.98+0.02*Math.sin(frame*0.1)),0,TAU); ctx.strokeStyle = e.type==='repel'? `rgba(120,255,160,${0.18*k})` : `rgba(255,230,120,${0.18*k})`; ctx.lineWidth=2; ctx.stroke(); }
     for(const f of food){ if(f.type!=='detritus') f.draw(ctx); }
     for(let i=0;i<corpses.length;i++){ if(renderPerf.tiny && (i&1)) continue; corpses[i].draw(ctx); }
@@ -5265,10 +5067,6 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       if(!org) return false;
       markNewSpecies(org);
       return true;
-    },
-    previewWaterStroke(){
-      addWaterStroke(W*0.58,H*0.50,W*0.42,H*0.48);
-      return { currents:waterCurrents.length, rings:rings.length, water:this.waterStatus() };
     },
     previewWallStroke(){
       addMembraneStroke(W*0.40,H*0.42,W*0.62,H*0.54);
@@ -5363,7 +5161,6 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         particles: sparks.length + rings.length,
         currents: waterCurrents.length,
         membranes: membranes.length,
-        caustics: ui.caustics && waterCaustics.canvas ? {enabled:true,w:waterCaustics.w,h:waterCaustics.h,last:waterCaustics.last,loops:waterCaustics.loops.length} : {enabled:ui.caustics,ready:false},
         envGpu: !!(window.env && window.env.usesGpu && window.env.usesGpu()),
         algaeLayer: window.env?.algaeLayerSummary ? window.env.algaeLayerSummary() : null,
         gridSize: GS,
@@ -5375,9 +5172,6 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         heavyComplex: renderPerf.heavyComplex,
         symbolSpriteCache: {size:symbolSpriteCache.size, ...symbolSpriteStats}
       };
-    },
-    causticsSummary(){
-      return ui.caustics && waterCaustics.canvas ? { enabled:true, ready:true, w:waterCaustics.w, h:waterCaustics.h, last:waterCaustics.last, loops:waterCaustics.loops.length } : { enabled:ui.caustics, ready:false };
     },
     forcePopulation(n=120){
       const target=Math.max(1,Math.min(180,Number(n)||120));
@@ -5521,7 +5315,6 @@ organisms.push(u);
       `トポロジー: ${Object.entries(topologies).map(([k,v])=>`${k}:${v}`).join(', ')}`,
       `発見済み希少形質: ${rareSeen}`,
       `平均運動量: ${organisms.length ? (motionSum/organisms.length).toFixed(2) : '0.00'}`,
-      `水面反射: ${ui.caustics ? 'ON' : 'OFF'}`,
       `描画モード: ${renderPerf.mode} / mesh=${renderPerf.meshCount} / complex=${renderPerf.complexCount} / heavy=${renderPerf.heavyComplex ? 'yes' : 'no'}`,
       `性能: FPS=${Math.round(fpsMeter.fps)}, update=${perfStats.updateMs.toFixed(1)}ms, draw=${perfStats.drawMs.toFixed(1)}ms, neighbor=${perfStats.neighborQueriesLast}, predScan=${perfStats.predationScansLast}`,
       `ロール: ambusher=${roles.ambusher||0}, pack=${roles.pack||0}, scav=${roles.scav||0}, filter=${roles.filter||0}, other=${roles.other||0}`,

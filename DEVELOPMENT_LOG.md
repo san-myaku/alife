@@ -29,7 +29,7 @@
 - Turned the existing internal challenge rules into a visible game-goal panel with progress bars for diversity, carnivore dominance, and no-predation streaks.
 - Added `window.__alifeDebug.challengeSummary()` so challenge state can be verified without touching organism rendering.
 - Kept the organism renderer, generator, and roster art files unchanged; mobile FPS HUD positioning now avoids overlapping the scrolled control panel.
-- Replaced the water caustics grid network with short independent shimmer strokes to avoid blue maze-like lines in the pond, and made grazing scars darker while lowering the algae grazing floor from `0.035` to `0.006`.
+- Removed the water-reflection/caustics feature and the visible water-stroke tool path after the blue pond lines proved to come from the transient water-current visual layer, while keeping grazing scars darker and the algae grazing floor at `0.006`.
 
 ### 2026-07-08
 
