@@ -24,6 +24,12 @@
 
 ## Change Log
 
+### 2026-07-10
+
+- Turned the existing internal challenge rules into a visible game-goal panel with progress bars for diversity, carnivore dominance, and no-predation streaks.
+- Added `window.__alifeDebug.challengeSummary()` so challenge state can be verified without touching organism rendering.
+- Kept the organism renderer, generator, and roster art files unchanged; mobile FPS HUD positioning now avoids overlapping the scrolled control panel.
+
 ### 2026-07-08
 
 - Added a Lifeform Roster mode to `generator.html`, using the real shared renderer to arrange generated organisms into a pale reference-sheet view with numbering, role-color dots, group legend, and modal drill-in.
