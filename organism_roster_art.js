@@ -107,16 +107,17 @@
   }
 
   function drawBlobPath(ctx, r, aspect, irregular, point, rng) {
-    const n = 42;
+    const n = 64;
+    const ph = rng() * TAU;      // fixed phase: no rng() inside the loop, so start==end (no seam notch)
     ctx.beginPath();
     for (let i = 0; i <= n; i++) {
       const a = (i / n) * TAU;
       const front = Math.max(0, Math.cos(a));
-      const lobes = 1 + irregular * 0.18 * Math.sin(a * 3 + rng() * 0.2) +
-        irregular * 0.10 * Math.sin(a * 5.5 + 1.7);
-      const taper = 1 + point * 0.22 * front - point * 0.10 * Math.max(0, -Math.cos(a));
+      const lobes = 1 + irregular * 0.15 * Math.sin(a * 3 + ph) +
+        irregular * 0.08 * Math.sin(a * 5 + ph * 1.7);
+      const taper = 1 + point * 0.13 * front - point * 0.07 * Math.max(0, -Math.cos(a));
       const x = Math.cos(a) * r * aspect * lobes * taper;
-      const y = Math.sin(a) * r * (1 + irregular * 0.08 * Math.cos(a * 4));
+      const y = Math.sin(a) * r * (1 + irregular * 0.06 * Math.cos(a * 4));
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
@@ -264,19 +265,15 @@
     const g = genesOf(o);
     const flags = o.flags || {};
     const topology = o.morphologyTopology || "single";
-    if ((o.isMega || (flags.glow && (g.sense || 0.5) > 0.62)) && variantIndex(o, "jelly", 3) === 0) return "jelly";
     if (topology === "chain") {
-      const v = variantIndex(o, "chain", 3);
-      return v === 1 ? "chain-segment" : (v === 2 ? "chain-flagella" : "chain-beads");
+      return variantIndex(o, "chain", 2) === 1 ? "chain-segment" : "chain-beads";
     }
     if (topology === "cluster") {
       const v = variantIndex(o, "cluster", 3);
       return v === 1 ? "cluster-rosette" : (v === 2 ? "cluster-membrane" : "cluster-bubbles");
     }
     if (topology === "single") {
-      if ((g.diet || 0.5) > 0.68 && (g.speed || 0.5) > 0.42) return "single-crescent";
       if ((g.speed || 0.5) > 0.62 || flags.chl) return "single-leaf";
-      if ((g.sense || 0.5) > 0.78 && (g.size || 0.5) > 0.55) return "jelly";
       if ((o.form && o.form.aspect > 1.46) && (g.size || 0.5) > 0.38) return "single-spindle";
       // formSeed picks the plain-body silhouette so the "form" gene has real reach.
       var singleShapes = ["single-cell", "single-teardrop", "single-pear", "single-trefoil", "single-triangle", "single-fan"];
@@ -287,7 +284,6 @@
     if (topology === "ring") return "ring";
     if (topology === "amoeba") return "amoeba";
     if (topology === "mesh") return "mesh-lace";
-    if ((g.sense || 0.5) > 0.78 && (g.size || 0.5) > 0.55) return "jelly";
     return "single-cell";
   }
 
@@ -558,7 +554,7 @@
     }
     ctx.restore();
 
-    if ((g.sense || 0.5) > 0.40) drawAttachedFlagellum(ctx, r * 0.96, -r * 0.04, -0.08, r * 0.54, pal, rng, 0.32);
+    if ((g.sense || 0.5) > 0.30) drawAttachedFlagellum(ctx, r * 1.02, -r * 0.04, -0.06, r * 1.35, pal, rng, 0.40);
     drawNucleus(ctx, -r * 0.22, -r * 0.02, r * 0.17, pal, rng, 0.88);
     ctx.restore();
   }
@@ -592,11 +588,17 @@
     ctx.closePath();
   }
   function pathPear(ctx, r) {
-    const n = 48; ctx.beginPath();
+    // gourd/pear: big bottom bulge + small top bulge with a concave waist between.
+    const n = 80; ctx.beginPath();
     for (let i = 0; i <= n; i++) {
-      const a = (i / n) * TAU, up = -Math.sin(a);
-      const rr = r * 0.92 * (1 + 0.28 * Math.max(0, -up)) * (1 - 0.34 * Math.max(0, up));
-      const x = Math.cos(a) * rr, y = Math.sin(a) * r * (1 + 0.10 * Math.max(0, -up));
+      const a = (i / n) * TAU;
+      const cy = Math.sin(a);        // -1 top .. 1 bottom (canvas y)
+      const t = -cy;                 // 1 top .. -1 bottom
+      const bottom = Math.exp(-Math.pow((t + 0.5) / 0.5, 2));
+      const top = Math.exp(-Math.pow((t - 0.6) / 0.36, 2));
+      const w = 0.66 * bottom + 0.40 * top + 0.06;
+      const x = Math.cos(a) * r * w * 1.45;
+      const y = cy * r * 1.12;
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     ctx.closePath();
@@ -877,14 +879,20 @@
     const g = genesOf(o);
     ctx.save();
     ctx.beginPath();
-    const n = 54;
+    const n = 64;
+    // per-creature variety: pseudopod count, phases and amplitudes differ each time.
+    const pods = 3 + Math.floor((g.formSeed == null ? 0.5 : g.formSeed) * 4); // 3..6 lobes
+    const ph1 = rng() * TAU, ph2 = rng() * TAU, ph3 = rng() * TAU;
+    const amp1 = 0.16 + rng() * 0.16;
+    const podAmp = 0.18 + rng() * 0.24;
+    const aspect = 1.02 + (g.speed || 0.5) * 0.22 + (rng() - 0.5) * 0.24;
     for (let i = 0; i <= n; i++) {
       const a = (i / n) * TAU;
-      const wave = 1 + 0.25 * Math.sin(a * 3.0 + 0.7) + 0.16 * Math.sin(a * 6.0 + 1.8);
-      const pseudo = Math.max(0, Math.cos(a * 4 + 0.4)) * 0.24;
-      const rr = r * (0.74 + wave * 0.15 + pseudo);
-      const x = Math.cos(a) * rr * (1.06 + (g.speed || 0.5) * 0.24);
-      const y = Math.sin(a) * rr * (0.92 + (g.size || 0.5) * 0.08);
+      const wave = 1 + amp1 * Math.sin(a * 3.0 + ph1) + 0.11 * Math.sin(a * 6.0 + ph2);
+      const pseudo = Math.pow(Math.max(0, Math.cos(a * pods + ph3)), 1.4) * podAmp;
+      const rr = r * (0.70 + wave * 0.15 + pseudo);
+      const x = Math.cos(a) * rr * aspect;
+      const y = Math.sin(a) * rr * (0.90 + (g.size || 0.5) * 0.10);
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
@@ -1040,7 +1048,6 @@
       { id:"single-cell", label:"single cell" },
       { id:"single-leaf", label:"leaf swimmer" },
       { id:"single-spindle", label:"spindle cell" },
-      { id:"single-crescent", label:"crescent predator" },
       { id:"single-teardrop", label:"teardrop cell" },
       { id:"single-pear", label:"pear cell" },
       { id:"single-trefoil", label:"trefoil cell" },
@@ -1048,7 +1055,6 @@
       { id:"single-fan", label:"fan cell" },
       { id:"chain-beads", label:"bead chain" },
       { id:"chain-segment", label:"segmented long body" },
-      { id:"chain-flagella", label:"flagellated chain" },
       { id:"ring", label:"cell ring" },
       { id:"radial-spines", label:"radial spines" },
       { id:"radial-beads", label:"radial beads" },
@@ -1057,8 +1063,7 @@
       { id:"cluster-rosette", label:"rosette cluster" },
       { id:"cluster-membrane", label:"membrane cluster" },
       { id:"amoeba", label:"amoeba" },
-      { id:"mesh-lace", label:"lace mesh" },
-      { id:"jelly", label:"jelly special" }
+      { id:"mesh-lace", label:"lace mesh" }
     ]
   };
 })(typeof window !== "undefined" ? window : globalThis);
