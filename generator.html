@@ -285,6 +285,15 @@
     } else if(type.indexOf('chain-')===0){
       sp.genes.speed = Math.max(sp.genes.speed, 0.54);
       sp.genes.sense = Math.max(sp.genes.sense, 0.42);
+    } else if({'single-teardrop':1,'single-pear':1,'single-trefoil':1,'single-triangle':1,'single-fan':1}[type]){
+      // push toward "single" topology, then formSeed bucket picks the silhouette
+      sp.genes.sense = Math.min(sp.genes.sense, 0.36);
+      sp.genes.metabolism = Math.min(sp.genes.metabolism, 0.40);
+      sp.genes.fecundity = Math.min(sp.genes.fecundity, 0.40);
+      sp.genes.speed = Math.min(sp.genes.speed, 0.50);
+      sp.genes.diet = Math.min(sp.genes.diet, 0.60);
+      sp.genes.size = 0.45 + rr()*0.20;
+      sp.genes.formSeed = {'single-teardrop':0.25,'single-pear':0.42,'single-trefoil':0.58,'single-triangle':0.75,'single-fan':0.92}[type];
     }
     return sp;
   }

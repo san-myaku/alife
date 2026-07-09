@@ -278,7 +278,9 @@
       if ((g.speed || 0.5) > 0.62 || flags.chl) return "single-leaf";
       if ((g.sense || 0.5) > 0.78 && (g.size || 0.5) > 0.55) return "jelly";
       if ((o.form && o.form.aspect > 1.46) && (g.size || 0.5) > 0.38) return "single-spindle";
-      return "single-cell";
+      // formSeed picks the plain-body silhouette so the "form" gene has real reach.
+      var singleShapes = ["single-cell", "single-teardrop", "single-pear", "single-trefoil", "single-triangle", "single-fan"];
+      return singleShapes[Math.min(singleShapes.length - 1, Math.floor((g.formSeed == null ? 0.5 : g.formSeed) * singleShapes.length))];
     }
     if (topology === "radial") return (g.diet || 0.5) > 0.62 ? "radial-spines" : "radial-beads";
     if (topology === "branch") return "branch-vesicles";
@@ -581,12 +583,74 @@
     ctx.restore();
   }
 
+  // Plain-body silhouette variants (traced path -> filled body -> interior).
+  function pathTeardrop(ctx, r) {
+    ctx.beginPath();
+    ctx.moveTo(0, -r * 1.30);
+    ctx.bezierCurveTo(r * 0.92, -r * 0.40, r * 0.86, r * 0.98, 0, r * 1.02);
+    ctx.bezierCurveTo(-r * 0.86, r * 0.98, -r * 0.92, -r * 0.40, 0, -r * 1.30);
+    ctx.closePath();
+  }
+  function pathPear(ctx, r) {
+    const n = 48; ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const a = (i / n) * TAU, up = -Math.sin(a);
+      const rr = r * 0.92 * (1 + 0.28 * Math.max(0, -up)) * (1 - 0.34 * Math.max(0, up));
+      const x = Math.cos(a) * rr, y = Math.sin(a) * r * (1 + 0.10 * Math.max(0, -up));
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  }
+  function pathTrefoil(ctx, r) {
+    const n = 96; ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const a = (i / n) * TAU;
+      const rr = r * (0.72 + 0.36 * Math.max(0, Math.cos(3 * (a + Math.PI / 2))));
+      const x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  }
+  function pathTriangle(ctx, r) {
+    const n = 90; ctx.beginPath();
+    for (let i = 0; i <= n; i++) {
+      const a = (i / n) * TAU;
+      const rr = r * (0.98 + 0.20 * Math.cos(3 * a - Math.PI / 2));
+      const x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+  }
+  function pathFan(ctx, r) {
+    const spread = 1.05;
+    ctx.beginPath();
+    ctx.moveTo(-r * 0.55, 0);
+    ctx.arc(-r * 0.55, 0, r * 1.5, -spread, spread);
+    ctx.closePath();
+  }
+  function drawShapedBody(ctx, o, r, pal, rng, pathFn) {
+    const form = o.form || {};
+    ctx.save();
+    pathFn(ctx, r);
+    fillAndStroke(ctx, r, pal, 0.68);
+    ctx.clip();
+    drawGranules(ctx, r, pal, rng, 7 + Math.round((form.detail || 0.5) * 10), !!(o.flags && o.flags.chl));
+    drawSurfaceSpeckles(ctx, r, pal, rng, 18, 0.24);
+    drawNucleus(ctx, -r * 0.10, -r * 0.02, r * 0.22, pal, rng, 0.92);
+    ctx.restore();
+  }
+
   function drawSingle(ctx, o, r, pal, rng) {
     const g = genesOf(o);
     const kind = visualKind(o);
     if (kind === "single-crescent") drawCrescent(ctx, o, r, pal, rng);
     else if (kind === "single-leaf") drawLeaf(ctx, o, r, pal, rng);
     else if (kind === "single-spindle") drawSpindle(ctx, o, r, pal, rng);
+    else if (kind === "single-teardrop") drawShapedBody(ctx, o, r, pal, rng, pathTeardrop);
+    else if (kind === "single-pear") drawShapedBody(ctx, o, r, pal, rng, pathPear);
+    else if (kind === "single-trefoil") drawShapedBody(ctx, o, r, pal, rng, pathTrefoil);
+    else if (kind === "single-triangle") drawShapedBody(ctx, o, r, pal, rng, pathTriangle);
+    else if (kind === "single-fan") drawShapedBody(ctx, o, r, pal, rng, pathFan);
     else drawCellBlob(ctx, o, r, pal, rng);
     if (kind === "single-cell" && (g.diet || 0.5) < 0.42) drawCilia(ctx, r, pal, rng, 24, 0.45, 0.28);
     if ((g.sense || 0.5) > 0.72) drawAntennae(ctx, r, pal, rng, 5);
@@ -977,6 +1041,11 @@
       { id:"single-leaf", label:"leaf swimmer" },
       { id:"single-spindle", label:"spindle cell" },
       { id:"single-crescent", label:"crescent predator" },
+      { id:"single-teardrop", label:"teardrop cell" },
+      { id:"single-pear", label:"pear cell" },
+      { id:"single-trefoil", label:"trefoil cell" },
+      { id:"single-triangle", label:"triangle cell" },
+      { id:"single-fan", label:"fan cell" },
       { id:"chain-beads", label:"bead chain" },
       { id:"chain-segment", label:"segmented long body" },
       { id:"chain-flagella", label:"flagellated chain" },
