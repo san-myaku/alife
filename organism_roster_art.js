@@ -658,10 +658,59 @@
     ctx.arc(-r * 0.55, 0, r * 1.5, -spread, spread);
     ctx.closePath();
   }
-  function drawShapedBody(ctx, o, r, pal, rng, pathFn) {
+  // ---- outline-based single bodies -------------------------------------------
+  // Each plain-body form is generated as boundary POINTS so appendages can attach
+  // to the real silhouette (along the outward normal) and be drawn BEHIND the body.
+  function _bez(p0, c1, c2, p1, t) {
+    const u = 1 - t;
+    return { x: u * u * u * p0.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * p1.x,
+             y: u * u * u * p0.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * p1.y };
+  }
+  function singleOutline(kind, r, o, rng) {
+    const form = o.form || {};
+    const pts = [], n = 84;
+    if (kind === "single-teardrop") {
+      const A = {x:0,y:-r*1.30}, B = {x:r*0.92,y:-r*0.40}, C = {x:r*0.86,y:r*0.98},
+            D = {x:0,y:r*1.02}, E = {x:-r*0.86,y:r*0.98}, F = {x:-r*0.92,y:-r*0.40};
+      const m = 42;
+      for (let i=0;i<m;i++) pts.push(_bez(A,B,C,D,i/m));
+      for (let i=0;i<m;i++) pts.push(_bez(D,E,F,A,i/m));
+      return pts;
+    }
+    if (kind === "single-fan") {
+      const spread = 1.05, ax = -r*0.55, rad = r*1.5, m = 56;
+      pts.push({x:ax,y:0});
+      for (let i=0;i<=m;i++){ const a = -spread + (i/m)*2*spread; pts.push({x:ax+Math.cos(a)*rad, y:Math.sin(a)*rad}); }
+      return pts;
+    }
+    const blobPh = rng() * TAU;
+    for (let i=0;i<n;i++){
+      const a = (i/n)*TAU; let x, y;
+      if (kind === "single-pear") {
+        const cy = Math.sin(a), t = -cy;
+        const bottom = Math.exp(-Math.pow((t+0.5)/0.5,2)), top = Math.exp(-Math.pow((t-0.6)/0.36,2));
+        const w = 0.66*bottom + 0.40*top + 0.06;
+        x = Math.cos(a)*r*w*1.45; y = cy*r*1.12;
+      } else if (kind === "single-trefoil") {
+        const rr = r*(0.72 + 0.36*Math.max(0, Math.cos(3*(a+Math.PI/2)))); x = Math.cos(a)*rr; y = Math.sin(a)*rr;
+      } else if (kind === "single-triangle") {
+        const rr = r*(0.98 + 0.20*Math.cos(3*a - Math.PI/2)); x = Math.cos(a)*rr; y = Math.sin(a)*rr;
+      } else { // single-cell: smooth seamless blob
+        const irr = 0.25 + clamp(form.detail || 0.5, 0, 1) * 0.6;
+        const lobes = 1 + irr*0.14*Math.sin(a*3 + blobPh) + irr*0.07*Math.sin(a*5 + blobPh*1.7);
+        const rr = r*0.94*lobes;
+        x = Math.cos(a)*rr*(0.98 + (form.aspect || 1.2)*0.05); y = Math.sin(a)*rr;
+      }
+      pts.push({x,y});
+    }
+    return pts;
+  }
+  function _centroid(pts){ let sx=0, sy=0; for (let i=0;i<pts.length;i++){ sx+=pts[i].x; sy+=pts[i].y; } return {x:sx/pts.length, y:sy/pts.length}; }
+  function _fillOutline(ctx, pts){ ctx.beginPath(); for (let i=0;i<pts.length;i++){ if(i===0) ctx.moveTo(pts[i].x,pts[i].y); else ctx.lineTo(pts[i].x,pts[i].y); } ctx.closePath(); }
+  function drawBodyFromPts(ctx, o, r, pal, rng, pts) {
     const form = o.form || {};
     ctx.save();
-    pathFn(ctx, r);
+    _fillOutline(ctx, pts);
     fillAndStroke(ctx, r, pal, 0.68);
     ctx.clip();
     drawGranules(ctx, r, pal, rng, 7 + Math.round((form.detail || 0.5) * 10), !!(o.flags && o.flags.chl));
@@ -669,36 +718,44 @@
     drawNucleus(ctx, -r * 0.10, -r * 0.02, r * 0.22, pal, rng, 0.92);
     ctx.restore();
   }
-
-  // Every plain-body creature gets an appendage, chosen by a stable per-species
-  // hash (independent of the functional genes, which are forced low for these
-  // forms). Diet leans the odds: herbivore->cilia, carnivore->spikes.
-  function addSingleAppendage(ctx, o, r, pal, rng) {
-    const g = genesOf(o);
-    const diet = g.diet == null ? 0.5 : g.diet;
+  // Appendages placed on the actual outline (outward normal), drawn BEHIND the body.
+  function appendageBehind(ctx, o, r, pal, rng, pts) {
+    const g = genesOf(o), diet = g.diet == null ? 0.5 : g.diet;
+    const c = _centroid(pts);
+    function norm(p){ const dx=p.x-c.x, dy=p.y-c.y, m=Math.hypot(dx,dy)||1; return {nx:dx/m, ny:dy/m}; }
     let h = hashStr32((o.speciesKey || "x") + ":app:" + Math.round((g.formSeed || 0) * 997)) / 4294967296;
-    if (diet > 0.66) h *= 0.7;            // carnivores lean earlier buckets (spikes)
-    else if (diet < 0.33) h = 0.30 + h * 0.7; // herbivores lean cilia/antennae
-    if (h < 0.22) drawCilia(ctx, r, pal, rng, 20 + Math.round(h * 60), 0.44, 0.26);
-    else if (h < 0.50) drawSpines(ctx, r, pal, rng, 8 + Math.round(h * 8), 0.8 + h * 1.6);
-    else if (h < 0.74) drawAntennae(ctx, r, pal, rng, 3 + Math.round(h * 3));
-    else if (h < 0.90) drawAttachedFlagellum(ctx, Math.cos(0.25) * r * 0.92, Math.sin(0.25) * r * 0.92, 0.25, r * (1.2 + h * 0.9), pal, rng, 0.42);
-    else drawCilia(ctx, r, pal, rng, 16, 0.32, 0.20);
+    let kind = h < 0.34 ? "cilia" : (h < 0.60 ? "spikes" : (h < 0.80 ? "antennae" : "flagella"));
+    if (diet > 0.66 && kind === "cilia") kind = "spikes";
+    if (diet < 0.33 && kind === "spikes") kind = "cilia";
+    ctx.save();
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    if (kind === "cilia") {
+      ctx.strokeStyle = hsla(pal.hue + 30, 70, 82, 0.30); ctx.lineWidth = Math.max(0.5, r * 0.017);
+      const count = Math.min(pts.length, 34 + Math.round(h * 26));
+      for (let i=0;i<count;i++){ const p = pts[Math.floor(i/count*pts.length)]; const nn = norm(p); const len = r*(0.09 + 0.05*Math.abs(Math.sin(i*1.7))); ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(p.x+nn.nx*len, p.y+nn.ny*len); ctx.stroke(); }
+    } else if (kind === "spikes") {
+      ctx.strokeStyle = hsla(pal.hue - 10, 88, 52, 0.55); ctx.fillStyle = hsla(pal.hue + 8, 88, 70, 0.28); ctx.lineWidth = Math.max(0.8, r * 0.028);
+      const spikes = 9 + Math.round(h * 8);
+      for (let i=0;i<spikes;i++){ const p = pts[Math.floor(i/spikes*pts.length)]; const nn = norm(p); const len = r*(0.26 + h*0.22); const tx=p.x+nn.nx*len, ty=p.y+nn.ny*len; const bw = r*0.05; ctx.beginPath(); ctx.moveTo(p.x-(-nn.ny)*bw, p.y-(nn.nx)*bw); ctx.lineTo(tx,ty); ctx.lineTo(p.x+(-nn.ny)*bw, p.y+(nn.nx)*bw); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    } else if (kind === "antennae") {
+      ctx.strokeStyle = hsla(pal.hue + 35, 72, 48, 0.55); ctx.lineWidth = Math.max(0.9, r * 0.028);
+      const upper = pts.slice().sort(function(a,b){return a.y-b.y;}).slice(0,3);
+      for (let i=0;i<upper.length;i++){ const p = upper[i]; const nn = norm(p); const len = r*(0.7 + rng()*0.4); const ex=p.x+nn.nx*len, ey=p.y+nn.ny*len; ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.quadraticCurveTo(p.x+nn.nx*len*0.5+(rng()-0.5)*r*0.1, p.y+nn.ny*len*0.5, ex, ey); ctx.stroke(); drawNucleus(ctx, ex, ey, r*0.12, pal, rng, 0.85); }
+    } else {
+      ctx.strokeStyle = hsla(pal.hue + 16, 80, 74, 0.40); ctx.lineWidth = Math.max(0.7, r * 0.03);
+      const lower = pts.slice().sort(function(a,b){return b.y-a.y;}).slice(0, 3 + Math.round(h*3));
+      for (let i=0;i<lower.length;i++){ const p = lower[i]; const len = r*(1.1 + rng()*0.7); const segs = 7; ctx.beginPath(); ctx.moveTo(p.x,p.y); for (let s=1;s<=segs;s++){ const tt=s/segs; ctx.lineTo(p.x + Math.sin(tt*6+i)*r*0.16*tt, p.y + len*tt); } ctx.stroke(); }
+    }
+    ctx.restore();
   }
 
   function drawSingle(ctx, o, r, pal, rng) {
-    const g = genesOf(o);
     const kind = visualKind(o);
-    if (kind === "single-crescent") drawCrescent(ctx, o, r, pal, rng);
-    else if (kind === "single-leaf") drawLeaf(ctx, o, r, pal, rng);
-    else if (kind === "single-spindle") drawSpindle(ctx, o, r, pal, rng);
-    else if (kind === "single-teardrop") drawShapedBody(ctx, o, r, pal, rng, pathTeardrop);
-    else if (kind === "single-pear") drawShapedBody(ctx, o, r, pal, rng, pathPear);
-    else if (kind === "single-trefoil") drawShapedBody(ctx, o, r, pal, rng, pathTrefoil);
-    else if (kind === "single-triangle") drawShapedBody(ctx, o, r, pal, rng, pathTriangle);
-    else if (kind === "single-fan") drawShapedBody(ctx, o, r, pal, rng, pathFan);
-    else drawCellBlob(ctx, o, r, pal, rng);
-    addSingleAppendage(ctx, o, r, pal, rng);
+    if (kind === "single-leaf") { drawLeaf(ctx, o, r, pal, rng); drawRare(ctx, o, r, pal, rng); return; }
+    if (kind === "single-spindle") { drawSpindle(ctx, o, r, pal, rng); drawRare(ctx, o, r, pal, rng); return; }
+    const pts = singleOutline(kind, r, o, rng);
+    appendageBehind(ctx, o, r, pal, rng, pts); // behind the body
+    drawBodyFromPts(ctx, o, r, pal, rng, pts); // body on top
     drawRare(ctx, o, r, pal, rng);
   }
 
