@@ -440,7 +440,35 @@
       ctx.moveTo(x1, y1);
       ctx.quadraticCurveTo((x1 + x2) * 0.52, (y1 + y2) * 0.52 - r * 0.12, x2, y2);
       ctx.stroke();
-      drawNucleus(ctx, x2, y2, r * 0.09, pal, rng, 0.80);
+      drawNucleus(ctx, x2, y2, r * 0.13, pal, rng, 0.85);
+    }
+    ctx.restore();
+  }
+
+  // sessile-farmer roots: branching tendrils spreading outward/down onto the field.
+  function drawRootTendrils(ctx, r, pal, rng) {
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = hsla(pal.hue - 6, 42, 48, 0.42);
+    const roots = 4 + Math.floor(rng() * 3);
+    for (let i = 0; i < roots; i++) {
+      const a = Math.PI * 0.18 + (i / Math.max(1, roots - 1)) * Math.PI * 0.64; // fan downward
+      let x = Math.cos(a) * r * 0.72, y = Math.sin(a) * r * 0.72, ang = a;
+      const segs = 3 + Math.floor(rng() * 3);
+      for (let s = 0; s < segs; s++) {
+        ctx.lineWidth = Math.max(0.7, r * 0.05 * (1 - s / (segs + 1)));
+        const step = r * (0.38 + rng() * 0.42);
+        ang += (rng() - 0.5) * 0.7;
+        const nx = x + Math.cos(ang) * step, ny = y + Math.sin(ang) * step;
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(nx, ny); ctx.stroke();
+        if (rng() < 0.5) {
+          const ba = ang + (rng() - 0.5) * 1.3, bl = r * (0.28 + rng() * 0.34);
+          ctx.lineWidth = Math.max(0.6, r * 0.03);
+          ctx.beginPath(); ctx.moveTo(nx, ny); ctx.lineTo(nx + Math.cos(ba) * bl, ny + Math.sin(ba) * bl); ctx.stroke();
+        }
+        x = nx; y = ny;
+      }
     }
     ctx.restore();
   }
@@ -1016,15 +1044,16 @@
     if (topology === "branch") ctx.translate(0, r * 0.08);
     if (topology !== "branch" && topology !== "mesh") ctx.rotate((rng() - 0.5) * 0.28);
 
-    if ((o.isMega || ((o.flags || {}).glow && (g.sense || 0.5) > 0.62)) && variantIndex(o, "jelly", 3) === 0) drawJelly(ctx, o, r, pal, rng);
-    else if (topology === "chain") drawChain(ctx, o, r, pal, rng);
+    // sessile farmer: roots/tendrils spreading onto the field, drawn behind the body
+    if (o.adaptations && o.adaptations.indexOf("sessileFarmer") >= 0) drawRootTendrils(ctx, r, pal, rng);
+
+    if (topology === "chain") drawChain(ctx, o, r, pal, rng);
     else if (topology === "ring") drawRing(ctx, o, r, pal, rng);
     else if (topology === "radial") drawRadial(ctx, o, r, pal, rng);
     else if (topology === "branch") drawBranch(ctx, o, r, pal, rng);
     else if (topology === "cluster") drawCluster(ctx, o, r, pal, rng);
     else if (topology === "amoeba") drawAmoeba(ctx, o, r, pal, rng);
     else if (topology === "mesh") drawMesh(ctx, o, r, pal, rng);
-    else if ((g.sense || 0.5) > 0.78 && (g.size || 0.5) > 0.55) drawJelly(ctx, o, r, pal, rng);
     else drawSingle(ctx, o, r, pal, rng);
 
     if (o.isMega) {

@@ -230,6 +230,7 @@
     o.symbolShapePath = R.symbolShapePath;
     o.drawTinySymbolic = function(){};
     o.prepareSymbolDetails = function(){};
+    try { o.adaptations = M.adaptationProfilesFromGenes(sp.genes, o.flags, o.morphologyTopology, o.role) || []; } catch(e){ o.adaptations = []; }
     return o;
   }
 
