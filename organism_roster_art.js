@@ -670,6 +670,22 @@
     ctx.restore();
   }
 
+  // Every plain-body creature gets an appendage, chosen by a stable per-species
+  // hash (independent of the functional genes, which are forced low for these
+  // forms). Diet leans the odds: herbivore->cilia, carnivore->spikes.
+  function addSingleAppendage(ctx, o, r, pal, rng) {
+    const g = genesOf(o);
+    const diet = g.diet == null ? 0.5 : g.diet;
+    let h = hashStr32((o.speciesKey || "x") + ":app:" + Math.round((g.formSeed || 0) * 997)) / 4294967296;
+    if (diet > 0.66) h *= 0.7;            // carnivores lean earlier buckets (spikes)
+    else if (diet < 0.33) h = 0.30 + h * 0.7; // herbivores lean cilia/antennae
+    if (h < 0.22) drawCilia(ctx, r, pal, rng, 20 + Math.round(h * 60), 0.44, 0.26);
+    else if (h < 0.50) drawSpines(ctx, r, pal, rng, 8 + Math.round(h * 8), 0.8 + h * 1.6);
+    else if (h < 0.74) drawAntennae(ctx, r, pal, rng, 3 + Math.round(h * 3));
+    else if (h < 0.90) drawAttachedFlagellum(ctx, Math.cos(0.25) * r * 0.92, Math.sin(0.25) * r * 0.92, 0.25, r * (1.2 + h * 0.9), pal, rng, 0.42);
+    else drawCilia(ctx, r, pal, rng, 16, 0.32, 0.20);
+  }
+
   function drawSingle(ctx, o, r, pal, rng) {
     const g = genesOf(o);
     const kind = visualKind(o);
@@ -682,8 +698,7 @@
     else if (kind === "single-triangle") drawShapedBody(ctx, o, r, pal, rng, pathTriangle);
     else if (kind === "single-fan") drawShapedBody(ctx, o, r, pal, rng, pathFan);
     else drawCellBlob(ctx, o, r, pal, rng);
-    if (kind === "single-cell" && (g.diet || 0.5) < 0.42) drawCilia(ctx, r, pal, rng, 24, 0.45, 0.28);
-    if ((g.sense || 0.5) > 0.72) drawAntennae(ctx, r, pal, rng, 5);
+    addSingleAppendage(ctx, o, r, pal, rng);
     drawRare(ctx, o, r, pal, rng);
   }
 
