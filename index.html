@@ -3431,7 +3431,7 @@ const env = (function(){
         if(d>grazeR+0.01) continue;
         const w = d<0.01 ? 1.0 : clamp(1 - d/(grazeR+0.001),0.16,0.62);
         const i=idx(xx,yy);
-        const avail=Math.max(0, fields.algae[i] - 0.035);
+        const avail=Math.max(0, fields.algae[i] - 0.006);
         if(avail<=0) continue;
         cells.push({i,w,avail});
         totalW+=w;
@@ -3458,8 +3458,8 @@ const env = (function(){
     const sx0 = Math.min(scarW-1, Math.max(0, (x/subCell)|0));
     const sy0 = Math.min(scarH-1, Math.max(0, (y/subCell)|0));
     const grazeR=clamp(Number(radius)||1,0.55,2.85);
-    const r = Math.max(1, Math.ceil(ALGAE_VISUAL_SUBDIV*(0.20 + 0.42*grazeR)));
-    const power = Math.max(0, amount||0) * (7.8 + 2.4/Math.sqrt(grazeR));
+    const r = Math.max(1, Math.ceil(ALGAE_VISUAL_SUBDIV*(0.30 + 0.50*grazeR)));
+    const power = Math.max(0, amount||0) * (23.0 + 4.6/Math.sqrt(grazeR));
     for(let dy=-r; dy<=r; dy++){
       const yy=sy0+dy; if(yy<0||yy>=scarH) continue;
       for(let dx=-r; dx<=r; dx++){
@@ -3787,11 +3787,12 @@ if(p.type==='oxygen'){
             ctx.fillStyle = `rgb(${18+Math.round(edible*34)},${102+light},${32+Math.round(edible*42)})`;
             ctx.fillRect(px,py,w,hh);
           }
-          if(mark>0.030){
-            const residual=clamp01(n/0.24);
-            const darkT=clamp01(mark * (0.22 + 0.78*(1-residual)));
-            ctx.globalAlpha = clamp(0.055 + mark*0.18 + darkT*0.30,0.05,0.50);
-            ctx.fillStyle = `rgb(${Math.round(82 + (3-82)*darkT)},${Math.round(118 + (7-118)*darkT)},${Math.round(48 + (4-48)*darkT)})`;
+          if(mark>0.015){
+            const residual=clamp01(n/0.20);
+            const empty=clamp01((0.18-n)/0.18);
+            const darkT=clamp01(mark*1.38 * (0.34 + 0.66*empty) + (mark>0.22 ? empty*0.20 : 0));
+            ctx.globalAlpha = clamp(0.10 + mark*0.30 + darkT*0.42,0.08,0.72);
+            ctx.fillStyle = `rgb(${Math.round(70 + (0-70)*darkT)},${Math.round(98 + (2-98)*darkT)},${Math.round(34 + (0-34)*darkT)})`;
             ctx.fillRect(px,py,w,hh);
           }
           if(edible>0.68 && !tiny && ((h>>>8)&7)===0){
@@ -4321,57 +4322,38 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
     const w=waterCaustics.w, h=waterCaustics.h;
     c.clearRect(0,0,w,h);
     const phase=frame*0.012;
-    const spacing=Math.max(34, Math.min(58, Math.min(w,h)/6.2));
-    const amp=Math.max(4, spacing*0.17);
     c.save();
     c.globalCompositeOperation='lighter';
     c.lineCap='round';
     c.lineJoin='round';
-    const pointAt=(ix,iy)=>{
-      const hx=hash01(`cx:${ix}:${iy}:${w}`);
-      const hy=hash01(`cy:${ix}:${iy}:${h}`);
-      const baseX=ix*spacing - spacing*1.2;
-      const baseY=iy*spacing - spacing*1.2;
-      return {
-        x:baseX + (hx-0.5)*spacing*0.52 + Math.sin(phase*0.62 + ix*0.91 + iy*0.37)*spacing*0.16,
-        y:baseY + (hy-0.5)*spacing*0.52 + Math.cos(phase*0.55 + ix*0.41 - iy*0.83)*spacing*0.16
-      };
-    };
-    const drawEdge=(p,q,seed)=>{
-      const mx=(p.x+q.x)*0.5, my=(p.y+q.y)*0.5;
-      const dx=q.x-p.x, dy=q.y-p.y;
-      const len=Math.hypot(dx,dy)||1;
-      const bend=(Math.sin(seed+phase*0.85)*0.20 + Math.sin(seed*1.7-phase*0.35)*0.10)*spacing;
-      const cx=mx + (-dy/len)*bend;
-      const cy=my + (dx/len)*bend;
-      c.beginPath();
-      c.moveTo(p.x,p.y);
-      c.quadraticCurveTo(cx,cy,q.x,q.y);
-      c.stroke();
-    };
-    const cols=Math.ceil(w/spacing)+4;
-    const rows=Math.ceil(h/spacing)+4;
+    const strandN=renderPerf.low ? 18 : 34;
     for(let pass=0; pass<2; pass++){
       const wide=pass===0;
-      c.strokeStyle=wide?'rgba(145,230,255,0.17)':'rgba(248,255,250,0.55)';
-      c.lineWidth=wide?(renderPerf.low?2.3:3.2):(renderPerf.low?0.62:0.92);
-      c.globalAlpha=wide?0.86:0.66;
-      for(let iy=0; iy<rows; iy++){
-        for(let ix=0; ix<cols; ix++){
-          const p=pointAt(ix,iy);
-          if(ix<cols-1){
-            const q=pointAt(ix+1,iy);
-            drawEdge(p,q,ix*0.7+iy*1.31);
-          }
-          if(iy<rows-1){
-            const q=pointAt(ix,iy+1);
-            drawEdge(p,q,ix*1.17-iy*0.53);
-          }
-          if(!renderPerf.low && ((ix+iy)&3)===0 && ix<cols-1 && iy<rows-1){
-            const q=pointAt(ix+1,iy+1);
-            drawEdge(p,q,ix*0.39+iy*0.81+2.2);
-          }
-        }
+      c.strokeStyle=wide?'rgba(152,232,235,0.14)':'rgba(245,255,236,0.42)';
+      c.lineWidth=wide?(renderPerf.low?2.0:2.7):(renderPerf.low?0.55:0.82);
+      c.globalAlpha=wide?0.78:0.54;
+      const step=renderPerf.low ? 2 : 1;
+      for(let i=pass; i<strandN; i+=step){
+        const hx=hash01(`ca-x:${i}:${w}`);
+        const hy=hash01(`ca-y:${i}:${h}`);
+        const ha=hash01(`ca-a:${i}:${w}:${h}`);
+        const hl=hash01(`ca-l:${i}`);
+        const cx=(hx*w + Math.sin(phase*0.55+i*0.77)*18 + w) % w;
+        const cy=(hy*h + Math.cos(phase*0.48+i*0.63)*14 + h) % h;
+        const angle=ha*TAU + Math.sin(phase*0.35+i)*0.42;
+        const len=(renderPerf.low?18:24) + hl*(renderPerf.low?34:52);
+        const wave=4 + hash01(`ca-b:${i}`)*10;
+        const dx=Math.cos(angle), dy=Math.sin(angle);
+        const nx=-dy, ny=dx;
+        c.beginPath();
+        c.moveTo(cx-dx*len*0.50 + nx*Math.sin(i+phase)*wave*0.28, cy-dy*len*0.50 + ny*Math.cos(i-phase)*wave*0.28);
+        c.quadraticCurveTo(
+          cx + nx*Math.sin(phase+i*1.7)*wave,
+          cy + ny*Math.cos(phase*0.8+i*1.3)*wave,
+          cx+dx*len*0.50 - nx*Math.cos(i+phase)*wave*0.22,
+          cy+dy*len*0.50 - ny*Math.sin(i-phase)*wave*0.22
+        );
+        c.stroke();
       }
       c.globalAlpha=1;
     }
