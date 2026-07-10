@@ -293,7 +293,7 @@
     } else if(type.indexOf('chain-')===0){
       sp.genes.speed = Math.max(sp.genes.speed, 0.54);
       sp.genes.sense = Math.max(sp.genes.sense, 0.42);
-    } else if({'single-teardrop':1,'single-pear':1,'single-gourd':1,'single-trefoil':1,'single-triangle':1,'single-fan':1,'single-crescent':1,'single-needle':1,'single-trap':1}[type]){
+    } else if({'single-teardrop':1,'single-pear':1,'single-gourd':1,'single-clover':1,'single-trefoil':1,'single-triangle':1,'single-fan':1,'single-crescent':1,'single-needle':1,'single-trap':1}[type]){
       // push toward "single" topology, then formSeed bucket picks the silhouette
       sp.genes.sense = Math.min(sp.genes.sense, 0.36);
       sp.genes.metabolism = Math.min(sp.genes.metabolism, 0.40);
@@ -304,7 +304,7 @@
       // trap reads as a carnivore (red); the rest keep their diet-driven colour
       if(type==='single-trap') sp.genes.diet = 0.80 + rr()*0.14;
       else sp.genes.diet = Math.min(sp.genes.diet, 0.60);
-      sp.genes.formSeed = {'single-teardrop':0.15,'single-pear':0.25,'single-gourd':0.35,'single-trefoil':0.45,'single-triangle':0.55,'single-fan':0.65,'single-crescent':0.75,'single-needle':0.85,'single-trap':0.95}[type];
+      sp.genes.formSeed = {'single-teardrop':0.13,'single-pear':0.22,'single-gourd':0.31,'single-clover':0.40,'single-trefoil':0.50,'single-triangle':0.59,'single-fan':0.68,'single-crescent':0.77,'single-needle':0.86,'single-trap':0.95}[type];
     }
     return sp;
   }

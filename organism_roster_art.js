@@ -289,7 +289,7 @@
       if ((g.speed || 0.5) > 0.62 || flags.chl) return "single-leaf";
       if ((o.form && o.form.aspect > 1.46) && (g.size || 0.5) > 0.38) return "single-spindle";
       // formSeed picks the plain-body silhouette so the "form" gene has real reach.
-      var singleShapes = ["single-cell", "single-teardrop", "single-pear", "single-gourd", "single-trefoil", "single-triangle", "single-fan", "single-crescent", "single-needle", "single-trap"];
+      var singleShapes = ["single-cell", "single-teardrop", "single-pear", "single-gourd", "single-clover", "single-trefoil", "single-triangle", "single-fan", "single-crescent", "single-needle", "single-trap"];
       return singleShapes[Math.min(singleShapes.length - 1, Math.floor((g.formSeed == null ? 0.5 : g.formSeed) * singleShapes.length))];
     }
     if (topology === "radial") {
@@ -667,21 +667,51 @@
     ctx.restore();
   }
 
-  function _mouthPt(t, LC, RC, r) {
-    const u = 1 - t, cx = 0, cy = -r * 0.34;
-    return { x: u * u * LC.x + 2 * u * t * cx + t * t * RC.x, y: u * u * LC.y + 2 * u * t * cy + t * t * RC.y };
+  // teeth lining a polyline of jaw points, apexes pointing away from the body centre (into the mouth gap).
+  function drawTeeth(ctx, pts, cen, r, pal) {
+    ctx.save();
+    ctx.strokeStyle = hsla(pal.hue - 14, 52, 26, 0.66);
+    ctx.fillStyle = hsla(pal.hue + 20, 60, 90, 0.55);
+    ctx.lineWidth = Math.max(0.6, r * 0.02);
+    ctx.lineJoin = "round";
+    const perTooth = r * 0.24;
+    for (let s = 0; s < pts.length - 1; s++) {
+      const a = pts[s], b = pts[s + 1];
+      const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+      const count = Math.max(2, Math.round(len / perTooth));
+      let nx = -dy / len, ny = dx / len;
+      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+      if ((mx - cen.x) * nx + (my - cen.y) * ny < 0) { nx = -nx; ny = -ny; }
+      for (let i = 0; i < count; i++) {
+        const t0 = i / count, t1 = (i + 1) / count, tm = (i + 0.5) / count;
+        const depth = r * (0.18 + 0.12 * Math.sin(tm * Math.PI));
+        ctx.beginPath();
+        ctx.moveTo(a.x + dx * t0, a.y + dy * t0);
+        ctx.lineTo(a.x + dx * tm + nx * depth, a.y + dy * tm + ny * depth);
+        ctx.lineTo(a.x + dx * t1, a.y + dy * t1);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
   }
-  // carnivorous trap: an urn body with a toothed mouth opening at the top.
+  // carnivorous flytrap: asymmetric leaf with a long trailing tail and a wide toothed
+  // mouth opening up to the right, between a left upper tip and a hooked right jaw.
   function drawTrap(ctx, o, r, pal, rng) {
     const g = genesOf(o);
     ctx.save();
-    ctx.rotate((rng() - 0.5) * 0.20);
-    const LC = { x: -r * 0.52, y: -r * 1.02 }, RC = { x: r * 0.52, y: -r * 1.02 };
+    ctx.rotate((rng() - 0.5) * 0.14);
+    const L = { x: -r * 0.42, y: -r * 1.44 };  // left upper tip (pointed)
+    const R = { x: r * 0.92, y: -r * 0.72 };   // right jaw tip
+    const T = { x: r * 0.06, y: -r * 0.52 };   // throat: deep bottom of the wide mouth V
+    const B = { x: -r * 0.42, y: r * 1.66 };   // long trailing tail, leaning down-left
     ctx.beginPath();
-    ctx.moveTo(0, r * 1.48);
-    ctx.bezierCurveTo(-r * 0.70, r * 0.86, -r * 0.98, -r * 0.10, LC.x, LC.y);
-    ctx.quadraticCurveTo(0, -r * 0.34, RC.x, RC.y);
-    ctx.bezierCurveTo(r * 0.98, -r * 0.10, r * 0.70, r * 0.86, 0, r * 1.48);
+    ctx.moveTo(L.x, L.y);
+    ctx.bezierCurveTo(-r * 1.05, -r * 0.45, -r * 0.72, r * 1.05, B.x, B.y);  // outer-left down to the pointed tail
+    ctx.bezierCurveTo(-r * 0.05, r * 1.15, r * 1.05, r * 0.45, R.x, R.y);     // outer-right up to the jaw
+    ctx.lineTo(T.x, T.y);                                                     // mouth lower lip R->T
+    ctx.lineTo(L.x, L.y);                                                     // mouth upper lip T->L
     ctx.closePath();
     fillAndStroke(ctx, r, pal, 0.62);
     ctx.save();
@@ -689,25 +719,9 @@
     drawGranules(ctx, r, pal, rng, 9, !!(o.flags && o.flags.chl));
     drawSurfaceSpeckles(ctx, r, pal, rng, 12, 0.20);
     ctx.restore();
-    const teeth = 9 + Math.round((g.diet || 0.5) * 4);
-    ctx.save();
-    ctx.strokeStyle = hsla(pal.hue - 14, 52, 26, 0.62);
-    ctx.fillStyle = hsla(pal.hue + 20, 60, 90, 0.55);
-    ctx.lineWidth = Math.max(0.6, r * 0.02);
-    ctx.lineJoin = "round";
-    for (let i = 0; i < teeth; i++) {
-      const p0 = _mouthPt(i / teeth, LC, RC, r), p1 = _mouthPt((i + 1) / teeth, LC, RC, r), pm = _mouthPt((i + 0.5) / teeth, LC, RC, r);
-      const depth = r * (0.16 + 0.10 * Math.sin(((i + 0.5) / teeth) * Math.PI));
-      ctx.beginPath();
-      ctx.moveTo(p0.x, p0.y);
-      ctx.lineTo(pm.x, pm.y + depth);
-      ctx.lineTo(p1.x, p1.y);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-    }
-    ctx.restore();
-    drawNucleus(ctx, 0, r * 0.34, r * 0.16, pal, rng, 0.90);
+    const cen = { x: (L.x + R.x + T.x + B.x) / 4, y: (L.y + R.y + T.y + B.y) / 4 };
+    drawTeeth(ctx, [R, T, L], cen, r, pal);
+    drawNucleus(ctx, r * 0.04, r * 0.30, r * 0.15, pal, rng, 0.90);
     ctx.restore();
   }
 
@@ -802,6 +816,16 @@
         const botL = Math.exp(-Math.pow((t + 0.52) / 0.46, 2));
         const w = 0.54 * topL + 0.64 * botL + 0.12;
         x = Math.cos(a) * r * w * 1.30; y = cy * r * 1.26;
+      } else if (kind === "single-clover") {
+        // three round lobes in a triangle (union of 3 circles: one top, two below).
+        const d = r * 0.60, rr = r * 0.86, dx = Math.cos(a), dy = Math.sin(a);
+        let rad = 0;
+        for (let k = 0; k < 3; k++) {
+          const ang = -Math.PI / 2 + k * TAU / 3, cxk = Math.cos(ang) * d, cyk = Math.sin(ang) * d;
+          const proj = cxk * dx + cyk * dy, perp = Math.abs(cxk * dy - cyk * dx);
+          if (perp < rr) { const dcap = proj + Math.sqrt(rr * rr - perp * perp); if (dcap > rad) rad = dcap; }
+        }
+        x = dx * rad; y = dy * rad;
       } else if (kind === "single-trefoil") {
         const rr = r*(0.72 + 0.36*Math.max(0, Math.cos(3*(a+Math.PI/2)))); x = Math.cos(a)*rr; y = Math.sin(a)*rr;
       } else if (kind === "single-triangle") {
@@ -875,6 +899,10 @@
     appendageBehind(ctx, o, r, pal, rng, pts); // behind the body
     if (kind === "single-gourd") {
       drawBodyFromPts(ctx, o, r, pal, rng, pts, [{ x: 0, y: -r * 0.66, r: r * 0.14 }, { x: 0, y: r * 0.60, r: r * 0.17 }]);
+    } else if (kind === "single-clover") {
+      const d = r * 0.60, nuc = [];
+      for (let k = 0; k < 3; k++) { const ang = -Math.PI / 2 + k * TAU / 3; nuc.push({ x: Math.cos(ang) * d, y: Math.sin(ang) * d, r: r * 0.16 }); }
+      drawBodyFromPts(ctx, o, r, pal, rng, pts, nuc);
     } else {
       drawBodyFromPts(ctx, o, r, pal, rng, pts); // body on top
     }
@@ -1316,6 +1344,7 @@
       { id:"single-teardrop", label:"teardrop cell" },
       { id:"single-pear", label:"pear cell" },
       { id:"single-gourd", label:"gourd / peanut" },
+      { id:"single-clover", label:"clover / triple lobe" },
       { id:"single-trefoil", label:"trefoil cell" },
       { id:"single-triangle", label:"triangle cell" },
       { id:"single-fan", label:"fan cell" },
