@@ -667,51 +667,50 @@
     ctx.restore();
   }
 
-  // teeth lining a polyline of jaw points, apexes pointing away from the body centre (into the mouth gap).
-  function drawTeeth(ctx, pts, cen, r, pal) {
+  // teeth following a smooth sampled curve; `teeth` are spaced evenly along it and
+  // their apexes point away from the body centre (up into the open mouth).
+  function drawTeeth(ctx, curvePts, cen, r, pal, teeth) {
     ctx.save();
     ctx.strokeStyle = hsla(pal.hue - 14, 52, 26, 0.66);
     ctx.fillStyle = hsla(pal.hue + 20, 60, 90, 0.55);
     ctx.lineWidth = Math.max(0.6, r * 0.02);
     ctx.lineJoin = "round";
-    const perTooth = r * 0.24;
-    for (let s = 0; s < pts.length - 1; s++) {
-      const a = pts[s], b = pts[s + 1];
-      const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
-      const count = Math.max(2, Math.round(len / perTooth));
+    function at(t) {
+      const f = t * (curvePts.length - 1), i = Math.min(curvePts.length - 2, Math.floor(f)), u = f - i;
+      return { x: curvePts[i].x + (curvePts[i + 1].x - curvePts[i].x) * u, y: curvePts[i].y + (curvePts[i + 1].y - curvePts[i].y) * u };
+    }
+    for (let k = 0; k < teeth; k++) {
+      const p0 = at(k / teeth), p1 = at((k + 1) / teeth), pm = at((k + 0.5) / teeth);
+      const dx = p1.x - p0.x, dy = p1.y - p0.y, len = Math.hypot(dx, dy) || 1;
       let nx = -dy / len, ny = dx / len;
-      const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-      if ((mx - cen.x) * nx + (my - cen.y) * ny < 0) { nx = -nx; ny = -ny; }
-      for (let i = 0; i < count; i++) {
-        const t0 = i / count, t1 = (i + 1) / count, tm = (i + 0.5) / count;
-        const depth = r * (0.18 + 0.12 * Math.sin(tm * Math.PI));
-        ctx.beginPath();
-        ctx.moveTo(a.x + dx * t0, a.y + dy * t0);
-        ctx.lineTo(a.x + dx * tm + nx * depth, a.y + dy * tm + ny * depth);
-        ctx.lineTo(a.x + dx * t1, a.y + dy * t1);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-      }
+      if ((pm.x - cen.x) * nx + (pm.y - cen.y) * ny < 0) { nx = -nx; ny = -ny; }
+      const depth = r * (0.16 + 0.12 * Math.sin(((k + 0.5) / teeth) * Math.PI));
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(pm.x + nx * depth, pm.y + ny * depth);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
     }
     ctx.restore();
   }
-  // carnivorous flytrap: asymmetric leaf with a long trailing tail and a wide toothed
-  // mouth opening up to the right, between a left upper tip and a hooked right jaw.
+  // carnivorous flytrap: a left-right symmetric leaf that tapers to a thin trailing
+  // tail and opens into a smooth, wide toothed mouth between two jaw tips.
   function drawTrap(ctx, o, r, pal, rng) {
     const g = genesOf(o);
     ctx.save();
-    ctx.rotate((rng() - 0.5) * 0.14);
-    const L = { x: -r * 0.42, y: -r * 1.44 };  // left upper tip (pointed)
-    const R = { x: r * 0.92, y: -r * 0.72 };   // right jaw tip
-    const T = { x: r * 0.06, y: -r * 0.52 };   // throat: deep bottom of the wide mouth V
-    const B = { x: -r * 0.42, y: r * 1.66 };   // long trailing tail, leaning down-left
+    ctx.rotate((rng() - 0.5) * 0.10);
+    const LT = { x: -r * 0.95, y: -r * 1.00 };  // left jaw tip
+    const RT = { x: r * 0.95, y: -r * 1.00 };   // right jaw tip
+    const TB = { x: 0, y: r * 1.70 };           // thin tail tip (bottom centre)
+    const mc1 = { x: r * 0.42, y: -r * 0.30 };  // mouth control (dips to a throat)
+    const mc2 = { x: -r * 0.42, y: -r * 0.30 };
     ctx.beginPath();
-    ctx.moveTo(L.x, L.y);
-    ctx.bezierCurveTo(-r * 1.05, -r * 0.45, -r * 0.72, r * 1.05, B.x, B.y);  // outer-left down to the pointed tail
-    ctx.bezierCurveTo(-r * 0.05, r * 1.15, r * 1.05, r * 0.45, R.x, R.y);     // outer-right up to the jaw
-    ctx.lineTo(T.x, T.y);                                                     // mouth lower lip R->T
-    ctx.lineTo(L.x, L.y);                                                     // mouth upper lip T->L
+    ctx.moveTo(LT.x, LT.y);
+    ctx.bezierCurveTo(-r * 1.05, -r * 0.10, -r * 0.30, r * 1.22, TB.x, TB.y);  // left flank down to the thin tail
+    ctx.bezierCurveTo(r * 0.30, r * 1.22, r * 1.05, -r * 0.10, RT.x, RT.y);     // mirror: tail up to the right jaw
+    ctx.bezierCurveTo(mc1.x, mc1.y, mc2.x, mc2.y, LT.x, LT.y);                   // smooth mouth lip RT -> LT
     ctx.closePath();
     fillAndStroke(ctx, r, pal, 0.62);
     ctx.save();
@@ -719,9 +718,11 @@
     drawGranules(ctx, r, pal, rng, 9, !!(o.flags && o.flags.chl));
     drawSurfaceSpeckles(ctx, r, pal, rng, 12, 0.20);
     ctx.restore();
-    const cen = { x: (L.x + R.x + T.x + B.x) / 4, y: (L.y + R.y + T.y + B.y) / 4 };
-    drawTeeth(ctx, [R, T, L], cen, r, pal);
-    drawNucleus(ctx, r * 0.04, r * 0.30, r * 0.15, pal, rng, 0.90);
+    // teeth follow the smooth mouth lip (sample RT -> LT), pointing up into the mouth.
+    const mouth = [], M = 20;
+    for (let i = 0; i <= M; i++) mouth.push(_bez(RT, mc1, mc2, LT, i / M));
+    drawTeeth(ctx, mouth, { x: 0, y: r * 0.35 }, r, pal, 9 + Math.round((g.diet || 0.5) * 4));
+    drawNucleus(ctx, 0, r * 0.42, r * 0.15, pal, rng, 0.90);
     ctx.restore();
   }
 
