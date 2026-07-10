@@ -291,7 +291,7 @@
       if(!bake && !renderPerf.low && o.trail.length>1){
         c.beginPath();
         for(let i=0;i<o.trail.length;i++){ const p=o.trail[i]; if(i===0) c.moveTo(p.x,p.y); else c.lineTo(p.x,p.y); }
-        c.strokeStyle='rgba(150,190,255,0.10)';
+        c.strokeStyle='rgba(18,58,34,0.07)';
         c.lineWidth=Math.max(0.45,1.6*visualScale);
         c.stroke();
       }
@@ -311,7 +311,7 @@
 
       if(!bake && ui.showSense){
         c.beginPath(); c.arc(0,0,o.senseR,0,TAU);
-        c.strokeStyle='rgba(100,180,255,0.08)';
+        c.strokeStyle='rgba(74,150,104,0.07)';
         c.lineWidth=1;
         c.stroke();
       }
@@ -660,7 +660,7 @@
         const fk=clamp(o.fleeTimer/42,0,1);
         c.beginPath();
         c.arc(0,0,Math.max(o.size*1.65,(sym.visualR||o.size)*0.72)*(1.0+0.18*Math.sin(gait*0.8)),0,TAU);
-        c.strokeStyle=`rgba(172,235,255,${0.16+0.20*fk})`;
+        c.strokeStyle=`rgba(126,220,170,${0.12+0.16*fk})`;
         c.lineWidth=1.2;
         c.stroke();
       }

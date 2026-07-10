@@ -252,7 +252,7 @@
   </aside>
 </div>
 
-<script src="organism_render.js"></script>
+<script src="organism_render.js?v=20260710-scar-line-fix2"></script>
 <script>
 (function(){
   'use strict';
@@ -754,19 +754,20 @@
     }
     draw(ctx){
       const s=CONFIG.rendering.planktonVisualScale;
-      const glow=(dayNight.isNight?0.62:0.26)*this.fade;
-      const glowR=(dayNight.isNight?7:4)*s;
+      const glow=(dayNight.isNight?0.34:0.16)*this.fade;
+      const glowR=(dayNight.isNight?5.5:3.4)*s;
       ctx.save(); ctx.translate(this.x,this.y); ctx.rotate(this.spin);
-      ctx.globalCompositeOperation=dayNight.isNight?'lighter':'source-over';
+      ctx.globalCompositeOperation='source-over';
       const g=ctx.createRadialGradient(0,0,0.25,0,0,glowR);
-      g.addColorStop(0,`rgba(205,255,255,${glow})`);
+      g.addColorStop(0,`rgba(132,226,156,${glow})`);
       g.addColorStop(1,'rgba(0,0,0,0)');
       ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,glowR,0,TAU); ctx.fill();
-      ctx.strokeStyle=`rgba(165,245,255,${(dayNight.isNight?0.42:0.24)*this.fade})`;
-      ctx.lineWidth=0.62;
-      if(this.kind===0){ ctx.beginPath(); ctx.ellipse(0,0,2.4*s,1.1*s,0,0,TAU); ctx.stroke(); }
-      else if(this.kind===1){ ctx.beginPath(); ctx.arc(0,0,2.0*s,0.25,TAU-0.25); ctx.stroke(); }
-      else { ctx.beginPath(); ctx.moveTo(-2*s,0); ctx.lineTo(2*s,0); ctx.moveTo(0,-2*s); ctx.lineTo(0,2*s); ctx.stroke(); }
+      ctx.fillStyle=`rgba(92,186,116,${(dayNight.isNight?0.36:0.23)*this.fade})`;
+      if(this.kind===0){ ctx.beginPath(); ctx.ellipse(0,0,2.1*s,1.0*s,0,0,TAU); ctx.fill(); }
+      else if(this.kind===1){ ctx.beginPath(); ctx.arc(0,0,1.55*s,0,TAU); ctx.fill(); }
+      else {
+        ctx.beginPath(); ctx.arc(-0.85*s,0,0.92*s,0,TAU); ctx.arc(0.85*s,0.12*s,0.72*s,0,TAU); ctx.fill();
+      }
       ctx.restore();
     }
   }
@@ -2717,7 +2718,7 @@ if(Z>0.08){
           this.energy = 0.5;
         }
       }
-      if(this.energy<=0){ const corpseE = 0.45*(8*this.size); corpses.push(new Corpse(this.x,this.y,corpseE)); eco.detritusMeter += corpseE; sparks.push(new Spark(this.x,this.y,0.9*CONFIG.rendering.starvationParticleScale,'rgba(120,200,255,',CONFIG.rendering.starvationParticleAlpha)); this.deathCause='飢餓'; recordDeath(this,'飢餓'); this.dead=true; }
+      if(this.energy<=0){ const corpseE = 0.45*(8*this.size); corpses.push(new Corpse(this.x,this.y,corpseE)); eco.detritusMeter += corpseE; sparks.push(new Spark(this.x,this.y,0.9*CONFIG.rendering.starvationParticleScale,'rgba(140,190,120,',CONFIG.rendering.starvationParticleAlpha)); this.deathCause='飢餓'; recordDeath(this,'飢餓'); this.dead=true; }
       else if(this.age>12000){ const corpseE = 0.45*(0.6*this.energy + 8*this.size); corpses.push(new Corpse(this.x,this.y,corpseE)); eco.detritusMeter += corpseE; this.deathCause='老化'; recordDeath(this,'老化'); this.dead=true; }
     }
 
@@ -2834,7 +2835,7 @@ if(Z>0.08){
           recordAction(prey,'捕食を逃れた');
           recordAction(this,'捕食に失敗した');
         }
-        pushRing(prey.x,prey.y,{r0:3,r1:24,color:'rgba(185,230,255,',t:34,width:1.3});
+        pushRing(prey.x,prey.y,{r0:3,r1:24,color:'rgba(190,210,130,',t:34,width:1.3});
         this.attackCD=34;
       }
     }
@@ -2998,7 +2999,7 @@ if(Z>0.08){
       }
       if(this.fleeTimer>0){
         ctx.beginPath(); ctx.arc(0,0,r*2.8,0,TAU);
-        ctx.strokeStyle='rgba(172,235,255,0.30)';
+        ctx.strokeStyle='rgba(126,220,170,0.26)';
         ctx.lineWidth=1.1;
         ctx.stroke();
       }
@@ -3074,7 +3075,7 @@ if(Z>0.08){
         const fk=clamp(this.fleeTimer/42,0,1);
         ctx.beginPath();
         ctx.arc(0,0,Math.max(this.size*1.65,(sym.visualR||this.size)*0.72)*(1.0+0.18*Math.sin(gait*0.8)),0,TAU);
-        ctx.strokeStyle=`rgba(172,235,255,${0.16+0.20*fk})`;
+        ctx.strokeStyle=`rgba(126,220,170,${0.12+0.16*fk})`;
         ctx.lineWidth=1.2;
         ctx.stroke();
       }
@@ -4977,7 +4978,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       if(c.t<=0){ calls.splice(i,1); continue; }
       const k=c.t/c.maxT;
       ctx.beginPath(); ctx.arc(c.x,c.y,c.r*(1.0-0.35*(1-k)),0,TAU);
-      ctx.strokeStyle = 'rgba(140,200,255,'+(0.10*k)+')';
+      ctx.strokeStyle = 'rgba(126,204,142,'+(0.09*k)+')';
       ctx.lineWidth=1.5;
       ctx.stroke();
     }
