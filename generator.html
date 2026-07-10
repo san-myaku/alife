@@ -273,9 +273,16 @@
       sp.genes.sense = Math.min(sp.genes.sense, 0.48);
       sp.genes.diet = 0.36 + rr()*0.24;
       sp.genes.formSeed = Math.max(sp.genes.formSeed, 0.66 + rr()*0.22);
-    } else if(type==='single-crescent' || type==='radial-spines'){
+    } else if(type==='radial-spines'){
       sp.genes.diet = Math.max(sp.genes.diet, 0.72);
       sp.genes.speed = Math.max(sp.genes.speed, 0.48);
+    } else if(type==='radial-beads'){
+      sp.genes.diet = Math.min(sp.genes.diet, 0.58);
+      sp.genes.sense = Math.max(sp.genes.sense, 0.62);
+    } else if(type==='radial-arms'){
+      sp.genes.sense = Math.max(sp.genes.sense, 0.66);
+      sp.genes.diet = 0.48 + rr()*0.22;
+      sp.genes.metabolism = Math.min(sp.genes.metabolism, 0.60);
     } else if(type==='mesh-lace'){
       sp.genes.metabolism = Math.max(sp.genes.metabolism, 0.76);
       sp.genes.sense = Math.max(sp.genes.sense, 0.58);
@@ -286,15 +293,18 @@
     } else if(type.indexOf('chain-')===0){
       sp.genes.speed = Math.max(sp.genes.speed, 0.54);
       sp.genes.sense = Math.max(sp.genes.sense, 0.42);
-    } else if({'single-teardrop':1,'single-pear':1,'single-trefoil':1,'single-triangle':1,'single-fan':1}[type]){
+    } else if({'single-teardrop':1,'single-pear':1,'single-gourd':1,'single-trefoil':1,'single-triangle':1,'single-fan':1,'single-crescent':1,'single-needle':1,'single-trap':1}[type]){
       // push toward "single" topology, then formSeed bucket picks the silhouette
       sp.genes.sense = Math.min(sp.genes.sense, 0.36);
       sp.genes.metabolism = Math.min(sp.genes.metabolism, 0.40);
       sp.genes.fecundity = Math.min(sp.genes.fecundity, 0.40);
       sp.genes.speed = Math.min(sp.genes.speed, 0.50);
-      sp.genes.diet = Math.min(sp.genes.diet, 0.60);
+      sp.flags.chl = false;
       sp.genes.size = 0.45 + rr()*0.20;
-      sp.genes.formSeed = {'single-teardrop':0.25,'single-pear':0.42,'single-trefoil':0.58,'single-triangle':0.75,'single-fan':0.92}[type];
+      // trap reads as a carnivore (red); the rest keep their diet-driven colour
+      if(type==='single-trap') sp.genes.diet = 0.80 + rr()*0.14;
+      else sp.genes.diet = Math.min(sp.genes.diet, 0.60);
+      sp.genes.formSeed = {'single-teardrop':0.15,'single-pear':0.25,'single-gourd':0.35,'single-trefoil':0.45,'single-triangle':0.55,'single-fan':0.65,'single-crescent':0.75,'single-needle':0.85,'single-trap':0.95}[type];
     }
     return sp;
   }

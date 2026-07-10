@@ -289,10 +289,13 @@
       if ((g.speed || 0.5) > 0.62 || flags.chl) return "single-leaf";
       if ((o.form && o.form.aspect > 1.46) && (g.size || 0.5) > 0.38) return "single-spindle";
       // formSeed picks the plain-body silhouette so the "form" gene has real reach.
-      var singleShapes = ["single-cell", "single-teardrop", "single-pear", "single-trefoil", "single-triangle", "single-fan"];
+      var singleShapes = ["single-cell", "single-teardrop", "single-pear", "single-gourd", "single-trefoil", "single-triangle", "single-fan", "single-crescent", "single-needle", "single-trap"];
       return singleShapes[Math.min(singleShapes.length - 1, Math.floor((g.formSeed == null ? 0.5 : g.formSeed) * singleShapes.length))];
     }
-    if (topology === "radial") return (g.diet || 0.5) > 0.62 ? "radial-spines" : "radial-beads";
+    if (topology === "radial") {
+      if (variantIndex(o, "radial", 3) === 2) return "radial-arms";
+      return (g.diet || 0.5) > 0.62 ? "radial-spines" : "radial-beads";
+    }
     if (topology === "branch") return "branch-vesicles";
     if (topology === "ring") return "ring";
     if (topology === "amoeba") return "amoeba";
@@ -600,23 +603,111 @@
     ctx.restore();
   }
 
+  // crescent / lune: a clean banana arc that bows upward, tapering to pointed tips.
   function drawCrescent(ctx, o, r, pal, rng) {
     ctx.save();
-    ctx.rotate(-0.20 + rng() * 0.24);
-    ctx.beginPath();
-    for (let i = 0; i <= 32; i++) {
-      const a = -1.32 + (i / 32) * 2.64;
-      ctx.lineTo(Math.cos(a) * r * 1.12, Math.sin(a) * r * 0.88);
+    ctx.rotate((rng() - 0.5) * 0.34);
+    const A = 1.18, Rc = r * 1.28, cyc = r * 0.62, wmax = r * 0.62, m = 44;
+    const pts = [];
+    for (let i = 0; i <= m; i++) {
+      const a = -A + (i / m) * 2 * A;
+      const w = wmax * (1 - Math.pow(a / A, 2));
+      const cx = Math.sin(a) * Rc, cy = cyc - Math.cos(a) * Rc;
+      const ox = Math.sin(a), oy = -Math.cos(a);
+      pts.push({ x: cx + ox * w * 0.5, y: cy + oy * w * 0.5 });
     }
-    for (let i = 32; i >= 0; i--) {
-      const a = -1.05 + (i / 32) * 2.10;
-      ctx.lineTo(r * 0.32 + Math.cos(a) * r * 0.55, Math.sin(a) * r * 0.52);
+    for (let i = m; i >= 0; i--) {
+      const a = -A + (i / m) * 2 * A;
+      const w = wmax * (1 - Math.pow(a / A, 2));
+      const cx = Math.sin(a) * Rc, cy = cyc - Math.cos(a) * Rc;
+      const ox = Math.sin(a), oy = -Math.cos(a);
+      pts.push({ x: cx - ox * w * 0.5, y: cy - oy * w * 0.5 });
     }
-    ctx.closePath();
+    _fillOutline(ctx, pts);
     fillAndStroke(ctx, r, pal, 0.64);
-    drawFineHalo(ctx, r * 0.78, pal, rng, 9, 0.48, 0.27);
-    drawSurfaceSpeckles(ctx, r, pal, rng, 10, 0.18);
-    drawNucleus(ctx, -r * 0.22, 0, r * 0.18, pal, rng, 0.92);
+    ctx.save();
+    ctx.clip();
+    drawGranules(ctx, r * 0.7, pal, rng, 6, !!(o.flags && o.flags.chl));
+    drawSurfaceSpeckles(ctx, r, pal, rng, 8, 0.16);
+    ctx.restore();
+    const na = -0.12, ncx = Math.sin(na) * Rc, ncy = cyc - Math.cos(na) * Rc;
+    drawNucleus(ctx, ncx, ncy + r * 0.02, r * 0.14, pal, rng, 0.90);
+    ctx.restore();
+  }
+
+  // needle / thin spindle: a very elongated lens pointed at both tips.
+  function drawNeedle(ctx, o, r, pal, rng) {
+    const g = genesOf(o);
+    ctx.save();
+    ctx.rotate((rng() - 0.5) * 0.28);
+    const L = r * 1.66, wid = r * 0.30;
+    ctx.beginPath();
+    ctx.moveTo(0, -L);
+    ctx.bezierCurveTo(wid * 0.7, -L * 0.5, wid, -L * 0.05, wid, 0);
+    ctx.bezierCurveTo(wid, L * 0.05, wid * 0.7, L * 0.5, 0, L);
+    ctx.bezierCurveTo(-wid * 0.7, L * 0.5, -wid, L * 0.05, -wid, 0);
+    ctx.bezierCurveTo(-wid, -L * 0.05, -wid * 0.7, -L * 0.5, 0, -L);
+    ctx.closePath();
+    fillAndStroke(ctx, r, pal, 0.60);
+    ctx.save();
+    ctx.clip();
+    ctx.strokeStyle = hsla(pal.hue - 8, 60, 42, 0.20);
+    ctx.lineWidth = Math.max(0.7, r * 0.02);
+    for (let i = 0; i < 5; i++) {
+      const y = -L * 0.4 + i * L * 0.2;
+      ctx.beginPath();
+      ctx.moveTo(-wid * 0.7, y);
+      ctx.quadraticCurveTo(0, y + r * 0.05, wid * 0.7, y);
+      ctx.stroke();
+    }
+    drawSurfaceSpeckles(ctx, r, pal, rng, 8, 0.16);
+    ctx.restore();
+    if ((g.sense || 0.5) > 0.30) drawAttachedFlagellum(ctx, 0, L, Math.PI / 2 + 0.05, r * 1.20, pal, rng, 0.36);
+    drawNucleus(ctx, 0, 0, r * 0.15, pal, rng, 0.90);
+    ctx.restore();
+  }
+
+  function _mouthPt(t, LC, RC, r) {
+    const u = 1 - t, cx = 0, cy = -r * 0.34;
+    return { x: u * u * LC.x + 2 * u * t * cx + t * t * RC.x, y: u * u * LC.y + 2 * u * t * cy + t * t * RC.y };
+  }
+  // carnivorous trap: an urn body with a toothed mouth opening at the top.
+  function drawTrap(ctx, o, r, pal, rng) {
+    const g = genesOf(o);
+    ctx.save();
+    ctx.rotate((rng() - 0.5) * 0.20);
+    const LC = { x: -r * 0.52, y: -r * 1.02 }, RC = { x: r * 0.52, y: -r * 1.02 };
+    ctx.beginPath();
+    ctx.moveTo(0, r * 1.48);
+    ctx.bezierCurveTo(-r * 0.70, r * 0.86, -r * 0.98, -r * 0.10, LC.x, LC.y);
+    ctx.quadraticCurveTo(0, -r * 0.34, RC.x, RC.y);
+    ctx.bezierCurveTo(r * 0.98, -r * 0.10, r * 0.70, r * 0.86, 0, r * 1.48);
+    ctx.closePath();
+    fillAndStroke(ctx, r, pal, 0.62);
+    ctx.save();
+    ctx.clip();
+    drawGranules(ctx, r, pal, rng, 9, !!(o.flags && o.flags.chl));
+    drawSurfaceSpeckles(ctx, r, pal, rng, 12, 0.20);
+    ctx.restore();
+    const teeth = 9 + Math.round((g.diet || 0.5) * 4);
+    ctx.save();
+    ctx.strokeStyle = hsla(pal.hue - 14, 52, 26, 0.62);
+    ctx.fillStyle = hsla(pal.hue + 20, 60, 90, 0.55);
+    ctx.lineWidth = Math.max(0.6, r * 0.02);
+    ctx.lineJoin = "round";
+    for (let i = 0; i < teeth; i++) {
+      const p0 = _mouthPt(i / teeth, LC, RC, r), p1 = _mouthPt((i + 1) / teeth, LC, RC, r), pm = _mouthPt((i + 0.5) / teeth, LC, RC, r);
+      const depth = r * (0.16 + 0.10 * Math.sin(((i + 0.5) / teeth) * Math.PI));
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(pm.x, pm.y + depth);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+    drawNucleus(ctx, 0, r * 0.34, r * 0.16, pal, rng, 0.90);
     ctx.restore();
   }
 
@@ -704,6 +795,13 @@
         const bottom = Math.exp(-Math.pow((t+0.5)/0.5,2)), top = Math.exp(-Math.pow((t-0.6)/0.36,2));
         const w = 0.66*bottom + 0.40*top + 0.06;
         x = Math.cos(a)*r*w*1.45; y = cy*r*1.12;
+      } else if (kind === "single-gourd") {
+        // peanut / figure-8: two vertically stacked lobes with a pinched waist.
+        const cy = Math.sin(a), t = -cy;
+        const topL = Math.exp(-Math.pow((t - 0.55) / 0.40, 2));
+        const botL = Math.exp(-Math.pow((t + 0.52) / 0.46, 2));
+        const w = 0.54 * topL + 0.64 * botL + 0.12;
+        x = Math.cos(a) * r * w * 1.30; y = cy * r * 1.26;
       } else if (kind === "single-trefoil") {
         const rr = r*(0.72 + 0.36*Math.max(0, Math.cos(3*(a+Math.PI/2)))); x = Math.cos(a)*rr; y = Math.sin(a)*rr;
       } else if (kind === "single-triangle") {
@@ -720,7 +818,7 @@
   }
   function _centroid(pts){ let sx=0, sy=0; for (let i=0;i<pts.length;i++){ sx+=pts[i].x; sy+=pts[i].y; } return {x:sx/pts.length, y:sy/pts.length}; }
   function _fillOutline(ctx, pts){ ctx.beginPath(); for (let i=0;i<pts.length;i++){ if(i===0) ctx.moveTo(pts[i].x,pts[i].y); else ctx.lineTo(pts[i].x,pts[i].y); } ctx.closePath(); }
-  function drawBodyFromPts(ctx, o, r, pal, rng, pts) {
+  function drawBodyFromPts(ctx, o, r, pal, rng, pts, nuclei) {
     const form = o.form || {};
     ctx.save();
     _fillOutline(ctx, pts);
@@ -728,7 +826,11 @@
     ctx.clip();
     drawGranules(ctx, r, pal, rng, 7 + Math.round((form.detail || 0.5) * 10), !!(o.flags && o.flags.chl));
     drawSurfaceSpeckles(ctx, r, pal, rng, 18, 0.24);
-    drawNucleus(ctx, -r * 0.10, -r * 0.02, r * 0.22, pal, rng, 0.92);
+    if (nuclei && nuclei.length) {
+      for (const nu of nuclei) drawNucleus(ctx, nu.x, nu.y, nu.r, pal, rng, 0.92);
+    } else {
+      drawNucleus(ctx, -r * 0.10, -r * 0.02, r * 0.22, pal, rng, 0.92);
+    }
     ctx.restore();
   }
   // Appendages placed on the actual outline (outward normal), drawn BEHIND the body.
@@ -766,9 +868,16 @@
     const kind = visualKind(o);
     if (kind === "single-leaf") { drawLeaf(ctx, o, r, pal, rng); drawRare(ctx, o, r, pal, rng); return; }
     if (kind === "single-spindle") { drawSpindle(ctx, o, r, pal, rng); drawRare(ctx, o, r, pal, rng); return; }
+    if (kind === "single-crescent") { drawCrescent(ctx, o, r, pal, rng); drawRare(ctx, o, r, pal, rng); return; }
+    if (kind === "single-needle") { drawNeedle(ctx, o, r, pal, rng); drawRare(ctx, o, r, pal, rng); return; }
+    if (kind === "single-trap") { drawTrap(ctx, o, r, pal, rng); drawRare(ctx, o, r, pal, rng); return; }
     const pts = singleOutline(kind, r, o, rng);
     appendageBehind(ctx, o, r, pal, rng, pts); // behind the body
-    drawBodyFromPts(ctx, o, r, pal, rng, pts); // body on top
+    if (kind === "single-gourd") {
+      drawBodyFromPts(ctx, o, r, pal, rng, pts, [{ x: 0, y: -r * 0.66, r: r * 0.14 }, { x: 0, y: r * 0.60, r: r * 0.17 }]);
+    } else {
+      drawBodyFromPts(ctx, o, r, pal, rng, pts); // body on top
+    }
     drawRare(ctx, o, r, pal, rng);
   }
 
@@ -843,8 +952,50 @@
     ctx.restore();
   }
 
+  // radial arms: a central cell with several beaded arms (X-cross / downward arch).
+  function drawRadialArms(ctx, o, r, pal, rng) {
+    const g = genesOf(o);
+    ctx.save();
+    ctx.scale(0.86, 0.86);
+    ctx.rotate((rng() - 0.5) * 0.5);
+    const arms = 2 + variantIndex(o, "armn", 4);              // 2..5 arms
+    const downward = variantIndex(o, "armdir", 2) === 1 && arms <= 3;
+    const beads = 3 + Math.round(((o.form && o.form.length) || 0.5) * 2); // 3..5 beads/arm
+    for (let i = 0; i < arms; i++) {
+      let a;
+      if (downward) a = Math.PI * 0.28 + (arms <= 1 ? 0.5 : i / (arms - 1)) * Math.PI * 0.44;
+      else a = (i / arms) * TAU + Math.PI * 0.2 + (rng() - 0.5) * 0.2;
+      const centers = [];
+      let cx = Math.cos(a) * r * 0.44, cy = Math.sin(a) * r * 0.44, cang = a;
+      for (let b = 0; b < beads; b++) {
+        cx += Math.cos(cang) * r * 0.30; cy += Math.sin(cang) * r * 0.30;
+        cang += (rng() - 0.5) * 0.4;
+        centers.push({ x: cx, y: cy });
+      }
+      ctx.strokeStyle = hsla(pal.hue - 10, 52, 52, 0.16);
+      ctx.lineWidth = r * 0.10; ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r * 0.40, Math.sin(a) * r * 0.40);
+      for (const c of centers) ctx.lineTo(c.x, c.y);
+      ctx.stroke();
+      for (let b = 0; b < centers.length; b++) {
+        const rr = r * lerp(0.19, 0.11, b / Math.max(1, beads - 1));
+        drawOvalCell(ctx, centers[b].x, centers[b].y, rr * 1.06, rr * 0.9, cang, pal, rng, 0.72);
+      }
+    }
+    ctx.save();
+    drawBlobPath(ctx, r * 0.52, 1.04, 0.22, 0.05, rng);
+    fillAndStroke(ctx, r * 0.6, pal, 0.72);
+    ctx.clip();
+    drawGranules(ctx, r * 0.5, pal, rng, 6, !!(o.flags && o.flags.chl));
+    drawNucleus(ctx, 0, 0, r * 0.2, pal, rng, 0.95);
+    ctx.restore();
+    ctx.restore();
+  }
+
   function drawRadial(ctx, o, r, pal, rng) {
     const g = genesOf(o);
+    if (visualKind(o) === "radial-arms") { drawRadialArms(ctx, o, r, pal, rng); return; }
     const pred = (g.diet || 0.5) > 0.62;
     const points = 9 + Math.round((g.sense || 0.5) * 8);
     ctx.save();
@@ -1164,14 +1315,19 @@
       { id:"single-spindle", label:"spindle cell" },
       { id:"single-teardrop", label:"teardrop cell" },
       { id:"single-pear", label:"pear cell" },
+      { id:"single-gourd", label:"gourd / peanut" },
       { id:"single-trefoil", label:"trefoil cell" },
       { id:"single-triangle", label:"triangle cell" },
       { id:"single-fan", label:"fan cell" },
+      { id:"single-crescent", label:"crescent" },
+      { id:"single-needle", label:"needle cell" },
+      { id:"single-trap", label:"toothed trap" },
       { id:"chain-beads", label:"bead chain" },
       { id:"chain-segment", label:"segmented long body" },
       { id:"ring", label:"cell ring" },
       { id:"radial-spines", label:"radial spines" },
       { id:"radial-beads", label:"radial beads" },
+      { id:"radial-arms", label:"beaded arms" },
       { id:"branch-vesicles", label:"branch vesicles" },
       { id:"cluster-bubbles", label:"bubble cluster" },
       { id:"cluster-rosette", label:"rosette cluster" },
