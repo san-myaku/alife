@@ -191,7 +191,7 @@
   appendageSelect.className = 'btn';
   appendageSelect.id = 'appendageSelect';
   appendageSelect.title = '素体（単体細胞）系の付属物を固定します';
-  [['auto','付属: 自動'],['cilia','付属: 繊毛'],['spikes','付属: トゲ'],['antennae','付属: 触角'],['flagella','付属: 鞭毛']].forEach(function(p){
+  [['auto','付属: 自動'],['cilia','付属: 繊毛'],['spikes','付属: トゲ'],['spokes','付属: 放射トゲ'],['beads','付属: 放射ビーズ'],['antennae','付属: 触角'],['flagella','付属: 鞭毛']].forEach(function(p){
     var op = document.createElement('option'); op.value = p[0]; op.textContent = p[1]; appendageSelect.appendChild(op);
   });
   typeSelect.insertAdjacentElement('afterend', appendageSelect);
@@ -282,12 +282,6 @@
       sp.genes.sense = Math.min(sp.genes.sense, 0.48);
       sp.genes.diet = 0.36 + rr()*0.24;
       sp.genes.formSeed = Math.max(sp.genes.formSeed, 0.66 + rr()*0.22);
-    } else if(type==='radial-spines'){
-      sp.genes.diet = Math.max(sp.genes.diet, 0.72);
-      sp.genes.speed = Math.max(sp.genes.speed, 0.48);
-    } else if(type==='radial-beads'){
-      sp.genes.diet = Math.min(sp.genes.diet, 0.58);
-      sp.genes.sense = Math.max(sp.genes.sense, 0.62);
     } else if(type==='radial-arms'){
       sp.genes.sense = Math.max(sp.genes.sense, 0.66);
       sp.genes.diet = 0.48 + rr()*0.22;

@@ -292,10 +292,7 @@
       var singleShapes = ["single-cell", "single-teardrop", "single-pear", "single-gourd", "single-clover", "single-trefoil", "single-triangle", "single-fan", "single-crescent", "single-needle", "single-trap"];
       return singleShapes[Math.min(singleShapes.length - 1, Math.floor((g.formSeed == null ? 0.5 : g.formSeed) * singleShapes.length))];
     }
-    if (topology === "radial") {
-      if (variantIndex(o, "radial", 3) === 2) return "radial-arms";
-      return (g.diet || 0.5) > 0.62 ? "radial-spines" : "radial-beads";
-    }
+    if (topology === "radial") return "radial-arms"; // spines/beads are now selectable appendages, not forms
     if (topology === "branch") return "branch-vesicles";
     if (topology === "ring") return "ring";
     if (topology === "amoeba") return "amoeba";
@@ -870,19 +867,22 @@
     ctx.restore();
   }
   // Appendages placed on the actual outline (outward normal), drawn BEHIND the body.
-  function appendageBehind(ctx, o, r, pal, rng, pts) {
+  function appendageBehind(ctx, o, r, pal, rng, pts, opts) {
     const g = genesOf(o), diet = g.diet == null ? 0.5 : g.diet;
     const c = _centroid(pts);
     function norm(p){ const dx=p.x-c.x, dy=p.y-c.y, m=Math.hypot(dx,dy)||1; return {nx:dx/m, ny:dy/m}; }
     let h = hashStr32((o.speciesKey || "x") + ":app:" + Math.round((g.formSeed || 0) * 997)) / 4294967296;
+    const PERIM = ["cilia", "spikes", "spokes", "beads"];  // fringe types that suit any silhouette
     let kind;
     if (o.appendageKind && o.appendageKind !== "auto") {
       kind = o.appendageKind;                 // explicit override from the generator UI
     } else {
-      kind = h < 0.34 ? "cilia" : (h < 0.60 ? "spikes" : (h < 0.80 ? "antennae" : "flagella"));
+      kind = h < 0.20 ? "cilia" : h < 0.40 ? "spikes" : h < 0.58 ? "spokes" : h < 0.72 ? "beads" : h < 0.86 ? "antennae" : "flagella";
       if (diet > 0.66 && kind === "cilia") kind = "spikes";
-      if (diet < 0.33 && kind === "spikes") kind = "cilia";
+      if (diet < 0.33 && (kind === "spikes" || kind === "spokes")) kind = "cilia";
     }
+    // point appendages (antennae/flagella) don't read on ring/mesh/cluster bodies -> use a fringe.
+    if (opts && opts.perimeter && PERIM.indexOf(kind) < 0) kind = PERIM[Math.floor(h * 4) % 4];
     ctx.save();
     ctx.lineCap = "round"; ctx.lineJoin = "round";
     if (kind === "cilia") {
@@ -893,6 +893,28 @@
       ctx.strokeStyle = hsla(pal.hue - 10, 88, 52, 0.55); ctx.fillStyle = hsla(pal.hue + 8, 88, 70, 0.28); ctx.lineWidth = Math.max(0.8, r * 0.028);
       const spikes = 9 + Math.round(h * 8);
       for (let i=0;i<spikes;i++){ const p = pts[Math.floor(i/spikes*pts.length)]; const nn = norm(p); const len = r*(0.26 + h*0.22); const tx=p.x+nn.nx*len, ty=p.y+nn.ny*len; const bw = r*0.05; ctx.beginPath(); ctx.moveTo(p.x-(-nn.ny)*bw, p.y-(nn.nx)*bw); ctx.lineTo(tx,ty); ctx.lineTo(p.x+(-nn.ny)*bw, p.y+(nn.nx)*bw); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+    } else if (kind === "spokes") {
+      // long, narrow, tapered spines radiating outward (proper thorns, not hairs)
+      ctx.strokeStyle = hsla(pal.hue - 8, 82, 44, 0.58); ctx.lineWidth = Math.max(0.7, r * 0.02);
+      const nsp = 11 + Math.round(h * 8), bw = r * 0.055;
+      for (let i=0;i<nsp;i++){
+        const p = pts[Math.floor(i/nsp*pts.length)], nn = norm(p);
+        const len = r*(0.52 + h*0.34) * (0.86 + (i%2)*0.18);
+        const tx = p.x+nn.nx*len, ty = p.y+nn.ny*len, px = -nn.ny, py = nn.nx;
+        const grd = ctx.createLinearGradient(p.x, p.y, tx, ty);
+        grd.addColorStop(0, hsla(pal.hue+8, 82, 66, 0.52)); grd.addColorStop(1, hsla(pal.hue-8, 86, 50, 0.10));
+        ctx.fillStyle = grd;
+        ctx.beginPath(); ctx.moveTo(p.x+px*bw, p.y+py*bw); ctx.lineTo(tx, ty); ctx.lineTo(p.x-px*bw, p.y-py*bw); ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+    } else if (kind === "beads") {
+      // radiating spokes tipped with small beaded cells
+      ctx.strokeStyle = hsla(pal.hue - 8, 50, 54, 0.26); ctx.lineWidth = Math.max(0.7, r * 0.02);
+      const nsp = 9 + Math.round(h * 6);
+      for (let i=0;i<nsp;i++){
+        const p = pts[Math.floor(i/nsp*pts.length)], nn = norm(p), nb = 2 + (i%2);
+        ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x+nn.nx*(r*(0.24+nb*0.16)), p.y+nn.ny*(r*(0.24+nb*0.16))); ctx.stroke();
+        for (let b=1;b<=nb;b++){ const d = r*0.18 + b*r*0.16, bx = p.x+nn.nx*d, by = p.y+nn.ny*d, rr = r*(0.095 - b*0.012); drawOvalCell(ctx, bx, by, rr*1.1, rr*0.92, Math.atan2(nn.ny, nn.nx), pal, rng, 0.7); }
+      }
     } else if (kind === "antennae") {
       ctx.strokeStyle = hsla(pal.hue + 35, 72, 48, 0.55); ctx.lineWidth = Math.max(0.9, r * 0.028);
       const upper = pts.slice().sort(function(a,b){return a.y-b.y;}).slice(0,3);
@@ -903,6 +925,12 @@
       for (let i=0;i<lower.length;i++){ const p = lower[i]; const len = r*(1.1 + rng()*0.7); const segs = 7; ctx.beginPath(); ctx.moveTo(p.x,p.y); for (let s=1;s<=segs;s++){ const tt=s/segs; ctx.lineTo(p.x + Math.sin(tt*6+i)*r*0.16*tt, p.y + len*tt); } ctx.stroke(); }
     }
     ctx.restore();
+  }
+  // a ring of boundary points (used to hang perimeter appendages on multi-node bodies)
+  function ringOutline(rx, ry, n) {
+    const pts = [];
+    for (let i = 0; i < n; i++) { const a = (i / n) * TAU; pts.push({ x: Math.cos(a) * rx, y: Math.sin(a) * ry }); }
+    return pts;
   }
 
   function drawSingle(ctx, o, r, pal, rng) {
@@ -951,6 +979,9 @@
       return;
     }
 
+    // perimeter appendage hugging the bead chain's elongated body (behind the beads)
+    const halfLen = (n - 1) * 0.5 * step;
+    appendageBehind(ctx, o, r, pal, rng, ringOutline(halfLen + r * 0.42, r * 0.5, 46), { perimeter: true });
     ctx.lineCap = "round";
     ctx.strokeStyle = hsla(pal.hue - 10, 52, 52, 0.16);
     ctx.lineWidth = r * 0.12;
@@ -969,7 +1000,6 @@
       const rr = r * lerp(0.30, 0.43, 1 - Math.abs(t - 0.5) * 1.2);
       drawOvalCell(ctx, x, y, rr * 1.06, rr * 0.88, (rng() - 0.5) * 0.34, pal, rng, 0.70);
     }
-    drawChainEdgeCilia(ctx, n, step, r, pal, rng, (g.diet || 0.5) > 0.64);
     if (variant === 2 && (g.speed || 0.5) > 0.40) {
       const endX = (n - 1) * 0.5 * step;
       const endY = Math.sin((n - 1) * 0.9) * r * 0.18;
@@ -982,6 +1012,7 @@
     const g = genesOf(o);
     const n = 8 + Math.round((g.fecundity || 0.5) * 6);
     ctx.save();
+    appendageBehind(ctx, o, r, pal, rng, ringOutline(r * 0.84, r * 0.84, 42), { perimeter: true });
     ctx.strokeStyle = hsla(pal.hue - 6, 48, 50, 0.20);
     ctx.lineWidth = Math.max(1, r * 0.050);
     ctx.beginPath();
@@ -993,7 +1024,6 @@
       const rr = r * (0.17 + rng() * 0.035);
       drawOvalCell(ctx, Math.cos(a) * d, Math.sin(a) * d, rr * 1.08, rr * 0.92, a + Math.PI * 0.5, pal, rng, 0.68);
     }
-    drawFineHalo(ctx, r * 0.78, pal, rng, 34, 0.16, 0.15);
     ctx.restore();
   }
 
@@ -1043,43 +1073,10 @@
     ctx.restore();
   }
 
+  // radial topology now always renders the beaded-arms body; the old spoke/bead
+  // "radial-spines" / "radial-beads" looks live on as selectable appendages instead.
   function drawRadial(ctx, o, r, pal, rng) {
-    const g = genesOf(o);
-    if (visualKind(o) === "radial-arms") { drawRadialArms(ctx, o, r, pal, rng); return; }
-    const pred = (g.diet || 0.5) > 0.62;
-    const points = 9 + Math.round((g.sense || 0.5) * 8);
-    ctx.save();
-    ctx.lineCap = "round";
-    ctx.strokeStyle = hsla(pal.hue - 8, pred ? 70 : 56, pred ? 48 : 58, pred ? 0.42 : 0.28);
-    ctx.lineWidth = Math.max(0.7, r * (pred ? 0.025 : 0.018));
-    for (let i = 0; i < points; i++) {
-      const a = (i / points) * TAU + (rng() - 0.5) * 0.08;
-      const inner = r * (0.62 + rng() * 0.07);
-      const outer = r * (pred ? 1.24 + rng() * 0.24 : 1.06 + rng() * 0.14);
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
-      ctx.quadraticCurveTo(
-        Math.cos(a + 0.04) * (inner + outer) * 0.5,
-        Math.sin(a + 0.04) * (inner + outer) * 0.5,
-        Math.cos(a) * outer,
-        Math.sin(a) * outer
-      );
-      ctx.stroke();
-      if (!pred && i % 2 === 0) {
-        drawNucleus(ctx, Math.cos(a) * outer, Math.sin(a) * outer, r * 0.045, pal, rng, 0.58);
-      }
-    }
-    ctx.restore();
-    if (pred) drawFineHalo(ctx, r * 0.84, pal, rng, points, 0.62, 0.24);
-    else drawFineHalo(ctx, r * 0.86, pal, rng, points * 2, 0.34, 0.16);
-    ctx.save();
-    drawBlobPath(ctx, r * 0.82, 1.02, 0.18, pred ? 0.26 : 0.08, rng);
-    fillAndStroke(ctx, r, pal, 0.62);
-    ctx.clip();
-    drawGranules(ctx, r * 0.70, pal, rng, 10 + Math.round((g.sense || 0.5) * 10), !!(o.flags && o.flags.chl));
-    drawSurfaceSpeckles(ctx, r, pal, rng, 22, 0.22);
-    drawNucleus(ctx, 0, 0, r * 0.22, pal, rng, 0.95);
-    ctx.restore();
+    drawRadialArms(ctx, o, r, pal, rng);
   }
 
   function drawBranch(ctx, o, r, pal, rng) {
@@ -1154,6 +1151,7 @@
     ctx.save();
 
     if (variant === 1) {
+      appendageBehind(ctx, o, r, pal, rng, ringOutline(r * 0.60, r * 0.60, 34), { perimeter: true });
       const petals = 5 + Math.round((g.fecundity || 0.5) * 4);
       for (let i = 0; i < petals; i++) {
         const a = (i / petals) * TAU + rng() * 0.08;
@@ -1161,12 +1159,12 @@
         drawOvalCell(ctx, Math.cos(a) * d, Math.sin(a) * d, r * 0.22, r * 0.29, a, pal, rng, 0.68);
       }
       drawOvalCell(ctx, 0, 0, r * 0.24, r * 0.24, 0, pal, rng, 0.78);
-      drawFineHalo(ctx, r * 0.70, pal, rng, 18, 0.18, 0.12);
       ctx.restore();
       return;
     }
 
     if (variant === 2) {
+      appendageBehind(ctx, o, r, pal, rng, ringOutline(r * 0.78, r * 0.74, 38), { perimeter: true });
       drawSoftMembranePath(ctx, r * 0.74, 1.04, 0.54, rng);
       fillAndStroke(ctx, r, pal, 0.30);
       ctx.clip();
@@ -1256,21 +1254,8 @@
       const taper = 1 + 0.04 * 0.13 * Math.max(0, Math.cos(a));
       mpts.push({ x: Math.cos(a) * R0 * aspect * lobes * taper, y: Math.sin(a) * R0 * (1 + irr * 0.06 * Math.cos(a * 4)) });
     }
-    // cilia hugging the outline (behind the translucent body)
-    ctx.save();
-    ctx.lineCap = "round";
-    const meshPred = (g.diet || 0.5) > 0.62;
-    ctx.strokeStyle = hsla(pal.hue + (meshPred ? -6 : 26), 66, meshPred ? 60 : 80, 0.26);
-    ctx.lineWidth = Math.max(0.5, r * 0.016);
-    for (let i = 0; i < mpts.length; i += 2) {
-      const p = mpts[i], m = Math.hypot(p.x, p.y) || 1;
-      const len = r * (0.10 + 0.05 * Math.abs(Math.sin(i * 1.3)));
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y);
-      ctx.lineTo(p.x + (p.x / m) * len, p.y + (p.y / m) * len);
-      ctx.stroke();
-    }
-    ctx.restore();
+    // selectable perimeter appendage hugging the real silhouette (behind the translucent body)
+    appendageBehind(ctx, o, r, pal, rng, mpts, { perimeter: true });
 
     _fillOutline(ctx, mpts);
     fillAndStroke(ctx, r, pal, 0.20);
@@ -1425,8 +1410,6 @@
       { id:"chain-beads", label:"bead chain" },
       { id:"chain-segment", label:"segmented long body" },
       { id:"ring", label:"cell ring" },
-      { id:"radial-spines", label:"radial spines" },
-      { id:"radial-beads", label:"radial beads" },
       { id:"radial-arms", label:"beaded arms" },
       { id:"branch-vesicles", label:"branch vesicles" },
       { id:"cluster-bubbles", label:"bubble cluster" },
