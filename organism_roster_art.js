@@ -527,6 +527,11 @@
     const g = genesOf(o);
     ctx.save();
     ctx.rotate(-0.30 + rng() * 0.22);
+    const pts = _sampleSegs([
+      [{x:-r*0.92,y:r*0.05},{x:-r*0.40,y:-r*0.78},{x:r*0.42,y:-r*0.92},{x:r*1.12,y:-r*0.10}],
+      [{x:r*1.12,y:-r*0.10},{x:r*0.42,y:r*0.75},{x:-r*0.42,y:r*0.74},{x:-r*0.92,y:r*0.05}]
+    ], 22);
+    appendageBehind(ctx, o, r, pal, rng, pts); // selectable appendage, behind the body
     ctx.beginPath();
     ctx.moveTo(-r * 0.92, r * 0.05);
     ctx.bezierCurveTo(-r * 0.40, -r * 0.78, r * 0.42, -r * 0.92, r * 1.12, -r * 0.10);
@@ -547,11 +552,7 @@
     drawGranules(ctx, r, pal, rng, 5 + Math.round((g.metabolism || 0.5) * 10), !!(o.flags && o.flags.chl));
     drawSurfaceSpeckles(ctx, r, pal, rng, 12, 0.20);
     ctx.restore();
-    if ((g.sense || 0.5) > 0.62) {
-      drawAttachedFlagellum(ctx, r * 0.86, -r * 0.10, -0.86, r * 0.92, pal, rng, 0.44);
-    }
     drawNucleus(ctx, -r * 0.05, -r * 0.02, r * 0.17, pal, rng, 0.85);
-    drawFineHalo(ctx, r * 0.78, pal, rng, 10, 0.24, 0.14);
     ctx.restore();
   }
 
@@ -559,6 +560,11 @@
     const g = genesOf(o);
     ctx.save();
     ctx.rotate(-0.24 + rng() * 0.20);
+    const pts = _sampleSegs([
+      [{x:-r*1.02,y:r*0.02},{x:-r*0.62,y:-r*0.46},{x:r*0.32,y:-r*0.52},{x:r*1.12,y:-r*0.08}],
+      [{x:r*1.12,y:-r*0.08},{x:r*0.52,y:r*0.48},{x:-r*0.54,y:r*0.48},{x:-r*1.02,y:r*0.02}]
+    ], 22);
+    appendageBehind(ctx, o, r, pal, rng, pts); // selectable appendage, behind the body
     ctx.beginPath();
     ctx.moveTo(-r * 1.02, r * 0.02);
     ctx.bezierCurveTo(-r * 0.62, -r * 0.46, r * 0.32, -r * 0.52, r * 1.12, -r * 0.08);
@@ -579,26 +585,6 @@
     drawGranules(ctx, r * 0.82, pal, rng, 6 + Math.round((g.metabolism || 0.5) * 8), !!(o.flags && o.flags.chl));
     drawSurfaceSpeckles(ctx, r, pal, rng, 14, 0.18);
     ctx.restore();
-
-    ctx.save();
-    ctx.lineCap = "round";
-    ctx.strokeStyle = hsla(pal.hue + 16, 82, 74, 0.22);
-    ctx.lineWidth = Math.max(0.55, r * 0.014);
-    for (let i = 0; i < 14; i++) {
-      const t = (i + 0.5) / 14;
-      const x = lerp(-r * 0.76, r * 0.82, t);
-      const edge = Math.sin(t * Math.PI) * r * 0.40;
-      const side = i % 2 ? 1 : -1;
-      const y = side * edge * (0.72 + rng() * 0.18);
-      const len = r * (0.14 + rng() * 0.10);
-      ctx.beginPath();
-      ctx.moveTo(x, y);
-      ctx.quadraticCurveTo(x + (rng() - 0.5) * r * 0.07, y + side * len * 0.46, x + (rng() - 0.5) * r * 0.10, y + side * len);
-      ctx.stroke();
-    }
-    ctx.restore();
-
-    if ((g.sense || 0.5) > 0.30) drawAttachedFlagellum(ctx, r * 1.02, -r * 0.04, -0.06, r * 1.35, pal, rng, 0.40);
     drawNucleus(ctx, -r * 0.22, -r * 0.02, r * 0.17, pal, rng, 0.88);
     ctx.restore();
   }
@@ -623,6 +609,7 @@
       const ox = Math.sin(a), oy = -Math.cos(a);
       pts.push({ x: cx - ox * w * 0.5, y: cy - oy * w * 0.5 });
     }
+    appendageBehind(ctx, o, r, pal, rng, pts); // selectable appendage, behind the body
     _fillOutline(ctx, pts);
     fillAndStroke(ctx, r, pal, 0.64);
     ctx.save();
@@ -641,24 +628,13 @@
     ctx.save();
     ctx.rotate((rng() - 0.5) * 0.28);
     const L = r * 1.66, wid = r * 0.30;
-    // cilia fringe along both long edges (behind the body), so it reads like a ciliate needle
-    ctx.save();
-    ctx.lineCap = "round";
-    ctx.strokeStyle = hsla(pal.hue + 28, 70, 80, 0.30);
-    ctx.lineWidth = Math.max(0.5, r * 0.016);
-    const NC = 13;
-    for (let i = 0; i < NC; i++) {
-      const t = (i + 0.5) / NC, y = -L + 2 * L * t, hw = wid * Math.sin(Math.PI * t) * 0.96;
-      if (hw < r * 0.05) continue;
-      const len = r * (0.11 + 0.05 * Math.sin(Math.PI * t));
-      for (const s of [-1, 1]) {
-        ctx.beginPath();
-        ctx.moveTo(s * hw, y);
-        ctx.lineTo(s * (hw + len), y - len * 0.34);
-        ctx.stroke();
-      }
-    }
-    ctx.restore();
+    const pts = _sampleSegs([
+      [{x:0,y:-L},{x:wid*0.7,y:-L*0.5},{x:wid,y:-L*0.05},{x:wid,y:0}],
+      [{x:wid,y:0},{x:wid,y:L*0.05},{x:wid*0.7,y:L*0.5},{x:0,y:L}],
+      [{x:0,y:L},{x:-wid*0.7,y:L*0.5},{x:-wid,y:L*0.05},{x:-wid,y:0}],
+      [{x:-wid,y:0},{x:-wid,y:-L*0.05},{x:-wid*0.7,y:-L*0.5},{x:0,y:-L}]
+    ], 14);
+    appendageBehind(ctx, o, r, pal, rng, pts); // selectable appendage, behind the body
     ctx.beginPath();
     ctx.moveTo(0, -L);
     ctx.bezierCurveTo(wid * 0.7, -L * 0.5, wid, -L * 0.05, wid, 0);
@@ -680,7 +656,6 @@
     }
     drawSurfaceSpeckles(ctx, r, pal, rng, 8, 0.16);
     ctx.restore();
-    if ((g.sense || 0.5) > 0.30) drawAttachedFlagellum(ctx, 0, L, Math.PI / 2 + 0.05, r * 1.20, pal, rng, 0.36);
     drawNucleus(ctx, 0, 0, r * 0.15, pal, rng, 0.90);
     ctx.restore();
   }
@@ -724,6 +699,12 @@
     const TB = { x: 0, y: r * 1.70 };           // thin tail tip (bottom centre)
     const mc1 = { x: r * 0.42, y: -r * 0.30 };  // mouth control (dips to a throat)
     const mc2 = { x: -r * 0.42, y: -r * 0.30 };
+    // selectable appendage placed along the two outer flanks (not the mouth), drawn behind.
+    const appPts = _sampleSegs([
+      [LT, {x:-r*1.05,y:-r*0.10}, {x:-r*0.30,y:r*1.22}, TB],
+      [TB, {x:r*0.30,y:r*1.22}, {x:r*1.05,y:-r*0.10}, RT]
+    ], 20);
+    appendageBehind(ctx, o, r, pal, rng, appPts);
     ctx.beginPath();
     ctx.moveTo(LT.x, LT.y);
     ctx.bezierCurveTo(-r * 1.05, -r * 0.10, -r * 0.30, r * 1.22, TB.x, TB.y);  // left flank down to the thin tail
@@ -736,10 +717,13 @@
     drawGranules(ctx, r, pal, rng, 9, !!(o.flags && o.flags.chl));
     drawSurfaceSpeckles(ctx, r, pal, rng, 12, 0.20);
     ctx.restore();
-    // teeth follow the smooth mouth lip (sample RT -> LT), pointing up into the mouth.
-    const mouth = [], M = 20;
-    for (let i = 0; i <= M; i++) mouth.push(_bez(RT, mc1, mc2, LT, i / M));
-    drawTeeth(ctx, mouth, { x: 0, y: r * 0.35 }, r, pal, 9 + Math.round((g.diet || 0.5) * 4));
+    // the toothed mouth is a built-in trait carried by only some species (others gape smooth).
+    const hasTeeth = (hashStr32((o.speciesKey || "x") + ":teeth") % 1000) < 520;
+    if (hasTeeth) {
+      const mouth = [], M = 20;
+      for (let i = 0; i <= M; i++) mouth.push(_bez(RT, mc1, mc2, LT, i / M));
+      drawTeeth(ctx, mouth, { x: 0, y: r * 0.35 }, r, pal, 9 + Math.round((g.diet || 0.5) * 4));
+    }
     drawNucleus(ctx, 0, r * 0.42, r * 0.15, pal, rng, 0.90);
     ctx.restore();
   }
@@ -802,6 +786,15 @@
     const u = 1 - t;
     return { x: u * u * u * p0.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * p1.x,
              y: u * u * u * p0.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * p1.y };
+  }
+  // sample a chain of cubic-bezier segments ([p0,c1,c2,p1]) into a boundary point list.
+  function _sampleSegs(segs, per) {
+    const pts = [];
+    for (let s = 0; s < segs.length; s++) {
+      const g = segs[s];
+      for (let i = 0; i < per; i++) pts.push(_bez(g[0], g[1], g[2], g[3], i / per));
+    }
+    return pts;
   }
   function singleOutline(kind, r, o, rng) {
     const form = o.form || {};
