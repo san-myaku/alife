@@ -3671,13 +3671,22 @@ if(p.type==='oxygen'){
       algaeRenderStats.full++;
       lastAlgaePaint = frame;
     } else if(algaeDirtyCount>0){
-      const dirty=[];
+      const dirtyFlags = new Uint8Array(Math.max(1, ew*eh));
       for(let i=0;i<algaeDirtyCells.length;i++){
         if(!algaeDirtyCells[i]) continue;
-        dirty.push(i);
         algaeDirtyCells[i]=0;
+        const x=i%ew, y=(i/ew)|0;
+        for(let dy=-1; dy<=1; dy++){
+          const yy=y+dy; if(yy<0 || yy>=eh) continue;
+          for(let dx=-1; dx<=1; dx++){
+            const xx=x+dx; if(xx<0 || xx>=ew) continue;
+            dirtyFlags[idx(xx,yy)]=1;
+          }
+        }
       }
       algaeDirtyCount = 0;
+      const dirty=[];
+      for(let i=0;i<dirtyFlags.length;i++) if(dirtyFlags[i]) dirty.push(i);
       paintedCells = paintAlgaeMosaic(algaeCtx,dirty);
       algaeRenderStats.dirty++;
       lastAlgaePaint = frame;
@@ -3685,7 +3694,7 @@ if(p.type==='oxygen'){
     algaeRenderStats.cells = paintedCells;
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 0.68;
+    ctx.globalAlpha = 1;
     ctx.drawImage(algaeCanvas,0,0,W,H);
     ctx.restore();
   }
@@ -3700,8 +3709,11 @@ if(p.type==='oxygen'){
     const subCell = cell / sub;
     const fineStep = tiny ? 2 : 1;
     let painted=0;
-    const paintCell=(x,y,clearCell)=>{
-      if(clearCell) ctx.clearRect(x*cell,y*cell,cell+1,cell+1);
+    const clearCell=(x,y)=>{
+      // Dirty repaint expands neighbors, so do not clear into cells that may remain cached.
+      ctx.clearRect(x*cell,y*cell,cell,cell);
+    };
+    const paintCell=(x,y)=>{
       const i=idx(x,y);
       const n=fields.algae[i] || 0;
       const baseEdible=clamp01((n-0.12)/0.62);
@@ -3730,9 +3742,9 @@ if(p.type==='oxygen'){
           }
           if(mark>0.030){
             const residual=clamp01(n/0.24);
-            const darkT=clamp01(mark * (0.30 + 0.82*(1-residual)));
-            ctx.globalAlpha = clamp(0.065 + mark*0.20 + darkT*0.34,0.06,0.56);
-            ctx.fillStyle = `rgb(${Math.round(72 + (1-72)*darkT)},${Math.round(104 + (5-104)*darkT)},${Math.round(40 + (2-40)*darkT)})`;
+            const darkT=clamp01(mark * (0.54 + 1.08*(1-residual)));
+            ctx.globalAlpha = clamp(0.14 + mark*0.34 + darkT*0.50,0.12,0.92);
+            ctx.fillStyle = `rgb(${Math.round(42 + (0-42)*darkT)},${Math.round(68 + (1-68)*darkT)},${Math.round(22 + (0-22)*darkT)})`;
             ctx.fillRect(px,py,w,hh);
           }
           if(edible>0.68 && !tiny && ((h>>>8)&7)===0){
@@ -3746,11 +3758,15 @@ if(p.type==='oxygen'){
     if(cells){
       for(const i of cells){
         const x=i%ew, y=(i/ew)|0;
-        paintCell(x,y,true);
+        clearCell(x,y);
+      }
+      for(const i of cells){
+        const x=i%ew, y=(i/ew)|0;
+        paintCell(x,y);
       }
     } else {
       for(let y=0;y<eh;y++){
-        for(let x=0;x<ew;x++) paintCell(x,y,false);
+        for(let x=0;x<ew;x++) paintCell(x,y);
       }
     }
     ctx.restore();
@@ -4977,7 +4993,6 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     drawSelectionOverlay();
     drawObservationLabel();
     drawHUD();
-    drawToastTargetLines();
     if(phyDirty || frame - lastPhyDrawFrame >= 12){
       drawPhy();
       lastPhyDrawFrame = frame;
