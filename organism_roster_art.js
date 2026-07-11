@@ -961,7 +961,7 @@
     const g = genesOf(o);
     const n = 3 + Math.round(clamp((g.fecundity || 0.5) * 5 + (o.form ? o.form.length : 0.5) * 2, 0, 7));
     const step = r * lerp(0.48, 0.64, g.speed || 0.5);
-    const variant = variantIndex(o, "chain", 3);
+    const variant = variantIndex(o, "chain", 2); // match visualKind: 1 = segment, 0 = bead chain
     ctx.save();
     ctx.rotate(-0.42 + rng() * 0.55);
 
@@ -982,9 +982,6 @@
       return;
     }
 
-    // perimeter appendage hugging the bead chain's elongated body (behind the beads)
-    const halfLen = (n - 1) * 0.5 * step;
-    appendageBehind(ctx, o, r, pal, rng, ringOutline(halfLen + r * 0.42, r * 0.5, 46), { perimeter: true });
     ctx.lineCap = "round";
     ctx.strokeStyle = hsla(pal.hue - 10, 52, 52, 0.16);
     ctx.lineWidth = r * 0.12;
@@ -1003,11 +1000,8 @@
       const rr = r * lerp(0.30, 0.43, 1 - Math.abs(t - 0.5) * 1.2);
       drawOvalCell(ctx, x, y, rr * 1.06, rr * 0.88, (rng() - 0.5) * 0.34, pal, rng, 0.70);
     }
-    if (variant === 2 && (g.speed || 0.5) > 0.40) {
-      const endX = (n - 1) * 0.5 * step;
-      const endY = Math.sin((n - 1) * 0.9) * r * 0.18;
-      drawAttachedFlagellum(ctx, endX + r * 0.26, endY, -0.12, r * 0.66, pal, rng, 0.34);
-    }
+    // bead chain: cilia only, running along the top and bottom edge of the body
+    drawChainEdgeCilia(ctx, n, step, r, pal, rng, (g.diet || 0.5) > 0.64);
     ctx.restore();
   }
 
