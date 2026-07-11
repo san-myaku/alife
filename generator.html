@@ -187,7 +187,15 @@
   typeSelect.id = 'typeSelect';
   typeSelect.title = 'Generate by visual form';
   if(viewToggle) viewToggle.insertAdjacentElement('afterend', typeSelect);
-  var count = 48, species = [], activeIdx = -1, viewMode = 'grid', selectedType = 'all';
+  var appendageSelect = document.createElement('select');
+  appendageSelect.className = 'btn';
+  appendageSelect.id = 'appendageSelect';
+  appendageSelect.title = '素体（単体細胞）系の付属物を固定します';
+  [['auto','付属: 自動'],['cilia','付属: 繊毛'],['spikes','付属: トゲ'],['antennae','付属: 触角'],['flagella','付属: 鞭毛']].forEach(function(p){
+    var op = document.createElement('option'); op.value = p[0]; op.textContent = p[1]; appendageSelect.appendChild(op);
+  });
+  typeSelect.insertAdjacentElement('afterend', appendageSelect);
+  var count = 48, species = [], activeIdx = -1, viewMode = 'grid', selectedType = 'all', selectedAppendage = 'auto';
   var DPR = Math.min(2, window.devicePixelRatio || 1);
   var GROUPS = [
     { id:'grazer', label:'Herbivore / Filter', color:'#33b999', order:0 },
@@ -231,6 +239,7 @@
     o.drawTinySymbolic = function(){};
     o.prepareSymbolDetails = function(){};
     try { o.adaptations = M.adaptationProfilesFromGenes(sp.genes, o.flags, o.morphologyTopology, o.role) || []; } catch(e){ o.adaptations = []; }
+    o.appendageKind = selectedAppendage; // plain single-body forms honour this override
     return o;
   }
 
@@ -527,6 +536,7 @@
   document.getElementById('gen').addEventListener('click',generate);
   prepareTypeSelect();
   typeSelect.addEventListener('change',function(){ selectedType=this.value||'all'; generate(); });
+  appendageSelect.addEventListener('change',function(){ selectedAppendage=this.value||'auto'; drawAll(); if(detail.classList.contains('on')) renderDetail(); });
   viewToggle.addEventListener('click',function(){
     viewMode = viewMode==='grid' ? 'roster' : 'grid';
     document.body.classList.toggle('roster-mode', viewMode==='roster');

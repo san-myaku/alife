@@ -882,9 +882,14 @@
     const c = _centroid(pts);
     function norm(p){ const dx=p.x-c.x, dy=p.y-c.y, m=Math.hypot(dx,dy)||1; return {nx:dx/m, ny:dy/m}; }
     let h = hashStr32((o.speciesKey || "x") + ":app:" + Math.round((g.formSeed || 0) * 997)) / 4294967296;
-    let kind = h < 0.34 ? "cilia" : (h < 0.60 ? "spikes" : (h < 0.80 ? "antennae" : "flagella"));
-    if (diet > 0.66 && kind === "cilia") kind = "spikes";
-    if (diet < 0.33 && kind === "spikes") kind = "cilia";
+    let kind;
+    if (o.appendageKind && o.appendageKind !== "auto") {
+      kind = o.appendageKind;                 // explicit override from the generator UI
+    } else {
+      kind = h < 0.34 ? "cilia" : (h < 0.60 ? "spikes" : (h < 0.80 ? "antennae" : "flagella"));
+      if (diet > 0.66 && kind === "cilia") kind = "spikes";
+      if (diet < 0.33 && kind === "spikes") kind = "cilia";
+    }
     ctx.save();
     ctx.lineCap = "round"; ctx.lineJoin = "round";
     if (kind === "cilia") {
