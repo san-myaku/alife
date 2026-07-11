@@ -2122,6 +2122,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(this.morphologyTopology==='amoeba'){ this.baseMetabolic*=0.96; this.maxSpeed*=0.97; this.senseCost*=0.98; }
       if(this.morphologyTopology==='mesh'){ this.baseMetabolic*=0.94; this.senseCost*=0.92; }
       for(const id of adaptationProfilesFromGenes(this.genes, null, this.morphologyTopology, this.role)) ADAPTATION_BY_ID[id]?.effect?.(this);
+      const carnVision = clamp((this.genes.diet - 0.48) / 0.52, 0, 1);
+      if(carnVision>0){
+        const roleVisionBoost = this.role==='ambusher' ? 1.16 : ((this.role==='pack' || this.socialMode==='hunt-pack') ? 1.13 : 1.09);
+        this.senseR *= lerp(1.0, roleVisionBoost, carnVision);
+        this.senseCost *= lerp(1.0, 1.035, carnVision);
+      }
 
       this.prepareSymbolDetails();
     }
@@ -2167,12 +2173,20 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       }
     }
     socialSteer(){
-      const mode = this.socialMode || 'solitary';
-      const sociality = this.sociality || 0;
-      if(mode==='solitary' || sociality<0.32) return 0;
-      const range = mode==='defense-school' ? clamp(this.senseR*(0.54 + sociality*0.52), 54, 152) : clamp(this.senseR*(0.38 + sociality*0.44), 38, 112);
+      let mode = this.socialMode || 'solitary';
+      const packHunter = mode==='hunt-pack' || this.role==='pack';
+      let sociality = this.sociality || 0;
+      if(packHunter) sociality = Math.max(sociality, 0.42);
+      if((mode==='solitary' && !packHunter) || sociality<0.32) return 0;
+      if(packHunter && mode==='solitary') mode='hunt-pack';
+      const range = mode==='defense-school'
+        ? clamp(this.senseR*(0.54 + sociality*0.52), 54, 152)
+        : (mode==='hunt-pack'
+          ? clamp(this.senseR*(0.50 + sociality*0.50), 56, 148)
+          : clamp(this.senseR*(0.38 + sociality*0.44), 38, 112));
       let wx=0, wy=0, wvx=0, wvy=0, wsum=0, count=0;
       let fleeX=0, fleeY=0, fleeW=0, predators=0;
+      let rallyX=0, rallyY=0, rallyW=0, sharedPrey=null, sharedPreyW=0;
       forEachOrgNeighbors(this.x,this.y,range,(o,dx,dy,d2)=>{
         if(o===this || o.dead) return;
         const d=Math.sqrt(d2)||1;
@@ -2184,10 +2198,19 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           fleeW += w;
           predators++;
         }
-        if(!canUseGroupStrategy(o.genes)) return;
         const sameSpecies = o.speciesKey===this.speciesKey;
         if(!sameSpecies) return;
-        const affinity = mode==='defense-school' ? 1.12 : 1.0;
+        const matePackHunter = o.role==='pack' || o.socialMode==='hunt-pack';
+        if(!canUseGroupStrategy(o.genes) && !(packHunter && matePackHunter)) return;
+        if(packHunter && matePackHunter && o.preyTargetId){
+          const matePrey = organismById(o.preyTargetId);
+          if(matePrey && !matePrey.dead && matePrey.protect<=0 && matePrey.size < this.size*(this.socialMode==='hunt-pack'?1.12:1.00)){
+            const rw = clamp(1 - d/range, 0.04, 1) * (0.42 + sociality*0.60);
+            rallyX += matePrey.x*rw; rallyY += matePrey.y*rw; rallyW += rw;
+            if(rw>sharedPreyW){ sharedPreyW=rw; sharedPrey=matePrey; }
+          }
+        }
+        const affinity = mode==='defense-school' ? 1.12 : (packHunter && matePackHunter ? 1.18 : 1.0);
         if(affinity<0.08) return;
         const w = affinity * clamp(1 - d/range, 0.04, 1);
         wx += o.x*w; wy += o.y*w; wvx += o.vx*w; wvy += o.vy*w; wsum += w; count++;
@@ -2228,6 +2251,19 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(mode==='cluster' && d<targetDist*0.70){
         this.vx *= 0.992;
         this.vy *= 0.992;
+      }
+      if(packHunter && rallyW>0){
+        const tx=rallyX/rallyW, ty=rallyY/rallyW;
+        const rdx=tx-this.x, rdy=ty-this.y;
+        const rd=Math.hypot(rdx,rdy)||1;
+        const rallyForce = 0.018 + 0.040*sociality;
+        this.vx += (rdx/rd)*rallyForce;
+        this.vy += (rdy/rd)*rallyForce;
+        if(sharedPrey && !this.preyTargetId){
+          this.preyTargetId=sharedPrey.id;
+          this.chaseTimer=Math.max(this.chaseTimer, 95);
+          if(frame-(this._lastPackShareAction||0)>170){ recordAction(this,'群れの獲物へ合流した'); this._lastPackShareAction=frame; }
+        }
       }
       this.socialCount = count;
       this.herdThreat = predators ? Math.max(this.herdThreat||0, 35 + predators*8) : Math.max(0,(this.herdThreat||0)-1);
@@ -2677,6 +2713,10 @@ if(Z>0.08){
 
       // chloroplast trait: in daytime, calm herbivores can suppress basal metabolism (survival only)
       let baseMeta = (this.baseMetabolic*metaMul*worldEvent.metaMul);
+      if(this.role==='ambusher' && !predatorBursting){
+        const ambushWaiting = !preyTarget || Math.hypot(preyTarget.x-this.x, preyTarget.y-this.y) > this.senseR*0.55;
+        if(ambushWaiting) baseMeta *= (this.energy < this.reproThreshold*0.72) ? 0.48 : 0.62;
+      }
       if(isPhotosynthetic){
         const sp2 = this.vx*this.vx + this.vy*this.vy;
         const calm = sp2 < (0.18*0.18);
