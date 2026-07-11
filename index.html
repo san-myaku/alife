@@ -2435,7 +2435,7 @@ const Z = env.valueAt('detritus',  this.x,this.y); // D (detritus)
         env.addNutrientAt(this.x,this.y,farm.grow*farmK);
         if(env.addOxygenAt) env.addOxygenAt(this.x,this.y,farm.oxygen*farmK);
         if(this.energy<this.reproThreshold*1.10 && env.grazeAlgaeAt){
-          const eaten=env.grazeAlgaeAt(this.x,this.y,farm.graze*farmK,algaeGrazeRadiusFor(this,farm.radius||1));
+          const eaten=env.grazeAlgaeAt(this.x,this.y,farm.graze*farmK,algaeGrazeRadiusFor(this,farm.radius||1),{id:this.id,heading:this.heading});
           if(eaten>0){
             const gain=eaten*(54+30*(1-this.genes.diet))*plantDigestFactor(this.genes.diet);
             this.energy=clamp(this.energy+gain,0,160);
@@ -2563,7 +2563,7 @@ if(Z>0.08){
         const grazeNeed = clamp((this.reproThreshold*1.12-this.energy)/Math.max(1,this.reproThreshold),0,1);
         const grazeField = clamp((localN-0.08)/0.62,0,1);
         const grazeAmt = (0.0032 + 0.0042*eff + 0.0040*grazeDrive) * grazeField * (0.45 + 0.78*grazeNeed) * clamp(0.48 + 0.72*localO - 0.45*localD,0.10,1.18);
-        const eaten = window.env.grazeAlgaeAt(this.x,this.y,grazeAmt,algaeGrazeRadiusFor(this,1.18));
+        const eaten = window.env.grazeAlgaeAt(this.x,this.y,grazeAmt,algaeGrazeRadiusFor(this,1.18),{id:this.id,heading:this.heading});
         if(eaten>0){
           const diet=dietTypeFromCarn(this.genes.diet);
           const gain = eaten * (50 + 46*grazeDrive) * plantDigestFactor(this.genes.diet) * dietRareFactor(diet) * (diet==='h'?1.08:(diet==='m'?0.92:0.35));
@@ -3178,6 +3178,7 @@ const env = (function(){
   let scavGrid = null;    // Uint16 counts per cell (scavengers)
   let grazeScar = null;   // visual-only dark green grazing marks at 5x env resolution
   const grazeMarks = [];   // smooth visual-only grazing stains, kept out of ecology math
+  const grazeTrailHeads = new Map();
   let _avgN=0.25, _avgO=0.75, _avgD=0.05, _avgC=0.25;
   const caps  = CONFIG.environment.dotCaps; // dot caps (used if viewMode==='dots')
   const Th_on = CONFIG.environment.thresholdsOn;
@@ -3294,6 +3295,7 @@ const env = (function(){
     if(scavGrid) scavGrid.fill(0);
     if(grazeScar) grazeScar.fill(0);
     grazeMarks.length = 0;
+    grazeTrailHeads.clear();
     _avgN=0.25; _avgO=0.75; _avgD=0.05; _avgC=0.25;
     lastPaint = -999;
     markAlgaeAllDirty();
@@ -3356,7 +3358,7 @@ const env = (function(){
     }
     return best;
   }
-  function grazeAlgaeAt(x,y,appetite,radius=1){
+  function grazeAlgaeAt(x,y,appetite,radius=1,sourceId=null){
     ensure();
     const cx = Math.min(ew-1, Math.max(0, (x/cell)|0));
     const cy = Math.min(eh-1, Math.max(0, (y/cell)|0));
@@ -3390,16 +3392,41 @@ const env = (function(){
       taken+=take;
     }
     if(taken>0){
-      addGrazeMark(x,y,taken,grazeR);
+      addGrazeMark(x,y,taken,grazeR,sourceId);
       lastPaint = -999;
     }
     return taken;
   }
-  function addGrazeMark(x,y,amount,radius=1){
+  function addGrazeMark(x,y,amount,radius=1,sourceId=null){
+    const source = (sourceId && typeof sourceId==='object') ? sourceId : {id:sourceId};
+    const id = source.id;
+    const heading = Number.isFinite(source.heading) ? source.heading : null;
     const strength = clamp(Math.sqrt(Math.max(0, amount||0)) * (1.35 + 0.24/(Math.sqrt(radius)||1)), 0.055, 0.28);
     const r = cell * clamp(0.58 + 0.62*(Number(radius)||1), 0.9, 2.75);
-    grazeMarks.push({x,y,r,strength,t:680});
-    if(grazeMarks.length>320) grazeMarks.splice(0, grazeMarks.length-320);
+    const now = (typeof frame!=='undefined') ? frame : 0;
+    let linked=false;
+    if(id!=null){
+      const prev = grazeTrailHeads.get(id);
+      if(prev && now-prev.frame<90){
+        const d=Math.hypot(x-prev.x,y-prev.y);
+        if(d>0.8 && d<Math.max(42,r*3.2)){
+          grazeMarks.push({kind:'trail',x1:prev.x,y1:prev.y,x2:x,y2:y,r,strength,t:720});
+          linked=true;
+        }
+      }
+      grazeTrailHeads.set(id,{x,y,frame:now});
+      if(grazeTrailHeads.size>360){
+        for(const [id,p] of grazeTrailHeads){ if(now-p.frame>240) grazeTrailHeads.delete(id); }
+      }
+    }
+    if(!linked && heading!=null){
+      const len=Math.max(8,r*0.74);
+      const ux=Math.cos(heading), uy=Math.sin(heading);
+      grazeMarks.push({kind:'trail',x1:x-ux*len*0.55,y1:y-uy*len*0.55,x2:x+ux*len*0.45,y2:y+uy*len*0.45,r,strength:strength*0.82,t:640});
+      linked=true;
+    }
+    if(!linked) grazeMarks.push({kind:'spot',x,y,r,strength,t:680});
+    if(grazeMarks.length>520) grazeMarks.splice(0, grazeMarks.length-520);
   }
   function addGrazeScarAt(x,y,amount,radius=1){
     if(!grazeScar || !scarW || !scarH) return;
@@ -3907,15 +3934,27 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
       const m=grazeMarks[i];
       m.t -= 1;
       if(m.t<=0){ grazeMarks.splice(i,1); continue; }
-      const life=clamp01(m.t/680);
+      const maxT=m.kind==='trail'?720:680;
+      const life=clamp01(m.t/maxT);
       const a=m.strength*(0.34 + 0.66*life);
-      const r=m.r*(1.0 + 0.22*(1-life));
-      const g=ctx.createRadialGradient(m.x,m.y,0,m.x,m.y,r);
-      g.addColorStop(0,`rgba(5,26,8,${a.toFixed(3)})`);
-      g.addColorStop(0.58,`rgba(8,34,10,${(a*0.55).toFixed(3)})`);
-      g.addColorStop(1,'rgba(8,34,10,0)');
-      ctx.fillStyle=g;
-      ctx.beginPath(); ctx.arc(m.x,m.y,r,0,TAU); ctx.fill();
+      if(m.kind==='trail'){
+        ctx.lineCap='round';
+        ctx.lineJoin='round';
+        ctx.strokeStyle=`rgba(4,24,7,${(a*0.72).toFixed(3)})`;
+        ctx.lineWidth=Math.max(8,m.r*0.92)*(1.0 + 0.12*(1-life));
+        ctx.beginPath(); ctx.moveTo(m.x1,m.y1); ctx.lineTo(m.x2,m.y2); ctx.stroke();
+        ctx.strokeStyle=`rgba(0,14,4,${(a*0.34).toFixed(3)})`;
+        ctx.lineWidth=Math.max(4,m.r*0.42);
+        ctx.beginPath(); ctx.moveTo(m.x1,m.y1); ctx.lineTo(m.x2,m.y2); ctx.stroke();
+      } else {
+        const r=m.r*(1.0 + 0.22*(1-life));
+        const g=ctx.createRadialGradient(m.x,m.y,0,m.x,m.y,r);
+        g.addColorStop(0,`rgba(5,26,8,${a.toFixed(3)})`);
+        g.addColorStop(0.58,`rgba(8,34,10,${(a*0.55).toFixed(3)})`);
+        g.addColorStop(1,'rgba(8,34,10,0)');
+        ctx.fillStyle=g;
+        ctx.beginPath(); ctx.arc(m.x,m.y,r,0,TAU); ctx.fill();
+      }
     }
     ctx.restore();
   }
@@ -3944,7 +3983,7 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
   reset: resetAll,
   valueAt: (type,x,y)=> valueAt(type,x,y),
   bestAlgaeNear: (x,y,r,minValue)=> bestAlgaeNear(x,y,r,minValue),
-  grazeAlgaeAt: (x,y,appetite,radius)=> grazeAlgaeAt(x,y,appetite,radius),
+  grazeAlgaeAt: (x,y,appetite,radius,sourceId)=> grazeAlgaeAt(x,y,appetite,radius,sourceId),
   getAverages: ()=>averages(),
   semanticSnapshot: ()=>averages(),
   usesGpu: ()=>!!gpuReady,
