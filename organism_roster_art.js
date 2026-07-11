@@ -641,6 +641,24 @@
     ctx.save();
     ctx.rotate((rng() - 0.5) * 0.28);
     const L = r * 1.66, wid = r * 0.30;
+    // cilia fringe along both long edges (behind the body), so it reads like a ciliate needle
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.strokeStyle = hsla(pal.hue + 28, 70, 80, 0.30);
+    ctx.lineWidth = Math.max(0.5, r * 0.016);
+    const NC = 13;
+    for (let i = 0; i < NC; i++) {
+      const t = (i + 0.5) / NC, y = -L + 2 * L * t, hw = wid * Math.sin(Math.PI * t) * 0.96;
+      if (hw < r * 0.05) continue;
+      const len = r * (0.11 + 0.05 * Math.sin(Math.PI * t));
+      for (const s of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(s * hw, y);
+        ctx.lineTo(s * (hw + len), y - len * 0.34);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
     ctx.beginPath();
     ctx.moveTo(0, -L);
     ctx.bezierCurveTo(wid * 0.7, -L * 0.5, wid, -L * 0.05, wid, 0);
@@ -989,11 +1007,13 @@
     ctx.rotate((rng() - 0.5) * 0.5);
     const arms = 2 + variantIndex(o, "armn", 4);              // 2..5 arms
     const downward = variantIndex(o, "armdir", 2) === 1 && arms <= 3;
-    const beads = 3 + Math.round(((o.form && o.form.length) || 0.5) * 2); // 3..5 beads/arm
+    // per-species base length, then each arm is a bit longer/shorter than that base.
+    const baseBeads = 2 + Math.round(((o.form && o.form.length) || 0.5) * 3) + variantIndex(o, "armlen", 2); // 2..6
     for (let i = 0; i < arms; i++) {
       let a;
       if (downward) a = Math.PI * 0.28 + (arms <= 1 ? 0.5 : i / (arms - 1)) * Math.PI * 0.44;
       else a = (i / arms) * TAU + Math.PI * 0.2 + (rng() - 0.5) * 0.2;
+      const beads = clamp(baseBeads + Math.floor(rng() * 3) - 1, 2, 7); // per-arm variation
       const centers = [];
       let cx = Math.cos(a) * r * 0.44, cy = Math.sin(a) * r * 0.44, cang = a;
       for (let b = 0; b < beads; b++) {
@@ -1011,6 +1031,9 @@
         const rr = r * lerp(0.19, 0.11, b / Math.max(1, beads - 1));
         drawOvalCell(ctx, centers[b].x, centers[b].y, rr * 1.06, rr * 0.9, cang, pal, rng, 0.72);
       }
+      // a small curling flagellum trailing off each arm tip (matches the sketch's curled ends)
+      const tip = centers[centers.length - 1];
+      drawAttachedFlagellum(ctx, tip.x, tip.y, cang, r * (0.42 + rng() * 0.22), pal, rng, 0.34);
     }
     ctx.save();
     drawBlobPath(ctx, r * 0.52, 1.04, 0.22, 0.05, rng);
@@ -1151,20 +1174,45 @@
       ctx.clip();
     }
 
+    const bubbles = [];
     for (let i = 0; i < n; i++) {
       const a = rng() * TAU;
       const d = Math.sqrt(rng()) * r * (variant === 2 ? 0.58 : 0.66);
-      const x = Math.cos(a) * d;
-      const y = Math.sin(a) * d;
       const rr = r * (variant === 2 ? 0.15 + rng() * 0.10 : 0.19 + rng() * 0.13);
+      bubbles.push({ x: Math.cos(a) * d, y: Math.sin(a) * d, d: d, rr: rr, ang: a });
+    }
+    // cilia growing from the OUTER bubbles' outward side (behind them), so the fringe
+    // hugs the real cluster silhouette instead of sitting on a circle.
+    if ((g.diet || 0.5) < 0.42 && variant !== 2) {
+      let maxd = 0.0001;
+      for (const b of bubbles) if (b.d > maxd) maxd = b.d;
       ctx.save();
-      ctx.translate(x, y);
-      drawBlobPath(ctx, rr, 1.0 + (rng() - 0.5) * 0.25, 0.28, 0.1, rng);
-      fillAndStroke(ctx, rr, pal, variant === 2 ? 0.58 : 0.72);
-      drawNucleus(ctx, 0, 0, rr * 0.32, pal, rng, 0.70);
+      ctx.lineCap = "round";
+      ctx.strokeStyle = hsla(pal.hue + 26, 70, 80, 0.28);
+      ctx.lineWidth = Math.max(0.5, r * 0.015);
+      for (const b of bubbles) {
+        if (b.d < maxd * 0.5) continue;
+        const cnt = 5;
+        for (let k = 0; k < cnt; k++) {
+          const dir = b.ang + (k / (cnt - 1) - 0.5) * 1.4;
+          const sx = b.x + Math.cos(dir) * b.rr * 0.92, sy = b.y + Math.sin(dir) * b.rr * 0.92;
+          const len = r * (0.13 + rng() * 0.09);
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.quadraticCurveTo(sx + Math.cos(dir + 0.2) * len * 0.6, sy + Math.sin(dir + 0.2) * len * 0.6, sx + Math.cos(dir) * len, sy + Math.sin(dir) * len);
+          ctx.stroke();
+        }
+      }
       ctx.restore();
     }
-    if ((g.diet || 0.5) < 0.40) drawCilia(ctx, r * 0.82, pal, rng, 30, 0.32, 0.20);
+    for (const b of bubbles) {
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      drawBlobPath(ctx, b.rr, 1.0 + (rng() - 0.5) * 0.25, 0.28, 0.1, rng);
+      fillAndStroke(ctx, b.rr, pal, variant === 2 ? 0.58 : 0.72);
+      drawNucleus(ctx, 0, 0, b.rr * 0.32, pal, rng, 0.70);
+      ctx.restore();
+    }
     ctx.restore();
   }
 
@@ -1202,7 +1250,31 @@
     const g = genesOf(o);
     ctx.save();
 
-    drawBlobPath(ctx, r * 0.84, 1.08, 0.42, 0.04, rng);
+    // build the wobbly mesh outline as points so the fringe can hug the real silhouette.
+    const mpts = [], mn = 64, mph = rng() * TAU, irr = 0.42, aspect = 1.08, R0 = r * 0.84;
+    for (let i = 0; i < mn; i++) {
+      const a = (i / mn) * TAU;
+      const lobes = 1 + irr * 0.15 * Math.sin(a * 3 + mph) + irr * 0.08 * Math.sin(a * 5 + mph * 1.7);
+      const taper = 1 + 0.04 * 0.13 * Math.max(0, Math.cos(a));
+      mpts.push({ x: Math.cos(a) * R0 * aspect * lobes * taper, y: Math.sin(a) * R0 * (1 + irr * 0.06 * Math.cos(a * 4)) });
+    }
+    // cilia hugging the outline (behind the translucent body)
+    ctx.save();
+    ctx.lineCap = "round";
+    const meshPred = (g.diet || 0.5) > 0.62;
+    ctx.strokeStyle = hsla(pal.hue + (meshPred ? -6 : 26), 66, meshPred ? 60 : 80, 0.26);
+    ctx.lineWidth = Math.max(0.5, r * 0.016);
+    for (let i = 0; i < mpts.length; i += 2) {
+      const p = mpts[i], m = Math.hypot(p.x, p.y) || 1;
+      const len = r * (0.10 + 0.05 * Math.abs(Math.sin(i * 1.3)));
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x + (p.x / m) * len, p.y + (p.y / m) * len);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    _fillOutline(ctx, mpts);
     fillAndStroke(ctx, r, pal, 0.20);
     ctx.clip();
 
