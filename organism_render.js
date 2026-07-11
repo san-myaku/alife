@@ -288,13 +288,6 @@
       const sym = o._symbol || (o.prepareSymbolDetails(), o._symbol);
       const nodes = sym.nodes || [];
       const visualScale=bake?.visualScale ?? organismVisualScale(this);
-      if(!bake && !renderPerf.low && o.trail.length>1){
-        c.beginPath();
-        for(let i=0;i<o.trail.length;i++){ const p=o.trail[i]; if(i===0) c.moveTo(p.x,p.y); else c.lineTo(p.x,p.y); }
-        c.strokeStyle='rgba(18,58,34,0.07)';
-        c.lineWidth=Math.max(0.45,1.6*visualScale);
-        c.stroke();
-      }
       c.save();
       c.translate(bake?.x ?? o.x,bake?.y ?? o.y);
       if(!bake && ui.microView && visualScale>CONFIG.rendering.microView.baseScale+0.03){
