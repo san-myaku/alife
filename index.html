@@ -3730,9 +3730,9 @@ if(p.type==='oxygen'){
           }
           if(mark>0.030){
             const residual=clamp01(n/0.24);
-            const darkT=clamp01(mark * (0.22 + 0.78*(1-residual)));
-            ctx.globalAlpha = clamp(0.055 + mark*0.18 + darkT*0.30,0.05,0.50);
-            ctx.fillStyle = `rgb(${Math.round(82 + (3-82)*darkT)},${Math.round(118 + (7-118)*darkT)},${Math.round(48 + (4-48)*darkT)})`;
+            const darkT=clamp01(mark * (0.30 + 0.82*(1-residual)));
+            ctx.globalAlpha = clamp(0.065 + mark*0.20 + darkT*0.34,0.06,0.56);
+            ctx.fillStyle = `rgb(${Math.round(72 + (1-72)*darkT)},${Math.round(104 + (5-104)*darkT)},${Math.round(40 + (2-40)*darkT)})`;
             ctx.fillRect(px,py,w,hh);
           }
           if(edible>0.68 && !tiny && ((h>>>8)&7)===0){
