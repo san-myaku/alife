@@ -591,13 +591,14 @@
     ctx.save();
     ctx.rotate((rng() - 0.5) * 0.34);
     const A = 1.18, Rc = r * 1.28, cyc = r * 0.62, wmax = r * 0.62, m = 44;
-    const pts = [];
+    const pts = [], outer = [], outerN = [];
     for (let i = 0; i <= m; i++) {
       const a = -A + (i / m) * 2 * A;
       const w = wmax * (1 - Math.pow(a / A, 2));
       const cx = Math.sin(a) * Rc, cy = cyc - Math.cos(a) * Rc;
       const ox = Math.sin(a), oy = -Math.cos(a);
-      pts.push({ x: cx + ox * w * 0.5, y: cy + oy * w * 0.5 });
+      const p = { x: cx + ox * w * 0.5, y: cy + oy * w * 0.5 };
+      pts.push(p); outer.push(p); outerN.push({ nx: ox, ny: oy }); // convex edge + its true outward normal
     }
     for (let i = m; i >= 0; i--) {
       const a = -A + (i / m) * 2 * A;
@@ -606,7 +607,8 @@
       const ox = Math.sin(a), oy = -Math.cos(a);
       pts.push({ x: cx - ox * w * 0.5, y: cy - oy * w * 0.5 });
     }
-    appendageBehind(ctx, o, r, pal, rng, pts); // selectable appendage, behind the body
+    // appendages only on the outer convex edge, so nothing juts into the hollow of the crescent
+    appendageBehind(ctx, o, r, pal, rng, outer, { normals: outerN });
     _fillOutline(ctx, pts);
     fillAndStroke(ctx, r, pal, 0.64);
     ctx.save();
@@ -870,7 +872,8 @@
   function appendageBehind(ctx, o, r, pal, rng, pts, opts) {
     const g = genesOf(o), diet = g.diet == null ? 0.5 : g.diet;
     const c = _centroid(pts);
-    function norm(p){ const dx=p.x-c.x, dy=p.y-c.y, m=Math.hypot(dx,dy)||1; return {nx:dx/m, ny:dy/m}; }
+    const normals = opts && opts.normals;   // optional per-point true outward normals (for concave shapes)
+    function norm(p, idx){ if (normals && idx != null && normals[idx]) return normals[idx]; const dx=p.x-c.x, dy=p.y-c.y, m=Math.hypot(dx,dy)||1; return {nx:dx/m, ny:dy/m}; }
     let h = hashStr32((o.speciesKey || "x") + ":app:" + Math.round((g.formSeed || 0) * 997)) / 4294967296;
     const PERIM = ["cilia", "spikes", "spokes", "beads"];  // fringe types that suit any silhouette
     let kind;
@@ -888,17 +891,17 @@
     if (kind === "cilia") {
       ctx.strokeStyle = hsla(pal.hue + 30, 70, 82, 0.30); ctx.lineWidth = Math.max(0.5, r * 0.017);
       const count = Math.min(pts.length, 34 + Math.round(h * 26));
-      for (let i=0;i<count;i++){ const p = pts[Math.floor(i/count*pts.length)]; const nn = norm(p); const len = r*(0.09 + 0.05*Math.abs(Math.sin(i*1.7))); ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(p.x+nn.nx*len, p.y+nn.ny*len); ctx.stroke(); }
+      for (let i=0;i<count;i++){ const idx = Math.floor(i/count*pts.length); const p = pts[idx]; const nn = norm(p, idx); const len = r*(0.09 + 0.05*Math.abs(Math.sin(i*1.7))); ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(p.x+nn.nx*len, p.y+nn.ny*len); ctx.stroke(); }
     } else if (kind === "spikes") {
       ctx.strokeStyle = hsla(pal.hue - 10, 88, 52, 0.55); ctx.fillStyle = hsla(pal.hue + 8, 88, 70, 0.28); ctx.lineWidth = Math.max(0.8, r * 0.028);
       const spikes = 9 + Math.round(h * 8);
-      for (let i=0;i<spikes;i++){ const p = pts[Math.floor(i/spikes*pts.length)]; const nn = norm(p); const len = r*(0.26 + h*0.22); const tx=p.x+nn.nx*len, ty=p.y+nn.ny*len; const bw = r*0.05; ctx.beginPath(); ctx.moveTo(p.x-(-nn.ny)*bw, p.y-(nn.nx)*bw); ctx.lineTo(tx,ty); ctx.lineTo(p.x+(-nn.ny)*bw, p.y+(nn.nx)*bw); ctx.closePath(); ctx.fill(); ctx.stroke(); }
+      for (let i=0;i<spikes;i++){ const idx = Math.floor(i/spikes*pts.length); const p = pts[idx]; const nn = norm(p, idx); const len = r*(0.26 + h*0.22); const tx=p.x+nn.nx*len, ty=p.y+nn.ny*len; const bw = r*0.05; ctx.beginPath(); ctx.moveTo(p.x-(-nn.ny)*bw, p.y-(nn.nx)*bw); ctx.lineTo(tx,ty); ctx.lineTo(p.x+(-nn.ny)*bw, p.y+(nn.nx)*bw); ctx.closePath(); ctx.fill(); ctx.stroke(); }
     } else if (kind === "spokes") {
       // long, narrow, tapered spines radiating outward (proper thorns, not hairs)
       ctx.strokeStyle = hsla(pal.hue - 8, 82, 44, 0.58); ctx.lineWidth = Math.max(0.7, r * 0.02);
       const nsp = 11 + Math.round(h * 8), bw = r * 0.055;
       for (let i=0;i<nsp;i++){
-        const p = pts[Math.floor(i/nsp*pts.length)], nn = norm(p);
+        const idx = Math.floor(i/nsp*pts.length), p = pts[idx], nn = norm(p, idx);
         const len = r*(0.52 + h*0.34) * (0.86 + (i%2)*0.18);
         const tx = p.x+nn.nx*len, ty = p.y+nn.ny*len, px = -nn.ny, py = nn.nx;
         const grd = ctx.createLinearGradient(p.x, p.y, tx, ty);
@@ -911,7 +914,7 @@
       ctx.strokeStyle = hsla(pal.hue - 8, 50, 54, 0.26); ctx.lineWidth = Math.max(0.7, r * 0.02);
       const nsp = 9 + Math.round(h * 6);
       for (let i=0;i<nsp;i++){
-        const p = pts[Math.floor(i/nsp*pts.length)], nn = norm(p), nb = 2 + (i%2);
+        const idx = Math.floor(i/nsp*pts.length), p = pts[idx], nn = norm(p, idx), nb = 2 + (i%2);
         ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x+nn.nx*(r*(0.24+nb*0.16)), p.y+nn.ny*(r*(0.24+nb*0.16))); ctx.stroke();
         for (let b=1;b<=nb;b++){ const d = r*0.18 + b*r*0.16, bx = p.x+nn.nx*d, by = p.y+nn.ny*d, rr = r*(0.095 - b*0.012); drawOvalCell(ctx, bx, by, rr*1.1, rr*0.92, Math.atan2(nn.ny, nn.nx), pal, rng, 0.7); }
       }
