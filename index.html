@@ -1012,6 +1012,13 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
 
   function speciesKey(g){ const base=`${q4(g.speed)}${q4(g.size)}${q4(g.sense)}${q4(g.diet)}`; const m=formFromGenes(g,base); const p=q3(m.pointiness); const a=m.aspect<1.33?0:(m.aspect<1.66?1:2); const pts=Math.max(1,Math.min(8,Math.round(m.points))); return `${base}${p}${a}${pts}`; }
   const GENE_KEYS=['speed','size','metabolism','fecundity','sense','diet','formSeed'], GENE_INDEX=[0,1,2,3,4,5,10];
+  function genePct(g,key){ return Math.round(clamp(g?.[key]??0,0,1)*100); }
+  function geneSummaryLines(g){
+    return [
+      `遺伝子：速${genePct(g,'speed')} 大${genePct(g,'size')} 代謝${genePct(g,'metabolism')} 繁殖${genePct(g,'fecundity')}`,
+      `　　　視野${genePct(g,'sense')} 肉食${genePct(g,'diet')} 形${genePct(g,'formSeed')}`
+    ];
+  }
   function geneSet(src=null){ const v=src?Object.values(src):[], g={}; GENE_KEYS.forEach((k,i)=>g[k]=clamp(src?.[k]??v[GENE_INDEX[i]]??Math.random(),0,1)); return g; }
   function speciesPalette(key){
     const s=String(key||'0000000');
@@ -1984,6 +1991,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       `環境：${profile.env}`,
       `形態：${topologyLabel(topo)}`,
       `食性：${dietLabelFromGenes(o.genes)}`,
+      ...geneSummaryLines(o.genes),
       `状態：${statusLabel(o)}`,
       `エネルギー：${Math.round(o.energy)} / 年齢：${ageLabel(o)} / 世代：${generation}`,
       `希少形質：${rare}`,
@@ -2013,9 +2021,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     ctx.strokeStyle=`hsla(${hue},82%,76%,${o.dead?0.12:0.20})`;
     ctx.lineWidth=1;
     ctx.stroke();
-    const cardW=Math.min(IS_MOBILE_VIEW?210:260, W-16);
+    const cardW=Math.min(IS_MOBILE_VIEW?236:300, W-16);
     const lines=selectedCardLines(o);
-    if(o.dead) lines[3]='状態：死亡 / 死骸化';
+    if(o.dead){
+      const statusIdx=lines.findIndex(line=>line.startsWith('状態：'));
+      if(statusIdx>=0) lines[statusIdx]='状態：死亡 / 死骸化';
+    }
     const lineH=IS_MOBILE_VIEW?13:15;
     const cardH=14 + lines.length*lineH;
     const prefRight=o.x < W*0.56;
