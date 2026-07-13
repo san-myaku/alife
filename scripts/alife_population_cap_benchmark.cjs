@@ -75,6 +75,10 @@ function flattenTrial(t) {
   const feedingOmnivore = feeding.omnivore || {};
   const feedingCarnivore = feeding.carnivore || {};
   const feedingInvariant = feeding.invariant || {};
+  const storeDCurrent = feeding.currentStoreDByDiet || {};
+  const storeDHerbivore = storeDCurrent.herbivore || {};
+  const storeDOmnivore = storeDCurrent.omnivore || {};
+  const storeDCarnivore = storeDCurrent.carnivore || {};
   const reproduction = t.reproduction || {};
   const eligibility = t.eligibility || {};
   const carnRepro = reproduction.carnivore || {};
@@ -349,6 +353,14 @@ function flattenTrial(t) {
     omnivoreFleeingSteps: feedingOmnivore.fleeingSteps ?? null,
     herbivoreGrazingSpeedMulApplied: feedingHerbivore.grazingSpeedMulApplied ?? null,
     omnivoreGrazingSpeedMulApplied: feedingOmnivore.grazingSpeedMulApplied ?? null,
+    herbivoreAverageGrazingMaxSpBefore: feedingHerbivore.averageGrazingMaxSpBefore ?? null,
+    herbivoreAverageGrazingMaxSpAfter: feedingHerbivore.averageGrazingMaxSpAfter ?? null,
+    herbivoreAverageGrazingMaxSpRatio: feedingHerbivore.averageGrazingMaxSpRatio ?? null,
+    herbivoreGrazingTimerClearedByFleeing: feedingHerbivore.grazingTimerClearedByFleeing ?? null,
+    omnivoreAverageGrazingMaxSpBefore: feedingOmnivore.averageGrazingMaxSpBefore ?? null,
+    omnivoreAverageGrazingMaxSpAfter: feedingOmnivore.averageGrazingMaxSpAfter ?? null,
+    omnivoreAverageGrazingMaxSpRatio: feedingOmnivore.averageGrazingMaxSpRatio ?? null,
+    omnivoreGrazingTimerClearedByFleeing: feedingOmnivore.grazingTimerClearedByFleeing ?? null,
     herbivoreAverageGrazingSpeed: feedingHerbivore.averageGrazingSpeed ?? null,
     herbivoreAverageNormalSpeed: feedingHerbivore.averageNormalSpeed ?? null,
     herbivoreAverageFleeingSpeed: feedingHerbivore.averageFleeingSpeed ?? null,
@@ -364,6 +376,24 @@ function flattenTrial(t) {
     herbivoreAverageStoreD: feedingHerbivore.averageStoreD ?? null,
     omnivoreAverageStoreD: feedingOmnivore.averageStoreD ?? null,
     carnivoreAverageStoreD: feedingCarnivore.averageStoreD ?? null,
+    herbivoreCurrentStoreDAverage: storeDHerbivore.average ?? null,
+    herbivoreCurrentStoreDMedian: storeDHerbivore.median ?? null,
+    herbivoreCurrentStoreDMax: storeDHerbivore.max ?? null,
+    herbivoreCurrentStoreDAbove010: storeDHerbivore.above010 ?? null,
+    herbivoreCurrentStoreDAbove033: storeDHerbivore.above033 ?? null,
+    herbivoreCurrentMemAverage: storeDHerbivore.averageMem ?? null,
+    omnivoreCurrentStoreDAverage: storeDOmnivore.average ?? null,
+    omnivoreCurrentStoreDMedian: storeDOmnivore.median ?? null,
+    omnivoreCurrentStoreDMax: storeDOmnivore.max ?? null,
+    omnivoreCurrentStoreDAbove010: storeDOmnivore.above010 ?? null,
+    omnivoreCurrentStoreDAbove033: storeDOmnivore.above033 ?? null,
+    omnivoreCurrentMemAverage: storeDOmnivore.averageMem ?? null,
+    carnivoreCurrentStoreDAverage: storeDCarnivore.average ?? null,
+    carnivoreCurrentStoreDMedian: storeDCarnivore.median ?? null,
+    carnivoreCurrentStoreDMax: storeDCarnivore.max ?? null,
+    carnivoreCurrentStoreDAbove010: storeDCarnivore.above010 ?? null,
+    carnivoreCurrentStoreDAbove033: storeDCarnivore.above033 ?? null,
+    carnivoreCurrentMemAverage: storeDCarnivore.averageMem ?? null,
     carnivoreAverageStoreDPredationExperienced: feedingCarnivore.averageStoreDPredationExperienced ?? null,
     carnivoreAverageStoreDNoPredation: feedingCarnivore.averageStoreDNoPredation ?? null,
     carnivoreHighStoreDSteps: feedingCarnivore.highStoreDSteps ?? null,

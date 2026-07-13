@@ -267,7 +267,6 @@
   function resize(){ const r=view.getBoundingClientRect(); W=r.width; H=r.height; view.width=Math.round(W*DPR); view.height=Math.round(H*DPR); ctx.setTransform(DPR,0,0,DPR,0,0); if(window.env) window.env.ensure(); }
   window.addEventListener('resize',resize,{passive:true}); resize();
   const TAU=Math.PI*2; const rnd=(a,b)=>Math.random()*(b-a)+a; const clamp=(x,a,b)=>Math.max(a,Math.min(b,x)); const clamp01=(x)=>clamp(x,0,1); const lerp=(a,b,t)=>a+(b-a)*t; const sigmoid=x=>1/(1+Math.exp(-x));
-  const smoothstepRange=(a,b,x)=>{ if(a===b) return x>=b?1:0; const t=clamp((x-a)/(b-a),0,1); return t*t*(3-2*t); };
   const hash01 = (s)=>{ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h>>>0)/2**32; };
 
   // ===== Design config =====
@@ -1236,6 +1235,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       normalSpeedSamples:0,
       fleeingSpeedSum:0,
       fleeingSpeedSamples:0,
+      grazingMaxSpBeforeSum:0,
+      grazingMaxSpAfterSum:0,
+      grazingMaxSpRatioSum:0,
+      grazingMaxSpSamples:0,
+      grazingTimerClearedByFleeing:0,
       storeDSum:0,
       memSum:0,
       bodySamples:0,
@@ -1366,6 +1370,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(isGrazing) g.grazingStateSteps++;
     if(isGrazing && isFleeing) g.grazingAndFleeingSteps++;
     if((data.grazingSpeedMul||1)<0.999) g.grazingSpeedMulApplied++;
+    if(data.grazingTimerClearedByFleeing) g.grazingTimerClearedByFleeing++;
+    const maxSpBefore=Number(data.grazingMaxSpBefore);
+    const maxSpAfter=Number(data.grazingMaxSpAfter);
+    if(Number.isFinite(maxSpBefore) && Number.isFinite(maxSpAfter) && maxSpBefore>0){
+      g.grazingMaxSpBeforeSum+=maxSpBefore;
+      g.grazingMaxSpAfterSum+=maxSpAfter;
+      g.grazingMaxSpRatioSum+=maxSpAfter/maxSpBefore;
+      g.grazingMaxSpSamples++;
+    }
     if(isGrazing && !isFleeing){
       g.grazingSpeedSum+=speed;
       g.grazingSpeedSamples++;
@@ -2851,6 +2864,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       fleeingSteps:g.fleeingSteps,
       grazingAndFleeingSteps:g.grazingAndFleeingSteps,
       grazingSpeedMulApplied:g.grazingSpeedMulApplied,
+      averageGrazingMaxSpBefore:g.grazingMaxSpSamples ? g.grazingMaxSpBeforeSum/g.grazingMaxSpSamples : null,
+      averageGrazingMaxSpAfter:g.grazingMaxSpSamples ? g.grazingMaxSpAfterSum/g.grazingMaxSpSamples : null,
+      averageGrazingMaxSpRatio:g.grazingMaxSpSamples ? g.grazingMaxSpRatioSum/g.grazingMaxSpSamples : null,
+      grazingTimerClearedByFleeing:g.grazingTimerClearedByFleeing,
       averageGrazingSpeed:g.grazingSpeedSamples ? g.grazingSpeedSum/g.grazingSpeedSamples : null,
       averageNormalSpeed:g.normalSpeedSamples ? g.normalSpeedSum/g.normalSpeedSamples : null,
       averageFleeingSpeed:g.fleeingSpeedSamples ? g.fleeingSpeedSum/g.fleeingSpeedSamples : null,
@@ -2860,6 +2877,32 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       averageStoreDPredationExperienced:g.predationExperiencedStoreDSamples ? g.predationExperiencedStoreDSum/g.predationExperiencedStoreDSamples : null,
       averageStoreDNoPredation:g.predationNaiveStoreDSamples ? g.predationNaiveStoreDSum/g.predationNaiveStoreDSamples : null
     });
+    const currentStoreDDistribution=()=>{
+      const groups={h:{values:[],mem:0},m:{values:[],mem:0},c:{values:[],mem:0}};
+      for(const o of organisms){
+        if(!o || o.dead || !o.genes) continue;
+        const diet=telemetryDiet(o);
+        const g=groups[diet] || groups.m;
+        g.values.push(clamp01(o.storeD||0));
+        g.mem+=clamp01(o.mem ?? 1);
+      }
+      const finish=g=>{
+        const values=g.values.slice().sort((a,b)=>a-b);
+        const n=values.length;
+        const sum=values.reduce((a,b)=>a+b,0);
+        const mid=n ? (n%2 ? values[(n-1)/2] : (values[n/2-1]+values[n/2])*0.5) : null;
+        return {
+          count:n,
+          average:n ? sum/n : null,
+          median:mid,
+          max:n ? values[n-1] : null,
+          above010:values.filter(v=>v>=0.10).length,
+          above033:values.filter(v=>v>=0.33).length,
+          averageMem:n ? g.mem/n : null
+        };
+      };
+      return {herbivore:finish(groups.h), omnivore:finish(groups.m), carnivore:finish(groups.c)};
+    };
     return {
       frame,
       windowFrames:wf,
@@ -2892,6 +2935,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       herbivore:finishDiet(groups.h),
       omnivore:finishDiet(groups.m),
       carnivore:finishDiet(groups.c),
+      currentStoreDByDiet:currentStoreDDistribution(),
       invariant:{
         fleeingBackgroundAlgaeEaten:groups.h.fleeingAlgaeEaten + groups.m.fleeingAlgaeEaten + groups.c.fleeingAlgaeEaten,
         grazingAndFleeingSteps:groups.h.grazingAndFleeingSteps + groups.m.grazingAndFleeingSteps + groups.c.grazingAndFleeingSteps
@@ -4308,7 +4352,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(this.predatorThreatId && this.fleeTimer<=0) this.predatorThreatId=null;
       const carn=this.genes.diet;
       const deficit=Math.max(0,this.reproThreshold*0.95-this.energy);
-      const intent=predationIntentFor(this,deficit,true);
+      const intent=dietIntent(carn,deficit);
       if(carn<0.42 || (carn<0.66 && intent<0.10) || this.attackCD>30){
         if(this.chaseTimer<=0){
           if(this.preyTargetId!=null) telemetryEndChaseEpisode(this,'trackingStateEnded');
@@ -4508,7 +4552,10 @@ const Z = env.valueAt('detritus',  this.x,this.y); // D (detritus)
       const herb = (1 - this.genes.diet);
       const isPhotosynthetic = !!(this.flags && this.flags.chl && !dayNight.isNight && this.genes.diet<=0.25);
       const forageFleeingForUptake=isFleeingFromPredator(this);
-      if(forageFleeingForUptake && this.grazingTimer>0) this.grazingTimer=0;
+      if(forageFleeingForUptake && this.grazingTimer>0){
+        this.grazingTimer=0;
+        this._telemetryGrazingClearedByFleeingFrame=frame;
+      }
 
       // body oxygen follows local oxygen (with slight lag)
       this.storeO = clamp(this.storeO*0.86 + Et*(0.14*eff), 0, 1);
@@ -4565,13 +4612,13 @@ const Z = env.valueAt('detritus',  this.x,this.y); // D (detritus)
         }
       }
 
-      // waste accumulates with respiration; diet-specific digestive load is added only after live predation.
-      this.storeD = clamp(this.storeD + respO*1.0, 0, 1);
+      // waste accumulates with respiration; carnivory remains slightly dirtier as before the integrated physiology test.
+      this.storeD = clamp(this.storeD + respO*(0.9 + 0.5*this.genes.diet), 0, 1);
       const hyp = clamp01((0.28 - this.storeO)/0.28);
       this.mem = clamp(this.mem - (0.00125*hyp) - (0.00155*this.storeD*(1.22-Et)) - 0.00055*dirty, 0, 1);
 
       // excretion -> raises local detritus
-      const ex = Math.min(this.storeD, 0.0045);
+      const ex = Math.min(this.storeD, 0.0038 + 0.0014*herb);
       if(ex>0){
         this.storeD -= ex;
         if(env && env.addDetritusAt) env.addDetritusAt(this.x,this.y, ex);
@@ -4640,17 +4687,29 @@ if(Z>0.08){
       const localSpeedMul=clamp(oxygenSpeed*dirtyDrag*nutrientLift*(1 - 0.22*Ec), 0.26, 1.35);
       const carnivoreChaseSpeedMul=(preyTarget && !preyTarget.dead && preyTarget.protect<=0 && dietTypeFromCarn(carnGene)==='c') ? 1.08 : 1.0;
       const forageFleeing=isFleeingFromPredator(this);
-      if(forageFleeing && this.grazingTimer>0) this.grazingTimer=0;
+      if(forageFleeing && this.grazingTimer>0){
+        this.grazingTimer=0;
+        this._telemetryGrazingClearedByFleeingFrame=frame;
+      }
       const isGrazingMotion=(this.grazingTimer||0)>0 && !forageFleeing;
       const grazingSpeedMul=isGrazingMotion ? 0.90 : 1.0;
-      const maxSp=this.maxSpeed*desired*fleeBoost*burstBoost*worldEvent.speedMul*spBias*localSpeedMul*carnivoreChaseSpeedMul*grazingSpeedMul; if(sp>maxSp){ const k=maxSp/sp; this.vx*=k; this.vy*=k; }
+      const maxSpBeforeGrazing=this.maxSpeed*desired*fleeBoost*burstBoost*worldEvent.speedMul*spBias*localSpeedMul*carnivoreChaseSpeedMul;
+      const maxSp=maxSpBeforeGrazing*grazingSpeedMul; if(sp>maxSp){ const k=maxSp/sp; this.vx*=k; this.vy*=k; }
       this.x+=this.vx; this.y+=this.vy;
       if(this.x<this.size){this.x=this.size; this.vx*=-0.5} if(this.x>W-this.size){this.x=W-this.size; this.vx*=-0.5}
       if(this.y<this.size){this.y=this.size; this.vy*=-0.5} if(this.y>H-this.size){this.y=H-this.size; this.vy*=-0.5}
 
       // Body direction follows actual movement slowly; joints carry most of the animation.
       const actualSp=Math.hypot(this.vx,this.vy);
-      telemetryRecordFeedingMotion(this,{speed:actualSp,isFleeing:forageFleeing,isGrazing:isGrazingMotion,grazingSpeedMul});
+      telemetryRecordFeedingMotion(this,{
+        speed:actualSp,
+        isFleeing:forageFleeing,
+        isGrazing:isGrazingMotion,
+        grazingSpeedMul,
+        grazingMaxSpBefore:isGrazingMotion ? maxSpBeforeGrazing : null,
+        grazingMaxSpAfter:isGrazingMotion ? maxSp : null,
+        grazingTimerClearedByFleeing:this._telemetryGrazingClearedByFleeingFrame===frame
+      });
       if(actualSp>0.025){
         const target=Math.atan2(this.vy,this.vx);
         let delta=((target-this.heading+Math.PI*3)%TAU)-Math.PI;
@@ -4667,7 +4726,10 @@ if(Z>0.08){
       // 食事（背景藻）：緑のフィールドそのものを削って食べる。
       if(window.env && window.env.grazeAlgaeAt && canGrazeFieldAlgae(this)){
         const forageFleeingForGraze=isFleeingFromPredator(this);
-        if(forageFleeingForGraze && this.grazingTimer>0) this.grazingTimer=0;
+        if(forageFleeingForGraze && this.grazingTimer>0){
+          this.grazingTimer=0;
+          this._telemetryGrazingClearedByFleeingFrame=frame;
+        }
         const localN = window.env.valueAt('algae', this.x,this.y);
         const localO = window.env.valueAt('oxygen',this.x,this.y);
         const localD = window.env.valueAt('detritus',  this.x,this.y);
@@ -4903,7 +4965,7 @@ if(Z>0.08){
         if(dx*dx+dy*dy < e.r*e.r){ repelHere=true; break; }
       }
       const deficit=Math.max(0, this.reproThreshold*1.04 - this.energy);
-      let intent=predationIntentFor(this, deficit, false);
+      let intent=dietIntent(carnIntent, deficit);
       if(repelHere) intent*=0.2;
       if(intent<0.05) return;
       let prey=organismById(this.preyTargetId);
@@ -4989,16 +5051,12 @@ if(Z>0.08){
         const gain=gainRaw*rf*meatDigestFactor(carn)*dietRareFactor(diet)*(diet==='c'?1.0:(diet==='m'?0.92:0.80));
         const cost=6 + 0.05*this.maxSpeed*this.maxSpeed;
         const predationStoreNBefore=clamp01(this.storeN||0);
-        const predationStoreDBefore=clamp01(this.storeD||0);
         const predationEnergyBefore=this.energy;
         this.energy=clamp(this.energy + gain - cost, 0, 160);
         applyPredationDefenses(this,prey,preyDefenses,gainRaw);
         const predationNutrientGain=0.050*(gain/40);
         this.storeN=clamp((this.storeN||0)+predationNutrientGain,0,1);
-        const predationDigestiveLoad=clamp(0.035*(gain/40),0,0.08);
-        this.storeD=clamp((this.storeD||0)+predationDigestiveLoad,0,1);
         const predationStoreNAfter=clamp01(this.storeN||0);
-        const predationStoreDAfter=clamp01(this.storeD||0);
         const predationEnergyAfter=this.energy;
         this.fitness+=0.6;
         recordFoodUse('prey',this,gain,1);
@@ -5012,9 +5070,6 @@ if(Z>0.08){
           storeNBefore:predationStoreNBefore,
           storeNAfter:predationStoreNAfter,
           storeNGained:predationStoreNAfter-predationStoreNBefore,
-          storeDBefore:predationStoreDBefore,
-          storeDAfter:predationStoreDAfter,
-          storeDGained:predationStoreDAfter-predationStoreDBefore,
           energyBefore:predationEnergyBefore,
           energyAfter:predationEnergyAfter,
           energyDelta:predationEnergyAfter-predationEnergyBefore,
@@ -5022,10 +5077,7 @@ if(Z>0.08){
         });
         telemetryRecordFeedingPredationSuccess(this,{
           energyAfter:predationEnergyAfter,
-          storeNAfter:predationStoreNAfter,
-          storeDBefore:predationStoreDBefore,
-          storeDAfter:predationStoreDAfter,
-          storeDGained:predationStoreDAfter-predationStoreDBefore
+          storeNAfter:predationStoreNAfter
         });
         telemetryRecordPredationStage('success',this,prey,{gain:Number(gain.toFixed(3)),energyBefore:predationEnergyBefore,energyAfter:predationEnergyAfter});
         recordAction(this, `${topologyLabel(prey.morphologyTopology||topologyFromGenes(prey.genes))}を捕食した`);
@@ -5332,24 +5384,6 @@ if(Z>0.08){
 
   function dietIntent(carnIntent, deficit){
     return clamp(carnIntent * (0.38 + 0.62*sigmoid(deficit/12)) + clamp((carnIntent-0.62)*0.42,0,0.18),0,1);
-  }
-  function predationSatietyState(o){
-    const threshold=Math.max(o?.reproThreshold||80,0.001);
-    const energySatiety=smoothstepRange(0.80,1.15,(o?.energy||0)/threshold);
-    const nutrientSatiety=smoothstepRange(0.18,0.42,o?.storeN||0);
-    const satiety=Math.max(energySatiety,nutrientSatiety);
-    const satietyPredationMul=lerp(1.0,0.25,satiety);
-    const carnivoryWeight=carnivoryResourceWeight(o?.genes?.diet ?? 0.5);
-    const appliedSatietyMul=lerp(1.0,satietyPredationMul,carnivoryWeight);
-    return {energySatiety,nutrientSatiety,satiety,satietyPredationMul,carnivoryWeight,appliedSatietyMul};
-  }
-  function predationIntentFor(o, deficit, record=false){
-    const carnIntent=o?.genes?.diet ?? 0.5;
-    const rawIntent=dietIntent(carnIntent, deficit);
-    const satiety=predationSatietyState(o);
-    const appliedIntent=clamp(rawIntent*satiety.appliedSatietyMul,0,1);
-    if(record) telemetryRecordPredationIntentState(o,{rawIntent,appliedIntent,...satiety});
-    return appliedIntent;
   }
   // ===== Simple Mendelian traits (glow/crown/colony/chloroplast) =====
   function __flagsFromTraits(t, g){
