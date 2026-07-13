@@ -364,6 +364,7 @@
 
   // ===== UI State =====
   const ui={ speed:1, mutation:0.03, showSense:false, tool:'food', popMax:CONFIG.population.maxDefault, parallax:1.0, roleViz:false, observeField:null, microView:true, forceFullRender:true };
+  const devMode = new URLSearchParams(location.search).get('dev') === '1';
   const renderPerf = { mobile:IS_MOBILE_VIEW, low:!ui.forceFullRender && IS_MOBILE_VIEW, tiny:false, mode:ui.forceFullRender?'full':(IS_MOBILE_VIEW?'low':'full'), meshCount:0, complexCount:0, heavyComplex:false };
   $('speed-slider').addEventListener('input',e=>{ ui.speed=+e.target.value; $('speed-value').textContent=ui.speed+'x'; });
   $('mutation-slider').addEventListener('input',e=>{ ui.mutation=(+e.target.value)/100; $('mutation-value').textContent=e.target.value+'%'; });
@@ -1107,6 +1108,18 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   const TELEMETRY_FEEDING_BEHAVIOR_BUCKET_LIMIT = 720;
   const TELEMETRY_FEEDING_PREDATION_LIMIT = 1600;
   const GRAZING_HOLD_STEPS = 8;
+  const DEV_INJECTION_BATCH_LIMIT = 32;
+  const DEV_SNAPSHOT_LIMIT = 8;
+  const DEV_SPAWN_COUNT_MAX = 50;
+  const DEV_VIABLE_GENES = Object.freeze({
+    herbivore: Object.freeze({speed:0.45,size:0.45,metabolism:0.60,fecundity:0.50,sense:0.52,diet:0.22,formSeed:0.32}),
+    omnivore: Object.freeze({speed:0.52,size:0.48,metabolism:0.58,fecundity:0.50,sense:0.58,diet:0.50,formSeed:0.52}),
+    carnivore: Object.freeze({speed:0.62,size:0.58,metabolism:0.62,fecundity:0.45,sense:0.66,diet:0.82,formSeed:0.78})
+  });
+  const injectionBatches = new Map();
+  const devTestSnapshots = new Map();
+  let nextInjectionBatchSerial = 1;
+  let devLastCursor = null;
   const TELEMETRY_DIAGNOSTIC_MATURITY_AGE = 180;
   const TELEMETRY_ENERGY_THRESHOLDS = [0.25,0.50,0.75,0.90,1.00,1.25];
   const TELEMETRY_PREDATION_INDIVIDUAL_LIMIT = 5200;
@@ -2117,6 +2130,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const diet=telemetryDiet(parent);
     const carnivore=(parent.genes?.diet ?? 0) >= 0.66;
     telemetryPush({kind:'reproduction', id:parent.id, diet, carnivore, kids:kids.length});
+    telemetryRecordInjectionReproduction(parent,kids);
     telemetryMarkPredationNutritionReproduction(parent);
     const predFrame=parent._telemetryLastPredationSuccessFrame;
     if(carnivore && predFrame!=null && frame-predFrame<=TELEMETRY_POST_PREDATION_REPRO_WINDOW && parent._telemetryLastPredationReproFrame!==predFrame){
@@ -2140,6 +2154,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     telemetryEndChasesForPrey(o,'preyDiedElsewhere',o._telemetryKilledByPredatorId ?? null);
     telemetryRecordCarnivoreDeath(o,causeKey);
     telemetryMarkPredationNutritionDeath(o,causeKey);
+    telemetryRecordInjectionDeath(o,causeKey);
     telemetryPush({
       kind:'death',
       id:o.id,
@@ -2169,6 +2184,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       pair[stage]=true;
     }
     telemetryMarkPredationIndividualStage(predator,stage,prey,extra);
+    telemetryRecordInjectionPredationStage(stage,predator,prey,extra);
     telemetryMarkChasePredationStage(stage,predator,prey,extra);
     if(stage==='tracking') telemetryRecordFeedingTrackingStart(predator);
     telemetryPush({
@@ -5153,6 +5169,7 @@ if(Z>0.08){
         const childSpread = adaptationProfilesFromGenes(this.genes, this.flags, this.morphologyTopology, this.role).includes('colonyBuilder') ? 8 : 20;
         const c=new Organism(clamp(this.x+rnd(-childSpread,childSpread),10,W-10), clamp(this.y+rnd(-childSpread,childSpread),10,H-10), g, true, this.speciesKey, mate?.speciesKey||null);
         c.vx=this.vx*0.2; c.vy=this.vy*0.2;
+        inheritInjectionLineage(this,mate,c);
         telemetryRecordBirth(this,c,i,clutch,{preMutationDiet});
 
         // Mendelian flags inheritance (glow/crown/colony)
@@ -6209,6 +6226,83 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
       temperature:1-_avgC
     };
   }
+  function fieldArray(type){
+    ensure();
+    return fields?.[type] ? Array.from(fields[type]) : [];
+  }
+  function algaeStats(){
+    ensure();
+    const values=Array.from(fields.algae || []);
+    const n=values.length;
+    if(!n) return {count:0,mean:0,median:0,variance:0,stdDev:0,min:0,max:0};
+    values.sort((a,b)=>a-b);
+    const sum=values.reduce((a,b)=>a+b,0);
+    const mean=sum/n;
+    const mid=n%2 ? values[(n-1)/2] : (values[n/2-1]+values[n/2])*0.5;
+    const variance=values.reduce((a,b)=>a+(b-mean)*(b-mean),0)/n;
+    return {count:n,mean,median:mid,variance,stdDev:Math.sqrt(variance),min:values[0],max:values[n-1]};
+  }
+  function localAlgaeStats(x,y,radius=80){
+    ensure();
+    const cx=Math.min(ew-1,Math.max(0,(x/cell)|0));
+    const cy=Math.min(eh-1,Math.max(0,(y/cell)|0));
+    const rr=Math.max(1,Math.ceil(radius/cell));
+    const values=[];
+    for(let dy=-rr;dy<=rr;dy++){
+      const yy=cy+dy; if(yy<0||yy>=eh) continue;
+      for(let dx=-rr;dx<=rr;dx++){
+        const xx=cx+dx; if(xx<0||xx>=ew) continue;
+        if(Math.hypot(dx,dy)>rr+0.01) continue;
+        values.push(fields.algae[idx(xx,yy)] || 0);
+      }
+    }
+    if(!values.length) return {count:0,mean:0,median:0,variance:0,stdDev:0,min:0,max:0};
+    values.sort((a,b)=>a-b);
+    const n=values.length;
+    const sum=values.reduce((a,b)=>a+b,0);
+    const mean=sum/n;
+    const mid=n%2 ? values[(n-1)/2] : (values[n/2-1]+values[n/2])*0.5;
+    const variance=values.reduce((a,b)=>a+(b-mean)*(b-mean),0)/n;
+    return {count:n,mean,median:mid,variance,stdDev:Math.sqrt(variance),min:values[0],max:values[n-1]};
+  }
+  function captureState(){
+    ensure();
+    return {
+      cell, ew, eh, scarW, scarH,
+      fields:{
+        algae:fieldArray('algae'),
+        cold:fieldArray('cold'),
+        oxygen:fieldArray('oxygen'),
+        detritus:fieldArray('detritus')
+      },
+      grazeScar:grazeScar ? Array.from(grazeScar) : []
+    };
+  }
+  function restoreState(state){
+    ensure();
+    if(!state || !state.fields) return false;
+    const keys=['algae','cold','oxygen','detritus'];
+    for(const key of keys){
+      const src=Array.isArray(state.fields[key]) ? state.fields[key] : [];
+      const dst=fields[key];
+      const n=Math.min(dst.length,src.length);
+      for(let i=0;i<n;i++) dst[i]=clamp01(Number(src[i])||0);
+      for(let i=n;i<dst.length;i++){
+        dst[i]=key==='algae'?0.25:(key==='cold'?0.25:(key==='oxygen'?0.75:0.05));
+      }
+    }
+    if(Array.isArray(state.grazeScar) && grazeScar){
+      const n=Math.min(grazeScar.length,state.grazeScar.length);
+      for(let i=0;i<n;i++) grazeScar[i]=clamp01(Number(state.grazeScar[i])||0);
+      for(let i=n;i<grazeScar.length;i++) grazeScar[i]=0;
+    }
+    let n=fields.algae.length||1, sumN=0,sumO=0,sumD=0,sumC=0;
+    for(let i=0;i<n;i++){ sumN+=fields.algae[i]||0; sumO+=fields.oxygen[i]||0; sumD+=fields.detritus[i]||0; sumC+=fields.cold[i]||0; }
+    _avgN=sumN/n; _avgO=sumO/n; _avgD=sumD/n; _avgC=sumC/n;
+    markAlgaeAllDirty();
+    lastPaint=-999;
+    return true;
+  }
 
   return {
   ensure, seedFromPatches, tickFields, draw,
@@ -6218,6 +6312,10 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
   bestAlgaeNear: (x,y,r,minValue)=> bestAlgaeNear(x,y,r,minValue),
   grazeAlgaeAt: (x,y,appetite,radius)=> grazeAlgaeAt(x,y,appetite,radius),
   getAverages: ()=>averages(),
+  algaeStats: ()=>algaeStats(),
+  localAlgaeStats: (x,y,radius)=>localAlgaeStats(x,y,radius),
+  captureState: ()=>captureState(),
+  restoreState: (state)=>restoreState(state),
   semanticSnapshot: ()=>averages(),
   usesGpu: ()=>!!gpuReady,
   algaeLayerSummary: ()=>({
@@ -7173,6 +7271,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     resetFoodWebStats();
     lineage.nodes.clear();
     lineage.edges.length=0;
+    resetInjectionTracking({snapshots:true});
     // reset simple eco / day-night state
     eco.detritusMeter = 0;
     eco.nutrient = 0;
@@ -7311,6 +7410,642 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   function renderModelUi(){ if(modelUi.generation){ const g=$('generation'); if(g) g.textContent=String(generation); } if(modelUi.water) updateWaterStatus(); if(modelUi.extinct) renderExtinctRecords(); if(modelUi.evolution) checkEvolutionMilestones(); if(modelUi.species) rebuildSpeciesCards(); if(modelUi.dayNight) renderDayNightUI(); flushLog(); flushToasts(); }
   function updateRoleShare(){ const n=organisms.length||1; const c={ambusher:0,pack:0,scav:0,filter:0,other:0}; for(const x of organisms){ c[x.role]++; } for(const k of Object.keys(c)){ roleShare[k]=c[k]/n; } }
 
+  // ===== Developer organism injection =====
+  function devDietLong(shortDiet){
+    return shortDiet==='h' ? 'herbivore' : (shortDiet==='c' ? 'carnivore' : 'omnivore');
+  }
+  function devDietShort(longDiet){
+    const v=String(longDiet||'carnivore').toLowerCase();
+    if(v==='herbivore' || v==='h') return 'h';
+    if(v==='omnivore' || v==='m' || v==='o') return 'm';
+    return 'c';
+  }
+  function devNormalizeDietType(value){
+    return devDietLong(devDietShort(value));
+  }
+  function devCloneGenes(g){
+    const out={};
+    for(const k of GENE_KEYS) out[k]=clamp(Number(g?.[k] ?? 0.5),0,1);
+    return out;
+  }
+  function devRandomDietValue(type){
+    if(type==='herbivore') return rnd(0.10,0.30);
+    if(type==='omnivore') return rnd(0.40,0.58);
+    return rnd(0.74,0.92);
+  }
+  function devGenesForPreset(dietType,preset){
+    const type=devNormalizeDietType(dietType);
+    const mode=String(preset||'viable').toLowerCase()==='random' ? 'random' : 'viable';
+    if(mode==='viable') return devCloneGenes(DEV_VIABLE_GENES[type] || DEV_VIABLE_GENES.carnivore);
+    const g=geneSet();
+    g.diet=devRandomDietValue(type);
+    return devCloneGenes(g);
+  }
+  function devGeneSummary(genesList){
+    const keys=GENE_KEYS;
+    const n=genesList.length||1;
+    const summary={count:genesList.length, average:{}, min:{}, max:{}};
+    for(const k of keys){
+      const values=genesList.map(g=>Number(g?.[k])).filter(Number.isFinite);
+      summary.average[k]=values.length ? values.reduce((a,b)=>a+b,0)/values.length : null;
+      summary.min[k]=values.length ? Math.min(...values) : null;
+      summary.max[k]=values.length ? Math.max(...values) : null;
+    }
+    summary.reproductionThresholdAverage=genesList.length
+      ? genesList.reduce((sum,g)=>sum+(60+50*Number(g?.fecundity||0)),0)/n
+      : null;
+    return summary;
+  }
+  function devPopulationDietCounts(list=organisms){
+    const diets={h:0,m:0,c:0};
+    for(const o of list){
+      if(!o || o.dead) continue;
+      const d=telemetryDiet(o);
+      diets[d]=(diets[d]||0)+1;
+    }
+    return diets;
+  }
+  function devAverageEnergyByDiet(){
+    const sums={h:0,m:0,c:0}, counts={h:0,m:0,c:0};
+    for(const o of organisms){
+      if(!o || o.dead) continue;
+      const d=telemetryDiet(o);
+      sums[d]+=Number(o.energy||0);
+      counts[d]++;
+    }
+    return {
+      h:counts.h ? sums.h/counts.h : null,
+      m:counts.m ? sums.m/counts.m : null,
+      c:counts.c ? sums.c/counts.c : null
+    };
+  }
+  function devSpeciesSnapshot(){
+    const bySpecies=new Map();
+    for(const o of organisms){
+      if(!o || o.dead) continue;
+      bySpecies.set(o.speciesKey,(bySpecies.get(o.speciesKey)||0)+1);
+    }
+    let max=0;
+    for(const n of bySpecies.values()) if(n>max) max=n;
+    return {species:bySpecies.size, maxSpeciesShare:organisms.length ? max/organisms.length : 0};
+  }
+  function devEventsInRecentWindow(frames=180){
+    const events=telemetryEventsSince(frames);
+    return {
+      births:events.filter(e=>e.kind==='birth').length,
+      deaths:events.filter(e=>e.kind==='death').length,
+      overcrowdingDeaths:events.filter(e=>e.kind==='death' && e.cause==='overcrowding').length
+    };
+  }
+  function devLocalOrganismCounts(x,y,radius=80){
+    const r2=radius*radius;
+    const counts={h:0,m:0,c:0,total:0};
+    for(const o of organisms){
+      if(!o || o.dead) continue;
+      const dx=o.x-x, dy=o.y-y;
+      if(dx*dx+dy*dy>r2) continue;
+      const d=telemetryDiet(o);
+      counts[d]++;
+      counts.total++;
+    }
+    return counts;
+  }
+  function devEnvironmentSnapshot(positions=[]){
+    const avg=window.env?.getAverages ? window.env.getAverages() : {N:0,D:0,O:0};
+    const algaeStats=window.env?.algaeStats ? window.env.algaeStats() : {mean:avg.N??0,median:avg.N??0,variance:0,stdDev:0};
+    const diets=devPopulationDietCounts();
+    const species=devSpeciesSnapshot();
+    const recent=devEventsInRecentWindow(180);
+    const energy=devAverageEnergyByDiet();
+    const locals=positions.map(p=>{
+      const algae=window.env?.localAlgaeStats ? window.env.localAlgaeStats(p.x,p.y,80) : null;
+      const counts=devLocalOrganismCounts(p.x,p.y,80);
+      return {
+        x:p.x, y:p.y,
+        localAlgae:algae?.mean ?? null,
+        localAlgaeMedian:algae?.median ?? null,
+        herbivores:counts.h,
+        omnivores:counts.m,
+        carnivores:counts.c,
+        totalOrganisms:counts.total
+      };
+    });
+    const localAverage=locals.length ? {
+      localAlgae:locals.reduce((s,x)=>s+Number(x.localAlgae||0),0)/locals.length,
+      herbivores:locals.reduce((s,x)=>s+x.herbivores,0)/locals.length,
+      omnivores:locals.reduce((s,x)=>s+x.omnivores,0)/locals.length,
+      carnivores:locals.reduce((s,x)=>s+x.carnivores,0)/locals.length
+    } : null;
+    return {
+      step:frame,
+      totalPopulation:organisms.length,
+      herbivores:diets.h,
+      omnivores:diets.m,
+      carnivores:diets.c,
+      averageAlgae:algaeStats.mean ?? avg.N ?? avg.algae ?? 0,
+      medianAlgae:algaeStats.median ?? null,
+      algaeVariance:algaeStats.variance ?? null,
+      algaeStdDev:algaeStats.stdDev ?? null,
+      averageOxygen:avg.O ?? avg.oxygen ?? null,
+      averageDetritus:avg.D ?? avg.detritus ?? null,
+      species:species.species,
+      maxSpeciesShare:species.maxSpeciesShare,
+      averageEnergyByDiet:energy,
+      populationLoad:ui.popMax>0 ? organisms.length/Math.max(1,ui.popMax) : null,
+      recentBirths:recent.births,
+      recentDeaths:recent.deaths,
+      recentOvercrowdingDeaths:recent.overcrowdingDeaths,
+      localAverage,
+      localSamples:locals.slice(0,20)
+    };
+  }
+  function devSpawnPosition(mode,index,count){
+    const m=String(mode||'random').toLowerCase();
+    if(m==='cursor' && devLastCursor){
+      const a=(index/count)*TAU;
+      const r=8+Math.sqrt(index)*9;
+      return {x:clamp(devLastCursor.x+Math.cos(a)*r,12,W-12), y:clamp(devLastCursor.y+Math.sin(a)*r,12,H-12)};
+    }
+    if(m==='center' || m==='cursor'){
+      const a=(index/count)*TAU;
+      const r=10+Math.sqrt(index)*11;
+      return {x:clamp(W*0.5+Math.cos(a)*r,12,W-12), y:clamp(H*0.5+Math.sin(a)*r,12,H-12)};
+    }
+    return {x:rnd(18,W-18), y:rnd(18,H-18)};
+  }
+  function devApplyAgeAndEnergy(o,ageMode,energyMode){
+    const age=String(ageMode||'mature').toLowerCase();
+    if(age==='newborn'){
+      o.age=0; o.birthFrame=frame; o.protect=90;
+    } else if(age==='juvenile'){
+      o.age=90; o.birthFrame=frame-o.age; o.protect=45;
+    } else {
+      o.age=240; o.birthFrame=frame-o.age; o.protect=0;
+    }
+    const energy=String(energyMode||'standard').toLowerCase();
+    if(energy==='full') o.energy=clamp(o.reproThreshold*1.25,0,150);
+    else o.energy=clamp(o.reproThreshold*0.82,48,112);
+    return {age:o.age, energy:o.energy, energyRatio:o.energy/Math.max(1,o.reproThreshold), reproThreshold:o.reproThreshold};
+  }
+  function devBatchId(){
+    return `batch-${nextInjectionBatchSerial++}`;
+  }
+  function devPruneInjectionBatches(){
+    while(injectionBatches.size>DEV_INJECTION_BATCH_LIMIT){
+      const oldest=injectionBatches.keys().next().value;
+      if(oldest==null) break;
+      injectionBatches.delete(oldest);
+    }
+  }
+  function injectionRecordFor(o){
+    if(!o?.injectionBatchId) return null;
+    const batch=injectionBatches.get(o.injectionBatchId);
+    if(!batch) return null;
+    let rec=batch.records.get(o.id);
+    if(!rec){
+      rec={
+        id:o.id,
+        generation:Number(o.injectionGeneration||0),
+        ancestorId:o.injectionAncestorId ?? o.id,
+        parentId:o.injectionParentId ?? null,
+        injected:!!o.devInjected,
+        birthFrame:o.birthFrame ?? frame,
+        firstSeenFrame:frame,
+        firstCandidateFrame:null,
+        firstTargetFrame:null,
+        firstContactFrame:null,
+        firstAttackFrame:null,
+        firstPredationFrame:null,
+        secondPredationFrame:null,
+        thirdPredationFrame:null,
+        predationSuccesses:0,
+        reproductionFrame:null,
+        children:0,
+        childIds:[],
+        deathFrame:null,
+        deathCause:null
+      };
+      batch.records.set(o.id,rec);
+    }
+    return {batch,rec};
+  }
+  function createInjectionRecord(batch,o,meta={}){
+    if(!batch || !o) return null;
+    const rec={
+      id:o.id,
+      generation:Number(meta.generation ?? o.injectionGeneration ?? 0),
+      ancestorId:meta.ancestorId ?? o.injectionAncestorId ?? o.id,
+      parentId:meta.parentId ?? o.injectionParentId ?? null,
+      injected:!!meta.injected || !!o.devInjected,
+      birthFrame:o.birthFrame ?? frame,
+      firstSeenFrame:frame,
+      firstCandidateFrame:null,
+      firstTargetFrame:null,
+      firstContactFrame:null,
+      firstAttackFrame:null,
+      firstPredationFrame:null,
+      secondPredationFrame:null,
+      thirdPredationFrame:null,
+      predationSuccesses:0,
+      reproductionFrame:null,
+      children:0,
+      childIds:[],
+      deathFrame:null,
+      deathCause:null
+    };
+    batch.records.set(o.id,rec);
+    return rec;
+  }
+  function inheritInjectionLineage(parent,mate,child){
+    if(!child) return false;
+    const sources=[parent,mate].filter(o=>o?.injectionBatchId && (o.devInjectedLineage || o.devInjected));
+    if(!sources.length) return false;
+    const source=sources[0];
+    const batch=injectionBatches.get(source.injectionBatchId);
+    if(!batch || batch.options?.lineageTracking===false) return false;
+    if(sources.length>1 && sources.some(o=>o.injectionBatchId!==source.injectionBatchId)){
+      batch.ambiguousCrosses=(batch.ambiguousCrosses||0)+1;
+    }
+    child.devInjectedLineage=true;
+    child.injectionBatchId=source.injectionBatchId;
+    child.injectionStep=source.injectionStep ?? batch.step;
+    child.injectionGeneration=Number(source.injectionGeneration||0)+1;
+    child.injectionAncestorId=source.injectionAncestorId ?? source.id;
+    child.injectionParentId=source.id;
+    createInjectionRecord(batch,child,{generation:child.injectionGeneration,ancestorId:child.injectionAncestorId,parentId:source.id});
+    batch.cumulativeDescendants=(batch.cumulativeDescendants||0)+1;
+    batch.maxGeneration=Math.max(batch.maxGeneration||0,child.injectionGeneration||0);
+    return true;
+  }
+  function telemetryRecordInjectionPredationStage(stage,predator,prey,extra=null){
+    const pair=injectionRecordFor(predator);
+    if(!pair) return;
+    const {batch,rec}=pair;
+    if(stage==='candidate'){
+      if(rec.firstCandidateFrame==null) rec.firstCandidateFrame=frame;
+      if(rec.firstTargetFrame==null) rec.firstTargetFrame=frame;
+    } else if(stage==='tracking'){
+      if(rec.firstTargetFrame==null) rec.firstTargetFrame=frame;
+    } else if(stage==='contact'){
+      if(rec.firstContactFrame==null) rec.firstContactFrame=frame;
+    } else if(stage==='attempt'){
+      if(rec.firstAttackFrame==null) rec.firstAttackFrame=frame;
+    } else if(stage==='success'){
+      rec.predationSuccesses++;
+      if(rec.firstPredationFrame==null) rec.firstPredationFrame=frame;
+      else if(rec.secondPredationFrame==null) rec.secondPredationFrame=frame;
+      else if(rec.thirdPredationFrame==null) rec.thirdPredationFrame=frame;
+      batch.predationSuccesses=(batch.predationSuccesses||0)+1;
+    }
+  }
+  function telemetryRecordInjectionReproduction(parent,kids){
+    const pair=injectionRecordFor(parent);
+    if(!pair) return;
+    const {batch,rec}=pair;
+    if(rec.reproductionFrame==null) rec.reproductionFrame=frame;
+    rec.children+=kids?.length || 0;
+    if(Array.isArray(kids)){
+      for(const child of kids){
+        if(child && rec.childIds.length<80 && !rec.childIds.includes(child.id)) rec.childIds.push(child.id);
+      }
+    }
+    batch.reproductions=(batch.reproductions||0)+1;
+  }
+  function telemetryRecordInjectionDeath(o,causeKey){
+    const pair=injectionRecordFor(o);
+    if(!pair) return;
+    const {batch,rec}=pair;
+    if(rec.deathFrame==null){
+      rec.deathFrame=frame;
+      rec.deathCause=causeKey || 'other';
+    }
+    const alive=organisms.some(x=>x && !x.dead && x.injectionBatchId===batch.id);
+    if(!alive && batch.extinctStep==null) batch.extinctStep=frame;
+  }
+  function spawnOrganisms(options={}){
+    const requested=Number.isFinite(Number(options.count)) ? Number(options.count) : 5;
+    const count=Math.max(1,Math.min(DEV_SPAWN_COUNT_MAX,Math.round(requested)));
+    const dietType=devNormalizeDietType(options.dietType || 'carnivore');
+    const preset=String(options.preset||'viable').toLowerCase()==='random' ? 'random' : 'viable';
+    const ageMode=['newborn','juvenile','mature'].includes(String(options.ageMode||'mature').toLowerCase()) ? String(options.ageMode||'mature').toLowerCase() : 'mature';
+    const positionMode=['random','center','cursor'].includes(String(options.positionMode||'random').toLowerCase()) ? String(options.positionMode||'random').toLowerCase() : 'random';
+    const energyMode=String(options.energyMode||'standard').toLowerCase()==='full' ? 'full' : 'standard';
+    const lineageTracking=options.lineageTracking!==false;
+    const positions=[];
+    for(let i=0;i<count;i++) positions.push(devSpawnPosition(positionMode,i,count));
+    const batchId=devBatchId();
+    const warnings=[];
+    if(positionMode==='cursor' && !devLastCursor) warnings.push('cursor position unavailable; used center dispersion');
+    if(ui.popMax>0 && organisms.length/Math.max(1,ui.popMax)>=0.95) warnings.push('population is above 95% of popMax; injected organisms may be culled by capacity pressure');
+    const envBefore=devEnvironmentSnapshot(positions);
+    const batch={
+      id:batchId,
+      step:frame,
+      requestedCount:requested,
+      spawnedCount:0,
+      failedCount:0,
+      options:{count,dietType,preset,ageMode,positionMode,energyMode,lineageTracking},
+      organismIds:[],
+      geneSummary:null,
+      energySummary:null,
+      environmentSnapshot:envBefore,
+      warnings,
+      records:new Map(),
+      cumulativeDescendants:0,
+      maxGeneration:0,
+      extinctStep:null,
+      predationSuccesses:0,
+      reproductions:0,
+      ambiguousCrosses:0
+    };
+    const genesList=[];
+    const energyRows=[];
+    for(let i=0;i<count;i++){
+      try{
+        const genes=devGenesForPreset(dietType,preset);
+        const pos=positions[i];
+        const o=new Organism(pos.x,pos.y,genes,false);
+        const energyRow=devApplyAgeAndEnergy(o,ageMode,energyMode);
+        o.devInjected=true;
+        o.devInjectedLineage=lineageTracking;
+        o.injectionBatchId=batchId;
+        o.injectionStep=frame;
+        o.injectionGeneration=0;
+        o.injectionAncestorId=o.id;
+        o.injectionParentId=null;
+        o.lastAction='developer injection';
+        organisms.push(o);
+        genesList.push(devCloneGenes(o.genes));
+        energyRows.push(energyRow);
+        batch.organismIds.push(o.id);
+        createInjectionRecord(batch,o,{generation:0,ancestorId:o.id,injected:true});
+        if(telemetryDiet(o)==='c'){
+          telemetryUpdateCarnivoreProgress(o);
+          telemetryPredationIndividualRecord(o);
+        }
+        batch.spawnedCount++;
+      }catch(e){
+        batch.failedCount++;
+        warnings.push(`spawn failed: ${e?.message || e}`);
+      }
+    }
+    batch.geneSummary=devGeneSummary(genesList);
+    batch.energySummary={
+      mode:energyMode,
+      averageEnergy:energyRows.length ? energyRows.reduce((s,x)=>s+x.energy,0)/energyRows.length : null,
+      averageEnergyRatio:energyRows.length ? energyRows.reduce((s,x)=>s+x.energyRatio,0)/energyRows.length : null,
+      averageReproThreshold:energyRows.length ? energyRows.reduce((s,x)=>s+x.reproThreshold,0)/energyRows.length : null
+    };
+    injectionBatches.set(batchId,batch);
+    devPruneInjectionBatches();
+    telemetrySampleFrame(true);
+    return {
+      batchId,
+      requestedCount:requested,
+      spawnedCount:batch.spawnedCount,
+      failedCount:batch.failedCount,
+      organismIds:batch.organismIds.slice(),
+      step:frame,
+      options:batch.options,
+      geneSummary:batch.geneSummary,
+      energySummary:batch.energySummary,
+      warnings:warnings.slice()
+    };
+  }
+  function injectionRecordAlive(rec){
+    return organisms.some(o=>o && !o.dead && o.id===rec.id);
+  }
+  function summarizeInjectionGeneration(records,generationKey){
+    const selected=records.filter(r=>{
+      if(generationKey==='generation3plus') return (r.generation||0)>=3;
+      const g=Number(String(generationKey).replace('generation',''));
+      return (r.generation||0)===g;
+    });
+    const deaths=selected.filter(r=>r.deathFrame!=null);
+    const avgLife=selected.length ? selected.reduce((s,r)=>s+((r.deathFrame??frame)-(r.birthFrame??r.firstSeenFrame??frame)),0)/selected.length : null;
+    const countCause=cause=>selected.filter(r=>r.deathCause===cause).length;
+    return {
+      births:selected.length,
+      alive:selected.filter(injectionRecordAlive).length,
+      firstPredationSuccess:selected.filter(r=>r.firstPredationFrame!=null).length,
+      secondPredationSuccess:selected.filter(r=>r.secondPredationFrame!=null).length,
+      reproduced:selected.filter(r=>r.reproductionFrame!=null).length,
+      producedNextGeneration:selected.filter(r=>r.children>0).length,
+      firstPredationBeforeStarvation:selected.filter(r=>r.firstPredationFrame==null && r.deathCause==='starvation').length,
+      overcrowdingDeaths:countCause('overcrowding'),
+      predationDeaths:countCause('predation'),
+      starvationDeaths:countCause('starvation'),
+      otherDeaths:deaths.length-countCause('overcrowding')-countCause('predation')-countCause('starvation'),
+      averageLifespan:avgLife
+    };
+  }
+  function summarizeInjectionBatch(batch){
+    if(!batch) return null;
+    const records=[...batch.records.values()];
+    const gen0=records.filter(r=>(r.generation||0)===0);
+    const aliveRecords=records.filter(injectionRecordAlive);
+    const initialDeathsBeforeFirst=gen0.filter(r=>r.firstPredationFrame==null && r.deathFrame!=null).length;
+    const initialDeathsAfterFirstBeforeSecond=gen0.filter(r=>r.firstPredationFrame!=null && r.secondPredationFrame==null && r.deathFrame!=null).length;
+    const avgDelta=(arr,pick)=>{
+      const vals=arr.map(pick).filter(Number.isFinite);
+      return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+    };
+    const deathCauses={starvation:0,oldAge:0,predation:0,overcrowding:0,other:0};
+    for(const r of gen0){
+      if(r.deathCause) deathCauses[r.deathCause]=(deathCauses[r.deathCause]||0)+1;
+    }
+    const extinctionStep=batch.extinctStep ?? (aliveRecords.length ? null : (records.length ? Math.max(...records.map(r=>r.deathFrame||batch.step)) : null));
+    return {
+      batchId:batch.id,
+      step:batch.step,
+      currentStep:frame,
+      options:batch.options,
+      requestedCount:batch.requestedCount,
+      spawnedCount:batch.spawnedCount,
+      failedCount:batch.failedCount,
+      warnings:batch.warnings||[],
+      organismIds:batch.organismIds||[],
+      geneSummary:batch.geneSummary,
+      energySummary:batch.energySummary,
+      environmentSnapshot:batch.environmentSnapshot,
+      currentInjectedAlive:gen0.filter(injectionRecordAlive).length,
+      currentLineageAlive:aliveRecords.length,
+      cumulativeDescendants:records.filter(r=>(r.generation||0)>0).length,
+      maxGeneration:records.reduce((m,r)=>Math.max(m,Number(r.generation||0)),0),
+      extinctionStep,
+      persistenceFrames:extinctionStep==null ? frame-batch.step : extinctionStep-batch.step,
+      ambiguousCrosses:batch.ambiguousCrosses||0,
+      injected:{
+        firstValidPreyDetected:gen0.filter(r=>r.firstCandidateFrame!=null).length,
+        firstTargetAcquired:gen0.filter(r=>r.firstTargetFrame!=null).length,
+        firstContact:gen0.filter(r=>r.firstContactFrame!=null).length,
+        firstAttack:gen0.filter(r=>r.firstAttackFrame!=null).length,
+        firstPredationSuccess:gen0.filter(r=>r.firstPredationFrame!=null).length,
+        secondPredationSuccess:gen0.filter(r=>r.secondPredationFrame!=null).length,
+        threeOrMorePredationSuccess:gen0.filter(r=>r.thirdPredationFrame!=null || (r.predationSuccesses||0)>=3).length,
+        cumulativePredationSuccesses:gen0.reduce((s,r)=>s+(r.predationSuccesses||0),0),
+        reproducingOrganisms:gen0.filter(r=>r.reproductionFrame!=null).length,
+        cumulativeChildren:gen0.reduce((s,r)=>s+(r.children||0),0),
+        deathsBeforeFirstPredation:initialDeathsBeforeFirst,
+        deathsAfterFirstBeforeSecond:initialDeathsAfterFirstBeforeSecond,
+        deathCauses,
+        averageStepsToFirstPredation:avgDelta(gen0,r=>r.firstPredationFrame==null ? null : r.firstPredationFrame-batch.step),
+        averageStepsFirstToSecondPredation:avgDelta(gen0,r=>(r.firstPredationFrame==null || r.secondPredationFrame==null) ? null : r.secondPredationFrame-r.firstPredationFrame),
+        averageStepsToFirstReproduction:avgDelta(gen0,r=>r.reproductionFrame==null ? null : r.reproductionFrame-batch.step)
+      },
+      generations:{
+        generation0:summarizeInjectionGeneration(records,'generation0'),
+        generation1:summarizeInjectionGeneration(records,'generation1'),
+        generation2:summarizeInjectionGeneration(records,'generation2'),
+        generation3plus:summarizeInjectionGeneration(records,'generation3plus')
+      }
+    };
+  }
+  function injectionLineageSummary(options={}){
+    const batchId=options?.batchId || null;
+    if(batchId){
+      const batch=injectionBatches.get(batchId);
+      return batch ? summarizeInjectionBatch(batch) : {batchId, found:false};
+    }
+    return {
+      frame,
+      batchCount:injectionBatches.size,
+      batches:[...injectionBatches.values()].map(summarizeInjectionBatch)
+    };
+  }
+  function serializeInjectionBatches(){
+    return {
+      nextInjectionBatchSerial,
+      batches:[...injectionBatches.values()].map(b=>({
+        ...b,
+        records:[...b.records.entries()]
+      }))
+    };
+  }
+  function restoreInjectionBatches(data){
+    injectionBatches.clear();
+    if(data && Array.isArray(data.batches)){
+      nextInjectionBatchSerial=Math.max(1,Number(data.nextInjectionBatchSerial)||1);
+      for(const raw of data.batches){
+        const b={...raw, records:new Map(raw.records||[])};
+        injectionBatches.set(b.id,b);
+      }
+      devPruneInjectionBatches();
+    } else {
+      nextInjectionBatchSerial=1;
+    }
+  }
+  function resetInjectionTracking({snapshots=false}={}){
+    injectionBatches.clear();
+    nextInjectionBatchSerial=1;
+    if(snapshots) devTestSnapshots.clear();
+  }
+  function captureTestSnapshot(name='snapshot'){
+    if(!devMode) return {ok:false, error:'devModeRequired'};
+    const key=String(name||'snapshot');
+    const data=capture();
+    devTestSnapshots.set(key,{name:key,frame,data,capturedAt:Date.now()});
+    while(devTestSnapshots.size>DEV_SNAPSHOT_LIMIT){
+      const oldest=devTestSnapshots.keys().next().value;
+      if(oldest==null) break;
+      devTestSnapshots.delete(oldest);
+    }
+    return {ok:true,name:key,frame,snapshotCount:devTestSnapshots.size};
+  }
+  function restoreTestSnapshot(name='snapshot'){
+    if(!devMode) return {ok:false, error:'devModeRequired'};
+    const key=String(name||'snapshot');
+    const snap=devTestSnapshots.get(key);
+    if(!snap) return {ok:false,name:key,error:'snapshotNotFound'};
+    restore(snap.data);
+    return {ok:true,name:key,frame,snapshotFrame:snap.frame};
+  }
+  function devPanelCounts(){
+    const diets=devPopulationDietCounts();
+    return {frame,population:organisms.length,popMax:ui.popMax,carnivores:diets.c,omnivores:diets.m,herbivores:diets.h};
+  }
+  function initDevPanel(){
+    if(!devMode || document.getElementById('dev-injection-panel')) return;
+    const panel=document.createElement('details');
+    panel.id='dev-injection-panel';
+    panel.open=!IS_MOBILE_VIEW;
+    panel.style.cssText=[
+      'position:fixed',
+      'right:10px',
+      'top:10px',
+      'z-index:50',
+      'width:min(300px,calc(100vw - 20px))',
+      'max-height:70vh',
+      'overflow:auto',
+      'background:rgba(6,12,24,0.88)',
+      'border:1px solid rgba(150,190,255,0.35)',
+      'border-radius:8px',
+      'padding:8px',
+      'color:#dbeafe',
+      'font:12px system-ui,-apple-system,Segoe UI,sans-serif',
+      'box-shadow:0 8px 24px rgba(0,0,0,0.25)'
+    ].join(';');
+    panel.innerHTML=`
+      <summary style="cursor:pointer;font-weight:700">Dev spawn</summary>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
+        <label>count<input id="dev-spawn-count" type="number" min="1" max="50" value="5" style="width:100%"></label>
+        <label>diet<select id="dev-spawn-diet" style="width:100%"><option value="carnivore">carnivore</option><option value="omnivore">omnivore</option><option value="herbivore">herbivore</option></select></label>
+        <label>preset<select id="dev-spawn-preset" style="width:100%"><option value="viable">viable</option><option value="random">random</option></select></label>
+        <label>age<select id="dev-spawn-age" style="width:100%"><option value="mature">mature</option><option value="juvenile">juvenile</option><option value="newborn">newborn</option></select></label>
+        <label>position<select id="dev-spawn-position" style="width:100%"><option value="random">random</option><option value="center">center</option><option value="cursor">cursor</option></select></label>
+        <label>energy<select id="dev-spawn-energy" style="width:100%"><option value="standard">standard</option><option value="full">full</option></select></label>
+      </div>
+      <button id="dev-spawn-submit" type="button" style="width:100%;margin-top:8px">spawn</button>
+      <div style="display:grid;grid-template-columns:1fr;gap:4px;margin-top:8px">
+        <button id="dev-preset-c5" type="button">carnivore 5 random</button>
+        <button id="dev-preset-c10" type="button">carnivore 10 random</button>
+        <button id="dev-preset-h5" type="button">herbivore 5 random</button>
+      </div>
+      <div id="dev-spawn-warning" style="margin-top:8px;color:#fecaca"></div>
+      <pre id="dev-spawn-status" style="white-space:pre-wrap;margin:8px 0 0;font-size:11px;color:#bfdbfe"></pre>
+    `;
+    document.body.appendChild(panel);
+    const status=panel.querySelector('#dev-spawn-status');
+    const warning=panel.querySelector('#dev-spawn-warning');
+    const value=id=>panel.querySelector(id)?.value;
+    const spawnFromControls=(override={})=>{
+      const result=spawnOrganisms({
+        count:Number(value('#dev-spawn-count')||5),
+        dietType:value('#dev-spawn-diet')||'carnivore',
+        preset:value('#dev-spawn-preset')||'viable',
+        ageMode:value('#dev-spawn-age')||'mature',
+        positionMode:value('#dev-spawn-position')||'random',
+        energyMode:value('#dev-spawn-energy')||'standard',
+        lineageTracking:true,
+        ...override
+      });
+      status.textContent=JSON.stringify({
+        batchId:result.batchId,
+        spawned:result.spawnedCount,
+        frame:result.step,
+        organisms:organisms.length,
+        carnivores:devPopulationDietCounts().c,
+        warnings:result.warnings
+      },null,2);
+      updateWarning();
+    };
+    const updateWarning=()=>{
+      const c=devPanelCounts();
+      const load=c.popMax>0 ? c.population/Math.max(1,c.popMax) : 0;
+      warning.textContent=load>=0.95 ? 'population is above 95% of popMax; injected organisms may be culled.' : '';
+      if(!status.textContent){
+        status.textContent=JSON.stringify({frame:c.frame,population:c.population,carnivores:c.carnivores,latestBatchId:[...injectionBatches.keys()].slice(-1)[0]||null},null,2);
+      }
+    };
+    panel.querySelector('#dev-spawn-submit')?.addEventListener('click',()=>spawnFromControls());
+    panel.querySelector('#dev-preset-c5')?.addEventListener('click',()=>spawnFromControls({count:5,dietType:'carnivore',preset:'viable',ageMode:'mature',positionMode:'random',energyMode:'standard'}));
+    panel.querySelector('#dev-preset-c10')?.addEventListener('click',()=>spawnFromControls({count:10,dietType:'carnivore',preset:'viable',ageMode:'mature',positionMode:'random',energyMode:'standard'}));
+    panel.querySelector('#dev-preset-h5')?.addEventListener('click',()=>spawnFromControls({count:5,dietType:'herbivore',preset:'viable',ageMode:'mature',positionMode:'random',energyMode:'standard'}));
+    view?.addEventListener('pointerdown',ev=>{ devLastCursor=canvasPoint(ev); },{passive:true});
+    updateWarning();
+    setInterval(updateWarning,1000);
+  }
+
   function draw(){
     drawBackground();
     // レイヤー順：パッチ -> エフェクト -> 餌/死骸/プランクトン -> 個体 -> スパーク -> HUD -> 右下HUD
@@ -7349,6 +8084,21 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   window.__alifeDebug = {
     counts(){
       return { organisms:organisms.length, food:food.length, detritusParticles:countDetritusParticles(), plankton:plankton.length, sparks:sparks.length, rings:rings.length, predationBlooms:predationBlooms.length, membranes:membranes.length, corpses:corpses.length, species:new Set(organisms.map(o=>o.speciesKey)).size };
+    },
+    developerMode(){
+      return {enabled:devMode, snapshots:devTestSnapshots.size, injectionBatches:injectionBatches.size, latestBatchId:[...injectionBatches.keys()].slice(-1)[0]||null, ...devPanelCounts()};
+    },
+    spawnOrganisms(options={}){
+      return spawnOrganisms(options);
+    },
+    injectionLineageSummary(options={}){
+      return injectionLineageSummary(options);
+    },
+    captureTestSnapshot(name='snapshot'){
+      return captureTestSnapshot(name);
+    },
+    restoreTestSnapshot(name='snapshot'){
+      return restoreTestSnapshot(name);
     },
     config(){
       return CONFIG;
@@ -7519,7 +8269,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       return {ok:true, frame, events:telemetry.events.length, samples:telemetry.samples.length};
     },
     telemetryCounts(){
-      return {events:telemetry.events.length, samples:telemetry.samples.length, ecoBuckets:telemetry.ecoBuckets.length, births:telemetry.births.size, predationPairs:telemetry.predationPairs.size, predationNutrition:telemetry.predationNutrition.length, predationIndividuals:telemetry.predationIndividuals.size, activeChases:telemetry.activeChases.size, chaseEpisodes:telemetry.chaseEpisodes.length, reproductionResource:telemetry.reproductionResource.length, reproductionResourceBuckets:telemetry.reproductionResourceBuckets.length, reproductionEligibilityBuckets:telemetry.eligibilityBuckets.length, carnivoreLife:telemetry.carnivoreLife.size, carnivoreDeaths:telemetry.carnivoreDeaths.length, birthOrigins:telemetry.birthOrigins.length, feedingBehaviorBuckets:telemetry.feedingBehaviorBuckets.length, feedingPredation:telemetry.feedingPredation.length, feedingPredationLife:telemetry.feedingPredationLife.size, newbornPending:newborn.length};
+      return {events:telemetry.events.length, samples:telemetry.samples.length, ecoBuckets:telemetry.ecoBuckets.length, births:telemetry.births.size, predationPairs:telemetry.predationPairs.size, predationNutrition:telemetry.predationNutrition.length, predationIndividuals:telemetry.predationIndividuals.size, activeChases:telemetry.activeChases.size, chaseEpisodes:telemetry.chaseEpisodes.length, reproductionResource:telemetry.reproductionResource.length, reproductionResourceBuckets:telemetry.reproductionResourceBuckets.length, reproductionEligibilityBuckets:telemetry.eligibilityBuckets.length, carnivoreLife:telemetry.carnivoreLife.size, carnivoreDeaths:telemetry.carnivoreDeaths.length, birthOrigins:telemetry.birthOrigins.length, feedingBehaviorBuckets:telemetry.feedingBehaviorBuckets.length, feedingPredation:telemetry.feedingPredation.length, feedingPredationLife:telemetry.feedingPredationLife.size, injectionBatches:injectionBatches.size, devSnapshots:devTestSnapshots.size, newbornPending:newborn.length};
     },
     capacitySummary(){
       return {
@@ -7613,17 +8363,19 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   // ===== Save / Load =====
   function capture(){
     const state={v:5,frame,generation,dayNight:{phase:dayNight.phase},worldEvent,eco,
+      envState: window.env?.captureState ? window.env.captureState() : null,
       food: food.map(f=>({x:f.x,y:f.y,type:f.type,r:f.r,gain:f.gain,t:f.t,vx:f.vx,vy:f.vy,seed:f.seed})),
       corpses: corpses.map(c=>({x:c.x,y:c.y,energy:c.energy,t:c.t})),
       patches: patches.map(p=>({type:p.type,x:p.x,y:p.y,r:p.r})),
       plankton: plankton.map(p=>({x:p.x,y:p.y,vx:p.vx,vy:p.vy,t:p.t,kind:p.kind,fade:p.fade})),
       membranes: membranes.map(m=>({x1:m.x1,y1:m.y1,x2:m.x2,y2:m.y2,type:m.type,t:m.t})),
-      organisms: organisms.map(o=>({x:o.x,y:o.y,vx:o.vx,vy:o.vy,energy:o.energy,age:o.age,genes:o.genes,speciesKey:o.speciesKey,traits:o.traits||null,flags:o.flags||null,morphologyTopology:o.morphologyTopology||topologyFromGenes(o.genes),recentEvents:o.recentEvents||[],lastAction:o.lastAction||null})),
+      organisms: organisms.map(o=>({id:o.id,x:o.x,y:o.y,vx:o.vx,vy:o.vy,energy:o.energy,age:o.age,birthFrame:o.birthFrame,protect:o.protect,storeN:o.storeN,storeO:o.storeO,storeD:o.storeD,mem:o.mem,attackCD:o.attackCD,fleeTimer:o.fleeTimer,chaseTimer:o.chaseTimer,preyTargetId:o.preyTargetId,predatorThreatId:o.predatorThreatId,grazingTimer:o.grazingTimer,genes:o.genes,speciesKey:o.speciesKey,traits:o.traits||null,flags:o.flags||null,morphologyTopology:o.morphologyTopology||topologyFromGenes(o.genes),recentEvents:o.recentEvents||[],lastAction:o.lastAction||null,devInjected:!!o.devInjected,devInjectedLineage:!!o.devInjectedLineage,injectionBatchId:o.injectionBatchId||null,injectionStep:o.injectionStep??null,injectionGeneration:o.injectionGeneration??null,injectionAncestorId:o.injectionAncestorId??null,injectionParentId:o.injectionParentId??null})),
       extinctRecords,
       speciesStats:Array.from(speciesStats.entries()),
       discoveredRareTraits:Array.from(discoveredRareTraits),
       evolutionMilestones:Array.from(evolutionMilestones),
-      lineage: { nodes: Array.from(lineage.nodes.entries()), edges: lineage.edges }
+      lineage: { nodes: Array.from(lineage.nodes.entries()), edges: lineage.edges },
+      injectionBatches: serializeInjectionBatches()
     };
     return 'ALIFE2:'+ btoa(unescape(encodeURIComponent(JSON.stringify(state))));
   }
@@ -7635,6 +8387,13 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       food.length=0; corpses.length=0; plankton.length=0; patches.length=0; organisms.length=0; newborn.length=0; sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0; speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear(); selectedOrganism=null; selectedDeadAt=0;
       resetFoodWebStats();
       (state.patches||[]).forEach(p=>patches.push(new Patch(p.type,p.x,p.y,p.r)));
+      if(window.env && state.envState && window.env.restoreState){
+        window.env.restoreState(state.envState);
+      } else if(window.env && window.env.reset){
+        window.env.ensure();
+        window.env.reset();
+        window.env.seedFromPatches(patches);
+      }
       (state.food||[]).forEach(f=>{
         const q=new Food(f.x,f.y,f.type);
         if(f.r!=null) q.r=f.r;
@@ -7650,9 +8409,33 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       (state.membranes||[]).forEach(m=>{ const q=new MembraneSegment(m.x1,m.y1,m.x2,m.y2,'wall'); if(m.t!=null) q.t=m.t; membranes.push(q); });
       const prevAnnounceMute=speciesAnnounceMuteUntil;
       speciesAnnounceMuteUntil=Number.MAX_SAFE_INTEGER;
+      let maxRestoredId=0;
       (state.organisms||[]).forEach(o=>{
         const u=new Organism(o.x,o.y,o.genes,false);
+        if(Number.isFinite(Number(o.id))){
+          u.id=Number(o.id);
+          maxRestoredId=Math.max(maxRestoredId,u.id);
+        }
         u.vx=o.vx; u.vy=o.vy; u.energy=o.energy; u.age=o.age;
+        if(o.birthFrame!=null) u.birthFrame=o.birthFrame;
+        if(o.protect!=null) u.protect=o.protect;
+        if(o.storeN!=null) u.storeN=o.storeN;
+        if(o.storeO!=null) u.storeO=o.storeO;
+        if(o.storeD!=null) u.storeD=o.storeD;
+        if(o.mem!=null) u.mem=o.mem;
+        if(o.attackCD!=null) u.attackCD=o.attackCD;
+        if(o.fleeTimer!=null) u.fleeTimer=o.fleeTimer;
+        if(o.chaseTimer!=null) u.chaseTimer=o.chaseTimer;
+        if(o.preyTargetId!=null) u.preyTargetId=o.preyTargetId;
+        if(o.predatorThreatId!=null) u.predatorThreatId=o.predatorThreatId;
+        if(o.grazingTimer!=null) u.grazingTimer=o.grazingTimer;
+        u.devInjected=!!o.devInjected;
+        u.devInjectedLineage=!!o.devInjectedLineage;
+        u.injectionBatchId=o.injectionBatchId || null;
+        u.injectionStep=o.injectionStep ?? null;
+        u.injectionGeneration=o.injectionGeneration ?? null;
+        u.injectionAncestorId=o.injectionAncestorId ?? null;
+        u.injectionParentId=o.injectionParentId ?? null;
         if(o.traits) u.traits=o.traits;
         // recompute flags to include any new trait logic (backward compatible)
         u.flags = __flagsFromTraits(u.traits||{}, u.genes);
@@ -7663,6 +8446,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         registerSpeciesStats(u);
 organisms.push(u);
       });
+      if(maxRestoredId>0) NEXT_ID=Math.max(NEXT_ID,maxRestoredId+1);
       frame=state.frame||0; generation=state.generation||1; if(state.dayNight?.phase!=null){ dayNight.phase=state.dayNight.phase; applyDayNightState(false); } Object.assign(worldEvent, state.worldEvent||{}); Object.assign(eco, state.eco||{});
       speciesAnnounceMuteUntil=Math.max(prevAnnounceMute||0, frame+120);
       if(Array.isArray(state.extinctRecords)) extinctRecords.push(...state.extinctRecords.slice(0,14));
@@ -7672,6 +8456,7 @@ organisms.push(u);
       // lineage
       lineage.nodes.clear(); lineage.edges.length=0;
       if(state.lineage){ for(const [k,v] of (state.lineage.nodes||[])){ lineage.nodes.set(k,v); } lineage.edges.push(...(state.lineage.edges||[])); }
+      restoreInjectionBatches(state.injectionBatches);
       resetTelemetry();
       telemetrySampleFrame(true);
       reportMix(); rebuildSpeciesCards(); renderExtinctRecords(); updateWaterStatus();
@@ -7770,6 +8555,7 @@ organisms.push(u);
       reportMix(); 
       updateWaterStatus();
       refreshSpeciesStats();
+      initDevPanel();
       $('start-btn').disabled=false; 
       $('pause-btn').disabled=true; 
       initChallenges(); 
