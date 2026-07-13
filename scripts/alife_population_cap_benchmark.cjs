@@ -8,7 +8,9 @@ const steps = Math.max(1, Number(process.env.ALIFE_STEPS || 1800));
 const viewportRaw = process.env.ALIFE_VIEWPORT || '390x844';
 const chunk = Math.max(1, Math.min(20, Number(process.env.ALIFE_CHUNK || 20)));
 const chromePath = process.env.ALIFE_CHROME || undefined;
-const includeDetails = process.env.ALIFE_DETAIL !== '0';
+const detailMode = String(process.env.ALIFE_DETAIL ?? '1').toLowerCase();
+const includeDetails = detailMode !== '0';
+const includeRawDetails = includeDetails && detailMode !== 'flat';
 
 function parseViewport(value) {
   const m = String(value).match(/^(\d+)x(\d+)$/);
@@ -52,6 +54,12 @@ function rate(numerator, denominator) {
 function flattenTrial(t) {
   const pop = t.population;
   const funnel = t.funnel;
+  const individual = t.individualFunnel || {};
+  const individualEvents = individual.events || {};
+  const individualEnergy = individual.energy || {};
+  const individualDominantFailures = individual.dominantFailureReasons || {};
+  const individualDeathBeforeFirst = individual.deathBeforeFirstPredation || {};
+  const individualLifetimeFailureOrganisms = individual.lifetimeFailureOrganisms || {};
   const nutrition = t.nutrition || {};
   const reproduction = t.reproduction || {};
   const eligibility = t.eligibility || {};
@@ -158,6 +166,70 @@ function flattenTrial(t) {
     predationAttempts: funnel.predationAttempts,
     predationAfterRepro: funnel.reproductionAfterPredation,
     predationAfterReproRate: rate(funnel.reproductionAfterPredation, predationSuccesses),
+    individualObservedCarnivores: individual.observedCarnivores ?? null,
+    individualCarnivoresBorn: individual.carnivoresBorn ?? null,
+    individualInitialCarnivores: individual.initialCarnivores ?? null,
+    individualReproductionBornCarnivores: individual.reproductionBornCarnivores ?? null,
+    individualHadPotentialPreyInSense: individual.hadPotentialPreyInSense ?? null,
+    individualHadValidPreyInSense: individual.hadValidPreyInSense ?? null,
+    individualAcquiredTarget: individual.acquiredTarget ?? null,
+    individualTargetSet: individual.targetSet ?? null,
+    individualStartedChase: individual.startedChase ?? null,
+    individualReachedContact: individual.reachedContact ?? null,
+    individualAttemptedAttack: individual.attemptedAttack ?? null,
+    individualSucceededPredation: individual.succeededPredation ?? null,
+    individualReachedThresholdAfterPredation: individual.reachedReproductionThresholdAfterPredation ?? null,
+    individualReproducedAfterPredation: individual.reproducedAfterPredation ?? null,
+    individualValidPreyRate: rate(individual.hadValidPreyInSense ?? null, individual.carnivoresBorn ?? individual.observedCarnivores ?? null),
+    individualTargetFromValidRate: rate(individual.acquiredTarget ?? null, individual.hadValidPreyInSense ?? null),
+    individualChaseFromTargetRate: rate(individual.startedChase ?? null, individual.acquiredTarget ?? null),
+    individualContactFromChaseRate: rate(individual.reachedContact ?? null, individual.startedChase ?? null),
+    individualAttackFromContactRate: rate(individual.attemptedAttack ?? null, individual.reachedContact ?? null),
+    individualSuccessFromAttackRate: rate(individual.succeededPredation ?? null, individual.attemptedAttack ?? null),
+    individualScans: individualEvents.scans ?? null,
+    individualPotentialPreyScanEvents: individualEvents.potentialPreyScanEvents ?? null,
+    individualValidPreyScanEvents: individualEvents.validPreyScanEvents ?? null,
+    individualPreySizeBlockedEvents: individualEvents.preySizeBlockedEvents ?? null,
+    individualSameSpeciesExcludedEvents: individualEvents.sameSpeciesExcludedEvents ?? null,
+    individualTargetSwitchesBeforeSuccess: individualEvents.targetSwitchesBeforeSuccess ?? null,
+    individualChaseFramesBeforeSuccess: individualEvents.chaseFramesBeforeSuccess ?? null,
+    individualAttackAttemptsBeforeSuccess: individualEvents.attackAttemptsBeforeSuccess ?? null,
+    individualDominantPreyUnavailable: individualDominantFailures.preyUnavailable ?? null,
+    individualDominantPreyTooLarge: individualDominantFailures.preyTooLarge ?? null,
+    individualDominantSameSpeciesExcluded: individualDominantFailures.sameSpeciesExcluded ?? null,
+    individualDominantTargetNotAcquired: individualDominantFailures.targetNotAcquired ?? null,
+    individualDominantChaseNotStarted: individualDominantFailures.chaseNotStarted ?? null,
+    individualDominantChaseFailed: individualDominantFailures.chaseFailed ?? null,
+    individualDominantAttackOpportunityFailed: individualDominantFailures.attackOpportunityFailed ?? null,
+    individualDominantAttackCooldownBlocked: individualDominantFailures.attackCooldownBlocked ?? null,
+    individualDominantAttackResolutionFailed: individualDominantFailures.attackResolutionFailed ?? null,
+    individualDeathBeforeFirstStarvation: individualDeathBeforeFirst.starvationBeforeFirstPredation ?? null,
+    individualDeathBeforeFirstOldAge: individualDeathBeforeFirst.oldAgeBeforeFirstPredation ?? null,
+    individualDeathBeforeFirstOvercrowding: individualDeathBeforeFirst.overcrowdingBeforeFirstPredation ?? null,
+    individualDeathBeforeFirstPredation: individualDeathBeforeFirst.predationDeathBeforeFirstPredation ?? null,
+    individualDeathBeforeFirstOther: individualDeathBeforeFirst.otherBeforeFirstPredation ?? null,
+    individualFailurePreyUnavailable: individualLifetimeFailureOrganisms.preyUnavailable ?? null,
+    individualFailurePreyTooLarge: individualLifetimeFailureOrganisms.preyTooLarge ?? null,
+    individualFailureSameSpeciesExcluded: individualLifetimeFailureOrganisms.sameSpeciesExcluded ?? null,
+    individualFailureAttackCooldownBlocked: individualLifetimeFailureOrganisms.attackCooldownBlocked ?? null,
+    individualFailureBaseProbabilityFailed: individualLifetimeFailureOrganisms.baseProbabilityFailed ?? null,
+    individualFailureSizeResolutionFailed: individualLifetimeFailureOrganisms.sizeResolutionFailed ?? null,
+    individualFailureGroupDefenseFailed: individualLifetimeFailureOrganisms.groupDefenseFailed ?? null,
+    individualFailureDefenseFailed: individualLifetimeFailureOrganisms.defenseFailed ?? null,
+    individualAverageBirthEnergy: individualEnergy.averageBirthEnergy ?? null,
+    individualAverageFirstTargetEnergy: individualEnergy.averageFirstTargetEnergy ?? null,
+    individualAverageFirstChaseEnergy: individualEnergy.averageFirstChaseEnergy ?? null,
+    individualAverageFirstContactEnergy: individualEnergy.averageFirstContactEnergy ?? null,
+    individualAverageFirstAttackEnergy: individualEnergy.averageFirstAttackEnergy ?? null,
+    individualAverageFirstSuccessEnergyBefore: individualEnergy.averageFirstSuccessEnergyBefore ?? null,
+    individualAverageFirstSuccessEnergyAfter: individualEnergy.averageFirstSuccessEnergyAfter ?? null,
+    individualAverageFirstSuccessSteps: individualEnergy.averageFirstSuccessSteps ?? null,
+    individualMedianFirstSuccessSteps: individualEnergy.medianFirstSuccessSteps ?? null,
+    individualAverageEnergySpentToFirstSuccess: individualEnergy.averageEnergySpentToFirstSuccess ?? null,
+    individualAverageDeathEnergyBeforeFirstPredation: individualEnergy.averageDeathEnergyBeforeFirstPredation ?? null,
+    individualAveragePreSuccessChaseFrames: individualEnergy.averagePreSuccessChaseFrames ?? null,
+    individualAveragePreSuccessTargetSwitches: individualEnergy.averagePreSuccessTargetSwitches ?? null,
+    individualAveragePreSuccessAttackAttempts: individualEnergy.averagePreSuccessAttackAttempts ?? null,
     nutritionPredationSuccesses: nutrition.predationSuccesses ?? null,
     averageStoreNBeforePredation: nutrition.averageStoreNBefore ?? null,
     averageStoreNAfterPredation: nutrition.averageStoreNAfter ?? null,
@@ -218,6 +290,7 @@ function flattenTrial(t) {
       return {
         population: window.__alifeDebug.populationTurnoverSummary(steps + 60),
         funnel: window.__alifeDebug.predationFunnelSummary(steps + 60),
+        individualFunnel: window.__alifeDebug.predationIndividualFunnelSummary(steps + 60),
         nutrition: window.__alifeDebug.predationNutritionSummary(steps + 60),
         reproduction: window.__alifeDebug.reproductionResourceSummary(steps + 60),
         eligibility: window.__alifeDebug.reproductionEligibilitySummary(steps + 60),
@@ -231,7 +304,7 @@ function flattenTrial(t) {
 
   await browser.close();
 
-  const flat = trialResults.map(flattenTrial);
+  const flat = trialResults.map(t => ({ trial: t.trial, ...flattenTrial(t) }));
   const keys = Object.keys(flat[0] || {});
   const summary = {};
   for (const key of keys) {
@@ -246,7 +319,8 @@ function flattenTrial(t) {
     steps,
     chunk,
     summary,
-    ...(includeDetails ? { trialsDetail: trialResults } : {}),
+    ...(includeDetails ? { flatTrials: flat } : {}),
+    ...(includeRawDetails ? { trialsDetail: trialResults } : {}),
     errors
   }, null, 2));
 })().catch(err => {

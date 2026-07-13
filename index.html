@@ -1106,6 +1106,27 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   const TELEMETRY_BIRTH_ORIGIN_LIMIT = 5200;
   const TELEMETRY_DIAGNOSTIC_MATURITY_AGE = 180;
   const TELEMETRY_ENERGY_THRESHOLDS = [0.25,0.50,0.75,0.90,1.00,1.25];
+  const TELEMETRY_PREDATION_INDIVIDUAL_LIMIT = 5200;
+  const TELEMETRY_PREDATION_FAILURE_KEYS = [
+    'preyUnavailable',
+    'preyTooLarge',
+    'sameSpeciesExcluded',
+    'targetNotAcquired',
+    'chaseNotStarted',
+    'chaseFailed',
+    'attackOpportunityFailed',
+    'attackCooldownBlocked',
+    'attackResolutionFailed',
+    'baseProbabilityFailed',
+    'sizeResolutionFailed',
+    'groupDefenseFailed',
+    'defenseFailed',
+    'starvationBeforeFirstPredation',
+    'oldAgeBeforeFirstPredation',
+    'overcrowdingBeforeFirstPredation',
+    'predationDeathBeforeFirstPredation',
+    'otherBeforeFirstPredation'
+  ];
   const telemetry = {
     events: [],
     samples: [],
@@ -1118,6 +1139,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     eligibilityBuckets: [],
     carnivoreLife: new Map(),
     carnivoreDeaths: [],
+    predationIndividuals: new Map(),
     birthOrigins: [],
     runStartFrame: 0
   };
@@ -1225,7 +1247,209 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(rec.predationSuccesses>0 && ratio>=1) rec.reachedThresholdAfterPredation=true;
     return rec;
   }
-  function telemetryRecordCarnivorePredationSuccess(o){
+  function telemetryBlankPredationFailureCounts(){
+    const out={};
+    for(const key of TELEMETRY_PREDATION_FAILURE_KEYS) out[key]=0;
+    return out;
+  }
+  function telemetryPrunePredationIndividuals(){
+    if(telemetry.predationIndividuals.size<=TELEMETRY_PREDATION_INDIVIDUAL_LIMIT) return;
+    for(const [id,rec] of telemetry.predationIndividuals){
+      if((rec.deathFrame!=null && frame-rec.deathFrame>720) || frame-rec.firstFrame>7200) telemetry.predationIndividuals.delete(id);
+      if(telemetry.predationIndividuals.size<=TELEMETRY_PREDATION_INDIVIDUAL_LIMIT-400) break;
+    }
+  }
+  function telemetryPredationIndividualRecord(o){
+    if(!o || telemetryDiet(o)!=='c') return null;
+    let rec=telemetry.predationIndividuals.get(o.id);
+    if(!rec){
+      const birth=telemetry.births.get(o.id) || null;
+      rec={
+        id:o.id,
+        firstFrame:frame,
+        birthFrame:o.birthFrame ?? birth?.frame ?? frame,
+        initial:!birth,
+        birthEnergy:Number(o.energy||0),
+        hadPotentialPreyInSense:false,
+        hadValidPreyInSense:false,
+        acquiredTarget:false,
+        targetSet:false,
+        startedChase:false,
+        reachedContact:false,
+        attemptedAttack:false,
+        succeededPredation:false,
+        reachedReproductionThresholdAfterPredation:false,
+        reproducedAfterPredation:false,
+        firstPotentialFrame:null,
+        firstValidPreyFrame:null,
+        firstTargetFrame:null,
+        firstChaseFrame:null,
+        firstContactFrame:null,
+        firstAttackFrame:null,
+        firstSuccessFrame:null,
+        firstTargetEnergy:null,
+        firstChaseEnergy:null,
+        firstContactEnergy:null,
+        firstAttackEnergy:null,
+        firstSuccessEnergyBefore:null,
+        firstSuccessEnergyAfter:null,
+        firstSuccessSteps:null,
+        scanEvents:0,
+        potentialPreyScanEvents:0,
+        validPreyScanEvents:0,
+        preySizeBlockedEvents:0,
+        sameSpeciesExcludedEvents:0,
+        targetSwitchesBeforeSuccess:0,
+        chaseFramesBeforeSuccess:0,
+        attackAttemptsBeforeSuccess:0,
+        lastTargetId:null,
+        failureCounts:telemetryBlankPredationFailureCounts(),
+        dominantFailureReason:null,
+        deathFrame:null,
+        deathCause:null,
+        deathEnergyBeforeFirstPredation:null
+      };
+      telemetry.predationIndividuals.set(o.id,rec);
+      telemetryPrunePredationIndividuals();
+    }
+    return rec;
+  }
+  function telemetryPredationIndividualAddFailure(oOrRec, reason, amount=1){
+    const rec=oOrRec?.failureCounts ? oOrRec : telemetryPredationIndividualRecord(oOrRec);
+    if(!rec || !reason) return;
+    if(rec.failureCounts[reason]==null) rec.failureCounts[reason]=0;
+    rec.failureCounts[reason]+=amount;
+  }
+  function telemetryRecordPredationScan(o, stats){
+    const rec=telemetryPredationIndividualRecord(o);
+    if(!rec || !stats) return;
+    rec.scanEvents++;
+    rec.preySizeBlockedEvents += stats.sizeBlocked || 0;
+    rec.sameSpeciesExcludedEvents += stats.sameSpeciesExcluded || 0;
+    if((stats.potential||0)>0){
+      rec.hadPotentialPreyInSense=true;
+      rec.potentialPreyScanEvents++;
+      if(rec.firstPotentialFrame==null) rec.firstPotentialFrame=frame;
+    }
+    if((stats.valid||0)>0){
+      rec.hadValidPreyInSense=true;
+      rec.validPreyScanEvents++;
+      if(rec.firstValidPreyFrame==null) rec.firstValidPreyFrame=frame;
+    } else if((stats.potential||0)<=0){
+      telemetryPredationIndividualAddFailure(rec,'preyUnavailable');
+    } else if((stats.sizeBlocked||0)>0){
+      telemetryPredationIndividualAddFailure(rec,'preyTooLarge',stats.sizeBlocked||1);
+    } else if((stats.sameSpeciesExcluded||0)>0){
+      telemetryPredationIndividualAddFailure(rec,'sameSpeciesExcluded',stats.sameSpeciesExcluded||1);
+    } else {
+      telemetryPredationIndividualAddFailure(rec,'targetNotAcquired');
+    }
+  }
+  function telemetryMarkPredationIndividualStage(o, stage, prey=null, data=null){
+    const rec=telemetryPredationIndividualRecord(o);
+    if(!rec) return;
+    if((stage==='candidate' || stage==='tracking') && prey){
+      if(rec.lastTargetId!=null && rec.lastTargetId!==prey.id && !rec.succeededPredation) rec.targetSwitchesBeforeSuccess++;
+      rec.lastTargetId=prey.id;
+      rec.targetSet=true;
+    }
+    if(stage==='candidate'){
+      rec.acquiredTarget=true;
+      if(rec.firstTargetFrame==null){ rec.firstTargetFrame=frame; rec.firstTargetEnergy=Number(o.energy||0); }
+    } else if(stage==='tracking'){
+      rec.acquiredTarget=true;
+      rec.startedChase=true;
+      if(rec.firstTargetFrame==null){ rec.firstTargetFrame=frame; rec.firstTargetEnergy=Number(o.energy||0); }
+      if(rec.firstChaseFrame==null){ rec.firstChaseFrame=frame; rec.firstChaseEnergy=Number(o.energy||0); }
+    } else if(stage==='contact'){
+      rec.reachedContact=true;
+      if(rec.firstContactFrame==null){ rec.firstContactFrame=frame; rec.firstContactEnergy=Number(o.energy||0); }
+    } else if(stage==='attempt'){
+      rec.attemptedAttack=true;
+      if(!rec.succeededPredation) rec.attackAttemptsBeforeSuccess++;
+      if(rec.firstAttackFrame==null){ rec.firstAttackFrame=frame; rec.firstAttackEnergy=Number(o.energy||0); }
+    } else if(stage==='success'){
+      rec.succeededPredation=true;
+      if(rec.firstSuccessFrame==null){
+        rec.firstSuccessFrame=frame;
+        rec.firstSuccessEnergyBefore=Number(data?.energyBefore ?? o.energy ?? 0);
+        rec.firstSuccessEnergyAfter=Number(data?.energyAfter ?? o.energy ?? 0);
+        rec.firstSuccessSteps=frame-rec.birthFrame;
+      }
+    }
+  }
+  function telemetryRecordPredationChaseStep(o, prey){
+    const rec=telemetryPredationIndividualRecord(o);
+    if(!rec || rec.succeededPredation || !prey) return;
+    rec.chaseFramesBeforeSuccess++;
+  }
+  function telemetryRecordPredationCooldownBlocked(o){
+    const rec=telemetryPredationIndividualRecord(o);
+    if(!rec || rec.succeededPredation) return;
+    const prey=organismById(o.preyTargetId);
+    if(!prey || prey.dead || prey.protect>0 || prey===o) return;
+    const sizeLimit=o.size*(o.socialMode==='hunt-pack'?1.13:1.00);
+    if(!(prey.size<sizeLimit)) return;
+    const dx=prey.x-o.x, dy=prey.y-o.y;
+    const contactR=o.size+prey.size+3.8;
+    if(dx*dx+dy*dy<=contactR*contactR){
+      rec.reachedContact=true;
+      telemetryPredationIndividualAddFailure(rec,'attackCooldownBlocked');
+    }
+  }
+  function telemetryRecordPredationAttackFailure(o, prey, data=null){
+    const rec=telemetryPredationIndividualRecord(o);
+    if(!rec || rec.succeededPredation) return;
+    telemetryPredationIndividualAddFailure(rec,'attackResolutionFailed');
+    const sizeMul=Number(data?.sizeMul ?? 1);
+    const groupMul=Number(data?.groupMul ?? 1);
+    const defenseMul=Number(data?.defenseMul ?? 1);
+    if(groupMul<0.92) telemetryPredationIndividualAddFailure(rec,'groupDefenseFailed');
+    else if(defenseMul<0.92) telemetryPredationIndividualAddFailure(rec,'defenseFailed');
+    else if(sizeMul<0.90) telemetryPredationIndividualAddFailure(rec,'sizeResolutionFailed');
+    else telemetryPredationIndividualAddFailure(rec,'baseProbabilityFailed');
+  }
+  function telemetryRecordPredationSuccessEnergy(o, data){
+    telemetryMarkPredationIndividualStage(o,'success',null,data);
+    if(telemetryEnergyRatio(o)>=1){
+      const rec=telemetryPredationIndividualRecord(o);
+      if(rec) rec.reachedReproductionThresholdAfterPredation=true;
+    }
+  }
+  function telemetryMarkPredationIndividualAfterPredation(o, key){
+    const rec=telemetryPredationIndividualRecord(o);
+    if(!rec || !rec.succeededPredation) return;
+    rec[key]=true;
+  }
+  function telemetryDominantPredationFailure(rec){
+    if(!rec || rec.succeededPredation) return null;
+    if(rec.attemptedAttack) return 'attackResolutionFailed';
+    if((rec.failureCounts.attackCooldownBlocked||0)>0) return 'attackCooldownBlocked';
+    if(rec.reachedContact) return 'attackOpportunityFailed';
+    if(rec.startedChase) return 'chaseFailed';
+    if(rec.acquiredTarget) return 'chaseNotStarted';
+    if(rec.hadValidPreyInSense) return 'targetNotAcquired';
+    if((rec.preySizeBlockedEvents||0)>0) return 'preyTooLarge';
+    if((rec.sameSpeciesExcludedEvents||0)>0) return 'sameSpeciesExcluded';
+    return 'preyUnavailable';
+  }
+  function telemetryRecordPredationIndividualDeath(o,causeKey){
+    const rec=telemetryPredationIndividualRecord(o);
+    if(!rec || rec.deathFrame!=null) return;
+    rec.deathFrame=frame;
+    rec.deathCause=causeKey || 'other';
+    if(!rec.succeededPredation){
+      rec.deathEnergyBeforeFirstPredation=Number(o.energy||0);
+      const deathReason = causeKey==='starvation' ? 'starvationBeforeFirstPredation'
+        : causeKey==='oldAge' ? 'oldAgeBeforeFirstPredation'
+        : causeKey==='overcrowding' ? 'overcrowdingBeforeFirstPredation'
+        : causeKey==='predation' ? 'predationDeathBeforeFirstPredation'
+        : 'otherBeforeFirstPredation';
+      telemetryPredationIndividualAddFailure(rec,deathReason);
+      rec.dominantFailureReason=telemetryDominantPredationFailure(rec);
+    }
+  }
+  function telemetryRecordCarnivorePredationSuccess(o,data=null){
     const rec=telemetryUpdateCarnivoreProgress(o);
     if(!rec) return;
     const age=Number.isFinite(o.age) ? o.age : Math.max(0, frame-(o.birthFrame ?? frame));
@@ -1235,18 +1459,25 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(age>=TELEMETRY_DIAGNOSTIC_MATURITY_AGE) rec.maturePredation=true;
     else rec.preMaturePredation=true;
     telemetryUpdateCarnivoreProgress(o);
+    telemetryRecordPredationSuccessEnergy(o,data);
   }
   function telemetryRecordCarnivoreEligible(o){
     const rec=telemetryUpdateCarnivoreProgress(o);
     if(!rec) return;
     rec.eligible=true;
-    if(rec.predationSuccesses>0) rec.eligibleAfterPredation=true;
+    if(rec.predationSuccesses>0){
+      rec.eligibleAfterPredation=true;
+      telemetryMarkPredationIndividualAfterPredation(o,'reachedReproductionThresholdAfterPredation');
+    }
   }
   function telemetryRecordCarnivoreReproduced(o){
     const rec=telemetryUpdateCarnivoreProgress(o);
     if(!rec) return;
     rec.reproduced=true;
-    if(rec.predationSuccesses>0) rec.reproducedAfterPredation=true;
+    if(rec.predationSuccesses>0){
+      rec.reproducedAfterPredation=true;
+      telemetryMarkPredationIndividualAfterPredation(o,'reproducedAfterPredation');
+    }
   }
   function telemetryRecordCarnivoreDeath(o,causeKey){
     const rec=telemetryUpdateCarnivoreProgress(o);
@@ -1270,6 +1501,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(telemetry.carnivoreDeaths.length>TELEMETRY_CARNIVORE_DEATH_LIMIT){
       telemetry.carnivoreDeaths.splice(0, telemetry.carnivoreDeaths.length-TELEMETRY_CARNIVORE_DEATH_LIMIT+100);
     }
+    telemetryRecordPredationIndividualDeath(o,causeKey);
   }
   function telemetryRecordReproductionGate(o, gate){
     if(!o || !gate) return;
@@ -1339,7 +1571,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(telemetry.birthOrigins.length>TELEMETRY_BIRTH_ORIGIN_LIMIT){
       telemetry.birthOrigins.splice(0, telemetry.birthOrigins.length-TELEMETRY_BIRTH_ORIGIN_LIMIT+200);
     }
-    if(childDiet==='c') telemetryUpdateCarnivoreProgress(child);
+    if(childDiet==='c'){
+      telemetryUpdateCarnivoreProgress(child);
+      telemetryPredationIndividualRecord(child);
+    }
     telemetryPush({kind:'birth', id:child.id, diet:rec.diet, parentId:rec.parentId, parentDiet, parentExactDiet, parentCarnivore:rec.parentCarnivore, childPreMutationDiet, childPostMutationDiet, childPreMutationDietType, crossedDietClass:parentDiet!==childDiet, clutch, index});
     telemetryPruneBirths();
   }
@@ -1395,6 +1630,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(pair[stage]) return;
       pair[stage]=true;
     }
+    telemetryMarkPredationIndividualStage(predator,stage,prey,extra);
     telemetryPush({
       kind:'predationFunnel',
       stage,
@@ -1567,11 +1803,13 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     telemetry.eligibilityBuckets.length=0;
     telemetry.carnivoreLife.clear();
     telemetry.carnivoreDeaths.length=0;
+    telemetry.predationIndividuals.clear();
     telemetry.birthOrigins.length=0;
     telemetry.runStartFrame=frame;
     for(const o of organisms){
       o.birthFrame = frame - (o.age||0);
       telemetryUpdateCarnivoreProgress(o);
+      telemetryPredationIndividualRecord(o);
     }
   }
   function telemetryWindowFrames(windowFrames){
@@ -1706,6 +1944,112 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       carnivoreOffspringSurvived60:carnKid60,
       carnivoreOffspringSurvived180:carnKid180,
       carnivoreOffspringSurvived240:carnKid240
+    };
+  }
+  function predationIndividualFunnelSummary(windowFrames=1800){
+    const wf=telemetryWindowFrames(windowFrames);
+    const cutoff=frame-wf;
+    for(const o of organisms){
+      if(telemetryDiet(o)==='c') telemetryPredationIndividualRecord(o);
+    }
+    const records=[...telemetry.predationIndividuals.values()].filter(r=>{
+      if(r.firstFrame>=cutoff) return true;
+      if(r.deathFrame!=null && r.deathFrame>=cutoff) return true;
+      if(r.firstSuccessFrame!=null && r.firstSuccessFrame>=cutoff) return true;
+      return r.deathFrame==null;
+    });
+    const nums=arr=>arr.map(Number).filter(Number.isFinite);
+    const avg=arr=>{ const a=nums(arr); return a.length ? a.reduce((x,y)=>x+y,0)/a.length : null; };
+    const med=arr=>{
+      const a=nums(arr).sort((x,y)=>x-y);
+      if(!a.length) return null;
+      const mid=Math.floor(a.length/2);
+      return a.length%2 ? a[mid] : (a[mid-1]+a[mid])/2;
+    };
+    const count=pred=>records.filter(pred).length;
+    const sum=pick=>records.reduce((total,r)=>total+Number(pick(r)||0),0);
+    const lifetimeFailureEvents=telemetryBlankPredationFailureCounts();
+    const lifetimeFailureOrganisms=telemetryBlankPredationFailureCounts();
+    const dominantFailureReasons=telemetryBlankPredationFailureCounts();
+    const deathBeforeFirstPredation=telemetryBlankPredationFailureCounts();
+    for(const r of records){
+      for(const key of TELEMETRY_PREDATION_FAILURE_KEYS){
+        const n=r.failureCounts?.[key] || 0;
+        lifetimeFailureEvents[key]+=n;
+        if(n>0) lifetimeFailureOrganisms[key]++;
+      }
+      if(!r.succeededPredation){
+        const dominant=r.dominantFailureReason || telemetryDominantPredationFailure(r);
+        if(dominantFailureReasons[dominant]==null) dominantFailureReasons[dominant]=0;
+        dominantFailureReasons[dominant]++;
+        if(r.deathFrame!=null){
+          const deathKey = r.deathCause==='starvation' ? 'starvationBeforeFirstPredation'
+            : r.deathCause==='oldAge' ? 'oldAgeBeforeFirstPredation'
+            : r.deathCause==='overcrowding' ? 'overcrowdingBeforeFirstPredation'
+            : r.deathCause==='predation' ? 'predationDeathBeforeFirstPredation'
+            : 'otherBeforeFirstPredation';
+          deathBeforeFirstPredation[deathKey]++;
+        }
+      }
+    }
+    const successes=records.filter(r=>r.succeededPredation);
+    const preSuccessDeaths=records.filter(r=>!r.succeededPredation && r.deathFrame!=null);
+    const energySpent=successes.map(r=>r.birthEnergy-r.firstSuccessEnergyBefore).filter(Number.isFinite);
+    return {
+      frame,
+      windowFrames:wf,
+      observedCarnivores:records.length,
+      carnivoresBorn:records.length,
+      initialCarnivores:count(r=>r.initial),
+      reproductionBornCarnivores:count(r=>!r.initial),
+      hadPotentialPreyInSense:count(r=>r.hadPotentialPreyInSense),
+      hadValidPreyInSense:count(r=>r.hadValidPreyInSense),
+      acquiredTarget:count(r=>r.acquiredTarget),
+      targetSet:count(r=>r.targetSet),
+      startedChase:count(r=>r.startedChase),
+      reachedContact:count(r=>r.reachedContact),
+      attemptedAttack:count(r=>r.attemptedAttack),
+      succeededPredation:successes.length,
+      reachedReproductionThresholdAfterPredation:count(r=>r.reachedReproductionThresholdAfterPredation),
+      reproducedAfterPredation:count(r=>r.reproducedAfterPredation),
+      events:{
+        scans:sum(r=>r.scanEvents),
+        potentialPreyScanEvents:sum(r=>r.potentialPreyScanEvents),
+        validPreyScanEvents:sum(r=>r.validPreyScanEvents),
+        preySizeBlockedEvents:sum(r=>r.preySizeBlockedEvents),
+        sameSpeciesExcludedEvents:sum(r=>r.sameSpeciesExcludedEvents),
+        targetSwitchesBeforeSuccess:sum(r=>r.targetSwitchesBeforeSuccess),
+        chaseFramesBeforeSuccess:sum(r=>r.chaseFramesBeforeSuccess),
+        attackAttemptsBeforeSuccess:sum(r=>r.attackAttemptsBeforeSuccess)
+      },
+      lifetimeFailureEvents,
+      lifetimeFailureOrganisms,
+      dominantFailureReasons,
+      deathBeforeFirstPredation,
+      energy:{
+        averageBirthEnergy:avg(records.map(r=>r.birthEnergy)),
+        averageFirstTargetEnergy:avg(records.map(r=>r.firstTargetEnergy)),
+        averageFirstChaseEnergy:avg(records.map(r=>r.firstChaseEnergy)),
+        averageFirstContactEnergy:avg(records.map(r=>r.firstContactEnergy)),
+        averageFirstAttackEnergy:avg(records.map(r=>r.firstAttackEnergy)),
+        averageFirstSuccessEnergyBefore:avg(records.map(r=>r.firstSuccessEnergyBefore)),
+        averageFirstSuccessEnergyAfter:avg(records.map(r=>r.firstSuccessEnergyAfter)),
+        averageFirstSuccessSteps:avg(records.map(r=>r.firstSuccessSteps)),
+        medianFirstSuccessSteps:med(records.map(r=>r.firstSuccessSteps)),
+        averageEnergySpentToFirstSuccess:avg(energySpent),
+        averageDeathEnergyBeforeFirstPredation:avg(preSuccessDeaths.map(r=>r.deathEnergyBeforeFirstPredation)),
+        averagePreSuccessChaseFrames:avg(records.map(r=>r.chaseFramesBeforeSuccess)),
+        averagePreSuccessTargetSwitches:avg(records.map(r=>r.targetSwitchesBeforeSuccess)),
+        averagePreSuccessAttackAttempts:avg(records.map(r=>r.attackAttemptsBeforeSuccess))
+      },
+      classificationRule:{
+        dominantFailure:'closest reached stage before first predation success',
+        noPrey:'no potential prey was seen in a scan window',
+        preyTooLarge:'potential prey existed but size blocked all valid candidates',
+        chaseFailed:'target tracking started but contact was never reached',
+        attackOpportunityFailed:'contact was reached but attack was never attempted',
+        attackResolutionFailed:'attack was attempted but first predation never succeeded'
+      }
     };
   }
   function predationNutritionSummary(windowFrames=1800){
@@ -3141,6 +3485,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         if(sharedPrey && !this.preyTargetId){
           this.preyTargetId=sharedPrey.id;
           this.chaseTimer=Math.max(this.chaseTimer, 95);
+          telemetryRecordPredationStage('candidate',this,sharedPrey,{shared:true});
+          telemetryRecordPredationStage('tracking',this,sharedPrey,{shared:true});
           if(frame-(this._lastPackShareAction||0)>170){ recordAction(this,'群れの獲物へ合流した'); this._lastPackShareAction=frame; }
         }
       }
@@ -3168,10 +3514,21 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         this.nextPreyScan=frame + 8 + ((this.id+frame)%9);
         let best=null, bestScore=-1;
         const scanR=this.senseR*(this.morphologyTopology==='branch'?1.18:1.0)*(1.04 + carn*0.22);
+        const scanStats={potential:0,sizeBlocked:0,sameSpeciesExcluded:0,valid:0};
         perfStats.predationScans++;
         forEachOrgNeighbors(this.x,this.y,scanR,(o,dx,dy,d2)=>{
+          if(!o || o.dead || o.protect>0 || o===this) return;
+          scanStats.potential++;
+          if(!(o.size < this.size*(this.socialMode==='hunt-pack'?1.12:1.00))){
+            scanStats.sizeBlocked++;
+            return;
+          }
+          if(o.speciesKey===this.speciesKey && organisms.length>18){
+            scanStats.sameSpeciesExcluded++;
+            return;
+          }
           if(!validPrey(o)) return;
-          if(o.speciesKey===this.speciesKey && organisms.length>18) return;
+          scanStats.valid++;
           const d=Math.sqrt(d2)||1;
           const sizeEdge=clamp((this.size-o.size)/Math.max(1,this.size),0,0.8);
           const vulnerability=o.socialMode==='defense-school' ? 0.76 : 1.0;
@@ -3179,6 +3536,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           const finalScore=score*vulnerability;
           if(finalScore>bestScore){ bestScore=finalScore; best=o; }
         });
+        telemetryRecordPredationScan(this,scanStats);
         if(best){
           telemetryRecordPredationStage('candidate',this,best,{score:Number(bestScore.toFixed(3))});
           prey=best;
@@ -3191,6 +3549,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(!prey) return;
       const dx=prey.x-this.x, dy=prey.y-this.y;
       const d=Math.hypot(dx,dy)||1;
+      telemetryRecordPredationChaseStep(this,prey);
       const ambush=this.role==='ambusher';
       const burstCfg=CONFIG.ecology.predatorBurst;
       if(ambush && d>this.senseR*0.55){
@@ -3682,7 +4041,10 @@ if(Z>0.08){
     }
 
     tryPredate(){
-      if(this.attackCD>0) return;
+      if(this.attackCD>0){
+        telemetryRecordPredationCooldownBlocked(this);
+        return;
+      }
       const carnIntent=this.genes.diet;
       if(carnIntent<0.34) return;
       let repelHere=false;
@@ -3716,12 +4078,15 @@ if(Z>0.08){
       telemetryRecordPredationStage('contact',this,prey,{distance:Number(Math.sqrt(bestD2).toFixed(2))});
       let pBase=0.26;
       const sizeEdge=clamp((this.size-prey.size)/Math.max(1,this.size),0,0.55);
-      let p=clamp(pBase*(0.72+sizeEdge*0.95)*intent,0,0.74);
+      const sizeMul=0.72+sizeEdge*0.95;
+      let defenseMul=1;
+      let groupMul=1;
+      let p=clamp(pBase*sizeMul*intent,0,0.74);
       if(this.preyTargetId===prey.id) p*=1.18;
       if(this.morphologyTopology==='radial') p*=1.10;
-      if(prey.morphologyTopology==='ring') p*=0.82;
-      if(prey.morphologyTopology==='mesh') p*=0.90;
-      if(repelHere) p*=0.5;
+      if(prey.morphologyTopology==='ring'){ defenseMul*=0.82; p*=0.82; }
+      if(prey.morphologyTopology==='mesh'){ defenseMul*=0.90; p*=0.90; }
+      if(repelHere){ defenseMul*=0.5; p*=0.5; }
       if(this.role==='ambusher'){ p*= 1.0*rareFactor('ambusher'); if(this.burstTimer>0) p*=1.22; }
       if(this.role==='pack' || this.socialMode==='hunt-pack'){
         let mates=0;
@@ -3731,10 +4096,18 @@ if(Z>0.08){
       const preyDefenses=predationDefensesFor(prey);
       for(const d of preyDefenses){
         const fx=d.defense;
-        p*=fx.avoidMul??1;
-        if(this.role==='ambusher') p*=fx.ambusherAvoidMul??1;
+        const avoid=fx.avoidMul??1;
+        p*=avoid;
+        defenseMul*=avoid;
+        if(this.role==='ambusher'){
+          const ambushAvoid=fx.ambusherAvoidMul??1;
+          p*=ambushAvoid;
+          defenseMul*=ambushAvoid;
+        }
       }
-      p*=prey.predationRiskMul||1;
+      const riskMul=prey.predationRiskMul||1;
+      p*=riskMul;
+      defenseMul*=riskMul;
       p*= (worldEvent.predSuccessMul||1);
       if(prey.socialMode==='defense-school'){
         let herd=0, screen=0;
@@ -3750,13 +4123,16 @@ if(Z>0.08){
           ally.herdThreat=Math.max(ally.herdThreat||0,30);
         });
         if(herd>0){
-          p *= clamp(1 - 0.072*Math.min(7,herd) - 0.035*Math.min(5,screen), 0.40, 1.0);
+          const herdMul=clamp(1 - 0.072*Math.min(7,herd) - 0.035*Math.min(5,screen), 0.40, 1.0);
+          groupMul*=herdMul;
+          p *= herdMul;
           prey.fleeTimer=Math.max(prey.fleeTimer||0,34);
           prey.herdThreat=Math.max(prey.herdThreat||0,42);
         }
       }
-      telemetryRecordPredationStage('attempt',this,prey,{probability:Number(p.toFixed(3))});
-      if(Math.random()<p){
+      telemetryRecordPredationStage('attempt',this,prey,{probability:Number(p.toFixed(3)),sizeMul:Number(sizeMul.toFixed(3)),defenseMul:Number(defenseMul.toFixed(3)),groupMul:Number(groupMul.toFixed(3))});
+      const predationRoll=Math.random();
+      if(predationRoll<p){
         const carn=this.genes.diet;
         const diet=dietTypeFromCarn(carn);
         const gainRaw=0.6*prey.energy + 8*prey.size;
@@ -3773,7 +4149,7 @@ if(Z>0.08){
         const predationEnergyAfter=this.energy;
         this.fitness+=0.6;
         recordFoodUse('prey',this,gain,1);
-        telemetryRecordCarnivorePredationSuccess(this);
+        telemetryRecordCarnivorePredationSuccess(this,{energyBefore:predationEnergyBefore,energyAfter:predationEnergyAfter});
         prey.dead=true;
         prey.deathCause='捕食';
         recordDeath(prey,'捕食');
@@ -3805,6 +4181,7 @@ if(Z>0.08){
         peaceCounter=0;
       }
       else {
+        telemetryRecordPredationAttackFailure(this,prey,{probability:p,roll:predationRoll,sizeMul,defenseMul,groupMul});
         const dx=(prey.x-this.x), dy=(prey.y-this.y);
         const d=Math.hypot(dx,dy)||1;
         prey.vx += (dx/d)*0.85;
@@ -6197,6 +6574,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     predationFunnelSummary(windowFrames=1800){
       return predationFunnelSummary(windowFrames);
     },
+    predationIndividualFunnelSummary(windowFrames=1800){
+      return predationIndividualFunnelSummary(windowFrames);
+    },
     predationNutritionSummary(windowFrames=1800){
       return predationNutritionSummary(windowFrames);
     },
@@ -6215,7 +6595,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       return {ok:true, frame, events:telemetry.events.length, samples:telemetry.samples.length};
     },
     telemetryCounts(){
-      return {events:telemetry.events.length, samples:telemetry.samples.length, ecoBuckets:telemetry.ecoBuckets.length, births:telemetry.births.size, predationPairs:telemetry.predationPairs.size, predationNutrition:telemetry.predationNutrition.length, reproductionResource:telemetry.reproductionResource.length, reproductionResourceBuckets:telemetry.reproductionResourceBuckets.length, reproductionEligibilityBuckets:telemetry.eligibilityBuckets.length, carnivoreLife:telemetry.carnivoreLife.size, carnivoreDeaths:telemetry.carnivoreDeaths.length, birthOrigins:telemetry.birthOrigins.length, newbornPending:newborn.length};
+      return {events:telemetry.events.length, samples:telemetry.samples.length, ecoBuckets:telemetry.ecoBuckets.length, births:telemetry.births.size, predationPairs:telemetry.predationPairs.size, predationNutrition:telemetry.predationNutrition.length, predationIndividuals:telemetry.predationIndividuals.size, reproductionResource:telemetry.reproductionResource.length, reproductionResourceBuckets:telemetry.reproductionResourceBuckets.length, reproductionEligibilityBuckets:telemetry.eligibilityBuckets.length, carnivoreLife:telemetry.carnivoreLife.size, carnivoreDeaths:telemetry.carnivoreDeaths.length, birthOrigins:telemetry.birthOrigins.length, newbornPending:newborn.length};
     },
     capacitySummary(){
       return {
