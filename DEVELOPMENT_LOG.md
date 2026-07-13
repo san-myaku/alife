@@ -24,6 +24,19 @@
 
 ## Change Log
 
+### 2026-07-14 00:28 捕食後生理と採食・逃走の整合性改善
+
+- Added satiety-aware predation intent: `dietIntent()` is still the base, but live-predation intent is multiplied by a smooth energy/storeN satiety factor that reaches 0.25 only for fully satiated carnivory-weighted organisms.
+- Removed the diet-only baseline waste double penalty by changing respiration-derived `storeD` to `respO * 1.0` and neutralizing diet-only excretion to `min(storeD, 0.0045)`.
+- Added live-predation digestive load only on successful predation: `storeD += clamp(0.035 * (gain / 40), 0, 0.08)`. Predation energy, predation success rate, prey-size rules, and predation `storeN` coefficient `0.050` were not changed.
+- Added a short grazing state (`GRAZING_HOLD_STEPS = 8`) when background algae grazing actually succeeds; non-fleeing grazing applies a single `0.90` max-speed multiplier.
+- Fleeing organisms (`fleeTimer > 0 || herdThreat > 0`) now skip passive background algae uptake and visible `grazeAlgaeAt()` background grazing, clear `grazingTimer`, and therefore do not receive the grazing speed penalty while fleeing.
+- Added `window.__alifeDebug.feedingBehaviorSummary(windowFrames)` and benchmark fields for satiety, post-predation storeD, post-predation tracking, second predation, grazing/fleeing speed, interrupted algae, and invariant checks.
+- Integrated 5-trial benchmark at 390x844, 1,800 steps, default popMax 120 and mutation 3%: fleeing background algae eaten stayed 0, grazing/fleeing overlap stayed 0, predation digestive load averaged 0.0671 storeD, and storeD fell back to 0 by 60/180 steps in measured survivors.
+- Compared with the previous 5-trial baseline: carnivore net improved from -19.0 to -15.6 and carnivore deaths fell from 27.8 to 17.2, but carnivore births fell from 8.8 to 1.6, contact individuals fell from 9.0 to 3.2, predation-experienced carnivores fell from 3.6 to 0.8, and final carnivores stayed 0/5.
+- Safety notes: no NaN, save/load breakage, herbivore extinction, or carnivore runaway occurred. Diversity worsened materially: extant species fell from 21.4 to 11.4 and max species share rose from 0.270 to 0.614 mean, with one trial reaching 0.9339.
+- Judgment: state-transition consistency is improved and kept as a provisional implementation, but the combined balance is not accepted as final. Next work should isolate whether satiety suppression, grazing interruption, or the now-short storeD digestive pulse caused the contact/predation and diversity regression.
+
 ### 2026-07-13
 
 - Added `window.__alifeDebug.predationIndividualFunnelSummary()` to track unique carnivore progress through valid prey, target acquisition, chase, contact, attack, first predation, post-predation threshold reach, and post-predation reproduction.
