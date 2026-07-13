@@ -1100,6 +1100,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   const TELEMETRY_PREDATION_NUTRITION_LIMIT = 1600;
   const TELEMETRY_PREDATION_NUTRITION_WINDOW = 300;
   const TELEMETRY_REPRODUCTION_RESOURCE_LIMIT = 5000;
+  const TELEMETRY_REPRODUCTION_RESOURCE_BUCKET_LIMIT = 720;
+  const TELEMETRY_ELIGIBILITY_BUCKET_LIMIT = 720;
+  const TELEMETRY_CARNIVORE_DEATH_LIMIT = 1200;
+  const TELEMETRY_BIRTH_ORIGIN_LIMIT = 5200;
+  const TELEMETRY_DIAGNOSTIC_MATURITY_AGE = 180;
+  const TELEMETRY_ENERGY_THRESHOLDS = [0.25,0.50,0.75,0.90,1.00,1.25];
   const telemetry = {
     events: [],
     samples: [],
@@ -1108,6 +1114,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     predationPairs: new Map(),
     predationNutrition: [],
     reproductionResource: [],
+    reproductionResourceBuckets: [],
+    eligibilityBuckets: [],
+    carnivoreLife: new Map(),
+    carnivoreDeaths: [],
+    birthOrigins: [],
     runStartFrame: 0
   };
   function telemetryPush(event){
@@ -1134,6 +1145,148 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(cause==='過密') return 'overcrowding';
     return 'other';
   }
+  const TELEMETRY_REPRO_GATES = ['evaluated','immature','energyBelowThreshold','cooldownBlocked','stateBlocked','physiologyBlocked','populationBlocked','otherBlocked','eligible','probabilityFailed','reproduced'];
+  function telemetryBlankGateGroup(){
+    const g={};
+    for(const k of TELEMETRY_REPRO_GATES) g[k]={events:0, unique:new Set()};
+    return g;
+  }
+  function telemetryBlankReproductionResourceGroup(){
+    return {attempts:0,successes:0,en:0,original:0,applied:0,carnivoryWeight:0,energy:0,storeN:0,storeD:0,storeO:0,mem:0,probability:0};
+  }
+  function telemetryEligibilityBucket(){
+    const bucketFrame = frame - (frame % 10);
+    let bucket = telemetry.eligibilityBuckets[telemetry.eligibilityBuckets.length-1];
+    if(!bucket || bucket.frame!==bucketFrame){
+      bucket={frame:bucketFrame, h:telemetryBlankGateGroup(), m:telemetryBlankGateGroup(), c:telemetryBlankGateGroup()};
+      telemetry.eligibilityBuckets.push(bucket);
+      if(telemetry.eligibilityBuckets.length>TELEMETRY_ELIGIBILITY_BUCKET_LIMIT) telemetry.eligibilityBuckets.splice(0, telemetry.eligibilityBuckets.length-TELEMETRY_ELIGIBILITY_BUCKET_LIMIT);
+    }
+    return bucket;
+  }
+  function telemetryReproductionResourceBucket(){
+    const bucketFrame = frame - (frame % 10);
+    let bucket = telemetry.reproductionResourceBuckets[telemetry.reproductionResourceBuckets.length-1];
+    if(!bucket || bucket.frame!==bucketFrame){
+      bucket={frame:bucketFrame, h:telemetryBlankReproductionResourceGroup(), m:telemetryBlankReproductionResourceGroup(), c:telemetryBlankReproductionResourceGroup()};
+      telemetry.reproductionResourceBuckets.push(bucket);
+      if(telemetry.reproductionResourceBuckets.length>TELEMETRY_REPRODUCTION_RESOURCE_BUCKET_LIMIT) telemetry.reproductionResourceBuckets.splice(0, telemetry.reproductionResourceBuckets.length-TELEMETRY_REPRODUCTION_RESOURCE_BUCKET_LIMIT);
+    }
+    return bucket;
+  }
+  function telemetryEnergyRatio(o){
+    return Math.max(0, Number(o?.energy||0)) / Math.max(1, Number(o?.reproThreshold||80));
+  }
+  function telemetryCarnivoreLifeRecord(o){
+    if(!o || telemetryDiet(o)!=='c') return null;
+    let rec=telemetry.carnivoreLife.get(o.id);
+    if(!rec){
+      const birth=telemetry.births.get(o.id) || null;
+      const thresholds={};
+      for(const t of TELEMETRY_ENERGY_THRESHOLDS) thresholds[String(t)]=false;
+      rec={
+        id:o.id,
+        firstFrame:frame,
+        birthFrame:o.birthFrame ?? birth?.frame ?? frame,
+        initial:!birth,
+        parentDiet:birth?.parentDiet ?? null,
+        parentExactDiet:birth?.parentExactDiet ?? null,
+        maxEnergyRatio:0,
+        maxEnergyRatioAfterPredation:0,
+        thresholds,
+        matured:false,
+        predationSuccesses:0,
+        preMaturePredation:false,
+        maturePredation:false,
+        neverPredated:true,
+        lastPredationFrame:null,
+        reachedThresholdAfterPredation:false,
+        eligible:false,
+        eligibleAfterPredation:false,
+        reproduced:false,
+        reproducedAfterPredation:false,
+        deathFrame:null
+      };
+      telemetry.carnivoreLife.set(o.id,rec);
+    }
+    return rec;
+  }
+  function telemetryUpdateCarnivoreProgress(o){
+    const rec=telemetryCarnivoreLifeRecord(o);
+    if(!rec) return null;
+    const age=Number.isFinite(o.age) ? o.age : Math.max(0, frame-(o.birthFrame ?? frame));
+    if(age>=TELEMETRY_DIAGNOSTIC_MATURITY_AGE) rec.matured=true;
+    const ratio=telemetryEnergyRatio(o);
+    rec.maxEnergyRatio=Math.max(rec.maxEnergyRatio, ratio);
+    if(rec.predationSuccesses>0) rec.maxEnergyRatioAfterPredation=Math.max(rec.maxEnergyRatioAfterPredation, ratio);
+    for(const t of TELEMETRY_ENERGY_THRESHOLDS){
+      if(ratio>=t) rec.thresholds[String(t)]=true;
+    }
+    if(rec.predationSuccesses>0 && ratio>=1) rec.reachedThresholdAfterPredation=true;
+    return rec;
+  }
+  function telemetryRecordCarnivorePredationSuccess(o){
+    const rec=telemetryUpdateCarnivoreProgress(o);
+    if(!rec) return;
+    const age=Number.isFinite(o.age) ? o.age : Math.max(0, frame-(o.birthFrame ?? frame));
+    rec.predationSuccesses++;
+    rec.neverPredated=false;
+    rec.lastPredationFrame=frame;
+    if(age>=TELEMETRY_DIAGNOSTIC_MATURITY_AGE) rec.maturePredation=true;
+    else rec.preMaturePredation=true;
+    telemetryUpdateCarnivoreProgress(o);
+  }
+  function telemetryRecordCarnivoreEligible(o){
+    const rec=telemetryUpdateCarnivoreProgress(o);
+    if(!rec) return;
+    rec.eligible=true;
+    if(rec.predationSuccesses>0) rec.eligibleAfterPredation=true;
+  }
+  function telemetryRecordCarnivoreReproduced(o){
+    const rec=telemetryUpdateCarnivoreProgress(o);
+    if(!rec) return;
+    rec.reproduced=true;
+    if(rec.predationSuccesses>0) rec.reproducedAfterPredation=true;
+  }
+  function telemetryRecordCarnivoreDeath(o,causeKey){
+    const rec=telemetryUpdateCarnivoreProgress(o);
+    if(!rec || rec.deathFrame!=null) return;
+    const age=Number.isFinite(o.age) ? o.age : Math.max(0, frame-(o.birthFrame ?? frame));
+    const ratio=telemetryEnergyRatio(o);
+    rec.deathFrame=frame;
+    telemetry.carnivoreDeaths.push({
+      frame,
+      id:o.id,
+      cause:causeKey || 'other',
+      age,
+      energy:Number(o.energy||0),
+      energyRatio:ratio,
+      storeN:clamp01(o.storeN||0),
+      storeD:clamp01(o.storeD||0),
+      storeO:clamp01(o.storeO||0),
+      mem:clamp01(o.mem ?? 1),
+      lastPredationGap:rec.lastPredationFrame==null ? null : frame-rec.lastPredationFrame
+    });
+    if(telemetry.carnivoreDeaths.length>TELEMETRY_CARNIVORE_DEATH_LIMIT){
+      telemetry.carnivoreDeaths.splice(0, telemetry.carnivoreDeaths.length-TELEMETRY_CARNIVORE_DEATH_LIMIT+100);
+    }
+  }
+  function telemetryRecordReproductionGate(o, gate){
+    if(!o || !gate) return;
+    const diet=telemetryDiet(o);
+    const bucket=telemetryEligibilityBucket();
+    const group=bucket[diet] || bucket.m;
+    const rec=group[gate];
+    if(rec){
+      rec.events++;
+      rec.unique.add(o.id);
+    }
+    if(diet==='c'){
+      telemetryUpdateCarnivoreProgress(o);
+      if(gate==='eligible') telemetryRecordCarnivoreEligible(o);
+      if(gate==='reproduced') telemetryRecordCarnivoreReproduced(o);
+    }
+  }
   function telemetryPruneBirths(){
     if(telemetry.births.size<=5200) return;
     for(const [id,rec] of telemetry.births){
@@ -1141,16 +1294,25 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(telemetry.births.size<=4800) break;
     }
   }
-  function telemetryRecordBirth(parent, child, index=0, clutch=1){
+  function telemetryRecordBirth(parent, child, index=0, clutch=1, meta=null){
     if(!child) return;
     child.birthFrame = frame;
     const parentDiet=telemetryDiet(parent);
+    const childDiet=telemetryDiet(child);
+    const parentExactDiet=Number(parent?.genes?.diet ?? 0.5);
+    const childPostMutationDiet=Number(child?.genes?.diet ?? 0.5);
+    const childPreMutationDiet=Number(meta?.preMutationDiet ?? childPostMutationDiet);
+    const childPreMutationDietType=dietTypeFromCarn(childPreMutationDiet);
     const rec={
       id:child.id,
       frame,
-      diet:telemetryDiet(child),
+      diet:childDiet,
       parentId:parent?.id ?? null,
       parentDiet,
+      parentExactDiet,
+      childPreMutationDiet,
+      childPostMutationDiet,
+      childPreMutationDietType,
       parentCarnivore:(parent?.genes?.diet ?? 0) >= 0.66,
       speciesKey:child.speciesKey,
       survived60:null,
@@ -1160,7 +1322,25 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       deathCause:null
     };
     telemetry.births.set(child.id, rec);
-    telemetryPush({kind:'birth', id:child.id, diet:rec.diet, parentId:rec.parentId, parentDiet, parentCarnivore:rec.parentCarnivore, clutch, index});
+    telemetry.birthOrigins.push({
+      frame,
+      parentId:rec.parentId,
+      childId:child.id,
+      parentDiet,
+      parentExactDiet,
+      childDiet,
+      childPreMutationDiet,
+      childPreMutationDietType,
+      childPostMutationDiet,
+      crossedDietClass:parentDiet!==childDiet,
+      clutch,
+      index
+    });
+    if(telemetry.birthOrigins.length>TELEMETRY_BIRTH_ORIGIN_LIMIT){
+      telemetry.birthOrigins.splice(0, telemetry.birthOrigins.length-TELEMETRY_BIRTH_ORIGIN_LIMIT+200);
+    }
+    if(childDiet==='c') telemetryUpdateCarnivoreProgress(child);
+    telemetryPush({kind:'birth', id:child.id, diet:rec.diet, parentId:rec.parentId, parentDiet, parentExactDiet, parentCarnivore:rec.parentCarnivore, childPreMutationDiet, childPostMutationDiet, childPreMutationDietType, crossedDietClass:parentDiet!==childDiet, clutch, index});
     telemetryPruneBirths();
   }
   function telemetryRecordReproduction(parent, kids){
@@ -1185,6 +1365,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       birth.deathFrame=frame;
       birth.deathCause=causeKey;
     }
+    telemetryRecordCarnivoreDeath(o,causeKey);
     telemetryMarkPredationNutritionDeath(o,causeKey);
     telemetryPush({
       kind:'death',
@@ -1294,6 +1475,20 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       success:false,
       kids:0
     };
+    const bucket=telemetryReproductionResourceBucket();
+    const g=bucket[rec.diet] || bucket.m;
+    g.attempts++;
+    g.en+=rec.en||0;
+    g.original+=rec.originalAlgaeMultiplier||0;
+    g.applied+=rec.appliedResourceMultiplier||0;
+    g.carnivoryWeight+=rec.carnivoryWeight||0;
+    g.energy+=rec.energy||0;
+    g.storeN+=rec.storeN||0;
+    g.storeD+=rec.storeD||0;
+    g.storeO+=rec.storeO||0;
+    g.mem+=rec.mem||0;
+    g.probability+=rec.probability||0;
+    rec._resourceBucketGroup=g;
     telemetry.reproductionResource.push(rec);
     if(telemetry.reproductionResource.length>TELEMETRY_REPRODUCTION_RESOURCE_LIMIT){
       telemetry.reproductionResource.splice(0, telemetry.reproductionResource.length-TELEMETRY_REPRODUCTION_RESOURCE_LIMIT+250);
@@ -1304,6 +1499,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(!rec) return;
     rec.success=true;
     rec.kids=kids?.length || 0;
+    if(rec._resourceBucketGroup) rec._resourceBucketGroup.successes++;
   }
   function telemetryPrunePredationPairs(){
     if(telemetry.predationPairs.size<=1600) return;
@@ -1367,8 +1563,16 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     telemetry.predationPairs.clear();
     telemetry.predationNutrition.length=0;
     telemetry.reproductionResource.length=0;
+    telemetry.reproductionResourceBuckets.length=0;
+    telemetry.eligibilityBuckets.length=0;
+    telemetry.carnivoreLife.clear();
+    telemetry.carnivoreDeaths.length=0;
+    telemetry.birthOrigins.length=0;
     telemetry.runStartFrame=frame;
-    for(const o of organisms) o.birthFrame = frame - (o.age||0);
+    for(const o of organisms){
+      o.birthFrame = frame - (o.age||0);
+      telemetryUpdateCarnivoreProgress(o);
+    }
   }
   function telemetryWindowFrames(windowFrames){
     return Math.max(1, Math.min(72000, Number(windowFrames)||1800));
@@ -1550,25 +1754,28 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const wf=telemetryWindowFrames(windowFrames);
     const cutoff=frame-wf;
     const groups={
-      h:{attempts:0,successes:0,en:0,original:0,applied:0,carnivoryWeight:0,energy:0,storeN:0,storeD:0,storeO:0,mem:0,probability:0},
-      m:{attempts:0,successes:0,en:0,original:0,applied:0,carnivoryWeight:0,energy:0,storeN:0,storeD:0,storeO:0,mem:0,probability:0},
-      c:{attempts:0,successes:0,en:0,original:0,applied:0,carnivoryWeight:0,energy:0,storeN:0,storeD:0,storeO:0,mem:0,probability:0}
+      h:telemetryBlankReproductionResourceGroup(),
+      m:telemetryBlankReproductionResourceGroup(),
+      c:telemetryBlankReproductionResourceGroup()
     };
-    for(const rec of telemetry.reproductionResource){
-      if(rec.frame<cutoff) continue;
-      const g=groups[rec.diet] || groups.m;
-      g.attempts++;
-      if(rec.success) g.successes++;
-      g.en+=rec.en||0;
-      g.original+=rec.originalAlgaeMultiplier||0;
-      g.applied+=rec.appliedResourceMultiplier||0;
-      g.carnivoryWeight+=rec.carnivoryWeight||0;
-      g.energy+=rec.energy||0;
-      g.storeN+=rec.storeN||0;
-      g.storeD+=rec.storeD||0;
-      g.storeO+=rec.storeO||0;
-      g.mem+=rec.mem||0;
-      g.probability+=rec.probability||0;
+    for(const bucket of telemetry.reproductionResourceBuckets){
+      if(bucket.frame<cutoff) continue;
+      for(const diet of ['h','m','c']){
+        const src=bucket[diet], g=groups[diet];
+        if(!src) continue;
+        g.attempts+=src.attempts||0;
+        g.successes+=src.successes||0;
+        g.en+=src.en||0;
+        g.original+=src.original||0;
+        g.applied+=src.applied||0;
+        g.carnivoryWeight+=src.carnivoryWeight||0;
+        g.energy+=src.energy||0;
+        g.storeN+=src.storeN||0;
+        g.storeD+=src.storeD||0;
+        g.storeO+=src.storeO||0;
+        g.mem+=src.mem||0;
+        g.probability+=src.probability||0;
+      }
     }
     const finish=g=>{
       const n=g.attempts;
@@ -1594,6 +1801,132 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       herbivore:finish(groups.h),
       omnivore:finish(groups.m),
       carnivore:finish(groups.c)
+    };
+  }
+  function reproductionEligibilitySummary(windowFrames=1800){
+    const wf=telemetryWindowFrames(windowFrames);
+    const cutoff=frame-wf;
+    for(const o of organisms) telemetryUpdateCarnivoreProgress(o);
+    const groups={h:telemetryBlankGateGroup(),m:telemetryBlankGateGroup(),c:telemetryBlankGateGroup()};
+    for(const bucket of telemetry.eligibilityBuckets){
+      if(bucket.frame<cutoff) continue;
+      for(const diet of ['h','m','c']){
+        const dst=groups[diet], src=bucket[diet];
+        if(!src) continue;
+        for(const gate of TELEMETRY_REPRO_GATES){
+          dst[gate].events += src[gate]?.events || 0;
+          for(const id of (src[gate]?.unique || [])) dst[gate].unique.add(id);
+        }
+      }
+    }
+    const finishGateGroup=g=>{
+      const out={};
+      for(const gate of TELEMETRY_REPRO_GATES){
+        out[gate]={events:g[gate].events, uniqueOrganisms:g[gate].unique.size};
+      }
+      return out;
+    };
+    const nums=arr=>arr.map(Number).filter(Number.isFinite);
+    const avg=arr=>{ const a=nums(arr); return a.length ? a.reduce((x,y)=>x+y,0)/a.length : null; };
+    const med=arr=>{
+      const a=nums(arr).sort((x,y)=>x-y);
+      if(!a.length) return null;
+      const mid=Math.floor(a.length/2);
+      return a.length%2 ? a[mid] : (a[mid-1]+a[mid])/2;
+    };
+    const life=[...telemetry.carnivoreLife.values()].filter(r=>r.firstFrame>=cutoff || (r.deathFrame!=null && r.deathFrame>=cutoff) || r.deathFrame==null);
+    const currentCarnivores=organisms.filter(o=>telemetryDiet(o)==='c');
+    const currentMatureCarnivores=currentCarnivores.filter(o=>(Number.isFinite(o.age)?o.age:Math.max(0,frame-(o.birthFrame??frame)))>=TELEMETRY_DIAGNOSTIC_MATURITY_AGE);
+    const currentRatios=currentMatureCarnivores.map(telemetryEnergyRatio);
+    const lifetimeMaxRatios=life.map(r=>r.maxEnergyRatio);
+    const afterPredationRatios=life.filter(r=>r.predationSuccesses>0).map(r=>r.maxEnergyRatioAfterPredation);
+    const thresholdReached={};
+    for(const t of TELEMETRY_ENERGY_THRESHOLDS){
+      const key=`gte${String(Math.round(t*100)).padStart(3,'0')}`;
+      thresholdReached[key]=life.filter(r=>r.thresholds[String(t)]).length;
+    }
+    const deaths=telemetry.carnivoreDeaths.filter(r=>r.frame>=cutoff);
+    const deathGroups={starvation:[],oldAge:[],predation:[],overcrowding:[],other:[]};
+    for(const d of deaths) (deathGroups[d.cause] || deathGroups.other).push(d);
+    const finishDeathGroup=list=>({
+      deaths:list.length,
+      averageAge:avg(list.map(x=>x.age)),
+      averageEnergy:avg(list.map(x=>x.energy)),
+      averageEnergyRatio:avg(list.map(x=>x.energyRatio)),
+      averageStoreN:avg(list.map(x=>x.storeN)),
+      averageStoreD:avg(list.map(x=>x.storeD)),
+      averageStoreO:avg(list.map(x=>x.storeO)),
+      averageMem:avg(list.map(x=>x.mem)),
+      averageStepsSinceLastPredation:avg(list.map(x=>x.lastPredationGap).filter(x=>x!=null))
+    });
+    const deathStateByCause={};
+    for(const k of Object.keys(deathGroups)) deathStateByCause[k]=finishDeathGroup(deathGroups[k]);
+    const origins=telemetry.birthOrigins.filter(r=>r.frame>=cutoff);
+    const carnivoreOrigins=origins.filter(r=>r.childDiet==='c');
+    const byParent={h:0,m:0,c:0};
+    for(const r of carnivoreOrigins) byParent[r.parentDiet]=(byParent[r.parentDiet]||0)+1;
+    const carnivoreChildrenRecent=carnivoreOrigins.slice(-16).map(r=>({
+      frame:r.frame,
+      parentDiet:r.parentDiet,
+      parentExactDiet:r.parentExactDiet,
+      childPreMutationDiet:r.childPreMutationDiet,
+      childPreMutationDietType:r.childPreMutationDietType,
+      childPostMutationDiet:r.childPostMutationDiet,
+      crossedDietClass:r.crossedDietClass
+    }));
+    return {
+      frame,
+      windowFrames:wf,
+      herbivore:finishGateGroup(groups.h),
+      omnivore:finishGateGroup(groups.m),
+      carnivore:finishGateGroup(groups.c),
+      carnivoreProgress:{
+        observedCarnivores:life.length,
+        initialCarnivores:life.filter(r=>r.initial).length,
+        bornCarnivores:carnivoreOrigins.length,
+        currentLivingCarnivores:currentCarnivores.length,
+        maturedCarnivores:life.filter(r=>r.matured).length,
+        currentMatureCarnivores:currentMatureCarnivores.length,
+        averageCurrentEnergyRatio:avg(currentRatios),
+        medianCurrentEnergyRatio:med(currentRatios),
+        averageLifetimeMaxEnergyRatio:avg(lifetimeMaxRatios),
+        medianLifetimeMaxEnergyRatio:med(lifetimeMaxRatios),
+        maxLifetimeEnergyRatio:lifetimeMaxRatios.length ? Math.max(...lifetimeMaxRatios) : null,
+        thresholdReached,
+        predationBeforeMature:life.filter(r=>r.preMaturePredation).length,
+        predationAfterMature:life.filter(r=>r.maturePredation).length,
+        neverPredated:life.filter(r=>r.neverPredated).length,
+        predationSucceeded:life.filter(r=>r.predationSuccesses>0).length,
+        averageMaxEnergyRatioAfterPredation:avg(afterPredationRatios),
+        maxEnergyRatioAfterPredation:afterPredationRatios.length ? Math.max(...afterPredationRatios) : null,
+        reachedThresholdAfterPredation:life.filter(r=>r.reachedThresholdAfterPredation).length,
+        eligibleAfterPredation:life.filter(r=>r.eligibleAfterPredation).length,
+        reproducedAfterPredation:life.filter(r=>r.reproducedAfterPredation).length,
+        eligibleReached:life.filter(r=>r.eligible).length,
+        reproduced:life.filter(r=>r.reproduced).length
+      },
+      carnivoreDeathStateByCause:deathStateByCause,
+      carnivoreChildren:{
+        total:carnivoreOrigins.length,
+        fromHerbivoreParent:byParent.h||0,
+        fromOmnivoreParent:byParent.m||0,
+        fromCarnivoreParent:byParent.c||0,
+        dietClassCrossingBirths:origins.filter(r=>r.crossedDietClass).length,
+        carnivoreChildrenCrossingDietClass:carnivoreOrigins.filter(r=>r.crossedDietClass).length,
+        carnivoreParentCarnivoreChildren:origins.filter(r=>r.parentDiet==='c' && r.childDiet==='c').length,
+        carnivoreParentNonCarnivoreChildren:origins.filter(r=>r.parentDiet==='c' && r.childDiet!=='c').length,
+        averageParentDietForCarnivoreChildren:avg(carnivoreOrigins.map(r=>r.parentExactDiet)),
+        averagePreMutationDietForCarnivoreChildren:avg(carnivoreOrigins.map(r=>r.childPreMutationDiet)),
+        averagePostMutationDietForCarnivoreChildren:avg(carnivoreOrigins.map(r=>r.childPostMutationDiet)),
+        recentCarnivoreChildren:carnivoreChildrenRecent
+      },
+      classification:{
+        functionName:'dietTypeFromCarn',
+        herbivore:'diet < 0.33',
+        omnivore:'0.33 <= diet < 0.66',
+        carnivore:'diet >= 0.66',
+        notes:'population, births, deaths, reproduction, predation telemetry use telemetryDiet()/dietTypeFromCarn(); UI grazingSummary uses the same thresholds inline.'
+      }
     };
   }
   function ecosystemImpactSummary(windowFrames=1800){
@@ -3275,7 +3608,9 @@ if(Z>0.08){
       this.energy-=totalCost; this.moveCostSum+=moveCost; this.age++; this.phase += 0.012 + 0.035*(this.motionLevel||0); this.fitness += 0.002;
 
       // 繁殖
+      telemetryRecordReproductionGate(this,'evaluated');
       if(this.energy>this.reproThreshold){
+        telemetryRecordReproductionGate(this,'eligible');
         // seeking state
         this.mateSeekT++; if(this.callCD>0) this.callCD--;
         // emit species-specific short-lived call (beacon) occasionally
@@ -3298,7 +3633,9 @@ if(Z>0.08){
           p *= clamp(1.00 - 0.62*clamp01(this.storeD*3.0), 0.20, 1.0);
         }
         p*= (worldEvent.reproT>0 ? worldEvent.reproMul : 1);
-        p*= populationReproductionScale();
+        const populationScale=populationReproductionScale();
+        p*= populationScale;
+        if(populationScale<=0) telemetryRecordReproductionGate(this,'populationBlocked');
         const reproResourceRec=telemetryRecordReproductionResourceAttempt(this,{
           en:En,
           originalAlgaeMultiplier,
@@ -3311,8 +3648,24 @@ if(Z>0.08){
           mem:this.mem ?? 1,
           probability:p
         });
-        if(Math.random()<p){ const kids=this.tryReproduce(); if(kids && kids.length){ telemetryMarkReproductionResourceSuccess(reproResourceRec,kids); telemetryRecordReproduction(this,kids); newborn.push(...kids); recordAction(this,`繁殖した（${kids.length}個体）`); this.mateSeekT=0; } }
+        let reproduced=false;
+        let randomPassed=false;
+        if(Math.random()<p){
+          randomPassed=true;
+          const kids=this.tryReproduce();
+          if(kids && kids.length){
+            telemetryMarkReproductionResourceSuccess(reproResourceRec,kids);
+            telemetryRecordReproduction(this,kids);
+            telemetryRecordReproductionGate(this,'reproduced');
+            newborn.push(...kids);
+            recordAction(this,`繁殖した（${kids.length}個体）`);
+            this.mateSeekT=0;
+            reproduced=true;
+          }
+        }
+        if(!reproduced) telemetryRecordReproductionGate(this,randomPassed?'otherBlocked':'probabilityFailed');
       } else {
+        telemetryRecordReproductionGate(this,'energyBelowThreshold');
         this.mateSeekT=0; this.callCD=0;
       }
 
@@ -3420,6 +3773,7 @@ if(Z>0.08){
         const predationEnergyAfter=this.energy;
         this.fitness+=0.6;
         recordFoodUse('prey',this,gain,1);
+        telemetryRecordCarnivorePredationSuccess(this);
         prey.dead=true;
         prey.deathCause='捕食';
         recordDeath(prey,'捕食');
@@ -3492,17 +3846,20 @@ if(Z>0.08){
 
       for(let i=0;i<clutch;i++){
         let g;
+        let preMutationDiet;
         if(isSex){
           g={}; for(const k of GENE_KEYS){ g[k]=pick(this.genes[k],mate.genes[k]); }
+          preMutationDiet=g.diet;
           for(const k of Object.keys(g)){ g[k]=clamp(g[k]+(Math.random()-0.5)*baseMut,0,1); }
         } else {
           g=Object.assign({}, this.genes);
+          preMutationDiet=g.diet;
           for(const k of Object.keys(g)){ g[k]=clamp(g[k]+(Math.random()*2-1)*baseMut,0,1); }
         }
         const childSpread = adaptationProfilesFromGenes(this.genes, this.flags, this.morphologyTopology, this.role).includes('colonyBuilder') ? 8 : 20;
         const c=new Organism(clamp(this.x+rnd(-childSpread,childSpread),10,W-10), clamp(this.y+rnd(-childSpread,childSpread),10,H-10), g, true, this.speciesKey, mate?.speciesKey||null);
         c.vx=this.vx*0.2; c.vy=this.vy*0.2;
-        telemetryRecordBirth(this,c,i,clutch);
+        telemetryRecordBirth(this,c,i,clutch,{preMutationDiet});
 
         // Mendelian flags inheritance (glow/crown/colony)
         try{
@@ -5846,6 +6203,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     reproductionResourceSummary(windowFrames=1800){
       return reproductionResourceSummary(windowFrames);
     },
+    reproductionEligibilitySummary(windowFrames=1800){
+      return reproductionEligibilitySummary(windowFrames);
+    },
     ecosystemImpactSummary(windowFrames=1800){
       return ecosystemImpactSummary(windowFrames);
     },
@@ -5855,7 +6215,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       return {ok:true, frame, events:telemetry.events.length, samples:telemetry.samples.length};
     },
     telemetryCounts(){
-      return {events:telemetry.events.length, samples:telemetry.samples.length, ecoBuckets:telemetry.ecoBuckets.length, births:telemetry.births.size, predationPairs:telemetry.predationPairs.size, predationNutrition:telemetry.predationNutrition.length, reproductionResource:telemetry.reproductionResource.length, newbornPending:newborn.length};
+      return {events:telemetry.events.length, samples:telemetry.samples.length, ecoBuckets:telemetry.ecoBuckets.length, births:telemetry.births.size, predationPairs:telemetry.predationPairs.size, predationNutrition:telemetry.predationNutrition.length, reproductionResource:telemetry.reproductionResource.length, reproductionResourceBuckets:telemetry.reproductionResourceBuckets.length, reproductionEligibilityBuckets:telemetry.eligibilityBuckets.length, carnivoreLife:telemetry.carnivoreLife.size, carnivoreDeaths:telemetry.carnivoreDeaths.length, birthOrigins:telemetry.birthOrigins.length, newbornPending:newborn.length};
     },
     capacitySummary(){
       return {

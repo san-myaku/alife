@@ -8,6 +8,7 @@ const steps = Math.max(1, Number(process.env.ALIFE_STEPS || 1800));
 const viewportRaw = process.env.ALIFE_VIEWPORT || '390x844';
 const chunk = Math.max(1, Math.min(20, Number(process.env.ALIFE_CHUNK || 20)));
 const chromePath = process.env.ALIFE_CHROME || undefined;
+const includeDetails = process.env.ALIFE_DETAIL !== '0';
 
 function parseViewport(value) {
   const m = String(value).match(/^(\d+)x(\d+)$/);
@@ -53,7 +54,15 @@ function flattenTrial(t) {
   const funnel = t.funnel;
   const nutrition = t.nutrition || {};
   const reproduction = t.reproduction || {};
+  const eligibility = t.eligibility || {};
   const carnRepro = reproduction.carnivore || {};
+  const carnGate = eligibility.carnivore || {};
+  const carnProgress = eligibility.carnivoreProgress || {};
+  const carnChildren = eligibility.carnivoreChildren || {};
+  const carnDeaths = eligibility.carnivoreDeathStateByCause || {};
+  const starvationDeaths = carnDeaths.starvation || {};
+  const predationDeaths = carnDeaths.predation || {};
+  const overcrowdingDeaths = carnDeaths.overcrowding || {};
   const eco = t.ecosystem;
   const perf = t.performance;
   const predationSuccesses = funnel.predationSuccesses;
@@ -93,6 +102,54 @@ function flattenTrial(t) {
     carnivoreAverageStoreDAtReproduction: carnRepro.averageStoreD ?? null,
     carnivoreAverageStoreOAtReproduction: carnRepro.averageStoreO ?? null,
     carnivoreAverageMemAtReproduction: carnRepro.averageMem ?? null,
+    carnivoreGateEvaluatedEvents: carnGate.evaluated?.events ?? null,
+    carnivoreGateEvaluatedUnique: carnGate.evaluated?.uniqueOrganisms ?? null,
+    carnivoreGateImmatureEvents: carnGate.immature?.events ?? null,
+    carnivoreGateEnergyBelowEvents: carnGate.energyBelowThreshold?.events ?? null,
+    carnivoreGateEnergyBelowUnique: carnGate.energyBelowThreshold?.uniqueOrganisms ?? null,
+    carnivoreGateEligibleEvents: carnGate.eligible?.events ?? null,
+    carnivoreGateEligibleUnique: carnGate.eligible?.uniqueOrganisms ?? null,
+    carnivoreGateProbabilityFailedEvents: carnGate.probabilityFailed?.events ?? null,
+    carnivoreGateReproducedEvents: carnGate.reproduced?.events ?? null,
+    carnivoreProgressObserved: carnProgress.observedCarnivores ?? null,
+    carnivoreProgressBorn: carnProgress.bornCarnivores ?? null,
+    carnivoreProgressInitial: carnProgress.initialCarnivores ?? null,
+    carnivoreProgressMatured: carnProgress.maturedCarnivores ?? null,
+    carnivoreProgressCurrentMature: carnProgress.currentMatureCarnivores ?? null,
+    carnivoreProgressAverageCurrentEnergyRatio: carnProgress.averageCurrentEnergyRatio ?? null,
+    carnivoreProgressMedianCurrentEnergyRatio: carnProgress.medianCurrentEnergyRatio ?? null,
+    carnivoreProgressAverageLifetimeMaxEnergyRatio: carnProgress.averageLifetimeMaxEnergyRatio ?? null,
+    carnivoreProgressMedianLifetimeMaxEnergyRatio: carnProgress.medianLifetimeMaxEnergyRatio ?? null,
+    carnivoreProgressMaxLifetimeEnergyRatio: carnProgress.maxLifetimeEnergyRatio ?? null,
+    carnivoreReachedEnergy025: carnProgress.thresholdReached?.gte025 ?? null,
+    carnivoreReachedEnergy050: carnProgress.thresholdReached?.gte050 ?? null,
+    carnivoreReachedEnergy075: carnProgress.thresholdReached?.gte075 ?? null,
+    carnivoreReachedEnergy090: carnProgress.thresholdReached?.gte090 ?? null,
+    carnivoreReachedEnergy100: carnProgress.thresholdReached?.gte100 ?? null,
+    carnivoreReachedEnergy125: carnProgress.thresholdReached?.gte125 ?? null,
+    carnivorePredationBeforeMature: carnProgress.predationBeforeMature ?? null,
+    carnivorePredationAfterMature: carnProgress.predationAfterMature ?? null,
+    carnivoreNeverPredated: carnProgress.neverPredated ?? null,
+    carnivorePredationSucceeded: carnProgress.predationSucceeded ?? null,
+    carnivoreAverageMaxEnergyRatioAfterPredation: carnProgress.averageMaxEnergyRatioAfterPredation ?? null,
+    carnivoreMaxEnergyRatioAfterPredation: carnProgress.maxEnergyRatioAfterPredation ?? null,
+    carnivoreReachedThresholdAfterPredation: carnProgress.reachedThresholdAfterPredation ?? null,
+    carnivoreEligibleAfterPredation: carnProgress.eligibleAfterPredation ?? null,
+    carnivoreReproducedAfterPredation: carnProgress.reproducedAfterPredation ?? null,
+    carnivoreProgressEligibleReached: carnProgress.eligibleReached ?? null,
+    carnivoreProgressReproduced: carnProgress.reproduced ?? null,
+    carnivoreDeathStarvation: starvationDeaths.deaths ?? null,
+    carnivoreDeathStarvationEnergyRatio: starvationDeaths.averageEnergyRatio ?? null,
+    carnivoreDeathPredation: predationDeaths.deaths ?? null,
+    carnivoreDeathPredationEnergyRatio: predationDeaths.averageEnergyRatio ?? null,
+    carnivoreDeathOvercrowding: overcrowdingDeaths.deaths ?? null,
+    carnivoreDeathOvercrowdingEnergyRatio: overcrowdingDeaths.averageEnergyRatio ?? null,
+    carnivoreChildrenFromHerbivoreParent: carnChildren.fromHerbivoreParent ?? null,
+    carnivoreChildrenFromOmnivoreParent: carnChildren.fromOmnivoreParent ?? null,
+    carnivoreChildrenFromCarnivoreParent: carnChildren.fromCarnivoreParent ?? null,
+    carnivoreChildrenCrossingDietClass: carnChildren.carnivoreChildrenCrossingDietClass ?? null,
+    carnivoreParentCarnivoreChildren: carnChildren.carnivoreParentCarnivoreChildren ?? null,
+    carnivoreParentNonCarnivoreChildren: carnChildren.carnivoreParentNonCarnivoreChildren ?? null,
     carnivoresPresent: pop.endDiets.c > 0 ? 1 : 0,
     predationSuccesses,
     predationCandidates: funnel.preyCandidatesFound,
@@ -163,6 +220,7 @@ function flattenTrial(t) {
         funnel: window.__alifeDebug.predationFunnelSummary(steps + 60),
         nutrition: window.__alifeDebug.predationNutritionSummary(steps + 60),
         reproduction: window.__alifeDebug.reproductionResourceSummary(steps + 60),
+        eligibility: window.__alifeDebug.reproductionEligibilitySummary(steps + 60),
         ecosystem: window.__alifeDebug.ecosystemImpactSummary(steps + 60),
         performance: window.__alifeDebug.performanceSummary(),
         measuredUpdateMsPerStep: elapsed / steps
@@ -188,7 +246,7 @@ function flattenTrial(t) {
     steps,
     chunk,
     summary,
-    trialsDetail: trialResults,
+    ...(includeDetails ? { trialsDetail: trialResults } : {}),
     errors
   }, null, 2));
 })().catch(err => {
