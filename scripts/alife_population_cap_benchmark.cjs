@@ -47,10 +47,16 @@ function rateFromDietRates(pop, threshold) {
 function flattenTrial(t) {
   const pop = t.population;
   const funnel = t.funnel;
+  const nutrition = t.nutrition || {};
   const eco = t.ecosystem;
   const perf = t.performance;
   return {
     endPopulation: pop.endPopulation,
+    endHerbivores: pop.endDiets.h,
+    endOmnivores: pop.endDiets.m,
+    endCarnivores: pop.endDiets.c,
+    herbivoreExtinct: pop.endDiets.h === 0 ? 1 : 0,
+    carnivoreRatio: pop.endPopulation ? pop.endDiets.c / pop.endPopulation : 0,
     totalBirths: pop.births,
     totalDeaths: pop.deaths,
     totalOvercrowdingDeaths: pop.deathCauses.overcrowding || 0,
@@ -63,7 +69,9 @@ function flattenTrial(t) {
     herbivoreDeaths: pop.byDiet.h.deaths,
     omnivoreDeaths: pop.byDiet.m.deaths,
     carnivoreDeaths: pop.byDiet.c.deaths,
+    carnivoreNet: pop.byDiet.c.births - pop.byDiet.c.deaths,
     carnivoreReproductions: pop.byDiet.c.reproductions,
+    carnivoreAverageStoreN: pop.endAverageStoreNByDiet?.c ?? null,
     carnivoresPresent: pop.endDiets.c > 0 ? 1 : 0,
     predationSuccesses: funnel.predationSuccesses,
     predationCandidates: funnel.preyCandidatesFound,
@@ -71,6 +79,15 @@ function flattenTrial(t) {
     predationContact: funnel.contactReached,
     predationAttempts: funnel.predationAttempts,
     predationAfterRepro: funnel.reproductionAfterPredation,
+    nutritionPredationSuccesses: nutrition.predationSuccesses ?? null,
+    averageStoreNBeforePredation: nutrition.averageStoreNBefore ?? null,
+    averageStoreNAfterPredation: nutrition.averageStoreNAfter ?? null,
+    averageStoreNGainedPredation: nutrition.averageStoreNGained ?? null,
+    averageEnergyBeforePredation: nutrition.averageEnergyBefore ?? null,
+    averageEnergyAfterPredation: nutrition.averageEnergyAfter ?? null,
+    predationReproducedWithin300: nutrition.reproducedWithin300 ?? null,
+    predationDiedWithin300: nutrition.diedWithin300 ?? null,
+    predationSurvivedTo300: nutrition.survivedTo300 ?? null,
     carnivoreKidSurvived60: funnel.carnivoreOffspringSurvived60,
     carnivoreKidSurvived180: funnel.carnivoreOffspringSurvived180,
     carnivoreKidSurvived240: funnel.carnivoreOffspringSurvived240,
@@ -121,6 +138,7 @@ function flattenTrial(t) {
       return {
         population: window.__alifeDebug.populationTurnoverSummary(steps + 60),
         funnel: window.__alifeDebug.predationFunnelSummary(steps + 60),
+        nutrition: window.__alifeDebug.predationNutritionSummary(steps + 60),
         ecosystem: window.__alifeDebug.ecosystemImpactSummary(steps + 60),
         performance: window.__alifeDebug.performanceSummary(),
         measuredUpdateMsPerStep: elapsed / steps
