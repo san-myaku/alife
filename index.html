@@ -1107,6 +1107,19 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   const TELEMETRY_DIAGNOSTIC_MATURITY_AGE = 180;
   const TELEMETRY_ENERGY_THRESHOLDS = [0.25,0.50,0.75,0.90,1.00,1.25];
   const TELEMETRY_PREDATION_INDIVIDUAL_LIMIT = 5200;
+  const TELEMETRY_CHASE_EPISODE_LIMIT = 2600;
+  const TELEMETRY_CHASE_END_REASONS = [
+    'predationSuccess',
+    'targetLost',
+    'targetInvalid',
+    'targetChanged',
+    'preyDiedElsewhere',
+    'energyDepleted',
+    'predatorDied',
+    'distanceExceeded',
+    'trackingStateEnded',
+    'other'
+  ];
   const TELEMETRY_PREDATION_FAILURE_KEYS = [
     'preyUnavailable',
     'preyTooLarge',
@@ -1140,6 +1153,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     carnivoreLife: new Map(),
     carnivoreDeaths: [],
     predationIndividuals: new Map(),
+    activeChases: new Map(),
+    chaseEpisodes: [],
     birthOrigins: [],
     runStartFrame: 0
   };
@@ -1383,6 +1398,248 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(!rec || rec.succeededPredation || !prey) return;
     rec.chaseFramesBeforeSuccess++;
   }
+  function telemetrySafeNumber(value, fallback=null){
+    const n=Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  function telemetryChaseDistance(a,b){
+    if(!a || !b) return null;
+    const dx=Number(b.x)-Number(a.x);
+    const dy=Number(b.y)-Number(a.y);
+    const d=Math.hypot(dx,dy);
+    return Number.isFinite(d) ? d : null;
+  }
+  function telemetryAngleDiffDeg(vx,vy,tx,ty){
+    const vm=Math.hypot(vx,vy);
+    const tm=Math.hypot(tx,ty);
+    if(vm<0.0001 || tm<0.0001) return null;
+    let c=(vx*tx+vy*ty)/(vm*tm);
+    c=clamp(c,-1,1);
+    return Math.acos(c)*180/Math.PI;
+  }
+  function telemetrySegmentClosestDistance(x0,y0,x1,y1){
+    const dx=x1-x0, dy=y1-y0;
+    const len2=dx*dx+dy*dy;
+    if(len2<0.000001) return Math.hypot(x0,y0);
+    const t=clamp(-(x0*dx+y0*dy)/len2,0,1);
+    return Math.hypot(x0+dx*t,y0+dy*t);
+  }
+  function telemetryStartOrUpdateChaseEpisode(predator, prey, meta=null){
+    if(!predator || !prey || telemetryDiet(predator)!=='c') return null;
+    const existing=telemetry.activeChases.get(predator.id);
+    if(existing && existing.preyId!==prey.id){
+      telemetryFinishChaseEpisode(existing,'targetChanged',predator,organismById(existing.preyId),meta);
+    } else if(existing){
+      return existing;
+    }
+    const d=telemetryChaseDistance(predator,prey);
+    const contactR=(predator.size||0)+(prey.size||0)+3.8;
+    const ep={
+      predatorId:predator.id,
+      preyId:prey.id,
+      startFrame:frame,
+      endFrame:null,
+      endReason:null,
+      source:meta?.source || 'tracking',
+      startDistance:d,
+      minimumDistance:d,
+      endDistance:d,
+      contactRadius:contactR,
+      startEnergy:telemetrySafeNumber(predator.energy,0),
+      closestEnergy:telemetrySafeNumber(predator.energy,0),
+      contactEnergy:null,
+      successEnergyBefore:null,
+      successEnergyAfter:null,
+      endEnergy:null,
+      samples:0,
+      predatorSpeedSum:0,
+      preySpeedSum:0,
+      speedRatioSum:0,
+      speedRatioSamples:0,
+      relativeSpeedSum:0,
+      angleDiffSum:0,
+      angleDiffSamples:0,
+      closeAngleDiffSum:0,
+      closeAngleDiffSamples:0,
+      reached2x:false,
+      reached15x:false,
+      reached125x:false,
+      reached11x:false,
+      reachedContact:false,
+      attemptedAttack:false,
+      succeededPredation:false,
+      possibleContactSkip:false,
+      sharpPass:false,
+      targetSwitches:0,
+      reacquiredSameTarget: predator._telemetryLastChasePreyId===prey.id ? 1 : 0,
+      targetInvalidations:0,
+      targetLostCount:0,
+      costBaseSum:0,
+      costMoveSum:0,
+      costSenseSum:0,
+      costDensitySum:0,
+      costBurstSum:0,
+      costTotalSum:0,
+      costSamples:0,
+      lastRelX:telemetrySafeNumber(prey.x,0)-telemetrySafeNumber(predator.x,0),
+      lastRelY:telemetrySafeNumber(prey.y,0)-telemetrySafeNumber(predator.y,0),
+      lastDistance:d,
+      lastPredatorX:telemetrySafeNumber(predator.x,0),
+      lastPredatorY:telemetrySafeNumber(predator.y,0),
+      lastPreyX:telemetrySafeNumber(prey.x,0),
+      lastPreyY:telemetrySafeNumber(prey.y,0)
+    };
+    telemetry.activeChases.set(predator.id,ep);
+    return ep;
+  }
+  function telemetryFinishChaseEpisode(epOrPredator, reason='other', predator=null, prey=null, data=null){
+    const ep=epOrPredator?.predatorId!=null ? epOrPredator : telemetry.activeChases.get(epOrPredator?.id);
+    if(!ep || ep.endFrame!=null) return null;
+    const resolvedReason=TELEMETRY_CHASE_END_REASONS.includes(reason) ? reason : 'other';
+    const pred=predator || organismById(ep.predatorId);
+    const target=prey || organismById(ep.preyId);
+    const d=(pred && target) ? telemetryChaseDistance(pred,target) : ep.lastDistance;
+    ep.endFrame=frame;
+    ep.endReason=resolvedReason;
+    ep.endDistance=telemetrySafeNumber(data?.endDistance,d ?? ep.endDistance);
+    ep.endEnergy=telemetrySafeNumber(data?.endEnergy,pred?.energy ?? ep.endEnergy);
+    if(data?.successEnergyBefore!=null) ep.successEnergyBefore=telemetrySafeNumber(data.successEnergyBefore,ep.successEnergyBefore);
+    if(data?.successEnergyAfter!=null) ep.successEnergyAfter=telemetrySafeNumber(data.successEnergyAfter,ep.successEnergyAfter);
+    if(resolvedReason==='targetInvalid') ep.targetInvalidations++;
+    if(resolvedReason==='targetLost') ep.targetLostCount++;
+    telemetry.activeChases.delete(ep.predatorId);
+    if(pred) pred._telemetryLastChasePreyId=ep.preyId;
+    telemetry.chaseEpisodes.push({...ep});
+    if(telemetry.chaseEpisodes.length>TELEMETRY_CHASE_EPISODE_LIMIT){
+      telemetry.chaseEpisodes.splice(0, telemetry.chaseEpisodes.length-TELEMETRY_CHASE_EPISODE_LIMIT+200);
+    }
+    return ep;
+  }
+  function telemetryEndChaseEpisode(predator, reason='other', prey=null, data=null){
+    if(!predator) return null;
+    return telemetryFinishChaseEpisode(telemetry.activeChases.get(predator.id),reason,predator,prey,data);
+  }
+  function telemetryEndChasesForPrey(prey, reason='preyDiedElsewhere', exceptPredatorId=null){
+    if(!prey) return;
+    const active=[...telemetry.activeChases.values()].filter(ep=>ep.preyId===prey.id && ep.predatorId!==exceptPredatorId);
+    for(const ep of active){
+      const predator=organismById(ep.predatorId);
+      telemetryFinishChaseEpisode(ep,reason,predator,prey);
+    }
+  }
+  function telemetryMarkChasePredationStage(stage,predator,prey,extra=null){
+    if(!predator || !prey || telemetryDiet(predator)!=='c') return;
+    if(stage==='candidate') return;
+    if(stage==='tracking') telemetryStartOrUpdateChaseEpisode(predator,prey,{source:'tracking'});
+    const ep=telemetryStartOrUpdateChaseEpisode(predator,prey,{source:stage});
+    if(!ep) return;
+    if(stage==='contact'){
+      ep.reachedContact=true;
+      ep.reached2x=true;
+      ep.reached15x=true;
+      ep.reached125x=true;
+      ep.reached11x=true;
+      ep.contactEnergy=telemetrySafeNumber(predator.energy,ep.contactEnergy);
+      if(extra?.distance!=null){
+        const d=telemetrySafeNumber(extra.distance,null);
+        if(d!=null && (ep.minimumDistance==null || d<ep.minimumDistance)){
+          ep.minimumDistance=d;
+          ep.closestEnergy=telemetrySafeNumber(predator.energy,ep.closestEnergy);
+        }
+      }
+    } else if(stage==='attempt'){
+      ep.attemptedAttack=true;
+    } else if(stage==='success'){
+      ep.succeededPredation=true;
+      ep.successEnergyBefore=telemetrySafeNumber(extra?.energyBefore,predator.energy);
+      ep.successEnergyAfter=telemetrySafeNumber(extra?.energyAfter,predator.energy);
+      telemetryFinishChaseEpisode(ep,'predationSuccess',predator,prey,{
+        endEnergy:ep.successEnergyBefore,
+        successEnergyBefore:ep.successEnergyBefore,
+        successEnergyAfter:ep.successEnergyAfter
+      });
+    }
+  }
+  function telemetryRecordChaseMotionSample(o){
+    if(!o || telemetryDiet(o)!=='c') return;
+    const ep=telemetry.activeChases.get(o.id);
+    const prey=organismById(o.preyTargetId ?? ep?.preyId);
+    if(!prey){
+      if(ep) telemetryFinishChaseEpisode(ep,'targetLost',o,null);
+      return;
+    }
+    if(prey.dead || prey.protect>0 || prey===o){
+      if(ep) telemetryFinishChaseEpisode(ep,prey.dead?'preyDiedElsewhere':'targetInvalid',o,prey);
+      return;
+    }
+    const current=telemetryStartOrUpdateChaseEpisode(o,prey,{source:'sample'});
+    if(!current) return;
+    const dx=prey.x-o.x, dy=prey.y-o.y;
+    const d=Math.hypot(dx,dy);
+    if(!Number.isFinite(d)) return;
+    const contactR=current.contactRadius || ((o.size||0)+(prey.size||0)+3.8);
+    if(current.lastRelX!=null && current.lastRelY!=null){
+      const segmentClosest=telemetrySegmentClosestDistance(current.lastRelX,current.lastRelY,dx,dy);
+      if((current.lastDistance||Infinity)>contactR && d>contactR && segmentClosest<=contactR){
+        current.possibleContactSkip=true;
+      }
+      if((current.lastDistance||Infinity)<=contactR*1.5 && d>(current.lastDistance||0)+contactR*0.35){
+        current.sharpPass=true;
+      }
+    }
+    current.samples++;
+    current.lastRelX=dx;
+    current.lastRelY=dy;
+    current.lastDistance=d;
+    current.lastPredatorX=o.x;
+    current.lastPredatorY=o.y;
+    current.lastPreyX=prey.x;
+    current.lastPreyY=prey.y;
+    current.endDistance=d;
+    if(current.minimumDistance==null || d<current.minimumDistance){
+      current.minimumDistance=d;
+      current.closestEnergy=telemetrySafeNumber(o.energy,current.closestEnergy);
+    }
+    const ps=Math.hypot(o.vx||0,o.vy||0);
+    const qs=Math.hypot(prey.vx||0,prey.vy||0);
+    const rs=Math.hypot((o.vx||0)-(prey.vx||0),(o.vy||0)-(prey.vy||0));
+    current.predatorSpeedSum+=ps;
+    current.preySpeedSum+=qs;
+    current.relativeSpeedSum+=rs;
+    if(qs>0.0001){
+      current.speedRatioSum+=ps/qs;
+      current.speedRatioSamples++;
+    }
+    const angleDiff=telemetryAngleDiffDeg(o.vx||0,o.vy||0,dx,dy);
+    if(angleDiff!=null){
+      current.angleDiffSum+=angleDiff;
+      current.angleDiffSamples++;
+      if(d<=contactR*1.5){
+        current.closeAngleDiffSum+=angleDiff;
+        current.closeAngleDiffSamples++;
+      }
+    }
+    if(d<=contactR*2.0) current.reached2x=true;
+    if(d<=contactR*1.5) current.reached15x=true;
+    if(d<=contactR*1.25) current.reached125x=true;
+    if(d<=contactR*1.1) current.reached11x=true;
+    if(d<=contactR){
+      current.reachedContact=true;
+      if(current.contactEnergy==null) current.contactEnergy=telemetrySafeNumber(o.energy,null);
+    }
+  }
+  function telemetryRecordChaseEnergyCost(o,costs){
+    if(!o || !costs) return;
+    const ep=telemetry.activeChases.get(o.id);
+    if(!ep) return;
+    ep.costBaseSum+=telemetrySafeNumber(costs.baseMetabolism,0) || 0;
+    ep.costMoveSum+=telemetrySafeNumber(costs.moveCost,0) || 0;
+    ep.costSenseSum+=telemetrySafeNumber(costs.senseCost,0) || 0;
+    ep.costDensitySum+=telemetrySafeNumber(costs.densityCost,0) || 0;
+    ep.costBurstSum+=telemetrySafeNumber(costs.burstCost,0) || 0;
+    ep.costTotalSum+=telemetrySafeNumber(costs.totalCost,0) || 0;
+    ep.costSamples++;
+  }
   function telemetryRecordPredationCooldownBlocked(o){
     const rec=telemetryPredationIndividualRecord(o);
     if(!rec || rec.succeededPredation) return;
@@ -1600,6 +1857,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       birth.deathFrame=frame;
       birth.deathCause=causeKey;
     }
+    if(telemetry.activeChases.has(o.id)){
+      telemetryEndChaseEpisode(o,causeKey==='starvation'?'energyDepleted':'predatorDied');
+    }
+    telemetryEndChasesForPrey(o,'preyDiedElsewhere',o._telemetryKilledByPredatorId ?? null);
     telemetryRecordCarnivoreDeath(o,causeKey);
     telemetryMarkPredationNutritionDeath(o,causeKey);
     telemetryPush({
@@ -1631,6 +1892,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       pair[stage]=true;
     }
     telemetryMarkPredationIndividualStage(predator,stage,prey,extra);
+    telemetryMarkChasePredationStage(stage,predator,prey,extra);
     telemetryPush({
       kind:'predationFunnel',
       stage,
@@ -1804,6 +2066,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     telemetry.carnivoreLife.clear();
     telemetry.carnivoreDeaths.length=0;
     telemetry.predationIndividuals.clear();
+    telemetry.activeChases.clear();
+    telemetry.chaseEpisodes.length=0;
     telemetry.birthOrigins.length=0;
     telemetry.runStartFrame=frame;
     for(const o of organisms){
@@ -2049,6 +2313,174 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         chaseFailed:'target tracking started but contact was never reached',
         attackOpportunityFailed:'contact was reached but attack was never attempted',
         attackResolutionFailed:'attack was attempted but first predation never succeeded'
+      }
+    };
+  }
+  function chaseEfficiencySummary(windowFrames=1800){
+    const wf=telemetryWindowFrames(windowFrames);
+    const cutoff=frame-wf;
+    const completed=telemetry.chaseEpisodes.filter(ep=>{
+      if(ep.startFrame>=cutoff) return true;
+      if(ep.endFrame!=null && ep.endFrame>=cutoff) return true;
+      return false;
+    });
+    const active=[...telemetry.activeChases.values()].filter(ep=>ep.startFrame>=cutoff).map(ep=>{
+      const predator=organismById(ep.predatorId);
+      return {
+        ...ep,
+        active:true,
+        endFrame:frame,
+        endReason:'active',
+        endDistance:ep.lastDistance,
+        endEnergy:telemetrySafeNumber(predator?.energy,ep.endEnergy)
+      };
+    });
+    const records=completed.concat(active);
+    const nums=arr=>arr.map(Number).filter(Number.isFinite);
+    const avg=arr=>{ const a=nums(arr); return a.length ? a.reduce((x,y)=>x+y,0)/a.length : null; };
+    const sum=arr=>nums(arr).reduce((x,y)=>x+y,0);
+    const uniq=arr=>new Set(arr.filter(v=>v!=null)).size;
+    const ratio=(n,d)=>d ? n/d : null;
+    const derived=records.map(ep=>{
+      const duration=Math.max(1,(telemetrySafeNumber(ep.endFrame,frame)-telemetrySafeNumber(ep.startFrame,frame))+1);
+      const samples=Math.max(1,ep.samples||0);
+      const start=telemetrySafeNumber(ep.startDistance,null);
+      const minD=telemetrySafeNumber(ep.minimumDistance,start);
+      const end=telemetrySafeNumber(ep.endDistance,ep.lastDistance);
+      const reduction=(start!=null && minD!=null) ? start-minD : null;
+      const reductionRatio=(start!=null && minD!=null) ? (start-minD)/Math.max(start,0.001) : null;
+      const spent=(ep.costTotalSum||0)>0 ? ep.costTotalSum : Math.max(0,(ep.startEnergy||0)-telemetrySafeNumber(ep.endEnergy,ep.startEnergy||0));
+      return {
+        ...ep,
+        duration,
+        samples,
+        startDistance:start,
+        minimumDistance:minD,
+        finalDistance:end,
+        distanceReduction:reduction,
+        distanceReductionRatio:reductionRatio,
+        distanceReductionPerStep:reduction==null ? null : reduction/duration,
+        predatorSpeedAverage:ep.predatorSpeedSum/samples,
+        preySpeedAverage:ep.preySpeedSum/samples,
+        speedRatioAverage:ep.speedRatioSamples ? ep.speedRatioSum/ep.speedRatioSamples : null,
+        relativeSpeedAverage:ep.relativeSpeedSum/samples,
+        angleDiffAverage:ep.angleDiffSamples ? ep.angleDiffSum/ep.angleDiffSamples : null,
+        closeAngleDiffAverage:ep.closeAngleDiffSamples ? ep.closeAngleDiffSum/ep.closeAngleDiffSamples : null,
+        energySpent:spent,
+        energySpentPerStep:spent/duration,
+        distanceReducedPerEnergy:reduction==null ? null : reduction/Math.max(spent,0.001),
+        costBasePerStep:(ep.costBaseSum||0)/Math.max(1,ep.costSamples||duration),
+        costMovePerStep:(ep.costMoveSum||0)/Math.max(1,ep.costSamples||duration),
+        costSensePerStep:(ep.costSenseSum||0)/Math.max(1,ep.costSamples||duration),
+        costDensityPerStep:(ep.costDensitySum||0)/Math.max(1,ep.costSamples||duration),
+        costBurstPerStep:(ep.costBurstSum||0)/Math.max(1,ep.costSamples||duration),
+        costTotalPerStep:(ep.costTotalSum||0)/Math.max(1,ep.costSamples||duration)
+      };
+    });
+    const n=derived.length;
+    const count=pred=>derived.filter(pred).length;
+    const uniqueWhere=pred=>uniq(derived.filter(pred).map(ep=>ep.predatorId));
+    const completedDerived=derived.filter(ep=>!ep.active);
+    const endReasons={};
+    for(const reason of TELEMETRY_CHASE_END_REASONS){
+      const eps=completedDerived.filter(ep=>ep.endReason===reason);
+      endReasons[reason]={
+        episodes:eps.length,
+        ratio:ratio(eps.length,completedDerived.length),
+        uniqueCarnivores:uniq(eps.map(ep=>ep.predatorId)),
+        averageDuration:avg(eps.map(ep=>ep.duration)),
+        averageDistanceReductionRatio:avg(eps.map(ep=>ep.distanceReductionRatio)),
+        averageEnergySpent:avg(eps.map(ep=>ep.energySpent))
+      };
+    }
+    return {
+      frame,
+      windowFrames:wf,
+      episodes:n,
+      completedEpisodes:completedDerived.length,
+      activeEpisodes:active.length,
+      uniqueCarnivores:uniq(derived.map(ep=>ep.predatorId)),
+      averageStartDistance:avg(derived.map(ep=>ep.startDistance)),
+      averageMinimumDistance:avg(derived.map(ep=>ep.minimumDistance)),
+      averageEndDistance:avg(derived.map(ep=>ep.finalDistance)),
+      averageDistanceReduction:avg(derived.map(ep=>ep.distanceReduction)),
+      averageDistanceReductionRatio:avg(derived.map(ep=>ep.distanceReductionRatio)),
+      averageDistanceReductionPerStep:avg(derived.map(ep=>ep.distanceReductionPerStep)),
+      averageDuration:avg(derived.map(ep=>ep.duration)),
+      averagePredatorSpeed:avg(derived.map(ep=>ep.predatorSpeedAverage)),
+      averagePreySpeed:avg(derived.map(ep=>ep.preySpeedAverage)),
+      averagePredatorPreySpeedRatio:avg(derived.map(ep=>ep.speedRatioAverage)),
+      averageRelativeSpeed:avg(derived.map(ep=>ep.relativeSpeedAverage)),
+      averageAngleDifferenceDeg:avg(derived.map(ep=>ep.angleDiffAverage)),
+      averageCloseAngleDifferenceDeg:avg(derived.map(ep=>ep.closeAngleDiffAverage)),
+      contactRadius:{
+        average:avg(derived.map(ep=>ep.contactRadius)),
+        averageMinimumDistanceRatio:avg(derived.map(ep=>ep.minimumDistance/Math.max(0.001,ep.contactRadius||0)))
+      },
+      proximity:{
+        within2xContactRadius:count(ep=>ep.reached2x),
+        within15xContactRadius:count(ep=>ep.reached15x),
+        within125xContactRadius:count(ep=>ep.reached125x),
+        within11xContactRadius:count(ep=>ep.reached11x),
+        reachedContact:count(ep=>ep.reachedContact),
+        attemptedAttack:count(ep=>ep.attemptedAttack),
+        succeededPredation:count(ep=>ep.succeededPredation),
+        within2xContactRadiusRate:ratio(count(ep=>ep.reached2x),n),
+        within15xContactRadiusRate:ratio(count(ep=>ep.reached15x),n),
+        within125xContactRadiusRate:ratio(count(ep=>ep.reached125x),n),
+        within11xContactRadiusRate:ratio(count(ep=>ep.reached11x),n),
+        reachedContactRate:ratio(count(ep=>ep.reachedContact),n),
+        attemptedAttackRate:ratio(count(ep=>ep.attemptedAttack),n),
+        succeededPredationRate:ratio(count(ep=>ep.succeededPredation),n),
+        uniqueWithin15xContactRadius:uniqueWhere(ep=>ep.reached15x),
+        uniqueWithin125xContactRadius:uniqueWhere(ep=>ep.reached125x),
+        uniqueReachedContact:uniqueWhere(ep=>ep.reachedContact)
+      },
+      nearMiss:{
+        possibleContactSkipEpisodes:count(ep=>ep.possibleContactSkip),
+        possibleContactSkipRate:ratio(count(ep=>ep.possibleContactSkip),n),
+        sharpPassEpisodes:count(ep=>ep.sharpPass),
+        sharpPassRate:ratio(count(ep=>ep.sharpPass),n)
+      },
+      energy:{
+        averageEnergyAtChaseStart:avg(derived.map(ep=>ep.startEnergy)),
+        averageEnergyAtClosestApproach:avg(derived.map(ep=>ep.closestEnergy)),
+        averageEnergyAtContact:avg(derived.map(ep=>ep.contactEnergy)),
+        averageEnergyAtSuccessfulPredationBeforeGain:avg(derived.map(ep=>ep.successEnergyBefore)),
+        averageEnergyAtSuccessfulPredationAfterGain:avg(derived.map(ep=>ep.successEnergyAfter)),
+        averageEnergyAtFailedChaseEnd:avg(derived.filter(ep=>ep.endReason!=='predationSuccess').map(ep=>ep.endEnergy)),
+        averageEnergySpentPerEpisode:avg(derived.map(ep=>ep.energySpent)),
+        averageEnergySpentPerStep:avg(derived.map(ep=>ep.energySpentPerStep)),
+        averageDistanceReducedPerEnergy:avg(derived.map(ep=>ep.distanceReducedPerEnergy))
+      },
+      costs:{
+        averageBaseMetabolismPerStep:avg(derived.map(ep=>ep.costBasePerStep)),
+        averageNormalMoveCostPerStep:avg(derived.map(ep=>ep.costMovePerStep)),
+        averageSenseCostPerStep:avg(derived.map(ep=>ep.costSensePerStep)),
+        averageDensityCostPerStep:avg(derived.map(ep=>ep.costDensityPerStep)),
+        averageBurstCostPerStep:avg(derived.map(ep=>ep.costBurstPerStep)),
+        averageTotalCostPerStep:avg(derived.map(ep=>ep.costTotalPerStep)),
+        totalBaseMetabolism:sum(derived.map(ep=>ep.costBaseSum)),
+        totalNormalMoveCost:sum(derived.map(ep=>ep.costMoveSum)),
+        totalSenseCost:sum(derived.map(ep=>ep.costSenseSum)),
+        totalDensityCost:sum(derived.map(ep=>ep.costDensitySum)),
+        totalBurstCost:sum(derived.map(ep=>ep.costBurstSum)),
+        totalCost:sum(derived.map(ep=>ep.costTotalSum)),
+        chaseSpecificCostExists:false,
+        notes:'Chase uses normal movement cost plus optional ambusher burst cost; there is no separate generic chase energy cost.'
+      },
+      targetState:{
+        targetSwitches:sum(derived.map(ep=>ep.targetSwitches)),
+        samePreyReacquisitions:sum(derived.map(ep=>ep.reacquiredSameTarget)),
+        targetInvalidations:sum(derived.map(ep=>ep.targetInvalidations)),
+        targetLostCount:sum(derived.map(ep=>ep.targetLostCount))
+      },
+      endReasons,
+      classificationRule:{
+        episode:'continuous period where one carnivore keeps the same prey target',
+        possibleContactSkip:'relative segment between consecutive sampled positions crosses contact radius while both sampled endpoints are outside it',
+        sharpPass:'distance rises sharply immediately after being within 1.5x contact radius',
+        energySpent:'summed measured per-frame metabolism, movement, sensing, density, and ambusher burst costs during active chase'
       }
     };
   }
@@ -3504,12 +3936,19 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       const deficit=Math.max(0,this.reproThreshold*0.95-this.energy);
       const intent=dietIntent(carn,deficit);
       if(carn<0.42 || (carn<0.66 && intent<0.10) || this.attackCD>30){
-        if(this.chaseTimer<=0) this.preyTargetId=null;
+        if(this.chaseTimer<=0){
+          if(this.preyTargetId!=null) telemetryEndChaseEpisode(this,'trackingStateEnded');
+          this.preyTargetId=null;
+        }
         return;
       }
       let prey=organismById(this.preyTargetId);
       const validPrey=(p)=> p && !p.dead && p.protect<=0 && p!==this && p.size < this.size*(this.socialMode==='hunt-pack'?1.12:1.00);
-      if(!validPrey(prey)){ prey=null; this.preyTargetId=null; }
+      if(!validPrey(prey)){
+        if(prey) telemetryEndChaseEpisode(this,prey.dead?'preyDiedElsewhere':'targetInvalid',prey);
+        else if(this.preyTargetId!=null) telemetryEndChaseEpisode(this,'targetLost');
+        prey=null; this.preyTargetId=null;
+      }
       if(!prey && frame>=this.nextPreyScan){
         this.nextPreyScan=frame + 8 + ((this.id+frame)%9);
         let best=null, bestScore=-1;
@@ -3780,7 +4219,11 @@ if(Z>0.08){
       const fleeBoost=this.fleeTimer>0?1.35:1.0;
       const predatorBursting=isPredatorBursting(this);
       const burstBoost=predatorBursting ? CONFIG.ecology.predatorBurst.speedMultiplier : ((this.role==='ambusher' && this.burstTimer>0)?1.65:1.0);
-      if(predatorBursting) this.energy=Math.max(0,this.energy-CONFIG.ecology.predatorBurst.energyCost*(1+this.genes.speed));
+      let predatorBurstEnergyCost=0;
+      if(predatorBursting){
+        predatorBurstEnergyCost=CONFIG.ecology.predatorBurst.energyCost*(1+this.genes.speed);
+        this.energy=Math.max(0,this.energy-predatorBurstEnergyCost);
+      }
       const sp=Math.hypot(this.vx,this.vy);
 
       // Speed variability + resting
@@ -3810,7 +4253,8 @@ if(Z>0.08){
       const nutrientLift = clamp(1 + 0.18*fieldFavor, 0.72, 1.26);
       let spBias = clamp(1 + 0.18*score, 0.48, 1.42);
       const localSpeedMul=clamp(oxygenSpeed*dirtyDrag*nutrientLift*(1 - 0.22*Ec), 0.26, 1.35);
-      const maxSp=this.maxSpeed*desired*fleeBoost*burstBoost*worldEvent.speedMul*spBias*localSpeedMul; if(sp>maxSp){ const k=maxSp/sp; this.vx*=k; this.vy*=k; }
+      const carnivoreChaseSpeedMul=(preyTarget && !preyTarget.dead && preyTarget.protect<=0 && dietTypeFromCarn(carnGene)==='c') ? 1.08 : 1.0;
+      const maxSp=this.maxSpeed*desired*fleeBoost*burstBoost*worldEvent.speedMul*spBias*localSpeedMul*carnivoreChaseSpeedMul; if(sp>maxSp){ const k=maxSp/sp; this.vx*=k; this.vy*=k; }
       this.x+=this.vx; this.y+=this.vy;
       if(this.x<this.size){this.x=this.size; this.vx*=-0.5} if(this.x>W-this.size){this.x=W-this.size; this.vx*=-0.5}
       if(this.y<this.size){this.y=this.size; this.vy*=-0.5} if(this.y>H-this.size){this.y=H-this.size; this.vy*=-0.5}
@@ -3943,6 +4387,7 @@ if(Z>0.08){
       }
 
       // 捕食
+      telemetryRecordChaseMotionSample(this);
       this.tryPredate();
 
       // エネルギー消費
@@ -3963,7 +4408,16 @@ if(Z>0.08){
         baseMeta *= (calm ? 0.10 : 0.30);
       }
 
-      const totalCost=(baseMeta + moveCost + (this.senseCost*senseMul*(worldEvent.senseCostMul||1)) + densityCost);
+      const senseEnergyCost=(this.senseCost*senseMul*(worldEvent.senseCostMul||1));
+      const totalCost=(baseMeta + moveCost + senseEnergyCost + densityCost);
+      telemetryRecordChaseEnergyCost(this,{
+        baseMetabolism:baseMeta,
+        moveCost,
+        senseCost:senseEnergyCost,
+        densityCost,
+        burstCost:predatorBurstEnergyCost,
+        totalCost:totalCost+predatorBurstEnergyCost
+      });
       this.energy-=totalCost; this.moveCostSum+=moveCost; this.age++; this.phase += 0.012 + 0.035*(this.motionLevel||0); this.fitness += 0.002;
 
       // 繁殖
@@ -4152,7 +4606,9 @@ if(Z>0.08){
         telemetryRecordCarnivorePredationSuccess(this,{energyBefore:predationEnergyBefore,energyAfter:predationEnergyAfter});
         prey.dead=true;
         prey.deathCause='捕食';
+        prey._telemetryKilledByPredatorId=this.id;
         recordDeath(prey,'捕食');
+        delete prey._telemetryKilledByPredatorId;
         telemetryRecordPredationNutrition(this,{
           storeNBefore:predationStoreNBefore,
           storeNAfter:predationStoreNAfter,
@@ -4162,7 +4618,7 @@ if(Z>0.08){
           energyDelta:predationEnergyAfter-predationEnergyBefore,
           gain
         });
-        telemetryRecordPredationStage('success',this,prey,{gain:Number(gain.toFixed(3))});
+        telemetryRecordPredationStage('success',this,prey,{gain:Number(gain.toFixed(3)),energyBefore:predationEnergyBefore,energyAfter:predationEnergyAfter});
         recordAction(this, `${topologyLabel(prey.morphologyTopology||topologyFromGenes(prey.genes))}を捕食した`);
         const scale=clamp((gain/60),0.6,2.0);
         const corpseE=gainRaw*0.32;
@@ -6577,6 +7033,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     predationIndividualFunnelSummary(windowFrames=1800){
       return predationIndividualFunnelSummary(windowFrames);
     },
+    chaseEfficiencySummary(windowFrames=1800){
+      return chaseEfficiencySummary(windowFrames);
+    },
     predationNutritionSummary(windowFrames=1800){
       return predationNutritionSummary(windowFrames);
     },
@@ -6595,7 +7054,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       return {ok:true, frame, events:telemetry.events.length, samples:telemetry.samples.length};
     },
     telemetryCounts(){
-      return {events:telemetry.events.length, samples:telemetry.samples.length, ecoBuckets:telemetry.ecoBuckets.length, births:telemetry.births.size, predationPairs:telemetry.predationPairs.size, predationNutrition:telemetry.predationNutrition.length, predationIndividuals:telemetry.predationIndividuals.size, reproductionResource:telemetry.reproductionResource.length, reproductionResourceBuckets:telemetry.reproductionResourceBuckets.length, reproductionEligibilityBuckets:telemetry.eligibilityBuckets.length, carnivoreLife:telemetry.carnivoreLife.size, carnivoreDeaths:telemetry.carnivoreDeaths.length, birthOrigins:telemetry.birthOrigins.length, newbornPending:newborn.length};
+      return {events:telemetry.events.length, samples:telemetry.samples.length, ecoBuckets:telemetry.ecoBuckets.length, births:telemetry.births.size, predationPairs:telemetry.predationPairs.size, predationNutrition:telemetry.predationNutrition.length, predationIndividuals:telemetry.predationIndividuals.size, activeChases:telemetry.activeChases.size, chaseEpisodes:telemetry.chaseEpisodes.length, reproductionResource:telemetry.reproductionResource.length, reproductionResourceBuckets:telemetry.reproductionResourceBuckets.length, reproductionEligibilityBuckets:telemetry.eligibilityBuckets.length, carnivoreLife:telemetry.carnivoreLife.size, carnivoreDeaths:telemetry.carnivoreDeaths.length, birthOrigins:telemetry.birthOrigins.length, newbornPending:newborn.length};
     },
     capacitySummary(){
       return {

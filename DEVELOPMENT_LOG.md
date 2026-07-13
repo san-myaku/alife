@@ -51,6 +51,14 @@
 - Strengthened pack-hunting cohesion by letting pack hunters keep group behavior even from low-sociality solitary mode, rally toward packmates' prey targets, and inherit a shared target before contact.
 - Verified both HTML script bodies parse, loaded `index.html` through local Chrome/Playwright with no page errors, and kept the `tryPredate()` success-probability formula unchanged.
 
+### 2026-07-13
+
+- Added `window.__alifeDebug.chaseEfficiencySummary()` to measure carnivore chase episodes by distance reduction, speed ratio, angle error, near-contact bands, energy cost breakdown, end reasons, and possible contact skips.
+- Connected the benchmark output to the new chase telemetry and kept the diagnostic history bounded through active chase state plus a capped episode buffer.
+- Diagnosed the current chase bottleneck as insufficient effective predator/prey speed ratio rather than target loss, contact skip, or attack resolution.
+- Increased only carnivore in-chase max speed by 8% when a valid prey target is held; chase force, sensing, target retention, contact distance, predation success, energy gain, reproduction, and population rules were not changed.
+- In 5 post-change mobile trials, contact-reaching carnivores rose from the existing 3.0 baseline to 9.0 average and chase-to-contact rate rose from 15.5% to 31.5%, while end-of-run carnivores remained 0/5.
+
 ### 2026-07-10
 
 - Turned the existing internal challenge rules into a visible game-goal panel with progress bars for diversity, carnivore dominance, and no-predation streaks.
