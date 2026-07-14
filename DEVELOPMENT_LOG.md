@@ -332,3 +332,60 @@ step300=レベル0、step600=レベル1、step900=レベル0。重要目標の�
 採用。通常モード非表示、任意投入、系統追跡、save/load、スナップショット比較が動作し、通常生態パラメータは変更していない。
 ### 次の開発候補
 次は「投入成体の二回目捕食前餓死」と「generation 1の初回捕食失敗」を分けて診断する。候補は、まず二回目捕食までのenergy時系列と肉食児の初回捕食ファネル。
+## 2026-07-14 12:50 マイクロ生態実験基盤とenergy時間尺度の検証
+### 背景
+既存の `runPredationDuel()` と6面観察スタジアムでは、サイズ・速度・逃走行動による1対1捕食の可否は確認できる。一方、自然環境で肉食が二回目捕食やG1定着へ進めない原因が、捕獲能力なのか、無摂食寿命・追跡消耗・一食の価値なのかは分離できていなかった。
+### 既存Predation Duelの構造
+既存の duel は通常世界を `capture()` で退避し、実験用に個体・餌・死骸・プランクトンをクリアして、捕食者1体と獲物1体を実際の `Organism.step()` と `tryPredate()` で実行する構造だった。今回はこの退避・復元、制御個体生成、trace記録を再利用した。
+### runMicroScenarioへの一般化
+`window.__alifeDebug.runMicroScenario(options)` を追加した。世界退避、参加個体生成、実験環境設定、step実行、observer集計、stop condition、trace記録、世界復元を共通化し、単独個体・2個体シナリオを扱えるようにした。
+### 既存API互換性
+`runPredationDuel()`, `predationDuelSummary()`, `generatePredationStadium()`, `predationStadiumSummary()` は維持した。既存の速度・サイズ・行動・距離プリセットは従来通り duel を内部実行する。
+### 参加個体テンプレート
+`controlled-herbivore`, `controlled-omnivore`, `controlled-carnivore`, `viable-carnivore`, `controlled-prey` を追加した。controlled系は `speed=0.62, size=0.58, metabolism=0.62, fecundity=0.45, sense=0.66, formSeed=0.78` を共有し、dietだけを `0.22/0.50/0.82` に変えた。
+### 実験環境
+`foodMode=none/controlled-prey/scheduled-prey`, `algaeMode=none`, `reproductionEnabled=false`, `capacityEnabled=false`, `corpseEnabled=false` を扱う。絶食試験では food と藻を消し、繁殖と個体数上限影響を止める。
+### 行動モード
+`stationary`, `normal`, `wander`, `straightMove`, `flee`, `chase`, `straightEscape` を実験専用に扱う。`stationary` は実験中だけ速度と位置更新を止め、通常の基礎energy処理は維持する。`chase` は実際の有効獲物を配置し、通常のターゲット取得と追跡を使う。
+### stop condition
+`subjectDead` と `{type:'maxSteps', value:N}` を基本にした。今回の正式試験は最大3000step、死亡まで実行。
+### observer構造
+`energyBudget`, `movement`, `lifespan`, `predation` を返す。traceは一般形式の `participants/events/observerFrame` と、既存スタジアム互換の `predator/prey` 形式を併置した。
+### energyBudgetの計測方法
+実験対象個体だけ、実際のenergy変更位置で `microRecordEnergyFlow()` を呼ぶ。通常コストは `this.energy -= totalCost` の位置で `basalOrRespirationCost`, `movementCost`, `senseCost`, `densityCost` に分類し、捕食成功時は `attackCost` と、clamp後に実際に反映された `predationGain` を記録する。藻・餌粒・死骸・プランクトンの主要gain位置にもフックを追加した。
+### energy会計の一致
+正式20反復で平均 reconciliation error は最大でも約 `1.34e-12`。`startEnergy + totalGain - totalLoss ~= endEnergy` は成立した。
+### 絶食寿命試験条件
+`starvation-lifespan` を20反復、最大3000stepで実行。食物なし、藻なし、繁殖なし、個体数上限影響なし。代表traceのみ保存。
+### 草食の静止・移動結果
+草食静止は平均240.0step、energy消費28.222/100step、移動距離0。草食normalは平均244.7step、27.711/100step、移動距離61.3。
+### 雑食の結果
+雑食normalは平均243.7step、27.819/100step、移動距離58.2。
+### 肉食の静止・移動・追跡結果
+肉食静止は平均236.0step、28.731/100step、移動距離0。肉食normalは平均241.9step、28.011/100step、移動距離56.3。肉食chaseは平均241.0step、28.175/100step、移動距離105.6、target保持241step、捕食0。
+### 食性間比較
+同一controlled遺伝子では、食性差は数step程度。食物なし条件で肉食だけが極端に短寿命になる証拠は出なかった。
+### 一食の価値試験
+`single-meal-value` を20反復、最大3000stepで実行。M0は獲物なし、M1は小型静止獲物1体。実験用 `low` energy は繁殖閾値の0.62倍とした。これは通常ゲームのstandard energyではなく、初回捕食試験用の開始条件。
+### 捕食1回の追加生存時間
+M0は平均181.0step。M1全反復は平均467.1step、捕食成功12/20。捕食成功反復だけでは平均658.6step、中央値659.5、M0比で平均+477.6step。失敗反復は平均180.0step。
+### 二回目獲物遅延試験
+`second-meal-delay` を20反復、最大3000stepで実行。初回捕食成功後に二回目の静止小型獲物を感知範囲内・接触距離外へ配置した。
+### 二回目捕食成功率
+二回目なしは初回18/20、二回目0/20。+30は初回16/20、二回目15/20。+60は14/20、13/20。+120は16/20、14/20。+180は14/20、12/20。+240は14/20、14/20。攻撃乱数の影響で単調ではないが、静止小型獲物が出るなら+240でも二回目捕食は成立した。
+### 6面観察ラボの追加プリセット
+既存「捕食比較」に加え、`食べずにどれだけ生きる？` と `一度の食事でどれだけ延びる？` を追加した。後者は食事なし、1回捕食、二回目獲物+30/+60/+120/+240を6面で同期再生する。
+### ゲーム全体の餓死時間評価
+食物なし寿命はstandard energyで約236〜245step、low energyで約181step。自然投入肉食が200〜300step程度で消える実測と整合する。ゲーム全体のenergy時間尺度は短いが、今回のcontrolled比較では肉食固有の無摂食寿命ペナルティは小さい。
+### 基礎代謝・移動・追跡の評価
+代表traceでは肉食chaseのloss 67.90の内訳は base 52.04、move 1.54、sense 14.32、chaseタグ67.90。移動コスト単体は小さく、基礎・感知コストが大半。chaseは同じ総消費を追跡状態で使い切っている。
+### 捕食利益の評価
+M1代表成功traceでは start 51.15、predationGain 131.92、attackCost 6.02、totalGain 131.92、totalLoss 183.25。捕食1回に成功すれば生存時間は大きく伸びる。したがって一食の価値が極端に小さいとは判断しない。
+### 今回変更しなかった生態パラメータ
+基礎代謝、energy最大値、standard energy、捕食gain、捕食時storeN、storeD、移動コスト、追跡コスト、追跡速度1.08倍、chaseForce、ターゲット選択、捕食成功率、サイズ条件、感知距離、接触距離、攻撃距離、繁殖、藻量、藻成長、採食仕様、個体数上限、通常初期条件は変更していない。
+### 次に変更すべき一項目
+次はenergy量そのものではなく、自然環境で「二回目に捕食可能な獲物へ到達できるか」を切るべき。制御実験では静止小型の二回目獲物なら+240でも成立したため、自然環境側のターゲット選択、捕獲不能獲物の早期放棄、または二回目捕食までの獲物発見条件が候補。
+### 性能
+正式ベンチ `scripts/alife_micro_scenario_benchmark.cjs --pack all --repeats 20 --max-steps 3000` は完走。追加trace履歴は代表trace中心で有限化。通常ゲームの生態パラメータは変更なし。
+### 採用判断
+`runMicroScenario()`、実験パック、energy observer、観察ラボ生命維持プリセット、ベンチスクリプトは採用。今回の結果から、次タスクで数値を変えるなら「捕食gain」より先に、二回目捕食の探索・選択・追跡成立条件を一項目ずつ検証する。
