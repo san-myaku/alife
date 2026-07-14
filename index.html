@@ -5513,7 +5513,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this._predationChasingThisStep = true;
       this.vx += (dx/d)*chaseForce;
       this.vy += (dy/d)*chaseForce;
-      const canAlertPrey=!stalePreyTargetReleaseFixEnabled || d<=scanR*1.05;
+      const preyAlertRange=ambush ? this.senseR*burstCfg.triggerSenseScale : scanR*1.05;
+      const canAlertPrey=!stalePreyTargetReleaseFixEnabled || d<=preyAlertRange;
       if(canAlertPrey){
       if(!stalePreyTargetReleaseFixEnabled && d>scanR*1.05) telemetryRecordRemoteFleeStimulus(this,prey,d,scanR);
       prey.predatorThreatId=this.id;

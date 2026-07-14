@@ -557,3 +557,19 @@ C ambush-hold: scanR * 1.10以内の通常待ち伏せは距離解除なし, amb
 
 ### 採用判断
 採用。永久target固定と遠隔逃走刺激は解消し、短期範囲外targetと通常ambush holdは維持された。tracking/contact/successに重大な悪化はなく、page error・NaN・save/load異常なし。ただし短時間試験ではambusher餓死そのものは改善していないため、次はtargetChanged後の実追跡距離やambusherの獲物選択を別タスクで見る。
+
+## 2026-07-15 08:25 待ち伏せ捕食者の遠距離接近で獲物を逃がさない
+### 変更前の問題
+ambusher は空腹時に待ち伏せholdを抜けて active chase へ移行しても、従来の `scanR * 1.05` 条件により、バースト圏外から獲物へ `predatorThreatId`、逃走impulse、`fleeTimer`、`motionLevel` を与えていた。低速で接近中の段階から獲物を逃がすため、target保持・追跡中でもcontactへ進みにくい可能性があった。
+### 変更した条件
+逃走刺激距離だけを変更した。非ambusherは従来どおり `scanR * 1.05`、ambusherだけ `this.senseR * CONFIG.ecology.predatorBurst.triggerSenseScale` を `preyAlertRange` とし、`d <= preyAlertRange` の場合だけ獲物へ逃走刺激を与える。`ambushTriggerScale`、chaseForce、burst距離、burst倍率、低energy補正、獲物逃走impulse、attack、energy gainなどは変更していない。
+### Micro確認
+A: ambusherをバースト圏外かつactive chase範囲内に置くと、activeChase 12step、ambushHold 0step、alertOutsideBurst 0step、距離は89.02から82.29へ縮小した。B: バースト圏内ではactiveChase 12step、alertInsideBurst 12step、firstAlertStep 1、firstBurstStep 1。C: 非ambusherでは従来どおりscan範囲内でalertOutsideBurst 4step、firstAlertStep 1。
+### 3 seed 前後比較
+ローカルの ambusher energy budget telemetry を一時利用し、41001/42001/43001を各1,800stepで比較した。旧条件はambusher records 27、starvation deaths 27、success経験個体 12、success合計 32、contact合計 40、attack合計 88、バースト圏外逃走刺激 356step、終了時肉食 0/0/0。修正後はambusher records 21、starvation deaths 21、success経験個体 11、success合計 30、contact合計 31、attack合計 71、バースト圏外逃走刺激 0step、終了時肉食 0/0/0。
+### energy収支
+餓死ambusher平均では、旧条件のgain 60.18、loss 95.86、収支 -35.67に対し、修正後はgain 64.64、loss 88.95、収支 -24.31。死亡直前256stepは、target保持率 0.786から0.729、chase率 0.684から0.612、ambush hold率 0.081から0.096、contact/attack率 0.0098から0.0089。
+### 検証
+Micro A-C、同一seed前後3試行、save/load round tripでpage errorなし。最終差分からローカル診断コードと一時Micro確認関数は削除し、通常OFF時の追加recordsは残していない。
+### 採用判断
+採用。短時間3 seedでは終了時肉食は増えていないが、ambusherがバースト圏外から獲物を逃がす挙動は0stepへ解消され、非ambusherの逃走刺激条件は維持された。次は個体間反発または接触後attack機会の阻害を別タスクで検証する。
