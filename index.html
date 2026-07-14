@@ -5367,12 +5367,24 @@ if(Z>0.08){
       if(microStationary) desired = 0.0;
       if(!nearest){
         if(this.role==='ambusher') desired *= 0.35;
-        if(this.energy < this.reproThreshold*0.45){
+        const lowEnergyThreshold=this.reproThreshold*0.45;
+        if(this.energy < lowEnergyThreshold){
+          const lowEnergyRatio=clamp(this.energy/Math.max(lowEnergyThreshold,0.001),0,1);
+          const lowEnergySpeedMul=0.55 + 0.45*lowEnergyRatio;
           if(duelExperimentActive && duelDisableLowEnergySpeedPenalty){
-            if(this._kinematicsStep) this._kinematicsStep.lowEnergySpeedPenaltySuppressed=true;
+            if(this._kinematicsStep){
+              this._kinematicsStep.lowEnergySpeedPenaltySuppressed=true;
+              this._kinematicsStep.lowEnergySpeedMultiplier=1;
+              this._kinematicsStep.lowEnergySpeedWouldMultiplier=lowEnergySpeedMul;
+              this._kinematicsStep.lowEnergySpeedRatio=lowEnergyRatio;
+            }
           } else {
-            desired *= 0.55;
-            if(this._kinematicsStep) this._kinematicsStep.lowEnergySpeedPenaltyActive=true;
+            desired *= lowEnergySpeedMul;
+            if(this._kinematicsStep){
+              this._kinematicsStep.lowEnergySpeedPenaltyActive=true;
+              this._kinematicsStep.lowEnergySpeedMultiplier=lowEnergySpeedMul;
+              this._kinematicsStep.lowEnergySpeedRatio=lowEnergyRatio;
+            }
           }
         }
         // chloroplast herbivores tend to "bask" calmly in daytime when not hungry enough to roam
@@ -8675,6 +8687,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       const vals=results.map(r=>r.pursuitKinematics?.[k]).filter(v=>v!=null).map(Number).filter(Number.isFinite);
       return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
     };
+    const lowMulSamples=results.reduce((a,r)=>a+(r.lowEnergySpeedMultiplierSamples||0),0);
+    const lowMulValues=results.map(r=>[r.lowEnergySpeedMultiplierMin,r.lowEnergySpeedMultiplierMax]).flat().filter(v=>v!=null).map(Number).filter(Number.isFinite);
     return {
       repeats:n,
       targetAcquired:target,
@@ -8706,6 +8720,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       averageLowEnergySpeedPenaltyFirstStep:avg('lowEnergySpeedPenaltyFirstStep'),
       averageLowEnergySpeedPenaltySteps:avg('lowEnergySpeedPenaltySteps'),
       averageLowEnergySpeedPenaltySuppressedSteps:avg('lowEnergySpeedPenaltySuppressedSteps'),
+      averageLowEnergySpeedMultiplier:lowMulSamples ? results.reduce((a,r)=>a+(r.lowEnergySpeedMultiplierSum||0),0)/lowMulSamples : null,
+      minLowEnergySpeedMultiplier:lowMulValues.length ? Math.min(...lowMulValues) : null,
+      maxLowEnergySpeedMultiplier:lowMulValues.length ? Math.max(...lowMulValues) : null,
       averageMinDistance:avg('minDistance'),
       averageStartDistance:avg('startDistance'),
       averageEndDistance:avg('endDistance'),
@@ -9615,6 +9632,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       lowEnergySpeedPenaltyFirstStep:null,
       lowEnergySpeedPenaltySteps:0,
       lowEnergySpeedPenaltySuppressedSteps:0,
+      lowEnergySpeedMultiplierSamples:0,
+      lowEnergySpeedMultiplierSum:0,
+      lowEnergySpeedMultiplierMin:null,
+      lowEnergySpeedMultiplierMax:null,
       preyStartSpeed:preyMovingSpeed,
       predatorStartSpeed:predatorChaseSpeed,
       actualSpeedRatio,
@@ -9707,6 +9728,13 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       if(predator._kinematicsStep?.lowEnergySpeedPenaltyActive){
         result.lowEnergySpeedPenaltySteps++;
         result.lowEnergySpeedPenaltyFirstStep ??= step;
+        const lowMul=Number(predator._kinematicsStep.lowEnergySpeedMultiplier);
+        if(Number.isFinite(lowMul)){
+          result.lowEnergySpeedMultiplierSamples++;
+          result.lowEnergySpeedMultiplierSum+=lowMul;
+          result.lowEnergySpeedMultiplierMin=result.lowEnergySpeedMultiplierMin==null ? lowMul : Math.min(result.lowEnergySpeedMultiplierMin,lowMul);
+          result.lowEnergySpeedMultiplierMax=result.lowEnergySpeedMultiplierMax==null ? lowMul : Math.max(result.lowEnergySpeedMultiplierMax,lowMul);
+        }
       }
       if(predator._kinematicsStep?.lowEnergySpeedPenaltySuppressed){
         result.lowEnergySpeedPenaltySuppressedSteps++;

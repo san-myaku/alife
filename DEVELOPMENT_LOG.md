@@ -460,3 +460,17 @@ contact 20/20、success 14/20、success率0.70、平均contact時energy 38.28、
 contact時energyは両条件でほぼ同じだが、補正無効時はattack試行回数が約2.85倍、contact維持stepが約9.8倍、success率が0.10から0.70へ上昇し、energy切れが18/20から6/20へ減少した。contact後に低energy速度補正が発動し、獲物速度を下回って距離が再拡大し、追加attack機会を失うことが主要因と判定した。
 ### 今回変更しなかった項目
 通常ゲームの低energy速度補正、追跡速度、chaseForce、逃走速度、接触距離、攻撃距離、捕食成功率、energy消費、捕食gain、target選択/放棄は変更していない。
+
+## 2026-07-14 低energy速度補正の連続化
+### 変更前の問題
+低energy時の速度補正が `energy < reproThreshold * 0.45` を少し下回った瞬間に `desired *= 0.55` へ落ちる不連続な式だった。直前診断では、contact後にこの補正が発動すると距離が再拡大し、attack機会とsuccess率が大きく落ちることを確認した。
+### 新しい連続補正式
+閾値 `reproThreshold * 0.45` と最低倍率 `0.55` は維持し、`ratio = clamp(energy / lowEnergyThreshold, 0, 1)`、`lowEnergySpeedMul = 0.55 + 0.45 * ratio`、`desired *= lowEnergySpeedMul` へ置換した。
+### Duel20反復結果
+速度比0.623、実距離45、standard energy、20反復。contact 20/20、success 18/20、平均attack 2.65回、contact維持57.75step、contact後距離再拡大1/20、energyDepleted 2/20、contact時energy 38.21。低energy倍率は平均0.851、最小0.551、最大0.998で、閾値直下から連続的に下がり、0.55付近まで滑らかに低下した。
+### 旧現行・補正無効との比較
+旧現行は success 2/20、平均attack 1.00回、contact維持7.1step、距離再拡大18/20、energyDepleted 18/20、contact時energy 38.25。補正無効は success 14/20、平均attack 2.85回、contact維持69.3step、距離再拡大3/20、energyDepleted 6/20、contact時energy 38.28。連続補正は旧現行から明確に改善し、補正無効よりsuccessとenergy切れは良いが、attack回数とcontact維持は補正無効より低く、低energy時の弱体化は残った。
+### 通常世界3試行の結果
+390x844で各600step。3試行とも起動・進行・save/load round trip成功、page errorなし。終了時個体数は各64、現存種数は60/60/57、FPS表示はいずれも60で、明確な性能悪化はなかった。
+### 採用判断
+採用。success率90%、平均attack 2.65回、contact維持57.75step、距離再拡大5%で採用目安を満たした。補正無効より良い指標も出たが、今回は追加調整せず、低energy速度急落の不連続除去だけを採用する。
