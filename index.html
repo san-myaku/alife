@@ -1118,9 +1118,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   });
   const injectionBatches = new Map();
   const devTestSnapshots = new Map();
+  const predationDuelHistory = [];
   let nextInjectionBatchSerial = 1;
   let devLastCursor = null;
   let devShowPredationSizeOverlay = false;
+  let duelExperimentActive = false;
+  const PREDATION_DUEL_HISTORY_LIMIT = 50;
   const TELEMETRY_DIAGNOSTIC_MATURITY_AGE = 180;
   const TELEMETRY_ENERGY_THRESHOLDS = [0.25,0.50,0.75,0.90,1.00,1.25];
   const TELEMETRY_PREDATION_INDIVIDUAL_LIMIT = 5200;
@@ -5442,6 +5445,7 @@ if(Z>0.08){
 
       // 繁殖
       telemetryRecordReproductionGate(this,'evaluated');
+      if(!duelExperimentActive){
       if(this.energy>this.reproThreshold){
         telemetryRecordReproductionGate(this,'eligible');
         // seeking state
@@ -5499,6 +5503,9 @@ if(Z>0.08){
         if(!reproduced) telemetryRecordReproductionGate(this,randomPassed?'otherBlocked':'probabilityFailed');
       } else {
         telemetryRecordReproductionGate(this,'energyBelowThreshold');
+        this.mateSeekT=0; this.callCD=0;
+      }
+      } else {
         this.mateSeekT=0; this.callCD=0;
       }
 
@@ -7957,6 +7964,455 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   function renderModelUi(){ if(modelUi.generation){ const g=$('generation'); if(g) g.textContent=String(generation); } if(modelUi.water) updateWaterStatus(); if(modelUi.extinct) renderExtinctRecords(); if(modelUi.evolution) checkEvolutionMilestones(); if(modelUi.species) rebuildSpeciesCards(); if(modelUi.dayNight) renderDayNightUI(); flushLog(); flushToasts(); }
   function updateRoleShare(){ const n=organisms.length||1; const c={ambusher:0,pack:0,scav:0,filter:0,other:0}; for(const x of organisms){ c[x.role]++; } for(const k of Object.keys(c)){ roleShare[k]=c[k]/n; } }
 
+  // ===== Developer 1:1 predation duel experiments =====
+  function duelCloneGenes(g){
+    const out={};
+    for(const k of GENE_KEYS) out[k]=clamp(Number(g?.[k] ?? 0.5),0,1);
+    return out;
+  }
+  function duelSeededRandom(seed){
+    let s=(Number(seed)||1)>>>0;
+    if(s===0) s=1;
+    return function(){
+      s=(s + 0x6D2B79F5)>>>0;
+      let t=s;
+      t=Math.imul(t ^ (t>>>15), t | 1);
+      t^=t + Math.imul(t ^ (t>>>7), t | 61);
+      return ((t ^ (t>>>14))>>>0) / 4294967296;
+    };
+  }
+  function duelNeutralEnvState(){
+    if(!window.env?.captureState) return null;
+    const st=window.env.captureState();
+    const n=st?.fields?.algae?.length || 0;
+    if(!n) return st;
+    st.fields.algae=Array(n).fill(0.25);
+    st.fields.cold=Array(n).fill(0.25);
+    st.fields.oxygen=Array(n).fill(0.75);
+    st.fields.detritus=Array(n).fill(0.05);
+    st.grazeScar=Array(st.grazeScar?.length||0).fill(0);
+    return st;
+  }
+  function duelResetArena(){
+    food.length=0; corpses.length=0; plankton.length=0; patches.length=0; organisms.length=0; newborn.length=0;
+    sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0;
+    calls.length=0;
+    speciesCount.clear(); speciesStats.clear(); selectedOrganism=null; selectedDeadAt=0;
+    resetFoodWebStats();
+    worldEvent.type='none'; worldEvent.t=0; worldEvent.maxT=0; worldEvent.speedMul=1; worldEvent.metaMul=1; worldEvent.reproMul=1; worldEvent.predSuccessMul=1; worldEvent.senseCostMul=1;
+    dayNight.phase=0.18; applyDayNightState(false);
+    if(window.env?.restoreState){
+      const st=duelNeutralEnvState();
+      if(st) window.env.restoreState(st);
+    }
+  }
+  function duelEffectiveMaxSpeed(o,{predatorChase=false,fleeing=false,behavior='normal'}={}){
+    if(!o) return 0;
+    const En=0.25, Ec=0.25, Et=0.75, Z=0.05;
+    const dirty=clamp01(Z);
+    const richN=clamp01((En-0.24)/0.56);
+    const fieldFavor=clamp((o.aff?.aN||0)*richN + 0.55*(Et-0.50) + (o.aff?.aZ||-0.7)*dirty - 0.18*Ec, -1.2, 1.2);
+    const score=(o.aff?.aN||0)*En - 0.35*Ec + 0.55*(Et-0.50) + (o.aff?.aZ||-0.7)*Z;
+    const oxygenSpeed=clamp(0.45 + 0.75*Et, 0.35, 1.18);
+    const dirtyDrag=clamp(1 - 0.55*dirty, 0.34, 1.0);
+    const nutrientLift=clamp(1 + 0.18*fieldFavor, 0.72, 1.26);
+    const spBias=clamp(1 + 0.18*score, 0.48, 1.42);
+    const localSpeedMul=clamp(oxygenSpeed*dirtyDrag*nutrientLift*(1 - 0.22*Ec), 0.26, 1.35);
+    const fleeBoost=fleeing ? 1.35 : 1.0;
+    const carnivoreChaseSpeedMul=(predatorChase && dietTypeFromCarn(o.genes?.diet)==='c') ? 1.08 : 1.0;
+    const grazingSpeedMul=behavior==='grazing' ? 0.90 : 1.0;
+    return (o.maxSpeed||0) * fleeBoost * (worldEvent.speedMul||1) * spBias * localSpeedMul * carnivoreChaseSpeedMul * grazingSpeedMul;
+  }
+  function duelMakeOrganism(x,y,genes,kind,opts={}){
+    const o=new Organism(x,y,duelCloneGenes(genes),false);
+    o.age=Number.isFinite(Number(opts.age)) ? Number(opts.age) : 240;
+    o.birthFrame=frame-o.age;
+    o.protect=0;
+    o.energy=Number.isFinite(Number(opts.energy)) ? Number(opts.energy) : o.reproThreshold*0.82;
+    o.storeN=Number.isFinite(Number(opts.storeN)) ? Number(opts.storeN) : 0.20;
+    o.storeO=Number.isFinite(Number(opts.storeO)) ? Number(opts.storeO) : 0.75;
+    o.storeD=Number.isFinite(Number(opts.storeD)) ? Number(opts.storeD) : 0;
+    o.mem=1;
+    o.attackCD=0; o.fleeTimer=0; o.herdThreat=0; o.predatorThreatId=null; o.preyTargetId=null; o.chaseTimer=0; o.nextPreyScan=frame;
+    o.restT=0; o.restCD=999999; o.mateSeekT=0; o.callCD=999999; o.motionLevel=0; o.socialCount=0;
+    o.vx=0; o.vy=0; o.heading=Number(opts.heading ?? 0);
+    o._duelKind=kind;
+    if(kind==='prey'){
+      o.role='other';
+      o.socialMode='solitary';
+      o.sociality=0;
+      o.predationRiskMul=1;
+      o.traits={glowA1:'G',glowA2:'G',crownA1:'C',crownA2:'C',colonyA1:'K',colonyA2:'K',chlA1:'P',chlA2:'P'};
+      o.flags=__flagsFromTraits(o.traits,o.genes);
+      if(opts.preyDefenseMode==='none'){
+        o.morphologyTopology='single';
+      }
+    } else if(kind==='predator'){
+      o.role='other';
+      o.socialMode='solitary';
+      o.sociality=0;
+    }
+    o.lastAction=kind==='predator' ? '1対1捕食実験の捕食者' : '1対1捕食実験の獲物';
+    return o;
+  }
+  function duelPredatorGenes(template){
+    if(template && typeof template==='object' && template.genes) return duelCloneGenes(template.genes);
+    if(template && typeof template==='object') return duelCloneGenes(template);
+    return duelCloneGenes(DEV_VIABLE_GENES.carnivore);
+  }
+  function duelProbe(genes){
+    return devPhenotypeProbeFromGenes(genes);
+  }
+  function duelFindGene(baseGenes,key,target,measure){
+    let best=baseGenes[key]??0.5, bestErr=Infinity;
+    const test=(value)=>{
+      const g={...baseGenes,[key]:clamp(value,0,1)};
+      const v=measure(g);
+      const err=Math.abs(v-target);
+      if(err<bestErr){ bestErr=err; best=g[key]; }
+    };
+    for(let i=0;i<=400;i++) test(i/400);
+    const span=1/400;
+    const center=best;
+    for(let i=0;i<=80;i++){
+      test(center - span + (2*span*i/80));
+    }
+    return clamp(best,0,1);
+  }
+  function duelControlledPreyGenes(predator, preySizeRatio, preySpeedRatio, behavior){
+    const predatorSize=Math.max(0.001, predator?.size || 1);
+    const moving=behavior!=='stationary' && Number(preySpeedRatio)>0;
+    const base={speed:0.45,size:0.45,metabolism:0.50,fecundity:0.45,sense:0.50,diet:0.20,formSeed:0.18};
+    const targetSize=predatorSize*clamp(Number(preySizeRatio)||0.70,0.25,1.40);
+    const sizeGene=duelFindGene(base,'size',targetSize,(g)=>duelProbe(g).size);
+    let genes={...base,size:sizeGene};
+    if(moving){
+      const predatorSpeed=Math.max(0.001, duelEffectiveMaxSpeed(predator,{predatorChase:true}));
+      const targetSpeed=predatorSpeed*clamp(Number(preySpeedRatio)||0,0,1.8);
+      const speedGene=duelFindGene(genes,'speed',targetSpeed,(g)=>{
+        const p=duelProbe(g);
+        return duelEffectiveMaxSpeed(p,{fleeing:true});
+      });
+      genes={...genes,speed:speedGene};
+    } else {
+      genes.speed=0.10;
+    }
+    return duelCloneGenes(genes);
+  }
+  function duelContactRadius(predator,prey){
+    return (predator?.size||0) + (prey?.size||0) + 3.8;
+  }
+  function duelNormalizeBehavior(value){
+    const v=String(value||'straightEscape').toLowerCase();
+    if(v==='stationary') return 'stationary';
+    if(v==='normal') return 'normal';
+    return 'straightEscape';
+  }
+  function duelApplyInitialPose(predator,prey,opts){
+    const angle=(Number(opts.initialAngleDeg)||0) * Math.PI/180;
+    const contact=duelContactRadius(predator,prey);
+    const sense=predator.senseR*(predator.morphologyTopology==='branch'?1.18:1.0)*(1.04 + (predator.genes?.diet||0)*0.22);
+    const lower=contact*2.5;
+    const upper=Math.max(lower+1, sense*0.85);
+    const fallback=clamp(sense*0.55,lower,upper);
+    const dist=clamp(Number(opts.initialDistance)||fallback,lower,upper);
+    const cx=W*0.50, cy=H*0.50;
+    predator.x=clamp(cx-Math.cos(angle)*dist*0.5,16,W-16);
+    predator.y=clamp(cy-Math.sin(angle)*dist*0.5,16,H-16);
+    prey.x=clamp(cx+Math.cos(angle)*dist*0.5,16,W-16);
+    prey.y=clamp(cy+Math.sin(angle)*dist*0.5,16,H-16);
+    predator.vx=0; predator.vy=0; prey.vx=0; prey.vy=0;
+    predator.heading=angle;
+    const headingMode=String(opts.preyHeadingMode||'away').toLowerCase();
+    if(headingMode==='perpendicular') prey.heading=angle+Math.PI/2;
+    else if(headingMode==='random') prey.heading=Math.random()*TAU;
+    else if(headingMode==='stationary') prey.heading=angle;
+    else prey.heading=angle;
+    return {initialDistance:dist, contactDistance:contact, senseRange:sense};
+  }
+  function duelMoveControlledPrey(prey,predator,behavior,preyMaxSpeed){
+    if(!prey || prey.dead) return;
+    if(behavior==='stationary'){
+      prey.vx=0; prey.vy=0;
+      return;
+    }
+    if(behavior==='straightEscape'){
+      const dx=prey.x-predator.x, dy=prey.y-predator.y;
+      const d=Math.hypot(dx,dy)||1;
+      prey.vx=(dx/d)*preyMaxSpeed;
+      prey.vy=(dy/d)*preyMaxSpeed;
+      prey.x=clamp(prey.x+prey.vx,prey.size,W-prey.size);
+      prey.y=clamp(prey.y+prey.vy,prey.size,H-prey.size);
+      prey.fleeTimer=Math.max(prey.fleeTimer||0,20);
+      prey.heading=Math.atan2(prey.vy,prey.vx);
+    }
+  }
+  function duelDistance(a,b){
+    return Math.hypot((a?.x||0)-(b?.x||0),(a?.y||0)-(b?.y||0));
+  }
+  function duelSummarizeResults(results,options,meta={}){
+    const n=results.length||1;
+    const count=k=>results.filter(r=>!!r[k]).length;
+    const avg=k=>{
+      const vals=results.map(r=>r[k]).filter(v=>v!=null).map(Number).filter(Number.isFinite);
+      return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+    };
+    const failureReasons={};
+    for(const r of results) failureReasons[r.endReason]=(failureReasons[r.endReason]||0)+1;
+    const contact=count('contactReached');
+    const target=count('targetAcquired');
+    const attack=count('attackAttempted');
+    return {
+      repeats:n,
+      targetAcquired:target,
+      contactReached:contact,
+      attackAttempted:attack,
+      predationSucceeded:count('predationSucceeded'),
+      sizeValid:count('sizeValid'),
+      preyInSense:count('preyInSense'),
+      targetRate:target/n,
+      contactRate:contact/n,
+      attackRate:attack/n,
+      successRate:count('predationSucceeded')/n,
+      targetToContactRate:target ? contact/target : null,
+      contactToAttackRate:contact ? attack/contact : null,
+      attackToSuccessRate:attack ? count('predationSucceeded')/attack : null,
+      predatorDied:count('predatorDied'),
+      preyDied:count('preyDied'),
+      energyDepleted:results.filter(r=>r.endReason==='energyDepleted').length,
+      timeout:results.filter(r=>r.endReason==='chaseTimeout' || r.endReason==='noContact').length,
+      averageTargetAcquireStep:avg('targetAcquireStep'),
+      averageContactStep:avg('contactStep'),
+      averageSuccessStep:avg('successStep'),
+      averageMinDistance:avg('minDistance'),
+      averageStartDistance:avg('startDistance'),
+      averageEndDistance:avg('endDistance'),
+      averageEnergySpent:avg('predatorEnergySpent'),
+      averagePredatorStartSpeed:avg('predatorStartSpeed'),
+      averagePreyStartSpeed:avg('preyStartSpeed'),
+      averageActualSpeedRatio:avg('actualSpeedRatio'),
+      averageNearMissCount:avg('nearMissCount'),
+      averageTargetSwitchCount:avg('targetSwitchCount'),
+      averageLostTargetCount:avg('lostTargetCount'),
+      failureReasons,
+      meta,
+      options
+    };
+  }
+  function duelRunSingle(rawOptions, repeatIndex){
+    const behavior=duelNormalizeBehavior(rawOptions.preyBehavior || rawOptions.preyHeadingMode);
+    duelResetArena();
+    frame++;
+    const predatorGenes=duelPredatorGenes(rawOptions.predatorTemplate);
+    const predator=duelMakeOrganism(W*0.5,H*0.5,predatorGenes,'predator',{energy:null,heading:0});
+    const preyGenes=rawOptions.preyTemplate && typeof rawOptions.preyTemplate==='object' && rawOptions.preyTemplate.genes
+      ? duelCloneGenes(rawOptions.preyTemplate.genes)
+      : duelControlledPreyGenes(predator,rawOptions.preySizeRatio,rawOptions.preySpeedRatio,behavior);
+    const prey=duelMakeOrganism(W*0.5,H*0.5,preyGenes,'prey',{preyDefenseMode:rawOptions.preyDefenseMode||'none'});
+    const requestedSizeRatio=clamp(Number(rawOptions.preySizeRatio)||0.70,0.25,1.40);
+    prey.size=predator.size*requestedSizeRatio;
+    prey.isMega=false;
+    if(prey.prepareSymbolDetails) prey.prepareSymbolDetails();
+    const predatorEnergy=Number(rawOptions.predatorEnergy);
+    predator.energy=Number.isFinite(predatorEnergy) ? predatorEnergy : predator.reproThreshold*0.82;
+    prey.energy=prey.reproThreshold*0.90;
+    const pose=duelApplyInitialPose(predator,prey,rawOptions);
+    predator.nextPreyScan=frame;
+    prey.nextPreyScan=frame+999999;
+    organisms.push(predator,prey);
+    buildSpatialIndex();
+    const predatorChaseSpeed=duelEffectiveMaxSpeed(predator,{predatorChase:true});
+    const requestedSpeedRatio=Number(rawOptions.preySpeedRatio)||0;
+    const preyMovingSpeed=(behavior==='stationary' || requestedSpeedRatio<=0) ? 0 : duelEffectiveMaxSpeed(prey,{fleeing:true});
+    const actualSpeedRatio=predatorChaseSpeed>0 ? preyMovingSpeed/predatorChaseSpeed : null;
+    const startDistance=duelDistance(predator,prey);
+    const startEnergy=predator.energy;
+    const cls0=predationCandidateClassification(predator,prey,'target',startDistance);
+    const result={
+      repeatIndex,
+      spawned:true,
+      preyInSense:startDistance<=pose.senseRange,
+      dietCompatible:!!cls0.dietCompatible,
+      sizeValid:!!cls0.valid,
+      sizeRejected:!!cls0.tooLarge,
+      targetAcquired:false,
+      targetAcquireStep:null,
+      chaseStarted:false,
+      contactReached:false,
+      contactStep:null,
+      attackAttempted:false,
+      attackAttemptCount:0,
+      predationSucceeded:false,
+      successStep:null,
+      predatorDied:false,
+      preyDied:false,
+      endReason:'chaseTimeout',
+      minDistance:startDistance,
+      startDistance,
+      endDistance:startDistance,
+      closestApproachStep:0,
+      predatorStartEnergy:startEnergy,
+      predatorEnergyAtTarget:null,
+      predatorEnergyAtContact:null,
+      predatorEnergyAtAttack:null,
+      predatorEndEnergy:startEnergy,
+      predatorEnergySpent:0,
+      preyStartSpeed:preyMovingSpeed,
+      predatorStartSpeed:predatorChaseSpeed,
+      actualSpeedRatio,
+      targetSwitchCount:0,
+      lostTargetCount:0,
+      nearMissCount:0,
+      within2xContactDistance:false,
+      within1_5xContactDistance:false,
+      within1_25xContactDistance:false,
+      within1_1xContactDistance:false,
+      preySizeRatio:prey.size/Math.max(predator.size,0.001),
+      requestedPreySizeRatio:Number(rawOptions.preySizeRatio),
+      requestedPreySpeedRatio:Number(rawOptions.preySpeedRatio),
+      predatorSize:predator.size,
+      preySize:prey.size,
+      contactDistance:pose.contactDistance,
+      senseRange:pose.senseRange,
+      predatorGenes:duelCloneGenes(predator.genes),
+      preyGenes:duelCloneGenes(prey.genes)
+    };
+    let lastTarget=null;
+    let eventCursor=telemetry.events.length;
+    const maxSteps=clamp(Number(rawOptions.maxSteps)||600,1,2000)|0;
+    for(let step=1; step<=maxSteps; step++){
+      buildSpatialIndex();
+      const prevDistance=duelDistance(predator,prey);
+      if(behavior==='normal'){
+        predator.step();
+        if(!prey.dead) prey.step();
+      } else {
+        predator.step();
+        duelMoveControlledPrey(prey,predator,behavior,preyMovingSpeed);
+      }
+      const events=telemetry.events.slice(eventCursor);
+      eventCursor=telemetry.events.length;
+      for(const e of events){
+        if(e.kind!=='predationFunnel' || e.predatorId!==predator.id || e.preyId!==prey.id) continue;
+        if(e.stage==='candidate'){
+          result.targetAcquired=true;
+          result.targetAcquireStep ??= step;
+          result.predatorEnergyAtTarget ??= predator.energy;
+        } else if(e.stage==='tracking'){
+          result.chaseStarted=true;
+        } else if(e.stage==='contact'){
+          result.contactReached=true;
+          result.contactStep ??= step;
+          result.predatorEnergyAtContact ??= predator.energy;
+        } else if(e.stage==='attempt'){
+          result.attackAttempted=true;
+          result.attackAttemptCount++;
+          result.predatorEnergyAtAttack ??= predator.energy;
+        } else if(e.stage==='success'){
+          result.predationSucceeded=true;
+          result.successStep ??= step;
+          result.endReason='predationSuccess';
+        }
+      }
+      const d=duelDistance(predator,prey);
+      if(d<result.minDistance){
+        result.minDistance=d;
+        result.closestApproachStep=step;
+      }
+      result.endDistance=d;
+      const contact=pose.contactDistance;
+      if(d<=contact*2.0) result.within2xContactDistance=true;
+      if(d<=contact*1.5) result.within1_5xContactDistance=true;
+      if(d<=contact*1.25) result.within1_25xContactDistance=true;
+      if(d<=contact*1.1){
+        if(!result.within1_1xContactDistance) result.nearMissCount++;
+        result.within1_1xContactDistance=true;
+      }
+      if(prevDistance>contact*1.1 && d>contact*1.1 && result.minDistance<=contact*1.1 && !result.contactReached) result.nearMissCount++;
+      const nowTarget=predator.preyTargetId;
+      if(lastTarget===prey.id && nowTarget!==prey.id && !result.predationSucceeded){
+        result.lostTargetCount++;
+      }
+      if(lastTarget!=null && nowTarget!=null && lastTarget!==nowTarget) result.targetSwitchCount++;
+      lastTarget=nowTarget;
+      if(predator.dead || predator.energy<=0){
+        result.predatorDied=true;
+        result.endReason='energyDepleted';
+        break;
+      }
+      if(prey.dead){
+        result.preyDied=true;
+        if(!result.predationSucceeded) result.endReason='preyDied';
+        break;
+      }
+      if(result.predationSucceeded) break;
+    }
+    if(!result.sizeValid) result.endReason='sizeRejected';
+    else if(!result.targetAcquired) result.endReason='noTarget';
+    else if(result.targetAcquired && !result.contactReached && result.endReason==='chaseTimeout') result.endReason='noContact';
+    else if(result.contactReached && !result.attackAttempted) result.endReason='contactNoAttack';
+    else if(result.attackAttempted && !result.predationSucceeded && result.endReason==='chaseTimeout') result.endReason='attackFailed';
+    result.predatorEndEnergy=predator.energy;
+    result.predatorEnergySpent=Math.max(0,startEnergy-predator.energy);
+    organisms.length=0;
+    newborn.length=0;
+    return result;
+  }
+  function runPredationDuel(options={}){
+    const opts={
+      predatorTemplate:options.predatorTemplate || 'viableCarnivore',
+      preyTemplate:options.preyTemplate || 'controlledHerbivore',
+      preySizeRatio:clamp(Number(options.preySizeRatio ?? 0.70),0.25,1.40),
+      preySpeedRatio:clamp(Number(options.preySpeedRatio ?? 0.70),0,1.80),
+      initialDistance:Number(options.initialDistance ?? 45),
+      initialAngleDeg:Number(options.initialAngleDeg ?? 0),
+      preyHeadingMode:options.preyHeadingMode || 'away',
+      preyBehavior:duelNormalizeBehavior(options.preyBehavior || options.preyHeadingMode || 'straightEscape'),
+      preyDefenseMode:options.preyDefenseMode || 'none',
+      maxSteps:clamp(Number(options.maxSteps ?? 600),1,2000)|0,
+      repeats:clamp(Number(options.repeats ?? 20),1,100)|0,
+      restoreAfterRun:options.restoreAfterRun !== false,
+      seed:options.seed
+    };
+    const saved=capture();
+    const wasRunning=running;
+    const oldDuel=duelExperimentActive;
+    const oldRandom=Math.random;
+    const results=[];
+    const startedAt=Date.now();
+    running=false;
+    duelExperimentActive=true;
+    try{
+      if(options.seed!=null) Math.random=duelSeededRandom(options.seed);
+      resetTelemetry();
+      for(let i=0;i<opts.repeats;i++){
+        results.push(duelRunSingle(opts,i));
+      }
+    } finally {
+      Math.random=oldRandom;
+      duelExperimentActive=oldDuel;
+      if(opts.restoreAfterRun){
+        restore(saved);
+        running=wasRunning;
+      }
+    }
+    const summary=duelSummarizeResults(results,opts,{
+      startedAt,
+      completedAt:Date.now()
+    });
+    const record={id:`duel-${startedAt}-${predationDuelHistory.length+1}`,frame,options:opts,repeatsRequested:opts.repeats,repeatsCompleted:results.length,summary,results};
+    predationDuelHistory.push(record);
+    while(predationDuelHistory.length>PREDATION_DUEL_HISTORY_LIMIT) predationDuelHistory.shift();
+    return {options:opts,repeatsRequested:opts.repeats,repeatsCompleted:results.length,results,summary};
+  }
+  function predationDuelSummary(){
+    return {
+      experiments:predationDuelHistory.map(x=>({id:x.id,frame:x.frame,options:x.options,repeatsCompleted:x.repeatsCompleted,summary:x.summary})),
+      latest:predationDuelHistory[predationDuelHistory.length-1] || null,
+      historyLimit:PREDATION_DUEL_HISTORY_LIMIT
+    };
+  }
+
   // ===== Developer organism injection =====
   function devDietLong(shortDiet){
     return shortDiet==='h' ? 'herbivore' : (shortDiet==='c' ? 'carnivore' : 'omnivore');
@@ -8691,6 +9147,27 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         <button id="dev-preset-h5" type="button">herbivore 5 random</button>
       </div>
       <label style="margin-top:8px;justify-content:flex-start;gap:6px"><input id="dev-size-overlay" type="checkbox"> prey size overlay</label>
+      <details style="margin-top:8px;border-top:1px solid rgba(150,190,255,0.20);padding-top:8px">
+        <summary style="cursor:pointer;font-weight:700">Predation duel</summary>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
+          <label>prey size<input id="dev-duel-size" type="number" min="0.25" max="1.4" step="0.01" value="0.70" style="width:100%"></label>
+          <label>prey speed<input id="dev-duel-speed" type="number" min="0" max="1.8" step="0.05" value="0.70" style="width:100%"></label>
+          <label>distance<input id="dev-duel-distance" type="number" min="10" max="160" step="1" value="45" style="width:100%"></label>
+          <label>behavior<select id="dev-duel-behavior" style="width:100%"><option value="straightEscape">straightEscape</option><option value="stationary">stationary</option><option value="normal">normal</option></select></label>
+          <label>steps<input id="dev-duel-steps" type="number" min="1" max="2000" step="10" value="600" style="width:100%"></label>
+          <label>repeats<input id="dev-duel-repeats" type="number" min="1" max="100" step="1" value="10" style="width:100%"></label>
+        </div>
+        <button id="dev-duel-run" type="button" style="width:100%;margin-top:8px">run duel</button>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:8px">
+          <button id="dev-duel-small" type="button">static small</button>
+          <button id="dev-duel-size099" type="button">size 0.99</button>
+          <button id="dev-duel-size101" type="button">size 1.01</button>
+          <button id="dev-duel-slow" type="button">slow prey</button>
+          <button id="dev-duel-equal" type="button">same speed</button>
+          <button id="dev-duel-normal" type="button">normal flee</button>
+        </div>
+        <pre id="dev-duel-status" style="white-space:pre-wrap;margin:8px 0 0;font-size:10px;color:#fde68a"></pre>
+      </details>
       <div id="dev-spawn-warning" style="margin-top:8px;color:#fecaca"></div>
       <pre id="dev-size-overlay-status" style="white-space:pre-wrap;margin:8px 0 0;font-size:10px;color:#bbf7d0"></pre>
       <pre id="dev-spawn-status" style="white-space:pre-wrap;margin:8px 0 0;font-size:11px;color:#bfdbfe"></pre>
@@ -8699,6 +9176,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const status=panel.querySelector('#dev-spawn-status');
     const warning=panel.querySelector('#dev-spawn-warning');
     const overlayStatus=panel.querySelector('#dev-size-overlay-status');
+    const duelStatus=panel.querySelector('#dev-duel-status');
     const value=id=>panel.querySelector(id)?.value;
     const spawnFromControls=(override={})=>{
       const result=spawnOrganisms({
@@ -8758,6 +9236,37 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       devShowPredationSizeOverlay=!!ev.target.checked;
       updateOverlayStatus();
     });
+    const runDuelFromControls=(override={})=>{
+      const result=runPredationDuel({
+        preySizeRatio:Number(value('#dev-duel-size')||0.70),
+        preySpeedRatio:Number(value('#dev-duel-speed')||0.70),
+        initialDistance:Number(value('#dev-duel-distance')||45),
+        preyBehavior:value('#dev-duel-behavior')||'straightEscape',
+        maxSteps:Number(value('#dev-duel-steps')||600),
+        repeats:Number(value('#dev-duel-repeats')||10),
+        preyDefenseMode:'none',
+        restoreAfterRun:true,
+        ...override
+      });
+      if(duelStatus) duelStatus.textContent=JSON.stringify({
+        repeats:result.repeatsCompleted,
+        targetRate:Number(result.summary.targetRate.toFixed(3)),
+        contactRate:Number(result.summary.contactRate.toFixed(3)),
+        attackRate:Number(result.summary.attackRate.toFixed(3)),
+        successRate:Number(result.summary.successRate.toFixed(3)),
+        targetToContactRate:result.summary.targetToContactRate==null ? null : Number(result.summary.targetToContactRate.toFixed(3)),
+        averageMinDistance:result.summary.averageMinDistance==null ? null : Number(result.summary.averageMinDistance.toFixed(2)),
+        averageEnergySpent:result.summary.averageEnergySpent==null ? null : Number(result.summary.averageEnergySpent.toFixed(2)),
+        failureReasons:result.summary.failureReasons
+      },null,2);
+    };
+    panel.querySelector('#dev-duel-run')?.addEventListener('click',()=>runDuelFromControls());
+    panel.querySelector('#dev-duel-small')?.addEventListener('click',()=>runDuelFromControls({preySizeRatio:0.70,preySpeedRatio:0,preyBehavior:'stationary',repeats:5}));
+    panel.querySelector('#dev-duel-size099')?.addEventListener('click',()=>runDuelFromControls({preySizeRatio:0.99,preySpeedRatio:0.70,preyBehavior:'straightEscape'}));
+    panel.querySelector('#dev-duel-size101')?.addEventListener('click',()=>runDuelFromControls({preySizeRatio:1.01,preySpeedRatio:0,preyBehavior:'stationary',repeats:5}));
+    panel.querySelector('#dev-duel-slow')?.addEventListener('click',()=>runDuelFromControls({preySizeRatio:0.70,preySpeedRatio:0.60,preyBehavior:'straightEscape'}));
+    panel.querySelector('#dev-duel-equal')?.addEventListener('click',()=>runDuelFromControls({preySizeRatio:0.70,preySpeedRatio:1.00,preyBehavior:'straightEscape'}));
+    panel.querySelector('#dev-duel-normal')?.addEventListener('click',()=>runDuelFromControls({preySizeRatio:0.70,preySpeedRatio:0.80,preyBehavior:'normal'}));
     view?.addEventListener('pointerdown',ev=>{ devLastCursor=canvasPoint(ev); },{passive:true});
     updateWarning();
     setInterval(updateWarning,1000);
@@ -8808,6 +9317,12 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     spawnOrganisms(options={}){
       return spawnOrganisms(options);
+    },
+    runPredationDuel(options={}){
+      return runPredationDuel(options);
+    },
+    predationDuelSummary(){
+      return predationDuelSummary();
     },
     injectionLineageSummary(options={}){
       return injectionLineageSummary(options);
