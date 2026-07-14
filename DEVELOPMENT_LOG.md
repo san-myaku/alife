@@ -444,3 +444,19 @@ integrated escape、距離60。速度比0.40は contact100%、success85%。速�
 `scripts/alife_pursuit_kinematics_benchmark.cjs --pack all --repeats 20 --max-steps 600` は完走。正式実行は約24秒。observer無効時の通常ゲームへ追加計算を入れず、traceは代表反復と有限履歴に限定した。
 ### 採用判断
 運動学observer、初速指定、integrated/current/constant escape比較、constant-energy診断、pursuit-kinematics pack、観察ラボ「なぜ追いつけない？」プリセットを採用。通常生態パラメータの変更は保留。
+
+## 2026-07-14 16:52 contact後失敗と低energy速度補正の確認
+### 目的
+contact率100%の条件で捕食成功率が低い理由が、接触後の低energy速度補正によるものかを確認した。
+### 実装した診断
+既存Duelに、contact時energy、attack試行回数、contact後の生存step、contact維持step、低energy速度補正発動step、低energy速度補正抑制step、contact後の距離再拡大を追加した。通常ゲーム値は変更せず、実験中だけ `disableLowEnergySpeedPenalty` で低energy速度補正を抑制できるようにした。
+### 試験条件
+速度比0.623、実距離45、`straightEscapeCurrent`、初速zero/zero、最大600step、20反復、seed 62345。現行条件と、実験中だけ低energy速度補正を無効化した条件を比較した。
+### 現行条件
+contact 20/20、success 2/20、success率0.10、平均contact時energy 38.25、平均attack試行1.00回、平均contact維持7.1step、平均contact後生存120.1step、低energy速度補正の初回発動は平均step108、発動step平均117.0、contact後の距離再拡大18/20、energyDepleted 18/20。
+### 低energy速度補正無効条件
+contact 20/20、success 14/20、success率0.70、平均contact時energy 38.28、平均attack試行2.85回、平均contact維持69.3step、平均contact後生存72.0step、低energy速度補正発動0、抑制step平均68.8、contact後の距離再拡大3/20、energyDepleted 6/20。
+### 判定
+contact時energyは両条件でほぼ同じだが、補正無効時はattack試行回数が約2.85倍、contact維持stepが約9.8倍、success率が0.10から0.70へ上昇し、energy切れが18/20から6/20へ減少した。contact後に低energy速度補正が発動し、獲物速度を下回って距離が再拡大し、追加attack機会を失うことが主要因と判定した。
+### 今回変更しなかった項目
+通常ゲームの低energy速度補正、追跡速度、chaseForce、逃走速度、接触距離、攻撃距離、捕食成功率、energy消費、捕食gain、target選択/放棄は変更していない。

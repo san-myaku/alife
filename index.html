@@ -1189,6 +1189,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   let devLastCursor = null;
   let devShowPredationSizeOverlay = false;
   let duelExperimentActive = false;
+  let duelDisableLowEnergySpeedPenalty = false;
   const PREDATION_DUEL_HISTORY_LIMIT = 50;
   const PREDATION_STADIUM_HISTORY_LIMIT = 3;
   const PREDATION_STADIUM_ARENA_COUNT = 6;
@@ -5366,7 +5367,14 @@ if(Z>0.08){
       if(microStationary) desired = 0.0;
       if(!nearest){
         if(this.role==='ambusher') desired *= 0.35;
-        if(this.energy < this.reproThreshold*0.45) desired *= 0.55;
+        if(this.energy < this.reproThreshold*0.45){
+          if(duelExperimentActive && duelDisableLowEnergySpeedPenalty){
+            if(this._kinematicsStep) this._kinematicsStep.lowEnergySpeedPenaltySuppressed=true;
+          } else {
+            desired *= 0.55;
+            if(this._kinematicsStep) this._kinematicsStep.lowEnergySpeedPenaltyActive=true;
+          }
+        }
         // chloroplast herbivores tend to "bask" calmly in daytime when not hungry enough to roam
         if(this.flags && this.flags.chl && !dayNight.isNight && this.genes.diet<=0.25 && this.energy < this.reproThreshold*0.70){
           desired *= 0.35;
@@ -8689,6 +8697,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       averageTargetAcquireStep:avg('targetAcquireStep'),
       averageContactStep:avg('contactStep'),
       averageSuccessStep:avg('successStep'),
+      averageEnergyAtContact:avg('predatorEnergyAtContact'),
+      averageAttackAttemptCount:avg('attackAttemptCount'),
+      averageContactSurvivalSteps:avg('contactSurvivalSteps'),
+      averageContactHeldSteps:avg('contactHeldSteps'),
+      contactDistanceReexpanded:results.filter(r=>r.contactDistanceReexpanded).length,
+      averageMaxDistanceAfterContact:avg('maxDistanceAfterContact'),
+      averageLowEnergySpeedPenaltyFirstStep:avg('lowEnergySpeedPenaltyFirstStep'),
+      averageLowEnergySpeedPenaltySteps:avg('lowEnergySpeedPenaltySteps'),
+      averageLowEnergySpeedPenaltySuppressedSteps:avg('lowEnergySpeedPenaltySuppressedSteps'),
       averageMinDistance:avg('minDistance'),
       averageStartDistance:avg('startDistance'),
       averageEndDistance:avg('endDistance'),
@@ -9595,12 +9612,22 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       predatorEnergyAtAttack:null,
       predatorEndEnergy:startEnergy,
       predatorEnergySpent:0,
+      lowEnergySpeedPenaltyFirstStep:null,
+      lowEnergySpeedPenaltySteps:0,
+      lowEnergySpeedPenaltySuppressedSteps:0,
       preyStartSpeed:preyMovingSpeed,
       predatorStartSpeed:predatorChaseSpeed,
       actualSpeedRatio,
       targetSwitchCount:0,
       lostTargetCount:0,
       nearMissCount:0,
+      contactSurvivalSteps:null,
+      contactHeldSteps:0,
+      contactDistanceReexpanded:false,
+      contactAfterReexpandStep:null,
+      contactExitStep:null,
+      distanceAtContact:null,
+      maxDistanceAfterContact:null,
       within2xContactDistance:false,
       within1_5xContactDistance:false,
       within1_25xContactDistance:false,
@@ -9664,7 +9691,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         } else if(e.stage==='contact'){
           result.contactReached=true;
           result.contactStep ??= step;
-          result.predatorEnergyAtContact ??= predator.energy;
+          result.predatorEnergyAtContact ??= beforePred.energy;
         } else if(e.stage==='attempt'){
           result.attackAttempted=true;
           result.attackAttemptCount++;
@@ -9677,6 +9704,13 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       }
       const d=duelDistance(predator,prey);
       const kinFrame=collectKinematics ? duelKinematicsSample(kinematics,step,predator,prey,beforePred,beforePrey,prevDistance,d,pose,preyMovingSpeed,constantEnergySpentThisStep) : null;
+      if(predator._kinematicsStep?.lowEnergySpeedPenaltyActive){
+        result.lowEnergySpeedPenaltySteps++;
+        result.lowEnergySpeedPenaltyFirstStep ??= step;
+      }
+      if(predator._kinematicsStep?.lowEnergySpeedPenaltySuppressed){
+        result.lowEnergySpeedPenaltySuppressedSteps++;
+      }
       result.completedStep=step;
       if(d<result.minDistance){
         result.minDistance=d;
@@ -9690,6 +9724,16 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       if(d<=contact*1.1){
         if(!result.within1_1xContactDistance) result.nearMissCount++;
         result.within1_1xContactDistance=true;
+      }
+      if(result.contactReached){
+        if(result.distanceAtContact==null) result.distanceAtContact=d;
+        if(d<=contact) result.contactHeldSteps++;
+        else if(result.contactExitStep==null) result.contactExitStep=step;
+        result.maxDistanceAfterContact=Math.max(result.maxDistanceAfterContact ?? d,d);
+        if(result.contactStep!=null && step>result.contactStep && d>contact*1.25){
+          result.contactDistanceReexpanded=true;
+          result.contactAfterReexpandStep ??= step;
+        }
       }
       if(prevDistance>contact*1.1 && d>contact*1.1 && result.minDistance<=contact*1.1 && !result.contactReached) result.nearMissCount++;
       const nowTarget=predator.preyTargetId;
@@ -9719,6 +9763,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     result.predatorEndEnergy=predator.energy;
     result.predatorEnergySpent=Math.max(0,startEnergy-predator.energy);
     result.completedStep ||= maxSteps;
+    result.contactSurvivalSteps=result.contactStep!=null ? Math.max(0,result.completedStep-result.contactStep) : null;
     if(collectKinematics){
       result.pursuitKinematics=duelFinalizeKinematics(kinematics,result,predator,prey);
     }
@@ -9755,6 +9800,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       pursuitKinematics:options.pursuitKinematics !== false,
       initialVelocityMode:options.initialVelocityMode || {predator:'zero',prey:'zero'},
       predatorEnergy:options.predatorEnergy,
+      disableLowEnergySpeedPenalty:!!options.disableLowEnergySpeedPenalty,
       constantEnergy:!!options.constantEnergy,
       constantEnergyValue:options.constantEnergyValue,
       seed:options.seed
@@ -9762,11 +9808,13 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const saved=capture();
     const wasRunning=running;
     const oldDuel=duelExperimentActive;
+    const oldDisableLowEnergySpeedPenalty=duelDisableLowEnergySpeedPenalty;
     const oldRandom=Math.random;
     const results=[];
     const startedAt=Date.now();
     running=false;
     duelExperimentActive=true;
+    duelDisableLowEnergySpeedPenalty=!!opts.disableLowEnergySpeedPenalty;
     try{
       if(options.seed!=null) Math.random=duelSeededRandom(options.seed);
       resetTelemetry();
@@ -9776,6 +9824,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     } finally {
       Math.random=oldRandom;
       duelExperimentActive=oldDuel;
+      duelDisableLowEnergySpeedPenalty=oldDisableLowEnergySpeedPenalty;
       if(opts.restoreAfterRun){
         restore(saved);
         running=wasRunning;
