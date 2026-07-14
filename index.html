@@ -1196,6 +1196,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   const MICRO_SCENARIO_HISTORY_LIMIT = 50;
   const MICRO_EXPERIMENT_PACK_HISTORY_LIMIT = 12;
   const MICRO_SCENARIO_TRACE_MAX_STEPS = 3000;
+  const PURSUIT_KINEMATICS_HISTORY_LIMIT = 8;
+  const PURSUIT_KINEMATICS_FRAME_LIMIT = 1200;
   const MICRO_CONTROLLED_GENES = Object.freeze({
     herbivore: Object.freeze({speed:0.62,size:0.58,metabolism:0.62,fecundity:0.45,sense:0.66,diet:0.22,formSeed:0.78}),
     omnivore: Object.freeze({speed:0.62,size:0.58,metabolism:0.62,fecundity:0.45,sense:0.66,diet:0.50,formSeed:0.78}),
@@ -1203,6 +1205,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   });
   const microScenarioHistory = [];
   const microExperimentPackHistory = [];
+  const pursuitKinematicsHistory = [];
+  const duelCruiseSpeedCache = new Map();
   let microEnergyObserver = null;
   let microEnergySubjectId = null;
   const predationStadiumHistory = [];
@@ -5097,6 +5101,13 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       let chaseForce=(0.070 + 0.105*carn + 0.065*intent)*packBonus;
       if(this.morphologyTopology==='radial') chaseForce*=1.05;
       if(this.morphologyTopology==='chain') chaseForce*=0.98;
+      if(duelExperimentActive && this._kinematicsStep){
+        this._kinematicsStep.steeringX=(dx/d);
+        this._kinematicsStep.steeringY=(dy/d);
+        this._kinematicsStep.appliedForceX=(dx/d)*chaseForce;
+        this._kinematicsStep.appliedForceY=(dy/d)*chaseForce;
+        this._kinematicsStep.chaseForce=chaseForce;
+      }
       this.vx += (dx/d)*chaseForce;
       this.vy += (dy/d)*chaseForce;
       prey.predatorThreatId=this.id;
@@ -5112,6 +5123,19 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     }
 
     step(){
+      if(duelExperimentActive){
+        this._kinematicsStep={
+          startX:this.x,
+          startY:this.y,
+          prevVx:this.vx||0,
+          prevVy:this.vy||0,
+          steeringX:0,
+          steeringY:0,
+          appliedForceX:0,
+          appliedForceY:0,
+          dampingFactor:1
+        };
+      }
       if((this.age & 3)===0){ this.trail.push({x:this.x,y:this.y}); if(this.trail.length>16) this.trail.shift(); }
       if(this.attackCD>0) this.attackCD--; if(this.protect>0) this.protect--; if(this.fleeTimer>0) this.fleeTimer--; if(this.mutagenBoost>0) this.mutagenBoost--; if(this.burstTimer>0) this.burstTimer--; if(this.grazingTimer>0) this.grazingTimer--; if(this.newSpeciesFlash>0) this.newSpeciesFlash--;
 
@@ -5375,6 +5399,17 @@ if(Z>0.08){
       const grazingSpeedMul=isGrazingMotion ? 0.90 : 1.0;
       const maxSpBeforeGrazing=this.maxSpeed*desired*fleeBoost*burstBoost*worldEvent.speedMul*spBias*localSpeedMul*carnivoreChaseSpeedMul;
       const maxSp=maxSpBeforeGrazing*grazingSpeedMul;
+      if(duelExperimentActive && this._kinematicsStep){
+        this._kinematicsStep.configuredBaseMaxSpeed=this.maxSpeed;
+        this._kinematicsStep.effectiveMaxSpeed=maxSp;
+        this._kinematicsStep.maxSpBeforeGrazing=maxSpBeforeGrazing;
+        this._kinematicsStep.desiredSpeedMul=desired;
+        this._kinematicsStep.fleeBoost=fleeBoost;
+        this._kinematicsStep.burstBoost=burstBoost;
+        this._kinematicsStep.localSpeedMul=localSpeedMul;
+        this._kinematicsStep.carnivoreChaseSpeedMul=carnivoreChaseSpeedMul;
+        this._kinematicsStep.grazingSpeedMul=grazingSpeedMul;
+      }
       if(microStationary){
         this.vx=0;
         this.vy=0;
@@ -8241,13 +8276,94 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const v=String(value||'straightEscape').toLowerCase();
     if(v==='stationary') return 'stationary';
     if(v==='normal') return 'normal';
+    if(v==='straightescapeintegrated' || v==='integrated') return 'straightEscapeIntegrated';
+    if(v==='constantvelocityescape' || v==='constantvelocity' || v==='constant') return 'constantVelocityEscape';
+    if(v==='straightescapecurrent' || v==='current') return 'straightEscapeCurrent';
     return 'straightEscape';
+  }
+  function duelBehaviorIsCurrentEscape(behavior){
+    return behavior==='straightEscape' || behavior==='straightEscapeCurrent';
+  }
+  function duelBehaviorIsMovingEscape(behavior){
+    return behavior!=='stationary' && behavior!=='normal';
+  }
+  function duelInitialVelocityModes(value){
+    if(typeof value==='string') return {predator:value,prey:value};
+    const obj=value && typeof value==='object' ? value : {};
+    return {predator:obj.predator || 'zero', prey:obj.prey || 'zero', predatorExplicit:obj.predatorExplicit || obj.predatorVelocity || null, preyExplicit:obj.preyExplicit || obj.preyVelocity || null};
+  }
+  function duelHeadingUnit(angle){
+    return {x:Math.cos(angle||0), y:Math.sin(angle||0)};
+  }
+  function duelEstimateNormalCruiseSpeed(genes,kind='subject'){
+    const key=`${kind}:${JSON.stringify(duelCloneGenes(genes))}`;
+    if(duelCruiseSpeedCache.has(key)) return duelCruiseSpeedCache.get(key);
+    const saved=capture();
+    const oldDuel=duelExperimentActive;
+    const oldEnergyObserver=microEnergyObserver;
+    const oldEnergySubject=microEnergySubjectId;
+    let estimate=0;
+    try{
+      duelExperimentActive=true;
+      microEnergyObserver=null;
+      microEnergySubjectId=null;
+      duelResetArena();
+      const o=duelMakeOrganism(W*0.5,H*0.5,genes,kind==='prey'?'prey':'predator',{energy:82,heading:0});
+      o.restT=0; o.restCD=999999; o.nextPreyScan=frame+999999;
+      organisms.push(o);
+      let sum=0, count=0;
+      for(let i=1;i<=60;i++){
+        frame++;
+        buildSpatialIndex();
+        o.step();
+        if(i>20){ sum+=Math.hypot(o.vx||0,o.vy||0); count++; }
+      }
+      estimate=count ? sum/count : 0;
+    } finally {
+      microEnergyObserver=oldEnergyObserver;
+      microEnergySubjectId=oldEnergySubject;
+      duelExperimentActive=oldDuel;
+      restore(saved);
+    }
+    duelCruiseSpeedCache.set(key,estimate);
+    return estimate;
+  }
+  function duelApplyInitialVelocity(predator,prey,pose,rawOptions,predatorMax,preyMax){
+    const modes=duelInitialVelocityModes(rawOptions.initialVelocityMode);
+    const angle=(Number(rawOptions.initialAngleDeg)||0)*Math.PI/180;
+    const toward=duelHeadingUnit(angle);
+    const apply=(o,mode,maxSpeed,dir,explicit)=>{
+      const m=String(mode||'zero').toLowerCase();
+      if(m==='aligned-max' || m==='alignedmax' || m==='max'){
+        o.vx=dir.x*maxSpeed; o.vy=dir.y*maxSpeed;
+      } else if(m==='normal-cruise' || m==='normalcruise' || m==='cruise'){
+        const cruise=duelEstimateNormalCruiseSpeed(o.genes,o._duelKind||'subject');
+        o.vx=dir.x*cruise; o.vy=dir.y*cruise;
+      } else if(m==='explicit' && explicit){
+        o.vx=Number(explicit.vx)||0; o.vy=Number(explicit.vy)||0;
+      } else {
+        o.vx=0; o.vy=0;
+      }
+    };
+    apply(predator,modes.predator,predatorMax,toward,modes.predatorExplicit);
+    apply(prey,modes.prey,preyMax,toward,modes.preyExplicit ? modes.preyExplicit : null);
+    if(String(modes.prey||'zero').toLowerCase()!=='explicit'){
+      if(String(modes.prey||'zero').toLowerCase()==='aligned-max' || String(modes.prey||'zero').toLowerCase()==='alignedmax' || String(modes.prey||'zero').toLowerCase()==='max'){
+        prey.vx=toward.x*preyMax; prey.vy=toward.y*preyMax;
+      } else if(String(modes.prey||'zero').toLowerCase()==='normal-cruise' || String(modes.prey||'zero').toLowerCase()==='normalcruise' || String(modes.prey||'zero').toLowerCase()==='cruise'){
+        const cruise=duelEstimateNormalCruiseSpeed(prey.genes,'prey');
+        prey.vx=toward.x*cruise; prey.vy=toward.y*cruise;
+      }
+    }
+    predator.heading=Math.atan2(predator.vy, predator.vx) || angle;
+    prey.heading=Math.atan2(prey.vy, prey.vx) || angle;
+    return modes;
   }
   function duelApplyInitialPose(predator,prey,opts){
     const angle=(Number(opts.initialAngleDeg)||0) * Math.PI/180;
     const contact=duelContactRadius(predator,prey);
     const sense=predator.senseR*(predator.morphologyTopology==='branch'?1.18:1.0)*(1.04 + (predator.genes?.diet||0)*0.22);
-    const lower=contact*2.5;
+    const lower=Math.max(contact*1.08, contact+1.0);
     const upper=Math.max(lower+1, sense*0.85);
     const fallback=clamp(sense*0.55,lower,upper);
     const dist=clamp(Number(opts.initialDistance)||fallback,lower,upper);
@@ -8271,11 +8387,37 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       prey.vx=0; prey.vy=0;
       return;
     }
-    if(behavior==='straightEscape'){
-      const dx=prey.x-predator.x, dy=prey.y-predator.y;
-      const d=Math.hypot(dx,dy)||1;
+    const dx=prey.x-predator.x, dy=prey.y-predator.y;
+    const d=Math.hypot(dx,dy)||1;
+    if(duelBehaviorIsCurrentEscape(behavior)){
       prey.vx=(dx/d)*preyMaxSpeed;
       prey.vy=(dy/d)*preyMaxSpeed;
+      prey.x=clamp(prey.x+prey.vx,prey.size,W-prey.size);
+      prey.y=clamp(prey.y+prey.vy,prey.size,H-prey.size);
+      prey.fleeTimer=Math.max(prey.fleeTimer||0,20);
+      prey.heading=Math.atan2(prey.vy,prey.vx);
+    } else if(behavior==='straightEscapeIntegrated'){
+      const kin=prey._kinematicsStep || (prey._kinematicsStep={prevVx:prey.vx||0,prevVy:prey.vy||0,appliedForceX:0,appliedForceY:0,dampingFactor:1});
+      if(!prey.predatorThreatId){
+        const force=0.18;
+        prey.vx+=(dx/d)*force;
+        prey.vy+=(dy/d)*force;
+        kin.appliedForceX=(kin.appliedForceX||0)+(dx/d)*force;
+        kin.appliedForceY=(kin.appliedForceY||0)+(dy/d)*force;
+      }
+      const sp=Math.hypot(prey.vx||0,prey.vy||0);
+      if(sp>preyMaxSpeed && preyMaxSpeed>=0){ const k=preyMaxSpeed/Math.max(sp,0.001); prey.vx*=k; prey.vy*=k; }
+      kin.configuredBaseMaxSpeed=prey.maxSpeed||0;
+      kin.effectiveMaxSpeed=preyMaxSpeed;
+      prey.x=clamp(prey.x+(prey.vx||0),prey.size,W-prey.size);
+      prey.y=clamp(prey.y+(prey.vy||0),prey.size,H-prey.size);
+      prey.fleeTimer=Math.max(prey.fleeTimer||0,20);
+      prey.heading=Math.atan2(prey.vy,prey.vx);
+    } else if(behavior==='constantVelocityEscape'){
+      if(!Number.isFinite(prey._duelConstantEscapeAngle)) prey._duelConstantEscapeAngle=Math.atan2(dy,dx);
+      const a=prey._duelConstantEscapeAngle;
+      prey.vx=Math.cos(a)*preyMaxSpeed;
+      prey.vy=Math.sin(a)*preyMaxSpeed;
       prey.x=clamp(prey.x+prey.vx,prey.size,W-prey.size);
       prey.y=clamp(prey.y+prey.vy,prey.size,H-prey.size);
       prey.fleeTimer=Math.max(prey.fleeTimer||0,20);
@@ -8284,6 +8426,230 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   }
   function duelDistance(a,b){
     return Math.hypot((a?.x||0)-(b?.x||0),(a?.y||0)-(b?.y||0));
+  }
+  function duelStats(values){
+    const vals=(values||[]).map(Number).filter(Number.isFinite).sort((a,b)=>a-b);
+    if(!vals.length) return {mean:null,median:null,min:null,max:null,p10:null,p90:null};
+    const q=(p)=>vals[Math.max(0,Math.min(vals.length-1,Math.floor((vals.length-1)*p)))];
+    return {
+      mean:vals.reduce((a,b)=>a+b,0)/vals.length,
+      median:q(0.5),
+      min:vals[0],
+      max:vals[vals.length-1],
+      p10:q(0.1),
+      p90:q(0.9)
+    };
+  }
+  function duelKinematicsBlank(startDistance,contactDistance,predatorMax,preyMax,storeFrames=false){
+    const theoretical=predatorMax-preyMax;
+    return {
+      frames:[],
+      storeFrames:!!storeFrames,
+      samples:0,
+      startDistance,
+      contactDistance,
+      theoreticalCatchSteps:theoretical>0 ? Math.max(0,startDistance-contactDistance)/theoretical : null,
+      sums:{
+        predatorSpeed:0, preySpeed:0, predatorSpeedFraction:0, preySpeedFraction:0,
+        predatorProjected:0, preyProjected:0, observedClosing:0, theoreticalClosing:0,
+        closingEfficiency:0, closingErrorAbs:0, directionAlignment:0, lateralSpeed:0,
+        predatorAcceleration:0, preyAcceleration:0, predatorForce:0, preyForce:0,
+        energyCost:0
+      },
+      counts:{closingEfficiency:0,directionAlignment:0,positiveClosing:0,zeroOrNegativeClosing:0},
+      thresholds:{
+        predator25:null,predator50:null,predator75:null,predator90:null,
+        prey25:null,prey50:null,prey75:null,prey90:null
+      },
+      distanceAt:{30:null,60:null,120:null},
+      energyAt:{30:null,60:null,120:null},
+      firstClosingBelowZero:{step:null,energy:null},
+      alignments:[],
+      speedRatios:[],
+      wrapCrossingCount:0
+    };
+  }
+  function duelKinematicsSample(kin,step,predator,prey,beforePred,beforePrey,prevDistance,currentDistance,pose,preyMaxSpeed,constantEnergySpent=0){
+    if(!kin || !predator || !prey) return null;
+    const dx=(prey.x||0)-(predator.x||0), dy=(prey.y||0)-(predator.y||0);
+    const distance=Math.hypot(dx,dy);
+    const losX=distance>0 ? dx/distance : 1;
+    const losY=distance>0 ? dy/distance : 0;
+    const predSpeed=Math.hypot(predator.vx||0,predator.vy||0);
+    const preySpeed=Math.hypot(prey.vx||0,prey.vy||0);
+    const predKin=predator._kinematicsStep || {};
+    const preyKin=prey._kinematicsStep || {};
+    const predatorMax=Number.isFinite(predKin.effectiveMaxSpeed) ? predKin.effectiveMaxSpeed : duelEffectiveMaxSpeed(predator,{predatorChase:!!predator.preyTargetId});
+    const preyMax=Number.isFinite(preyKin.effectiveMaxSpeed) ? preyKin.effectiveMaxSpeed : preyMaxSpeed;
+    const predProjected=(predator.vx||0)*losX + (predator.vy||0)*losY;
+    const preyProjected=(prey.vx||0)*losX + (prey.vy||0)*losY;
+    const radialRelativeVelocity=predProjected-preyProjected;
+    const observedClosingSpeed=(Number(prevDistance)||0)-distance;
+    const theoreticalMaxClosingSpeed=predatorMax-preyMax;
+    const closingEfficiency=theoreticalMaxClosingSpeed>0 ? observedClosingSpeed/theoreticalMaxClosingSpeed : null;
+    const alignment=predSpeed>0.0001 ? predProjected/predSpeed : null;
+    const predAccel=Math.hypot((predator.vx||0)-(beforePred?.vx||0),(predator.vy||0)-(beforePred?.vy||0));
+    const preyAccel=Math.hypot((prey.vx||0)-(beforePrey?.vx||0),(prey.vy||0)-(beforePrey?.vy||0));
+    const predForce=Math.hypot(predKin.appliedForceX||0,predKin.appliedForceY||0);
+    const preyForce=Math.hypot(preyKin.appliedForceX||0,preyKin.appliedForceY||0);
+    const energyCost=Math.max(0,(beforePred?.energy??predator.energy)-predator.energy)+Math.max(0,constantEnergySpent||0);
+    const remaining=Math.max(0,distance-(pose?.contactDistance||0));
+    const observedCatch=observedClosingSpeed>0 ? remaining/observedClosingSpeed : null;
+    const maxCatch=theoreticalMaxClosingSpeed>0 ? remaining/theoreticalMaxClosingSpeed : null;
+    const predictedEnergyAtContact=observedCatch!=null ? predator.energy - energyCost*observedCatch : null;
+    const closingReconciliationError=observedClosingSpeed-radialRelativeVelocity;
+    const frameSample={
+      step,
+      predator:{
+        x:predator.x,y:predator.y,vx:predator.vx||0,vy:predator.vy||0,
+        speedMagnitude:predSpeed,
+        previousSpeedMagnitude:Math.hypot(beforePred?.vx||0,beforePred?.vy||0),
+        accelerationMagnitude:predAccel,
+        configuredBaseMaxSpeed:predKin.configuredBaseMaxSpeed ?? predator.maxSpeed ?? null,
+        effectiveMaxSpeed:predatorMax,
+        speedFractionOfEffectiveMax:predatorMax>0 ? predSpeed/predatorMax : null,
+        steeringX:predKin.steeringX||0, steeringY:predKin.steeringY||0,
+        steeringMagnitude:Math.hypot(predKin.steeringX||0,predKin.steeringY||0),
+        appliedForceX:predKin.appliedForceX||0, appliedForceY:predKin.appliedForceY||0,
+        appliedForceMagnitude:predForce,
+        dampingFactor:predKin.dampingFactor ?? 1,
+        energy:predator.energy,
+        energyFraction:predator.energy/Math.max(0.001,predator.reproThreshold||1),
+        headingX:Math.cos(predator.heading||0), headingY:Math.sin(predator.heading||0)
+      },
+      prey:{
+        x:prey.x,y:prey.y,vx:prey.vx||0,vy:prey.vy||0,
+        speedMagnitude:preySpeed,
+        previousSpeedMagnitude:Math.hypot(beforePrey?.vx||0,beforePrey?.vy||0),
+        accelerationMagnitude:preyAccel,
+        configuredBaseMaxSpeed:preyKin.configuredBaseMaxSpeed ?? prey.maxSpeed ?? null,
+        effectiveMaxSpeed:preyMax,
+        speedFractionOfEffectiveMax:preyMax>0 ? preySpeed/preyMax : null,
+        steeringX:preyKin.steeringX||0, steeringY:preyKin.steeringY||0,
+        steeringMagnitude:Math.hypot(preyKin.steeringX||0,preyKin.steeringY||0),
+        appliedForceX:preyKin.appliedForceX||0, appliedForceY:preyKin.appliedForceY||0,
+        appliedForceMagnitude:preyForce,
+        dampingFactor:preyKin.dampingFactor ?? 1,
+        energy:prey.energy,
+        energyFraction:prey.energy/Math.max(0.001,prey.reproThreshold||1),
+        headingX:Math.cos(prey.heading||0), headingY:Math.sin(prey.heading||0)
+      },
+      relative:{
+        wrapAwareDx:dx,
+        wrapAwareDy:dy,
+        distance,
+        lineOfSightX:losX,
+        lineOfSightY:losY,
+        predatorProjectedTowardPrey:predProjected,
+        preyProjectedAwayFromPredator:preyProjected,
+        radialRelativeVelocity,
+        theoreticalMaxClosingSpeed,
+        observedDistanceDelta:observedClosingSpeed,
+        observedClosingSpeed,
+        closingEfficiency,
+        directionAlignmentCosine:alignment,
+        lateralSpeed:alignment==null ? null : Math.sqrt(Math.max(0,predSpeed*predSpeed-predProjected*predProjected)),
+        predictedCatchStepsFromObservedClosing:observedCatch,
+        predictedCatchStepsFromMaxSpeeds:maxCatch,
+        energyCostPerStep:energyCost,
+        predictedEnergyAtContact,
+        closingReconciliationError
+      }
+    };
+    kin.samples++;
+    kin.sums.predatorSpeed+=predSpeed;
+    kin.sums.preySpeed+=preySpeed;
+    kin.sums.predatorSpeedFraction+=frameSample.predator.speedFractionOfEffectiveMax||0;
+    kin.sums.preySpeedFraction+=frameSample.prey.speedFractionOfEffectiveMax||0;
+    kin.sums.predatorProjected+=predProjected;
+    kin.sums.preyProjected+=preyProjected;
+    kin.sums.observedClosing+=observedClosingSpeed;
+    kin.sums.theoreticalClosing+=theoreticalMaxClosingSpeed;
+    kin.sums.closingErrorAbs+=Math.abs(closingReconciliationError);
+    kin.sums.predatorAcceleration+=predAccel;
+    kin.sums.preyAcceleration+=preyAccel;
+    kin.sums.predatorForce+=predForce;
+    kin.sums.preyForce+=preyForce;
+    kin.sums.energyCost+=energyCost;
+    if(closingEfficiency!=null && Number.isFinite(closingEfficiency)){ kin.sums.closingEfficiency+=closingEfficiency; kin.counts.closingEfficiency++; }
+    if(alignment!=null && Number.isFinite(alignment)){ kin.sums.directionAlignment+=alignment; kin.counts.directionAlignment++; kin.alignments.push(alignment); }
+    if(observedClosingSpeed>0) kin.counts.positiveClosing++; else kin.counts.zeroOrNegativeClosing++;
+    if(predatorMax>0 && predSpeed/predatorMax>=0.25 && kin.thresholds.predator25==null) kin.thresholds.predator25=step;
+    if(predatorMax>0 && predSpeed/predatorMax>=0.50 && kin.thresholds.predator50==null) kin.thresholds.predator50=step;
+    if(predatorMax>0 && predSpeed/predatorMax>=0.75 && kin.thresholds.predator75==null) kin.thresholds.predator75=step;
+    if(predatorMax>0 && predSpeed/predatorMax>=0.90 && kin.thresholds.predator90==null) kin.thresholds.predator90=step;
+    if(preyMax>0 && preySpeed/preyMax>=0.25 && kin.thresholds.prey25==null) kin.thresholds.prey25=step;
+    if(preyMax>0 && preySpeed/preyMax>=0.50 && kin.thresholds.prey50==null) kin.thresholds.prey50=step;
+    if(preyMax>0 && preySpeed/preyMax>=0.75 && kin.thresholds.prey75==null) kin.thresholds.prey75=step;
+    if(preyMax>0 && preySpeed/preyMax>=0.90 && kin.thresholds.prey90==null) kin.thresholds.prey90=step;
+    if(step===30) { kin.distanceAt[30]=distance; kin.energyAt[30]=predator.energy; }
+    if(step===60) { kin.distanceAt[60]=distance; kin.energyAt[60]=predator.energy; }
+    if(step===120) { kin.distanceAt[120]=distance; kin.energyAt[120]=predator.energy; }
+    if(observedClosingSpeed<=0 && kin.firstClosingBelowZero.step==null){
+      kin.firstClosingBelowZero.step=step;
+      kin.firstClosingBelowZero.energy=predator.energy;
+    }
+    if(preySpeed>0 && predSpeed>0) kin.speedRatios.push(preySpeed/Math.max(0.001,predSpeed));
+    if(kin.storeFrames && kin.frames.length<PURSUIT_KINEMATICS_FRAME_LIMIT) kin.frames.push(frameSample);
+    return frameSample;
+  }
+  function duelFinalizeKinematics(kin,result,predator,prey){
+    if(!kin) return null;
+    const n=Math.max(1,kin.samples||0);
+    const dist30=kin.distanceAt[30] ?? result.endDistance;
+    const dist60=kin.distanceAt[60] ?? result.endDistance;
+    const dist120=kin.distanceAt[120] ?? result.endDistance;
+    const meanObserved=kin.sums.observedClosing/n;
+    const remaining=Math.max(0,(result.endDistance||0)-(result.contactDistance||0));
+    return {
+      targetAcquired:!!result.targetAcquired,
+      contactReached:!!result.contactReached,
+      attackAttempted:!!result.attackAttempted,
+      predationSucceeded:!!result.predationSucceeded,
+      endReason:result.endReason,
+      startDistance:result.startDistance,
+      minimumDistance:result.minDistance,
+      endDistance:result.endDistance,
+      meanPredatorSpeed:kin.sums.predatorSpeed/n,
+      meanPreySpeed:kin.sums.preySpeed/n,
+      meanActualSpeedRatio:duelStats(kin.speedRatios).mean,
+      meanPredatorSpeedFraction:kin.sums.predatorSpeedFraction/n,
+      meanPreySpeedFraction:kin.sums.preySpeedFraction/n,
+      predatorTimeTo25PercentMax:kin.thresholds.predator25,
+      predatorTimeTo50PercentMax:kin.thresholds.predator50,
+      predatorTimeTo75PercentMax:kin.thresholds.predator75,
+      predatorTimeTo90PercentMax:kin.thresholds.predator90,
+      preyTimeTo25PercentMax:kin.thresholds.prey25,
+      preyTimeTo50PercentMax:kin.thresholds.prey50,
+      preyTimeTo75PercentMax:kin.thresholds.prey75,
+      preyTimeTo90PercentMax:kin.thresholds.prey90,
+      meanPredatorProjectedSpeed:kin.sums.predatorProjected/n,
+      meanPreyEscapeProjectedSpeed:kin.sums.preyProjected/n,
+      meanObservedClosingSpeed:meanObserved,
+      meanTheoreticalMaxClosingSpeed:kin.sums.theoreticalClosing/n,
+      meanClosingEfficiency:kin.counts.closingEfficiency ? kin.sums.closingEfficiency/kin.counts.closingEfficiency : null,
+      positiveClosingStepRate:kin.counts.positiveClosing/n,
+      zeroOrNegativeClosingStepRate:kin.counts.zeroOrNegativeClosing/n,
+      distanceReductionFirst30Steps:result.startDistance-dist30,
+      distanceReductionFirst60Steps:result.startDistance-dist60,
+      distanceReductionFirst120Steps:result.startDistance-dist120,
+      predatorEnergyAt30:kin.energyAt[30],
+      predatorEnergyAt60:kin.energyAt[60],
+      predatorEnergyAt120:kin.energyAt[120],
+      energyWhenClosingSpeedFirstBelowZero:kin.firstClosingBelowZero.energy,
+      stepWhenClosingSpeedFirstBelowZero:kin.firstClosingBelowZero.step,
+      estimatedCatchStepAtStart:kin.theoreticalCatchSteps,
+      estimatedCatchStepAt30:kin.distanceAt[30]!=null && meanObserved>0 ? Math.max(0,kin.distanceAt[30]-result.contactDistance)/meanObserved : null,
+      estimatedCatchStepAt60:kin.distanceAt[60]!=null && meanObserved>0 ? Math.max(0,kin.distanceAt[60]-result.contactDistance)/meanObserved : null,
+      totalEnergySpent:result.constantEnergyDiagnostic ? result.constantEnergySpent : result.predatorEnergySpent,
+      energySpentPerDistanceClosed:(result.startDistance-result.minDistance)>0 ? ((result.constantEnergyDiagnostic ? result.constantEnergySpent : result.predatorEnergySpent)/(result.startDistance-result.minDistance)) : null,
+      wrapCrossingCount:kin.wrapCrossingCount,
+      closingReconciliationError:kin.sums.closingErrorAbs/n,
+      directionAlignment:duelStats(kin.alignments),
+      predictedCatchStepsFromObservedClosing:meanObserved>0 ? remaining/meanObserved : null,
+      energyDepletedStep:result.predatorDied ? result.completedStep ?? null : null,
+      frames:kin.frames
+    };
   }
   function duelSummarizeResults(results,options,meta={}){
     const n=results.length||1;
@@ -8297,6 +8663,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const contact=count('contactReached');
     const target=count('targetAcquired');
     const attack=count('attackAttempted');
+    const kavg=k=>{
+      const vals=results.map(r=>r.pursuitKinematics?.[k]).filter(v=>v!=null).map(Number).filter(Number.isFinite);
+      return vals.length ? vals.reduce((a,b)=>a+b,0)/vals.length : null;
+    };
     return {
       repeats:n,
       targetAcquired:target,
@@ -8326,6 +8696,26 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       averagePredatorStartSpeed:avg('predatorStartSpeed'),
       averagePreyStartSpeed:avg('preyStartSpeed'),
       averageActualSpeedRatio:avg('actualSpeedRatio'),
+      kinematics:{
+        meanPredatorSpeed:kavg('meanPredatorSpeed'),
+        meanPreySpeed:kavg('meanPreySpeed'),
+        meanActualSpeedRatio:kavg('meanActualSpeedRatio'),
+        meanPredatorSpeedFraction:kavg('meanPredatorSpeedFraction'),
+        meanPreySpeedFraction:kavg('meanPreySpeedFraction'),
+        meanPredatorProjectedSpeed:kavg('meanPredatorProjectedSpeed'),
+        meanPreyEscapeProjectedSpeed:kavg('meanPreyEscapeProjectedSpeed'),
+        meanObservedClosingSpeed:kavg('meanObservedClosingSpeed'),
+        meanTheoreticalMaxClosingSpeed:kavg('meanTheoreticalMaxClosingSpeed'),
+        meanClosingEfficiency:kavg('meanClosingEfficiency'),
+        positiveClosingStepRate:kavg('positiveClosingStepRate'),
+        zeroOrNegativeClosingStepRate:kavg('zeroOrNegativeClosingStepRate'),
+        predatorTimeTo90PercentMax:kavg('predatorTimeTo90PercentMax'),
+        preyTimeTo90PercentMax:kavg('preyTimeTo90PercentMax'),
+        closingReconciliationError:kavg('closingReconciliationError'),
+        distanceReductionFirst30Steps:kavg('distanceReductionFirst30Steps'),
+        distanceReductionFirst60Steps:kavg('distanceReductionFirst60Steps'),
+        totalEnergySpent:kavg('totalEnergySpent')
+      },
       averageNearMissCount:avg('nearMissCount'),
       averageTargetSwitchCount:avg('targetSwitchCount'),
       averageLostTargetCount:avg('lostTargetCount'),
@@ -8334,7 +8724,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       options
     };
   }
-  function duelTraceFrame(step,predator,prey,result,pose,endReason=null){
+  function duelTraceFrame(step,predator,prey,result,pose,endReason=null,kinematicsFrame=null){
     const distance=duelDistance(predator,prey);
     const headingOf=o=>Number.isFinite(o.heading) ? o.heading : Math.atan2(o.vy||0,o.vx||0);
     return {
@@ -8365,7 +8755,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       maxPreySize:predator.size,
       targetDirection:Math.atan2(prey.y-predator.y,prey.x-predator.x),
       energySpent:Math.max(0,result.predatorStartEnergy-predator.energy),
-      attackAttemptCount:result.attackAttemptCount||0
+      attackAttemptCount:result.attackAttemptCount||0,
+      kinematics:kinematicsFrame || null
     };
   }
 
@@ -8936,6 +9327,115 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       {key:'C-chase',label:'carnivore chase',scenarioType:'solo-starvation',template:'controlled-carnivore',behaviorMode:'chase'}
     ];
   }
+  function pursuitConditions(pack='pursuit-kinematics'){
+    const out=[];
+    const add=(group,key,label,opts)=>out.push({group,key,label,...opts});
+    for(const speed of [0.40,0.45,0.50,0.55,0.60,0.623,0.65,0.70]){
+      add('velocity-boundary',`R${String(speed).replace('.','_')}`,`speed ${speed}`,{preySpeedRatio:speed,preyBehavior:'straightEscape',initialDistance:45,initialVelocityMode:{predator:'zero',prey:'zero'},repeatsHint:20});
+    }
+    for(const speed of [0.50,0.623]){
+      for(const [key,pred,prey] of [['I1','zero','zero'],['I2','zero','aligned-max'],['I3','aligned-max','aligned-max'],['I4','aligned-max','zero'],['I5','normal-cruise','normal-cruise']]){
+        add('initial-velocity',`${key}-${String(speed).replace('.','_')}`,`${key} speed ${speed}`,{preySpeedRatio:speed,preyBehavior:'straightEscape',initialDistance:45,initialVelocityMode:{predator:pred,prey}});
+      }
+    }
+    for(const speed of [0.50,0.60,0.623]){
+      add('movement-integration',`M-current-${String(speed).replace('.','_')}`,`current ${speed}`,{preySpeedRatio:speed,preyBehavior:'straightEscapeCurrent',initialDistance:45,initialVelocityMode:{predator:'zero',prey:'zero'}});
+      add('movement-integration',`M-integrated-${String(speed).replace('.','_')}`,`integrated ${speed}`,{preySpeedRatio:speed,preyBehavior:'straightEscapeIntegrated',initialDistance:45,initialVelocityMode:{predator:'zero',prey:'zero'}});
+      add('movement-integration',`M-constant-${String(speed).replace('.','_')}`,`constant ${speed}`,{preySpeedRatio:speed,preyBehavior:'constantVelocityEscape',initialDistance:45,initialVelocityMode:{predator:'zero',prey:'zero'}});
+    }
+    for(const speed of [0.50,0.60,0.623]){
+      for(const distance of [15,25,35,45,60]){
+        add('initial-distance',`D-${String(speed).replace('.','_')}-${distance}`,`speed ${speed} dist ${distance}`,{preySpeedRatio:speed,preyBehavior:'straightEscapeIntegrated',initialDistance:distance,initialVelocityMode:{predator:'zero',prey:'zero'}});
+      }
+    }
+    const standardEnergy=82.5*0.82;
+    for(const [key,label,energy] of [['low','low',82.5*0.62],['standard','standard',standardEnergy],['full','full',82.5*1.25],['double','2x standard',standardEnergy*2]]){
+      add('energy-level',`E-${key}`,label,{preySpeedRatio:0.623,preyBehavior:'straightEscapeCurrent',initialDistance:45,initialVelocityMode:{predator:'zero',prey:'zero'},predatorEnergy:energy});
+    }
+    for(const speed of [0.60,0.623]){
+      add('constant-energy',`CE-${String(speed).replace('.','_')}`,`constant energy ${speed}`,{preySpeedRatio:speed,preyBehavior:'straightEscapeCurrent',initialDistance:45,initialVelocityMode:{predator:'zero',prey:'zero'},constantEnergy:true});
+    }
+    for(const speed of [0.40,0.623]){
+      add('acceleration',`A-${String(speed).replace('.','_')}`,`acceleration ${speed}`,{preySpeedRatio:speed,preyBehavior:'straightEscapeIntegrated',initialDistance:60,initialVelocityMode:{predator:'zero',prey:'zero'}});
+    }
+    return out;
+  }
+  function pursuitScenarioOptions(condition,packOptions={}){
+    return {
+      preySizeRatio:condition.preySizeRatio ?? 0.70,
+      preySpeedRatio:condition.preySpeedRatio ?? 0.60,
+      preyBehavior:condition.preyBehavior || 'straightEscape',
+      initialDistance:condition.initialDistance ?? 45,
+      initialVelocityMode:condition.initialVelocityMode || {predator:'zero',prey:'zero'},
+      predatorEnergy:condition.predatorEnergy,
+      constantEnergy:!!condition.constantEnergy,
+      maxSteps:clamp(Number(packOptions.maxSteps ?? condition.maxSteps ?? 600),1,2000)|0,
+      repeats:clamp(Number(packOptions.repeats ?? 20),1,100)|0,
+      seed:packOptions.seed,
+      pursuitKinematics:true,
+      recordTrace:false,
+      recordKinematicsFrames:false
+    };
+  }
+  function summarizePursuitCondition(condition,duelResult,representative){
+    const results=duelResult.results || [];
+    const kin=results.map(r=>r.pursuitKinematics).filter(Boolean);
+    const kstats=(field)=>duelStats(kin.map(k=>k?.[field]));
+    const rstats=(field)=>duelStats(results.map(r=>r?.[field]));
+    const count=(fn)=>results.filter(fn).length;
+    return {
+      key:condition.key,
+      label:condition.label,
+      group:condition.group,
+      repeats:results.length,
+      targetRate:results.length ? count(r=>r.targetAcquired)/results.length : null,
+      contactRate:results.length ? count(r=>r.contactReached)/results.length : null,
+      attackRate:results.length ? count(r=>r.attackAttempted)/results.length : null,
+      successRate:results.length ? count(r=>r.predationSucceeded)/results.length : null,
+      energyDepletedRate:results.length ? count(r=>r.endReason==='energyDepleted')/results.length : null,
+      failureReasons:duelResult.summary?.failureReasons || {},
+      minDistance:rstats('minDistance'),
+      endDistance:rstats('endDistance'),
+      predatorSpeed:kstats('meanPredatorSpeed'),
+      preySpeed:kstats('meanPreySpeed'),
+      actualSpeedRatio:kstats('meanActualSpeedRatio'),
+      predatorSpeedFraction:kstats('meanPredatorSpeedFraction'),
+      preySpeedFraction:kstats('meanPreySpeedFraction'),
+      predator90Step:kstats('predatorTimeTo90PercentMax'),
+      prey90Step:kstats('preyTimeTo90PercentMax'),
+      predatorProjected:kstats('meanPredatorProjectedSpeed'),
+      preyProjected:kstats('meanPreyEscapeProjectedSpeed'),
+      observedClosing:kstats('meanObservedClosingSpeed'),
+      theoreticalClosing:kstats('meanTheoreticalMaxClosingSpeed'),
+      closingEfficiency:kstats('meanClosingEfficiency'),
+      distanceReduction30:kstats('distanceReductionFirst30Steps'),
+      distanceReduction60:kstats('distanceReductionFirst60Steps'),
+      closingReconciliationError:kstats('closingReconciliationError'),
+      energySpent:kstats('totalEnergySpent'),
+      theoreticalCatchStep:kstats('estimatedCatchStepAtStart'),
+      observedCatchStep:kstats('predictedCatchStepsFromObservedClosing'),
+      representative
+    };
+  }
+  function runPursuitKinematicsPack(options={}){
+    const pack=String(options.pack||'pursuit-kinematics');
+    const repeats=clamp(Number(options.repeats ?? 20),1,100)|0;
+    const maxSteps=clamp(Number(options.maxSteps ?? 600),1,2000)|0;
+    const seedBase=Number(options.seed ?? 97001);
+    const startedAt=Date.now();
+    const conditions=pursuitConditions(pack);
+    const conditionResults=[];
+    for(let idx=0; idx<conditions.length; idx++){
+      const condition=conditions[idx];
+      const duel=runPredationDuel({...pursuitScenarioOptions(condition,{repeats,maxSteps,seed:seedBase+idx*101}),restoreAfterRun:true});
+      const rep=runPredationDuel({...pursuitScenarioOptions(condition,{repeats:1,maxSteps,seed:seedBase+idx*101+17}),recordTrace:true,recordKinematicsFrames:true,restoreAfterRun:true});
+      conditionResults.push({condition,summary:summarizePursuitCondition(condition,duel,rep.results?.[0] || null),duelId:duel.duelId,representativeDuelId:rep.duelId});
+    }
+    const record={packId:`pursuit-${startedAt}-${pursuitKinematicsHistory.length+1}`,pack,startedAt,completedAt:Date.now(),repeats,maxSteps,conditions:conditionResults};
+    pursuitKinematicsHistory.push(record);
+    while(pursuitKinematicsHistory.length>PURSUIT_KINEMATICS_HISTORY_LIMIT) pursuitKinematicsHistory.shift();
+    return record;
+  }
   function summarizeMicroCondition(condition,results,representative){
     const survival=results.map(r=>r.completedSteps);
     const lossPer100=results.map(r=>{
@@ -8967,6 +9467,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   }
   function runExperimentPack(options={}){
     const pack=String(options.pack||'starvation-lifespan');
+    if(pack==='pursuit-kinematics' || pack==='pursuit-all'){
+      return runPursuitKinematicsPack(options);
+    }
     const repeats=clamp(Number(options.repeats ?? 20),1,100)|0;
     const maxSteps=clamp(Number(options.maxSteps ?? 3000),1,3000)|0;
     const baseSeed=Number(options.seed ?? 91001);
@@ -9027,8 +9530,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     return {history:microScenarioHistory.map(x=>({scenarioId:x.scenarioId,scenarioType:x.scenarioType,endReason:x.endReason,completedSteps:x.completedSteps,observerResults:x.observerResults,traceSteps:x.trace?.length||0})),latest:latest||null,historyLimit:MICRO_SCENARIO_HISTORY_LIMIT};
   }
   function experimentPackSummary(id=null){
-    const latest=id ? microExperimentPackHistory.find(x=>x.packId===id) : microExperimentPackHistory[microExperimentPackHistory.length-1];
-    return {history:microExperimentPackHistory.map(x=>({packId:x.packId,pack:x.pack,repeats:x.repeats,maxSteps:x.maxSteps,conditions:x.conditions.map(c=>c.summary)})),latest:latest||null,historyLimit:MICRO_EXPERIMENT_PACK_HISTORY_LIMIT};
+    const all=[...microExperimentPackHistory,...pursuitKinematicsHistory];
+    const latest=id ? all.find(x=>x.packId===id) : all[all.length-1];
+    return {history:all.map(x=>({packId:x.packId,pack:x.pack,repeats:x.repeats,maxSteps:x.maxSteps,conditions:x.conditions.map(c=>c.summary)})),latest:latest||null,historyLimit:MICRO_EXPERIMENT_PACK_HISTORY_LIMIT};
   }
   function duelRunSingle(rawOptions, repeatIndex){
     const behavior=duelNormalizeBehavior(rawOptions.preyBehavior || rawOptions.preyHeadingMode);
@@ -9055,6 +9559,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const predatorChaseSpeed=duelEffectiveMaxSpeed(predator,{predatorChase:true});
     const requestedSpeedRatio=Number(rawOptions.preySpeedRatio)||0;
     const preyMovingSpeed=(behavior==='stationary' || requestedSpeedRatio<=0) ? 0 : duelEffectiveMaxSpeed(prey,{fleeing:true});
+    const initialVelocityMode=duelApplyInitialVelocity(predator,prey,pose,rawOptions,predatorChaseSpeed,preyMovingSpeed);
     const actualSpeedRatio=predatorChaseSpeed>0 ? preyMovingSpeed/predatorChaseSpeed : null;
     const startDistance=duelDistance(predator,prey);
     const startEnergy=predator.energy;
@@ -9108,8 +9613,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       contactDistance:pose.contactDistance,
       senseRange:pose.senseRange,
       predatorGenes:duelCloneGenes(predator.genes),
-      preyGenes:duelCloneGenes(prey.genes)
+      preyGenes:duelCloneGenes(prey.genes),
+      preyBehavior:behavior,
+      initialVelocityMode,
+      constantEnergyDiagnostic:!!rawOptions.constantEnergy,
+      constantEnergySpent:0,
+      completedStep:0
     };
+    const collectKinematics=rawOptions.pursuitKinematics !== false;
+    const kinematics=collectKinematics ? duelKinematicsBlank(startDistance,pose.contactDistance,predatorChaseSpeed,preyMovingSpeed,!!rawOptions.recordTrace || !!rawOptions.recordKinematicsFrames) : null;
     if(recordTrace) trace.push(duelTraceFrame(0,predator,prey,result,pose));
     let lastTarget=null;
     let eventCursor=telemetry.events.length;
@@ -9118,12 +9630,26 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     for(let step=1; step<=maxSteps; step++){
       buildSpatialIndex();
       const prevDistance=duelDistance(predator,prey);
+      const beforePred={x:predator.x,y:predator.y,vx:predator.vx||0,vy:predator.vy||0,energy:predator.energy};
+      const beforePrey={x:prey.x,y:prey.y,vx:prey.vx||0,vy:prey.vy||0,energy:prey.energy};
       if(behavior==='normal'){
         predator.step();
         if(!prey.dead) prey.step();
       } else {
         predator.step();
         duelMoveControlledPrey(prey,predator,behavior,preyMovingSpeed);
+      }
+      let constantEnergySpentThisStep=0;
+      if(rawOptions.constantEnergy){
+        const restoreEnergy=Number.isFinite(Number(rawOptions.constantEnergyValue)) ? Number(rawOptions.constantEnergyValue) : startEnergy;
+        constantEnergySpentThisStep=Math.max(0,restoreEnergy-(predator.energy||0));
+        result.constantEnergySpent+=constantEnergySpentThisStep;
+        if(predator.dead && predator.deathCause==='飢餓'){
+          predator.dead=false;
+          predator.deathCause=null;
+          corpses.length=0;
+        }
+        predator.energy=restoreEnergy;
       }
       const events=telemetry.events.slice(eventCursor);
       eventCursor=telemetry.events.length;
@@ -9150,6 +9676,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         }
       }
       const d=duelDistance(predator,prey);
+      const kinFrame=collectKinematics ? duelKinematicsSample(kinematics,step,predator,prey,beforePred,beforePrey,prevDistance,d,pose,preyMovingSpeed,constantEnergySpentThisStep) : null;
+      result.completedStep=step;
       if(d<result.minDistance){
         result.minDistance=d;
         result.closestApproachStep=step;
@@ -9170,7 +9698,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       }
       if(lastTarget!=null && nowTarget!=null && lastTarget!==nowTarget) result.targetSwitchCount++;
       lastTarget=nowTarget;
-      if(recordTrace && trace.length<=traceMax) trace.push(duelTraceFrame(step,predator,prey,result,pose));
+      if(recordTrace && trace.length<=traceMax) trace.push(duelTraceFrame(step,predator,prey,result,pose,null,kinFrame));
       if(predator.dead || predator.energy<=0){
         result.predatorDied=true;
         result.endReason='energyDepleted';
@@ -9190,6 +9718,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     else if(result.attackAttempted && !result.predationSucceeded && result.endReason==='chaseTimeout') result.endReason='attackFailed';
     result.predatorEndEnergy=predator.energy;
     result.predatorEnergySpent=Math.max(0,startEnergy-predator.energy);
+    result.completedStep ||= maxSteps;
+    if(collectKinematics){
+      result.pursuitKinematics=duelFinalizeKinematics(kinematics,result,predator,prey);
+    }
     if(recordTrace){
       if(trace.length){
         const last=trace[trace.length-1];
@@ -9219,6 +9751,12 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       repeats:clamp(Number(options.repeats ?? 20),1,100)|0,
       restoreAfterRun:options.restoreAfterRun !== false,
       recordTrace:!!options.recordTrace,
+      recordKinematicsFrames:!!options.recordKinematicsFrames,
+      pursuitKinematics:options.pursuitKinematics !== false,
+      initialVelocityMode:options.initialVelocityMode || {predator:'zero',prey:'zero'},
+      predatorEnergy:options.predatorEnergy,
+      constantEnergy:!!options.constantEnergy,
+      constantEnergyValue:options.constantEnergyValue,
       seed:options.seed
     };
     const saved=capture();
@@ -9250,12 +9788,42 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const record={id:`duel-${startedAt}-${predationDuelHistory.length+1}`,frame,options:opts,repeatsRequested:opts.repeats,repeatsCompleted:results.length,summary,results};
     predationDuelHistory.push(record);
     while(predationDuelHistory.length>PREDATION_DUEL_HISTORY_LIMIT) predationDuelHistory.shift();
-    return {options:opts,repeatsRequested:opts.repeats,repeatsCompleted:results.length,results,summary};
+    return {duelId:record.id,options:opts,repeatsRequested:opts.repeats,repeatsCompleted:results.length,results,summary};
   }
   function predationDuelSummary(){
     return {
       experiments:predationDuelHistory.map(x=>({id:x.id,frame:x.frame,options:x.options,repeatsCompleted:x.repeatsCompleted,summary:x.summary})),
       latest:predationDuelHistory[predationDuelHistory.length-1] || null,
+      historyLimit:PREDATION_DUEL_HISTORY_LIMIT
+    };
+  }
+  function pursuitKinematicsSummary(options={}){
+    const duelId=typeof options==='string' ? options : options?.duelId;
+    const includeFrames=!!(options && typeof options==='object' && options.includeFrames);
+    const record=duelId ? predationDuelHistory.find(x=>x.id===duelId) : predationDuelHistory[predationDuelHistory.length-1];
+    if(!record) return {latest:null,experiments:[],historyLimit:PREDATION_DUEL_HISTORY_LIMIT};
+    const compactResult=(r)=>({
+      repeatIndex:r.repeatIndex,
+      endReason:r.endReason,
+      targetAcquired:r.targetAcquired,
+      contactReached:r.contactReached,
+      attackAttempted:r.attackAttempted,
+      predationSucceeded:r.predationSucceeded,
+      startDistance:r.startDistance,
+      minDistance:r.minDistance,
+      endDistance:r.endDistance,
+      actualSpeedRatio:r.actualSpeedRatio,
+      pursuitKinematics:includeFrames ? r.pursuitKinematics : (r.pursuitKinematics ? {...r.pursuitKinematics,frames:undefined} : null)
+    });
+    return {
+      latest:{
+        id:record.id,
+        frame:record.frame,
+        options:record.options,
+        summary:record.summary,
+        results:record.results.map(compactResult)
+      },
+      experiments:predationDuelHistory.map(x=>({id:x.id,frame:x.frame,options:x.options,kinematics:x.summary?.kinematics || null})),
       historyLimit:PREDATION_DUEL_HISTORY_LIMIT
     };
   }
@@ -9320,6 +9888,18 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           {label:'速度0.70',preySizeRatio:0.70,preySpeedRatio:0.70,preyBehavior:'straightEscape',initialDistance:45},
           {label:'サイズ0.99',preySizeRatio:0.99,preySpeedRatio:0.40,preyBehavior:'straightEscape',initialDistance:45},
           {label:'サイズ1.01',preySizeRatio:1.01,preySpeedRatio:0.00,preyBehavior:'stationary',initialDistance:45}
+        ]
+      },
+      'pursuit-why-cannot-catch':{
+        name:'なぜ追いつけない？',
+        description:'速度差があるはずの1対1追跡で、実速度・接近速度・energyがどう変わるかを比べます。',
+        arenas:[
+          {label:'0.40 zero/current',preySizeRatio:0.70,preySpeedRatio:0.40,preyBehavior:'straightEscapeCurrent',initialDistance:45,initialVelocityMode:{predator:'zero',prey:'zero'}},
+          {label:'0.50 zero/current',preySizeRatio:0.70,preySpeedRatio:0.50,preyBehavior:'straightEscapeCurrent',initialDistance:45,initialVelocityMode:{predator:'zero',prey:'zero'}},
+          {label:'0.60 zero/current',preySizeRatio:0.70,preySpeedRatio:0.60,preyBehavior:'straightEscapeCurrent',initialDistance:45,initialVelocityMode:{predator:'zero',prey:'zero'}},
+          {label:'0.60 max/current',preySizeRatio:0.70,preySpeedRatio:0.60,preyBehavior:'straightEscapeCurrent',initialDistance:45,initialVelocityMode:{predator:'aligned-max',prey:'aligned-max'}},
+          {label:'0.60 zero/integrated',preySizeRatio:0.70,preySpeedRatio:0.60,preyBehavior:'straightEscapeIntegrated',initialDistance:45,initialVelocityMode:{predator:'zero',prey:'zero'}},
+          {label:'0.623 zero/integrated',preySizeRatio:0.70,preySpeedRatio:0.623,preyBehavior:'straightEscapeIntegrated',initialDistance:45,initialVelocityMode:{predator:'zero',prey:'zero'}}
         ]
       }
       ,
@@ -9540,6 +10120,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         preySpeedRatio:arenaOptions.preySpeedRatio,
         initialDistance:arenaOptions.initialDistance,
         preyBehavior:arenaOptions.preyBehavior,
+        initialVelocityMode:arenaOptions.initialVelocityMode || {predator:'zero',prey:'zero'},
         preyDefenseMode:'none',
         maxSteps,
         repeats:1,
@@ -11003,7 +11584,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         const subject=t?.participants?.find(p=>p.role==='subject' || p.role==='predator') || t?.participants?.[0] || t?.predator;
         card.querySelector('.stadium-metrics').textContent=t ? `step ${Math.min(step,arena.trace.length-1)} E ${stadiumNumber(subject?.energy,1)} move ${stadiumNumber(t.observerFrame?.totalDistance,1)}` : '';
       } else {
-        card.querySelector('.stadium-metrics').textContent=t ? `step ${Math.min(step,arena.trace.length-1)} d ${t.distance.toFixed(1)} E ${t.predator.energy.toFixed(1)}` : '';
+        const closing=t?.kinematics?.relative?.observedClosingSpeed;
+        const predSpeed=t?.kinematics?.predator?.speedMagnitude ?? (t ? Math.hypot(t.predator.vx,t.predator.vy) : null);
+        const preySpeed=t?.kinematics?.prey?.speedMagnitude ?? (t ? Math.hypot(t.prey.vx,t.prey.vy) : null);
+        card.querySelector('.stadium-metrics').textContent=t ? `step ${Math.min(step,arena.trace.length-1)} d ${t.distance.toFixed(1)} 近づく速さ ${stadiumNumber(closing,3)} P ${stadiumNumber(predSpeed,3)} / prey ${stadiumNumber(preySpeed,3)} E ${t.predator.energy.toFixed(1)}` : '';
       }
     }
     if(predationStadiumLab.selectedArenaIndex!=null){
@@ -11047,6 +11631,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           `捕食者energy: ${t.predator.energy.toFixed(2)}`,
           `捕食者速度: ${Math.hypot(t.predator.vx,t.predator.vy).toFixed(3)}`,
           `獲物速度: ${Math.hypot(t.prey.vx,t.prey.vy).toFixed(3)}`,
+          `近づく速さ: ${stadiumNumber(t.kinematics?.relative?.observedClosingSpeed,3)}`,
+          `最高速度に対する捕食者速度: ${stadiumNumber((t.kinematics?.predator?.speedFractionOfEffectiveMax||0)*100,0)}%`,
+          `closing efficiency: ${stadiumNumber(t.kinematics?.relative?.closingEfficiency,3)}`,
+          `理論接近速度: ${stadiumNumber(t.kinematics?.relative?.theoreticalMaxClosingSpeed,3)}`,
           `target: ${t.targetAcquired ? 'yes' : 'no'}`,
           `contact: ${t.contactReached ? 'yes' : 'no'}`,
           `attack: ${t.attackAttempted ? 'yes' : 'no'}`,
@@ -11146,6 +11734,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     predationDuelSummary(){
       return predationDuelSummary();
+    },
+    pursuitKinematicsSummary(options={}){
+      return pursuitKinematicsSummary(options);
     },
     generatePredationStadium(options={}){
       return generatePredationStadium(options);

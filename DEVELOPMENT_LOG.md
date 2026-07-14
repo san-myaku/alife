@@ -389,3 +389,58 @@ M1代表成功traceでは start 51.15、predationGain 131.92、attackCost 6.02�
 正式ベンチ `scripts/alife_micro_scenario_benchmark.cjs --pack all --repeats 20 --max-steps 3000` は完走。追加trace履歴は代表trace中心で有限化。通常ゲームの生態パラメータは変更なし。
 ### 採用判断
 `runMicroScenario()`、実験パック、energy observer、観察ラボ生命維持プリセット、ベンチスクリプトは採用。今回の結果から、次タスクで数値を変えるなら「捕食gain」より先に、二回目捕食の探索・選択・追跡成立条件を一項目ずつ検証する。
+## 2026-07-14 19:20 1対1追跡運動学と速度比境界の診断
+### 背景
+直前の1対1捕食実験では、獲物/捕食者の名目速度比0.623で target は100%取得する一方、contact 0%、energyDepleted となっていた。名目上は捕食者の追跡最高速度0.621、獲物速度0.387で差があるため、実速度、射影速度、energy低下、初期条件を分離して診断した。
+### 直前の推論修正
+実験APIの `initialDistance:45` は、実際には `contactDistance * 2.5` の下限で55.42へ引き上げられていた。これは今回の距離制御試験の意図と違うため、実験専用配置だけを「接触距離の外側」まで下げ、通常生態パラメータは変更せず再測定した。旧条件の明示再現として `initialDistance=55.42` では速度比0.623 current escape が contact 0/20、energyDepleted 20/20となった。
+### 現行の捕食者移動処理
+`Organism.step()` は各stepで場効果、近傍分離、社会steer、`updatePredationIntent()` を実行し、最後に速度上限でclampして `x += vx; y += vy` する。全体dampingは基本なく、休眠・待ち伏せ・群れなど状態別に限定的な速度乗算がある。
+### 現行の獲物逃走処理
+通常の獲物は捕食者追跡中に `prey.vx += (dx/d)*0.18*fleeMul; prey.vy += ...` を受け、`fleeTimer` が立つ。実験の current straightEscape はこの通常逃走impulseを受けた後に、獲物velocityを逃走方向の最高速度へ直接上書きする。
+### straightEscapeの実装
+`straightEscapeCurrent` は毎step、獲物 `vx/vy = 逃走方向 * preyMaxSpeed` として即時最高速度にする。`straightEscapeIntegrated` は比較用の実験専用方式で、通常の逃走forceとvelocity clampを通す。`constantVelocityEscape` は一定速度標的の対照であり、通常ゲームには使わない。
+### 速度比の正確な定義
+従来表示の速度比は `preyStartSpeed / predatorStartSpeed`。分子は獲物の逃走時effective max speed、分母は捕食者の追跡時effective max speedで、chase 1.08とflee 1.35は含むが、step中の低energy `desired *= 0.55` は初期表示値に含まれない。
+### 追跡最高速度の適用位置
+追跡速度1.08倍は `maxSpBeforeGrazing = maxSpeed * desired * fleeBoost * burstBoost * worldEvent.speedMul * spBias * localSpeedMul * carnivoreChaseSpeedMul` の `carnivoreChaseSpeedMul` として速度clamp直前に適用される。
+### force・加速・damping
+追跡forceは `chaseForce=(0.070 + 0.105*carn + 0.065*intent)*packBonus` をターゲット方向へ直接 `vx/vy` 加算する。速度は数stepで上限近くへ到達し、0.623代表では捕食者90%到達stepは3、獲物は1。dampingが主因という証拠はない。
+### energyによる運動補正
+獲物が十分遠く、`nearest` がない状態で `energy < reproThreshold*0.45` になると `desired *= 0.55`。0.623代表ではenergyが約33台に落ちたstep120で捕食者effective maxが0.318まで下がり、獲物0.387を下回った。
+### pursuitKinematics observer
+`pursuitKinematics` observerを追加し、捕食者・獲物の実速度、effective max speed、speed fraction、force、energy、射影速度、実測接近速度、理論接近速度、closing efficiency、距離微分誤差を記録する。`runPredationDuel()`, `runMicroScenario()` 互換で使える。
+### 射影速度と実測接近速度
+速度比0.623・実距離45の平均は捕食者実速度0.471、獲物0.388、捕食者射影0.470、獲物射影0.388、実測接近速度0.083。方向成分はほぼ接近に使われており、横滑り・旋回が第一原因ではない。
+### 距離微分の整合性
+0.623旧条件の closing reconciliation error は約 `1.4e-5`。radial relative velocity と実測distance deltaはほぼ一致し、ラップ境界や距離微分の不整合は主因ではない。
+### 速度境界0.40〜0.70
+実距離45、current escape、20反復。0.40: contact100%, success70%。0.45: contact100%, success90%。0.50: contact100%, success80%。0.55: contact100%, success75%。0.60: contact100%, success35%。0.623: contact100%, success15%。0.65: contact0%, success0%。0.70: contact0%, success0%。接触境界は0.623と0.65の間。
+### 初速条件比較
+速度比0.623では I1 zero/zero success20%、I2 predator zero/prey max success25%、I3 max/max success40%、I4 max/zero success15%、I5 normal-cruise success20%。初速だけで失敗は説明できず、捕食者をmax開始にすると改善するが完全解決ではない。
+### current/integrated escape比較
+速度比0.623では current success30%、integrated success30%、constant velocity success50%。currentだけが異常に有利という証拠は弱い。逃走統合方式より、必要距離とenergy時間の影響が大きい。
+### 初期距離比較
+実験配置を修正後、15は接触外の安全距離へclampされ、25/35/45/60は実距離として使用。速度比0.623 integratedでは、15: success95%、25: 90%、35: 80%、45: 25%、60: 0%。接触可否は初期距離に強く依存する。
+### energy条件比較
+速度比0.623 current、実距離45。low は contact0%、standard は contact100%/success40%、full は contact100%/success75%、2x standard は contact100%/success65%。energyを増やすと接触・成功が回復するが、これは通常パラメータ変更ではなく診断条件。
+### constant-energy診断
+速度比0.623、実距離45、constant-energyでは contact100%、success75%。通常energyでは低energy速度低下と寿命不足が絡む。energy固定でも平均closingが極端に大きいわけではなく、長く追えることで接触・攻撃まで届く。
+### 加速試験
+integrated escape、距離60。速度比0.40は contact100%、success85%。速度比0.623は contact0%、energyDepleted20/20。捕食者は3step前後で90%速度へ達するため、加速不足単独ではなく、距離60で必要な追跡時間がenergy予算を超えることが支配的。
+### 方向効率
+0.623の実距離45では捕食者実速度0.471に対し射影速度0.470、closing efficiencyは概ね高い。速度は獲物方向へ使われており、追跡ベクトル・旋回・慣性の非効率は第一原因ではない。
+### 理論捕獲時間と実測
+旧55.42条件では接触距離22.17、開始距離55.42、初期理論捕獲stepは約142。しかし実測予測捕獲stepは約316で、energy切れは約239step。実測接近速度が遅く、さらに後半は低energy速度低下で接近速度が負になる。
+### 速度比0.623で接触できない主要因
+旧来のcontact 0%は、実験距離が45ではなく55.42へclampされていたことが直接の再現条件。そこに `energy < reproThreshold*0.45` で捕食者effective maxが獲物速度を下回る低energy速度低下が重なり、接触前にenergyDepletedになる。実距離45ならcontactは100%まで回復する。
+### 否定された仮説
+速度上限へ到達していない仮説は弱い。捕食者は90%上限へ約3stepで到達し、speed fractionは概ね0.99。current escapeだけが非対称で主因という仮説も弱い。ラップ・距離計算不整合、方向効率不足も主因ではない。
+### 次に変更すべき一項目
+通常ゲーム修正はまだ行わない。次タスクで一項目だけ変えるなら、まず「追跡中にenergy低下でdesired 0.55が発動する条件」または「低energy時の追跡継続/放棄」を分離するのが妥当。速度上限やchaseForceを直接上げる前に、低energy速度低下が接触直前の追跡を壊すか検証する。
+### 今回変更しなかった生態パラメータ
+捕食者最高速度、追跡1.08、chaseForce、逃走force、damping、移動統合、追跡ベクトル、target選択/放棄、捕食サイズ、接触距離、攻撃距離、成功率、energy消費、基礎代謝、standard energy、捕食gain、感知距離、繁殖、個体数上限、藻場、通常行動は変更していない。
+### 性能
+`scripts/alife_pursuit_kinematics_benchmark.cjs --pack all --repeats 20 --max-steps 600` は完走。正式実行は約24秒。observer無効時の通常ゲームへ追加計算を入れず、traceは代表反復と有限履歴に限定した。
+### 採用判断
+運動学observer、初速指定、integrated/current/constant escape比較、constant-energy診断、pursuit-kinematics pack、観察ラボ「なぜ追いつけない？」プリセットを採用。通常生態パラメータの変更は保留。
