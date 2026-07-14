@@ -489,3 +489,24 @@ packSizeMultiplierは1.12、raw上限は2.016。単独では1.90、2.00、2.10�
 390x844、各1,800step。page errorなし、NaNなし、save/load round trip成功。1.0超から1.8までの大型attemptは試行1/2/3で56/228/46、successは0/16/2。単独1.8超attemptとsuccessはいずれも0。pack 1.8超attemptは試行2で2件、success 0。終了時肉食は全試行0、草食118/42/122、雑食2/81/1、平均藻量0.656/0.584/0.691、capacity死213/67/233。明確な大量絶滅、NaN、ページエラーはなかった。
 ### 採用判断
 採用。単独1.8までは挑戦可能、1.8超は単独拒否、群れでは既存pack倍率に応じて1.8超も対象化できる。サイズ差による成功倍率は連続低下し、target判定とattack判定の不一致も解消した。success率は20反復では揺れるため、今回追加調整は行わない。
+## 2026-07-14 20:32 大型獲物の連続確率化と群れ体格合算
+### 旧1.8 hard gate
+単独捕食は effectiveSizeRatio <= 1.8、群れは固定 packSizeMultiplier 1.12 により raw 約2.016まで、というサイズ由来のhard gateだった。大型獲物成功率も1.0超から1.8までの専用 `largePreySuccessMul` に分かれていた。
+### 新しいサイズ成功曲線
+サイズだけではtarget/attackを拒否しないようにし、`getPredationSizeSuccessMul(effectiveSizeRatio)` へ統合した。effective 2.0以下は1.00、2.0から3.0はsmoothstepで1.00から0.50へ低下、3.0超は `0.50 * 0.63^(effectiveSizeRatio - 3.0)` で漸減する。
+### helper寄与係数0.53
+固定1.12のサイズ補正はサイズ判定から外し、既存hunt-packとして有効な仲間だけを `PACK_HELPER_SIZE_CONTRIBUTION = 0.53` で加算する。近くの全肉食者ではなく、同種かつhunt-pack/packロールで既存pack範囲内の生存個体だけをeligible helperにした。
+### 群れの実効捕食サイズ
+`effectivePredatorSize = predator.size + 0.53 * eligibleHelperSizeSum`、`rawSizeRatio = prey.size / predator.size`、`effectiveSizeRatio = prey.size / effectivePredatorSize`。target候補、attack、attack成功率内のサイズ倍率は同じeffectiveSizeRatioを使用する。
+### 単独式確認
+決定論的確認ではサイズ倍率は1.0=1.000、2.0=1.000、2.5=0.750、3.0=0.500、4.0=0.315、5.0=0.198、6.0=0.125。3.0超でもsizeRejectedは発生しなかった。
+### 2体・3体・4体群れの式確認
+rawサイズ比5.0で、単独はeffective 5.000・倍率0.198、主+仲間1体はeffective 3.268・倍率0.442、主+仲間2体はeffective 2.427・倍率0.804、主+仲間3体はeffective 1.931・倍率1.000。設計基準と一致した。
+### Duel結果
+単独Duel各10反復、stationary prey、速度比0、距離25、standard energy。raw 1.0/2.0/2.5/3.0/4.0/5.0/6.0はいずれもtarget/contact/attack 10/10、sizeRejected 0。successは4/10、7/10、5/10、6/10、4/10、2/10、0/10で、実測successは乱数で揺れたがsizeSuccessMulは単調に低下した。
+### 群れDuel結果
+rawサイズ比5.0、各10反復。単独はhelper 0、effective 5.000、倍率0.198、success 0/10。仲間1体はhelper 1、effective 3.268、倍率0.442、success 1/10。仲間2体はhelper 2、effective 2.427、倍率0.804、success 7/10。仲間3体はhelper 3、effective 1.931、倍率1.000、success 7/10。
+### 通常世界3試行
+index.htmlで390x844、各1,800step。page errorなし、NaNなし、save/load round trip成功。rawサイズ比別attemptは試行1が<=2:50、2-3:1、3-5:3、5超:0、試行2が<=2:312、2-3:64、3-5:7、5超:0、試行3が<=2:639、2-3:12、3-5:1、5超:0。successは<=2で6/23/76、2-3で0/3/1、3-5で0/1/0。5超attemptはなく、3試行では群れ大型attemptも観測されなかった。終了時肉食はいずれも0、草食120/84/91、雑食0/42/30、平均藻量0.523/0.537/0.585。明白な大量絶滅・NaN・ページエラーはなかった。
+### 採用判断
+採用。単独2.0までサイズ倍率1.0、3.0で0.5、3.0超の漸減、3体群れraw 5.0で約0.80、旧固定1.12サイズ補正の非重複、target/attackのサイズ基準一致を確認した。通常世界では極端な大型追跡の大量発生は見えなかったため、長期生態評価は次タスクで扱う。

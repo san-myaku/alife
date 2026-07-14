@@ -1766,17 +1766,27 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       telemetryPredationIndividualAddFailure(rec,'targetNotAcquired');
     }
   }
-  const PREDATION_SOLO_MAX_SIZE_RATIO=1.8;
-  function predationPackSizeMultiplier(predator){
-    if(!predator) return 1;
-    if(predator.socialMode==='hunt-pack') return 1.12;
-    return 1.00;
+  const PACK_HELPER_SIZE_CONTRIBUTION=0.53;
+  const PACK_HELPER_RADIUS=76;
+  function predationUsesPackHelpers(predator){
+    return !!(predator && (predator.role==='pack' || predator.socialMode==='hunt-pack'));
+  }
+  function predationEligiblePackHelpers(predator,prey,context='target'){
+    const helpers=[];
+    if(!predationUsesPackHelpers(predator) || !prey || !Number.isFinite(Number(prey.x)) || !Number.isFinite(Number(prey.y))) return helpers;
+    forEachOrgNeighbors(prey.x,prey.y,PACK_HELPER_RADIUS,(helper)=>{
+      if(!helper || helper===predator || helper===prey || helper.dead || !helper.genes) return;
+      if(helper.speciesKey!==predator.speciesKey) return;
+      if(!(helper.role==='pack' || helper.socialMode==='hunt-pack')) return;
+      helpers.push(helper);
+    });
+    return helpers;
   }
   function predationSizeMaxMultiplier(predator, context='target'){
-    return PREDATION_SOLO_MAX_SIZE_RATIO * predationPackSizeMultiplier(predator,context);
+    return Infinity;
   }
   function predationMaxPreySize(predator, context='target'){
-    return Math.max(0, Number(predator?.size||0) * predationSizeMaxMultiplier(predator, context));
+    return Infinity;
   }
   function predationMinPreySize(predator, context='target'){
     return 0;
@@ -1784,24 +1794,40 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function getEffectivePredationSizeRatio(predator, prey, context='target'){
     const predatorSize=Math.max(Number(predator?.size||0),0.001);
     const preySize=Number(prey?.size||0);
-    const packSizeMultiplier=predationPackSizeMultiplier(predator,context);
-    const effectiveDenominator=Math.max(predatorSize*packSizeMultiplier,0.001);
+    const eligiblePackHelpers=predationEligiblePackHelpers(predator,prey,context);
+    const eligibleHelperSizeSum=eligiblePackHelpers.reduce((sum,helper)=>sum+Number(helper.size||0),0);
+    const effectivePredatorSize=predatorSize + PACK_HELPER_SIZE_CONTRIBUTION*eligibleHelperSizeSum;
+    const packSizeMultiplier=effectivePredatorSize/predatorSize;
+    const effectiveDenominator=Math.max(effectivePredatorSize,0.001);
     const rawSizeRatio=preySize/predatorSize;
     const effectiveSizeRatio=preySize/effectiveDenominator;
     return {
       rawSizeRatio,
       effectiveSizeRatio,
       packSizeMultiplier,
-      maxRawSizeRatio:PREDATION_SOLO_MAX_SIZE_RATIO*packSizeMultiplier
+      eligibleHelperCount:eligiblePackHelpers.length,
+      eligibleHelperSizeSum,
+      effectivePredatorSize,
+      packHelperContribution:PACK_HELPER_SIZE_CONTRIBUTION
     };
   }
   function canAttemptPredation(predator, prey, context='target'){
-    return getEffectivePredationSizeRatio(predator,prey,context).effectiveSizeRatio <= PREDATION_SOLO_MAX_SIZE_RATIO;
+    const info=getEffectivePredationSizeRatio(predator,prey,context);
+    return Number.isFinite(info.effectiveSizeRatio) && info.effectiveSizeRatio>=0;
+  }
+  function getPredationSizeSuccessMul(effectiveSizeRatio){
+    const ratio=Number(effectiveSizeRatio);
+    if(!Number.isFinite(ratio)) return 0;
+    if(ratio<=2.0) return 1.0;
+    if(ratio<=3.0){
+      const t=clamp(ratio-2.0,0,1);
+      const smooth=t*t*(3 - 2*t);
+      return 1.0 - 0.50*smooth;
+    }
+    return 0.50*Math.pow(0.63,ratio-3.0);
   }
   function largePreySuccessMultiplier(effectiveSizeRatio){
-    const challengeRatio=clamp((Number(effectiveSizeRatio||0)-1.0)/0.8,0,1);
-    const smoothChallenge=challengeRatio*challengeRatio*(3 - 2*challengeRatio);
-    return 1.0 - 0.80*smoothChallenge;
+    return getPredationSizeSuccessMul(effectiveSizeRatio);
   }
   function predationCandidateClassification(predator, prey, context='target', distance=null){
     const predatorSize=Number(predator?.size||0);
@@ -1810,7 +1836,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const minPreySize=predationMinPreySize(predator, context);
     const sizeInfo=getEffectivePredationSizeRatio(predator,prey,context);
     const sizeRatio=Number.isFinite(sizeInfo.rawSizeRatio) ? sizeInfo.rawSizeRatio : null;
-    const maxRatio=maxPreySize>0 ? preySize/maxPreySize : null;
+    const maxRatio=Number.isFinite(maxPreySize) && maxPreySize>0 ? preySize/maxPreySize : null;
     const base={
       predatorId:predator?.id ?? null,
       preyId:prey?.id ?? null,
@@ -1826,7 +1852,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       rawSizeRatio:sizeRatio,
       effectiveSizeRatio:Number.isFinite(sizeInfo.effectiveSizeRatio) ? sizeInfo.effectiveSizeRatio : null,
       packSizeMultiplier:sizeInfo.packSizeMultiplier,
-      maxRawSizeRatio:sizeInfo.maxRawSizeRatio,
+      eligibleHelperCount:sizeInfo.eligibleHelperCount,
+      eligibleHelperSizeSum:sizeInfo.eligibleHelperSizeSum,
+      effectivePredatorSize:sizeInfo.effectivePredatorSize,
+      sizeSuccessMul:getPredationSizeSuccessMul(sizeInfo.effectiveSizeRatio),
+      maxRawSizeRatio:null,
       distance,
       preyDiet:prey ? telemetryDiet(prey) : null,
       preyAge:Number(prey?.age ?? 0),
@@ -2961,10 +2991,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       attempts:{le1:0,gt1To12:0,gt12To15:0,gt15To18:0,gt18Solo:0,gt18Pack:0},
       successes:{le1:0,gt1To12:0,gt12To15:0,gt15To18:0,gt18Solo:0,gt18Pack:0}
     };
+    const rawSizeBands={
+      attempts:{le2:0,gt2To3:0,gt3To5:0,gt5:0,gt2WithHelpers:0,gt5Solo:0,gt5WithHelpers:0},
+      successes:{le2:0,gt2To3:0,gt3To5:0,gt5:0,gt2WithHelpers:0,gt5Solo:0,gt5WithHelpers:0}
+    };
     const addSizeBand=(bucket,e)=>{
       const raw=Number(e.rawSizeRatio);
       if(!Number.isFinite(raw)) return;
-      const packApplied=Number(e.packSizeMultiplier||1)>1;
+      const packApplied=Number(e.eligibleHelperCount||0)>0 || Number(e.packSizeMultiplier||1)>1;
       if(raw<=1.0) bucket.le1++;
       else if(raw<=1.2) bucket.gt1To12++;
       else if(raw<=1.5) bucket.gt12To15++;
@@ -2972,12 +3006,30 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       else if(packApplied) bucket.gt18Pack++;
       else bucket.gt18Solo++;
     };
+    const addRawSizeBand=(bucket,e)=>{
+      const raw=Number(e.rawSizeRatio);
+      if(!Number.isFinite(raw)) return;
+      const hasHelpers=Number(e.eligibleHelperCount||0)>0 || Number(e.packSizeMultiplier||1)>1;
+      if(raw<=2.0) bucket.le2++;
+      else if(raw<=3.0) bucket.gt2To3++;
+      else if(raw<=5.0) bucket.gt3To5++;
+      else bucket.gt5++;
+      if(raw>2.0 && hasHelpers) bucket.gt2WithHelpers++;
+      if(raw>5.0 && hasHelpers) bucket.gt5WithHelpers++;
+      if(raw>5.0 && !hasHelpers) bucket.gt5Solo++;
+    };
     let afterRepro=0, carnKid60=0, carnKid180=0, carnKid240=0;
     for(const e of events){
       if(e.kind==='predationFunnel' && stages[e.stage]!=null){
         stages[e.stage]++;
-        if(e.stage==='attempt') addSizeBand(sizeBands.attempts,e);
-        if(e.stage==='success') addSizeBand(sizeBands.successes,e);
+        if(e.stage==='attempt'){
+          addSizeBand(sizeBands.attempts,e);
+          addRawSizeBand(rawSizeBands.attempts,e);
+        }
+        if(e.stage==='success'){
+          addSizeBand(sizeBands.successes,e);
+          addRawSizeBand(rawSizeBands.successes,e);
+        }
       }
       else if(e.kind==='predationAfterRepro') afterRepro++;
       else if(e.kind==='newbornSurvival' && e.parentCarnivore){
@@ -2995,6 +3047,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       predationAttempts:stages.attempt,
       predationSuccesses:stages.success,
       sizeBands,
+      rawSizeBands,
       reproductionAfterPredation:afterRepro,
       carnivoreOffspringSurvived60:carnKid60,
       carnivoreOffspringSurvived180:carnKid180,
@@ -5832,19 +5885,22 @@ if(Z>0.08){
       const contactR=this.size+prey.size+3.8;
       if(bestD2>contactR*contactR) return;
       const sizeInfo=getEffectivePredationSizeRatio(this,prey,'attack');
-      const largePreySuccessMul=largePreySuccessMultiplier(sizeInfo.effectiveSizeRatio);
+      const sizeSuccessMul=getPredationSizeSuccessMul(sizeInfo.effectiveSizeRatio);
       telemetryRecordPredationStage('contact',this,prey,{
         distance:Number(Math.sqrt(bestD2).toFixed(2)),
         rawSizeRatio:Number(sizeInfo.rawSizeRatio.toFixed(3)),
         effectiveSizeRatio:Number(sizeInfo.effectiveSizeRatio.toFixed(3)),
-        packSizeMultiplier:Number(sizeInfo.packSizeMultiplier.toFixed(3))
+        packSizeMultiplier:Number(sizeInfo.packSizeMultiplier.toFixed(3)),
+        eligibleHelperCount:sizeInfo.eligibleHelperCount,
+        eligibleHelperSizeSum:Number(sizeInfo.eligibleHelperSizeSum.toFixed(3)),
+        effectivePredatorSize:Number(sizeInfo.effectivePredatorSize.toFixed(3)),
+        sizeSuccessMul:Number(sizeSuccessMul.toFixed(3)),
+        largePreySuccessMul:Number(sizeSuccessMul.toFixed(3))
       });
       let pBase=0.26;
-      const sizeEdge=clamp((this.size-prey.size)/Math.max(1,this.size),0,0.55);
-      const sizeMul=0.72+sizeEdge*0.95;
       let defenseMul=1;
       let groupMul=1;
-      let p=clamp(pBase*sizeMul*intent,0,0.74);
+      let p=clamp(pBase*intent,0,0.74);
       if(this.preyTargetId===prey.id) p*=1.18;
       if(this.morphologyTopology==='radial') p*=1.10;
       if(prey.morphologyTopology==='ring'){ defenseMul*=0.82; p*=0.82; }
@@ -5871,7 +5927,7 @@ if(Z>0.08){
       const riskMul=prey.predationRiskMul||1;
       p*=riskMul;
       defenseMul*=riskMul;
-      p*=largePreySuccessMul;
+      p*=sizeSuccessMul;
       p*= (worldEvent.predSuccessMul||1);
       if(prey.socialMode==='defense-school'){
         let herd=0, screen=0;
@@ -5896,12 +5952,16 @@ if(Z>0.08){
       }
       telemetryRecordPredationStage('attempt',this,prey,{
         probability:Number(p.toFixed(3)),
-        sizeMul:Number(sizeMul.toFixed(3)),
-        largePreySuccessMul:Number(largePreySuccessMul.toFixed(3)),
+        sizeMul:Number(sizeSuccessMul.toFixed(3)),
+        sizeSuccessMul:Number(sizeSuccessMul.toFixed(3)),
+        largePreySuccessMul:Number(sizeSuccessMul.toFixed(3)),
         rawSizeRatio:Number(sizeInfo.rawSizeRatio.toFixed(3)),
         effectiveSizeRatio:Number(sizeInfo.effectiveSizeRatio.toFixed(3)),
         packSizeMultiplier:Number(sizeInfo.packSizeMultiplier.toFixed(3)),
-        maxRawSizeRatio:Number(sizeInfo.maxRawSizeRatio.toFixed(3)),
+        eligibleHelperCount:sizeInfo.eligibleHelperCount,
+        eligibleHelperSizeSum:Number(sizeInfo.eligibleHelperSizeSum.toFixed(3)),
+        effectivePredatorSize:Number(sizeInfo.effectivePredatorSize.toFixed(3)),
+        packHelperContribution:sizeInfo.packHelperContribution,
         defenseMul:Number(defenseMul.toFixed(3)),
         groupMul:Number(groupMul.toFixed(3))
       });
@@ -5948,11 +6008,15 @@ if(Z>0.08){
           gain:Number(gain.toFixed(3)),
           energyBefore:predationEnergyBefore,
           energyAfter:predationEnergyAfter,
-          largePreySuccessMul:Number(largePreySuccessMul.toFixed(3)),
+          sizeSuccessMul:Number(sizeSuccessMul.toFixed(3)),
+          largePreySuccessMul:Number(sizeSuccessMul.toFixed(3)),
           rawSizeRatio:Number(sizeInfo.rawSizeRatio.toFixed(3)),
           effectiveSizeRatio:Number(sizeInfo.effectiveSizeRatio.toFixed(3)),
           packSizeMultiplier:Number(sizeInfo.packSizeMultiplier.toFixed(3)),
-          maxRawSizeRatio:Number(sizeInfo.maxRawSizeRatio.toFixed(3))
+          eligibleHelperCount:sizeInfo.eligibleHelperCount,
+          eligibleHelperSizeSum:Number(sizeInfo.eligibleHelperSizeSum.toFixed(3)),
+          effectivePredatorSize:Number(sizeInfo.effectivePredatorSize.toFixed(3)),
+          packHelperContribution:sizeInfo.packHelperContribution
         });
         recordAction(this, `${topologyLabel(prey.morphologyTopology||topologyFromGenes(prey.genes))}を捕食した`);
         const scale=clamp((gain/60),0.6,2.0);
@@ -5972,7 +6036,7 @@ if(Z>0.08){
         peaceCounter=0;
       }
       else {
-        telemetryRecordPredationAttackFailure(this,prey,{probability:p,roll:predationRoll,sizeMul,largePreySuccessMul,defenseMul,groupMul});
+        telemetryRecordPredationAttackFailure(this,prey,{probability:p,roll:predationRoll,sizeMul:sizeSuccessMul,sizeSuccessMul,largePreySuccessMul:sizeSuccessMul,defenseMul,groupMul});
         const dx=(prey.x-this.x), dy=(prey.y-this.y);
         const d=Math.hypot(dx,dy)||1;
         prey.vx += (dx/d)*0.85;
@@ -8387,7 +8451,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const predatorSize=Math.max(0.001, predator?.size || 1);
     const moving=behavior!=='stationary' && Number(preySpeedRatio)>0;
     const base={speed:0.45,size:0.45,metabolism:0.50,fecundity:0.45,sense:0.50,diet:0.20,formSeed:0.18};
-    const targetSize=predatorSize*clamp(Number(preySizeRatio)||0.70,0.25,2.40);
+    const targetSize=predatorSize*clamp(Number(preySizeRatio)||0.70,0.25,8.00);
     const sizeGene=duelFindGene(base,'size',targetSize,(g)=>duelProbe(g).size);
     let genes={...base,size:sizeGene};
     if(moving){
@@ -8849,7 +8913,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       averagePreySizeRatio:avg('preySizeRatio'),
       averageEffectiveSizeRatio:avg('effectiveSizeRatio'),
       averagePackSizeMultiplier:avg('packSizeMultiplier'),
+      averageEligibleHelperCount:avg('eligibleHelperCount'),
+      averageEligibleHelperSizeSum:avg('eligibleHelperSizeSum'),
+      averageEffectivePredatorSize:avg('effectivePredatorSize'),
       averageMaxRawSizeRatio:avg('maxRawSizeRatio'),
+      averageSizeSuccessMul:avg('sizeSuccessMul'),
       averageLargePreySuccessMul:avg('largePreySuccessMul'),
       averagePackMateCount:avg('packMateCount'),
       kinematics:{
@@ -9021,7 +9089,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   function microPlacePreyNearPredator(predator,prey,opts={}){
     const ratio=Number(opts.sizeRatio ?? opts.preySizeRatio ?? 0.70);
     if(Number.isFinite(ratio)){
-      prey.size=Math.max(1,predator.size*clamp(ratio,0.25,2.40));
+      prey.size=Math.max(1,predator.size*clamp(ratio,0.25,8.00));
       if(prey.prepareSymbolDetails) prey.prepareSymbolDetails();
     }
     const behavior=duelNormalizeBehavior(opts.behaviorMode || opts.preyBehavior || 'stationary');
@@ -9707,7 +9775,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       ? duelCloneGenes(rawOptions.preyTemplate.genes)
       : duelControlledPreyGenes(predator,rawOptions.preySizeRatio,rawOptions.preySpeedRatio,behavior);
     const prey=duelMakeOrganism(W*0.5,H*0.5,preyGenes,'prey',{preyDefenseMode:rawOptions.preyDefenseMode||'none'});
-    const requestedSizeRatio=clamp(Number(rawOptions.preySizeRatio)||0.70,0.25,2.40);
+    const requestedSizeRatio=clamp(Number(rawOptions.preySizeRatio)||0.70,0.25,8.00);
     prey.size=predator.size*requestedSizeRatio;
     prey.isMega=false;
     if(prey.prepareSymbolDetails) prey.prepareSymbolDetails();
@@ -9752,7 +9820,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const startEnergy=predator.energy;
     const cls0=predationCandidateClassification(predator,prey,'target',startDistance);
     const sizeInfo0=getEffectivePredationSizeRatio(predator,prey,'target');
-    const initialLargePreySuccessMul=largePreySuccessMultiplier(sizeInfo0.effectiveSizeRatio);
+    const initialSizeSuccessMul=getPredationSizeSuccessMul(sizeInfo0.effectiveSizeRatio);
     const recordTrace=!!rawOptions.recordTrace;
     const trace=[];
     const result={
@@ -9811,8 +9879,12 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       preySizeRatio:prey.size/Math.max(predator.size,0.001),
       effectiveSizeRatio:sizeInfo0.effectiveSizeRatio,
       packSizeMultiplier:sizeInfo0.packSizeMultiplier,
-      maxRawSizeRatio:sizeInfo0.maxRawSizeRatio,
-      largePreySuccessMul:initialLargePreySuccessMul,
+      eligibleHelperCount:sizeInfo0.eligibleHelperCount,
+      eligibleHelperSizeSum:sizeInfo0.eligibleHelperSizeSum,
+      effectivePredatorSize:sizeInfo0.effectivePredatorSize,
+      maxRawSizeRatio:null,
+      sizeSuccessMul:initialSizeSuccessMul,
+      largePreySuccessMul:initialSizeSuccessMul,
       packMateCount,
       requestedPreySizeRatio:Number(rawOptions.preySizeRatio),
       requestedPreySpeedRatio:Number(rawOptions.preySpeedRatio),
@@ -9880,7 +9952,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           if(Number.isFinite(Number(e.effectiveSizeRatio))) result.effectiveSizeRatio=Number(e.effectiveSizeRatio);
           if(Number.isFinite(Number(e.rawSizeRatio))) result.preySizeRatio=Number(e.rawSizeRatio);
           if(Number.isFinite(Number(e.packSizeMultiplier))) result.packSizeMultiplier=Number(e.packSizeMultiplier);
-          if(Number.isFinite(Number(e.maxRawSizeRatio))) result.maxRawSizeRatio=Number(e.maxRawSizeRatio);
+          if(Number.isFinite(Number(e.eligibleHelperCount))) result.eligibleHelperCount=Number(e.eligibleHelperCount);
+          if(Number.isFinite(Number(e.eligibleHelperSizeSum))) result.eligibleHelperSizeSum=Number(e.eligibleHelperSizeSum);
+          if(Number.isFinite(Number(e.effectivePredatorSize))) result.effectivePredatorSize=Number(e.effectivePredatorSize);
+          if(Number.isFinite(Number(e.sizeSuccessMul))) result.sizeSuccessMul=Number(e.sizeSuccessMul);
           if(Number.isFinite(Number(e.largePreySuccessMul))) result.largePreySuccessMul=Number(e.largePreySuccessMul);
         } else if(e.stage==='success'){
           result.predationSucceeded=true;
@@ -9978,7 +10053,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const opts={
       predatorTemplate:options.predatorTemplate || 'viableCarnivore',
       preyTemplate:options.preyTemplate || 'controlledHerbivore',
-      preySizeRatio:clamp(Number(options.preySizeRatio ?? 0.70),0.25,2.40),
+      preySizeRatio:clamp(Number(options.preySizeRatio ?? 0.70),0.25,8.00),
       preySpeedRatio:clamp(Number(options.preySpeedRatio ?? 0.70),0,1.80),
       initialDistance:Number(options.initialDistance ?? 45),
       initialAngleDeg:Number(options.initialAngleDeg ?? 0),
