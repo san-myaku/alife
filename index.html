@@ -1690,6 +1690,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         firstFrame:frame,
         birthFrame:o.birthFrame ?? birth?.frame ?? frame,
         initial:!birth,
+        role:o.role || 'other',
         birthEnergy:Number(o.energy||0),
         hadPotentialPreyInSense:false,
         hadValidPreyInSense:false,
@@ -1723,6 +1724,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         targetSwitchesBeforeSuccess:0,
         chaseFramesBeforeSuccess:0,
         attackAttemptsBeforeSuccess:0,
+        ambushHoldSteps:0,
+        ambushHoldWithValidTargetSteps:0,
+        ambushTargetDistanceRatioSum:0,
+        ambushTargetDistanceRatioSamples:0,
+        lastAmbushTargetDistanceRatio:null,
+        preDeathAmbushHold120:null,
+        preDeathAmbushHoldWithValidTarget120:null,
+        preDeathAmbushAverageTargetDistanceRatio:null,
+        diedWithValidTarget:false,
         lastTargetId:null,
         failureCounts:telemetryBlankPredationFailureCounts(),
         dominantFailureReason:null,
@@ -1740,6 +1750,41 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(!rec || !reason) return;
     if(rec.failureCounts[reason]==null) rec.failureCounts[reason]=0;
     rec.failureCounts[reason]+=amount;
+  }
+  function telemetryRecentAmbushHoldStats(o, windowFrames=120){
+    const cutoff=frame-Math.max(1,Number(windowFrames)||120);
+    const buf=Array.isArray(o?._telemetryAmbushHoldFrames) ? o._telemetryAmbushHoldFrames : [];
+    let hold=0, valid=0, ratioSum=0, ratioSamples=0;
+    for(const item of buf){
+      if(!item || item.frame<cutoff) continue;
+      hold++;
+      if(item.validTarget) valid++;
+      const ratio=Number(item.targetDistanceRatio);
+      if(Number.isFinite(ratio)){ ratioSum+=ratio; ratioSamples++; }
+    }
+    return {
+      holdSteps:hold,
+      validTargetSteps:valid,
+      averageTargetDistanceRatio:ratioSamples ? ratioSum/ratioSamples : null
+    };
+  }
+  function telemetryRecordAmbushHold(o, prey, distance){
+    if(!o || telemetryDiet(o)!=='c') return;
+    const targetDistanceRatio=Number(distance||0)/Math.max(Number(o.senseR||0),0.001);
+    const validTarget=!!(prey && predationCandidateClassification(o,prey,'target').valid);
+    const rec=telemetryPredationIndividualRecord(o);
+    if(rec){
+      rec.role=o.role || 'other';
+      rec.ambushHoldSteps=(rec.ambushHoldSteps||0)+1;
+      if(validTarget) rec.ambushHoldWithValidTargetSteps=(rec.ambushHoldWithValidTargetSteps||0)+1;
+      rec.ambushTargetDistanceRatioSum=(rec.ambushTargetDistanceRatioSum||0)+targetDistanceRatio;
+      rec.ambushTargetDistanceRatioSamples=(rec.ambushTargetDistanceRatioSamples||0)+1;
+      rec.lastAmbushTargetDistanceRatio=targetDistanceRatio;
+    }
+    if(!Array.isArray(o._telemetryAmbushHoldFrames)) o._telemetryAmbushHoldFrames=[];
+    o._telemetryAmbushHoldFrames.push({frame,validTarget,targetDistanceRatio});
+    const cutoff=frame-140;
+    while(o._telemetryAmbushHoldFrames.length && o._telemetryAmbushHoldFrames[0].frame<cutoff) o._telemetryAmbushHoldFrames.shift();
   }
   function telemetryRecordPredationScan(o, stats){
     const rec=telemetryPredationIndividualRecord(o);
@@ -2480,8 +2525,16 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function telemetryRecordPredationIndividualDeath(o,causeKey){
     const rec=telemetryPredationIndividualRecord(o);
     if(!rec || rec.deathFrame!=null) return;
+    const target=organismById(o?.preyTargetId);
+    const targetValid=!!(target && predationCandidateClassification(o,target,'target').valid);
+    const ambushStats=telemetryRecentAmbushHoldStats(o,120);
     rec.deathFrame=frame;
     rec.deathCause=causeKey || 'other';
+    rec.role=o.role || rec.role || 'other';
+    rec.diedWithValidTarget=targetValid;
+    rec.preDeathAmbushHold120=ambushStats.holdSteps;
+    rec.preDeathAmbushHoldWithValidTarget120=ambushStats.validTargetSteps;
+    rec.preDeathAmbushAverageTargetDistanceRatio=ambushStats.averageTargetDistanceRatio;
     if(!rec.succeededPredation){
       rec.deathEnergyBeforeFirstPredation=Number(o.energy||0);
       const deathReason = causeKey==='starvation' ? 'starvationBeforeFirstPredation'
@@ -2528,10 +2581,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(!rec || rec.deathFrame!=null) return;
     const age=Number.isFinite(o.age) ? o.age : Math.max(0, frame-(o.birthFrame ?? frame));
     const ratio=telemetryEnergyRatio(o);
+    const target=organismById(o?.preyTargetId);
+    const targetValid=!!(target && predationCandidateClassification(o,target,'target').valid);
+    const ambushStats=telemetryRecentAmbushHoldStats(o,120);
     rec.deathFrame=frame;
     telemetry.carnivoreDeaths.push({
       frame,
       id:o.id,
+      role:o.role || 'other',
       cause:causeKey || 'other',
       age,
       energy:Number(o.energy||0),
@@ -2540,6 +2597,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       storeD:clamp01(o.storeD||0),
       storeO:clamp01(o.storeO||0),
       mem:clamp01(o.mem ?? 1),
+      diedWithValidTarget:targetValid,
+      preDeathAmbushHold120:ambushStats.holdSteps,
+      preDeathAmbushHoldWithValidTarget120:ambushStats.validTargetSteps,
+      preDeathAmbushAverageTargetDistanceRatio:ambushStats.averageTargetDistanceRatio,
       lastPredationGap:rec.lastPredationFrame==null ? null : frame-rec.lastPredationFrame
     });
     if(telemetry.carnivoreDeaths.length>TELEMETRY_CARNIVORE_DEATH_LIMIT){
@@ -2640,6 +2701,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const diet=telemetryDiet(o);
     const age=Number.isFinite(o.age) ? o.age : Math.max(0, frame-(o.birthFrame ?? frame));
     const causeKey=telemetryDeathCauseKey(cause);
+    const target=organismById(o.preyTargetId);
+    const targetValid=!!(target && predationCandidateClassification(o,target,'target').valid);
+    const ambushStats=telemetryRecentAmbushHoldStats(o,120);
     const birth=telemetry.births.get(o.id);
     if(birth && birth.deathFrame==null){
       birth.deathFrame=frame;
@@ -2662,7 +2726,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       age,
       newborn:!!birth,
       parentDiet:birth?.parentDiet ?? null,
-      parentCarnivore:!!birth?.parentCarnivore
+      parentCarnivore:!!birth?.parentCarnivore,
+      role:o.role || 'other',
+      diedWithValidTarget:targetValid,
+      preDeathAmbushHold120:ambushStats.holdSteps,
+      preDeathAmbushHoldWithValidTarget120:ambushStats.validTargetSteps,
+      preDeathAmbushAverageTargetDistanceRatio:ambushStats.averageTargetDistanceRatio
     });
   }
   function telemetryPairKey(predator, prey){
@@ -3103,6 +3172,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const successes=records.filter(r=>r.succeededPredation);
     const preSuccessDeaths=records.filter(r=>!r.succeededPredation && r.deathFrame!=null);
     const energySpent=successes.map(r=>r.birthEnergy-r.firstSuccessEnergyBefore).filter(Number.isFinite);
+    const ambushers=records.filter(r=>r.role==='ambusher');
+    const ambusherStarvationDeaths=ambushers.filter(r=>r.deathCause==='starvation');
+    const ambusherConfirmedStuckDeaths=ambusherStarvationDeaths.filter(r=>r.diedWithValidTarget && (r.preDeathAmbushHoldWithValidTarget120||0)>=60);
     return {
       frame,
       windowFrames:wf,
@@ -3134,6 +3206,24 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       lifetimeFailureOrganisms,
       dominantFailureReasons,
       deathBeforeFirstPredation,
+      ambush:{
+        ambusherRecords:ambushers.length,
+        ambushHoldSteps:sum(r=>r.ambushHoldSteps),
+        ambushHoldWithValidTargetSteps:sum(r=>r.ambushHoldWithValidTargetSteps),
+        averageTargetDistanceRatio:avg(records.map(r=>{
+          const n=Number(r.ambushTargetDistanceRatioSamples||0);
+          return n>0 ? Number(r.ambushTargetDistanceRatioSum||0)/n : null;
+        })),
+        starvationDeaths:ambusherStarvationDeaths.length,
+        starvationWithValidTarget:ambusherStarvationDeaths.filter(r=>r.diedWithValidTarget).length,
+        starvationWithValidTargetAndHold60:ambusherConfirmedStuckDeaths.length,
+        averagePreDeathAmbushHold120:avg(ambusherStarvationDeaths.map(r=>r.preDeathAmbushHold120)),
+        averagePreDeathAmbushHoldWithValidTarget120:avg(ambusherStarvationDeaths.map(r=>r.preDeathAmbushHoldWithValidTarget120)),
+        averagePreDeathTargetDistanceRatio:avg(ambusherStarvationDeaths.map(r=>r.preDeathAmbushAverageTargetDistanceRatio)),
+        trackingStarted:ambushers.filter(r=>r.startedChase).length,
+        contactReached:ambushers.filter(r=>r.reachedContact).length,
+        predationSucceeded:ambushers.filter(r=>r.succeededPredation).length
+      },
       energy:{
         averageBirthEnergy:avg(records.map(r=>r.birthEnergy)),
         averageFirstTargetEnergy:avg(records.map(r=>r.firstTargetEnergy)),
@@ -5223,7 +5313,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       telemetryRecordPredationChaseStep(this,prey);
       const ambush=this.role==='ambusher';
       const burstCfg=CONFIG.ecology.predatorBurst;
-      if(ambush && d>this.senseR*0.55){
+      const ambushHunger=ambush ? clamp(
+        (this.reproThreshold*0.75 - this.energy) / Math.max(this.reproThreshold*0.30,0.001),
+        0,
+        1
+      ) : 0;
+      const ambushTriggerScale=0.55 + 0.45*ambushHunger;
+      if(ambush && d>this.senseR*ambushTriggerScale){
+        telemetryRecordAmbushHold(this,prey,d);
         this.vx*=0.985; this.vy*=0.985;
         this.chaseTimer=Math.max(this.chaseTimer,20);
         return;

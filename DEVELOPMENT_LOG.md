@@ -510,3 +510,14 @@ rawサイズ比5.0、各10反復。単独はhelper 0、effective 5.000、倍率0
 index.htmlで390x844、各1,800step。page errorなし、NaNなし、save/load round trip成功。rawサイズ比別attemptは試行1が<=2:50、2-3:1、3-5:3、5超:0、試行2が<=2:312、2-3:64、3-5:7、5超:0、試行3が<=2:639、2-3:12、3-5:1、5超:0。successは<=2で6/23/76、2-3で0/3/1、3-5で0/1/0。5超attemptはなく、3試行では群れ大型attemptも観測されなかった。終了時肉食はいずれも0、草食120/84/91、雑食0/42/30、平均藻量0.523/0.537/0.585。明白な大量絶滅・NaN・ページエラーはなかった。
 ### 採用判断
 採用。単独2.0までサイズ倍率1.0、3.0で0.5、3.0超の漸減、3体群れraw 5.0で約0.80、旧固定1.12サイズ補正の非重複、target/attackのサイズ基準一致を確認した。通常世界では極端な大型追跡の大量発生は見えなかったため、長期生態評価は次タスクで扱う。
+## 2026-07-14 21:07 待ち伏せ捕食者の空腹時追跡開始距離
+### 修正前診断
+既存predation individual telemetryへ `role`, `ambushHoldSteps`, `ambushHoldWithValidTargetSteps`, `targetDistanceRatio`, 餓死前120stepのambush hold、餓死時の有効target有無を追加した。修正前3試行、390x844、各1,800stepでは、ambusher starvation deaths 15、うち有効target保持15、確認条件「有効targetあり、餓死前120step中ambushHoldWithValidTarget 60step以上」は8例。餓死前120stepの平均holdは約63.9stepで、仮説を確認済みと判断した。
+### 変更した式
+待ち伏せ分岐の固定 `this.senseR * 0.55` を、空腹度に応じた `ambushTriggerScale = 0.55 + 0.45 * clamp((reproThreshold * 0.75 - energy) / max(reproThreshold * 0.30, 0.001), 0, 1)` に置換した。energy >= 0.75閾値では従来どおり0.55、energy <= 0.45閾値では感知範囲内なら待たずに追う。
+### 修正後3試行
+同条件3試行では、ambusher starvation deaths 14、有効target保持14、確認条件該当は1例。餓死前120stepの平均holdは約14.1stepまで低下した。ambusher tracking started は21から16、contact は3から2、捕食成功は0から0。終了時肉食はいずれも0。
+### 検証
+inline script構文、`organism_render.js`構文、`git diff --check`、修正前3試行、修正後3試行、save/load round trip、page errorなし、NaNなしを確認した。
+### 採用判断
+採用。短時間試験ではambusherのcontact/捕食成功は増えなかったが、有効targetを保持したまま長時間待ち続けて餓死するケースが8例から1例へ減り、待ち伏せ戦略を維持しつつ空腹時に能動追跡へ移る目的を満たした。
