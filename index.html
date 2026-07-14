@@ -1766,10 +1766,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       telemetryPredationIndividualAddFailure(rec,'targetNotAcquired');
     }
   }
-  function predationSizeMaxMultiplier(predator, context='target'){
+  const PREDATION_SOLO_MAX_SIZE_RATIO=1.8;
+  function predationPackSizeMultiplier(predator){
     if(!predator) return 1;
-    if(predator.socialMode==='hunt-pack') return context==='attack' ? 1.13 : 1.12;
+    if(predator.socialMode==='hunt-pack') return 1.12;
     return 1.00;
+  }
+  function predationSizeMaxMultiplier(predator, context='target'){
+    return PREDATION_SOLO_MAX_SIZE_RATIO * predationPackSizeMultiplier(predator,context);
   }
   function predationMaxPreySize(predator, context='target'){
     return Math.max(0, Number(predator?.size||0) * predationSizeMaxMultiplier(predator, context));
@@ -1777,12 +1781,35 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function predationMinPreySize(predator, context='target'){
     return 0;
   }
+  function getEffectivePredationSizeRatio(predator, prey, context='target'){
+    const predatorSize=Math.max(Number(predator?.size||0),0.001);
+    const preySize=Number(prey?.size||0);
+    const packSizeMultiplier=predationPackSizeMultiplier(predator,context);
+    const effectiveDenominator=Math.max(predatorSize*packSizeMultiplier,0.001);
+    const rawSizeRatio=preySize/predatorSize;
+    const effectiveSizeRatio=preySize/effectiveDenominator;
+    return {
+      rawSizeRatio,
+      effectiveSizeRatio,
+      packSizeMultiplier,
+      maxRawSizeRatio:PREDATION_SOLO_MAX_SIZE_RATIO*packSizeMultiplier
+    };
+  }
+  function canAttemptPredation(predator, prey, context='target'){
+    return getEffectivePredationSizeRatio(predator,prey,context).effectiveSizeRatio <= PREDATION_SOLO_MAX_SIZE_RATIO;
+  }
+  function largePreySuccessMultiplier(effectiveSizeRatio){
+    const challengeRatio=clamp((Number(effectiveSizeRatio||0)-1.0)/0.8,0,1);
+    const smoothChallenge=challengeRatio*challengeRatio*(3 - 2*challengeRatio);
+    return 1.0 - 0.80*smoothChallenge;
+  }
   function predationCandidateClassification(predator, prey, context='target', distance=null){
     const predatorSize=Number(predator?.size||0);
     const preySize=Number(prey?.size||0);
     const maxPreySize=predationMaxPreySize(predator, context);
     const minPreySize=predationMinPreySize(predator, context);
-    const sizeRatio=predatorSize>0 ? preySize/predatorSize : null;
+    const sizeInfo=getEffectivePredationSizeRatio(predator,prey,context);
+    const sizeRatio=Number.isFinite(sizeInfo.rawSizeRatio) ? sizeInfo.rawSizeRatio : null;
     const maxRatio=maxPreySize>0 ? preySize/maxPreySize : null;
     const base={
       predatorId:predator?.id ?? null,
@@ -1796,6 +1823,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       minPreySize,
       sizeRatio,
       maxRatio,
+      rawSizeRatio:sizeRatio,
+      effectiveSizeRatio:Number.isFinite(sizeInfo.effectiveSizeRatio) ? sizeInfo.effectiveSizeRatio : null,
+      packSizeMultiplier:sizeInfo.packSizeMultiplier,
+      maxRawSizeRatio:sizeInfo.maxRawSizeRatio,
       distance,
       preyDiet:prey ? telemetryDiet(prey) : null,
       preyAge:Number(prey?.age ?? 0),
@@ -1816,7 +1847,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       base.reason='tooSmall';
       return base;
     }
-    if(!(preySize < maxPreySize)){
+    if(!canAttemptPredation(predator,prey,context)){
       base.tooLarge=true;
       base.reason='tooLarge';
       return base;
@@ -1831,6 +1862,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     let observedOrganisms=0,dietCompatiblePrey=0,tooLargeRejected=0,tooSmallRejected=0,otherRejected=0,validPrey=0;
     let nearestDiet=null,nearestValid=null,nearestTooLarge=null;
     let slight=0,moderate=0,far=0,within05=0,within10=0,over25=0;
+    const sizeRatioBands={le1:0,gt1To12:0,gt12To15:0,gt15To18:0,gt18:0};
+    let packApplied=0;
     forEachOrgNeighbors(predator.x,predator.y,radius,(o,dx,dy,d2)=>{
       if(!o || o===predator || o.dead) return;
       const d=Math.sqrt(d2)||0;
@@ -1840,6 +1873,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       rows.push(cls);
       if(cls.dietCompatible){
         dietCompatiblePrey++;
+        const sr=Number(cls.rawSizeRatio ?? cls.sizeRatio);
+        if(Number.isFinite(sr)){
+          if(sr<=1.0) sizeRatioBands.le1++;
+          else if(sr<=1.2) sizeRatioBands.gt1To12++;
+          else if(sr<=1.5) sizeRatioBands.gt12To15++;
+          else if(sr<=1.8) sizeRatioBands.gt15To18++;
+          else sizeRatioBands.gt18++;
+        }
+        if((cls.packSizeMultiplier||1)>1) packApplied++;
         if(!nearestDiet || d<nearestDiet.distance) nearestDiet=cls;
         if(cls.tooLarge){
           tooLargeRejected++;
@@ -1882,6 +1924,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       nearestDiet,
       nearestValid,
       nearestTooLarge,
+      sizeRatioBands,
+      packApplied,
       oversizeBands:{within05,within10,over25,slightlyOversized:slight,moderatelyOversized:moderate,farOversized:far},
       rows
     };
@@ -1910,6 +1954,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         zeroValidWithDietCompatible:0,
         otherReasons:{},
         oversizeBands:{within05:0,within10:0,over25:0,slightlyOversized:0,moderatelyOversized:0,farOversized:0},
+        sizeRatioBands:{le1:0,gt1To12:0,gt12To15:0,gt15To18:0,gt18:0},
+        packApplied:0,
         uniqueObserved:new Set(),
         uniqueDietCompatible:new Set(),
         uniqueTooLarge:new Set(),
@@ -1925,6 +1971,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         preyMaxRatio:[],
         validPreyMaxRatio:[],
         rejectedTooLargeMaxRatio:[],
+        effectiveSizeRatio:[],
+        validEffectiveSizeRatio:[],
+        rejectedTooLargeEffectiveSizeRatio:[],
+        packSizeMultiplier:[],
         nearestDietDistances:[],
         nearestValidDistances:[],
         nearestTooLargeDistances:[],
@@ -1965,23 +2015,29 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if((scan.dietCompatiblePrey||0)>0 && (scan.validPrey||0)===0) rec.zeroValidWithDietCompatible++;
     for(const [k,v] of Object.entries(scan.otherReasons||{})) rec.otherReasons[k]=(rec.otherReasons[k]||0)+Number(v||0);
     for(const [k,v] of Object.entries(scan.oversizeBands||{})) rec.oversizeBands[k]=(rec.oversizeBands[k]||0)+Number(v||0);
+    for(const [k,v] of Object.entries(scan.sizeRatioBands||{})) rec.sizeRatioBands[k]=(rec.sizeRatioBands[k]||0)+Number(v||0);
+    rec.packApplied+=Number(scan.packApplied||0);
     for(const row of scan.rows||[]){
       rec.uniqueObserved.add(row.preyId);
       if(row.dietCompatible){
         rec.uniqueDietCompatible.add(row.preyId);
         telemetryPushRatio(rec.preySizeRatio,row.sizeRatio);
         telemetryPushRatio(rec.preyMaxRatio,row.maxRatio);
+        telemetryPushRatio(rec.effectiveSizeRatio,row.effectiveSizeRatio);
+        telemetryPushRatio(rec.packSizeMultiplier,row.packSizeMultiplier);
       }
       if(row.tooLarge){
         rec.uniqueTooLarge.add(row.preyId);
         telemetryPushRatio(rec.rejectedTooLargeSizeRatio,row.sizeRatio);
         telemetryPushRatio(rec.rejectedTooLargeMaxRatio,row.maxRatio);
+        telemetryPushRatio(rec.rejectedTooLargeEffectiveSizeRatio,row.effectiveSizeRatio);
       }
       if(row.tooSmall) rec.uniqueTooSmall.add(row.preyId);
       if(row.valid){
         rec.uniqueValid.add(row.preyId);
         telemetryPushRatio(rec.validPreySizeRatio,row.sizeRatio);
         telemetryPushRatio(rec.validPreyMaxRatio,row.maxRatio);
+        telemetryPushRatio(rec.validEffectiveSizeRatio,row.effectiveSizeRatio);
       }
     }
     if(scan.nearestDiet) telemetryPushRatio(rec.nearestDietDistances,scan.nearestDiet.distance,TELEMETRY_PREDATION_SIZE_SAMPLE_LIMIT);
@@ -2001,6 +2057,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       dietCompatiblePrey:scan.dietCompatiblePrey||0,
       tooLargeRejected:scan.tooLargeRejected||0,
       validPrey:scan.validPrey||0,
+      packApplied:scan.packApplied||0,
       nearestDietDistance:scan.nearestDiet?.distance ?? null,
       nearestValidDistance:scan.nearestValid?.distance ?? null,
       nearestTooLargeDistance:scan.nearestTooLarge?.distance ?? null,
@@ -2900,9 +2957,28 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const wf=telemetryWindowFrames(windowFrames);
     const events=telemetryEventsSince(wf);
     const stages={candidate:0,tracking:0,contact:0,attempt:0,success:0};
+    const sizeBands={
+      attempts:{le1:0,gt1To12:0,gt12To15:0,gt15To18:0,gt18Solo:0,gt18Pack:0},
+      successes:{le1:0,gt1To12:0,gt12To15:0,gt15To18:0,gt18Solo:0,gt18Pack:0}
+    };
+    const addSizeBand=(bucket,e)=>{
+      const raw=Number(e.rawSizeRatio);
+      if(!Number.isFinite(raw)) return;
+      const packApplied=Number(e.packSizeMultiplier||1)>1;
+      if(raw<=1.0) bucket.le1++;
+      else if(raw<=1.2) bucket.gt1To12++;
+      else if(raw<=1.5) bucket.gt12To15++;
+      else if(raw<=1.8) bucket.gt15To18++;
+      else if(packApplied) bucket.gt18Pack++;
+      else bucket.gt18Solo++;
+    };
     let afterRepro=0, carnKid60=0, carnKid180=0, carnKid240=0;
     for(const e of events){
-      if(e.kind==='predationFunnel' && stages[e.stage]!=null) stages[e.stage]++;
+      if(e.kind==='predationFunnel' && stages[e.stage]!=null){
+        stages[e.stage]++;
+        if(e.stage==='attempt') addSizeBand(sizeBands.attempts,e);
+        if(e.stage==='success') addSizeBand(sizeBands.successes,e);
+      }
       else if(e.kind==='predationAfterRepro') afterRepro++;
       else if(e.kind==='newbornSurvival' && e.parentCarnivore){
         if(e.threshold===60) carnKid60++;
@@ -2918,6 +2994,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       contactReached:stages.contact,
       predationAttempts:stages.attempt,
       predationSuccesses:stages.success,
+      sizeBands,
       reproductionAfterPredation:afterRepro,
       carnivoreOffspringSurvived60:carnKid60,
       carnivoreOffspringSurvived180:carnKid180,
@@ -3133,6 +3210,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       preyMaxRatio:telemetryNumericStats(r.preyMaxRatio),
       validPreyMaxRatio:telemetryNumericStats(r.validPreyMaxRatio),
       rejectedTooLargeMaxRatio:telemetryNumericStats(r.rejectedTooLargeMaxRatio),
+      effectiveSizeRatio:telemetryNumericStats(r.effectiveSizeRatio),
+      validEffectiveSizeRatio:telemetryNumericStats(r.validEffectiveSizeRatio),
+      rejectedTooLargeEffectiveSizeRatio:telemetryNumericStats(r.rejectedTooLargeEffectiveSizeRatio),
+      packSizeMultiplier:telemetryNumericStats(r.packSizeMultiplier),
       nearestDietDistanceAverage:avgArr(r.nearestDietDistances),
       nearestValidDistanceAverage:avgArr(r.nearestValidDistances),
       nearestTooLargeDistanceAverage:avgArr(r.nearestTooLargeDistances),
@@ -3173,6 +3254,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       },
       otherReasons:sumObj('otherReasons'),
       oversizeBands:sumObj('oversizeBands'),
+      sizeRatioBands:sumObj('sizeRatioBands'),
+      packApplied:sum('packApplied'),
       distributions:{
         preySizeRatio:telemetryNumericStats(concat('preySizeRatio')),
         validPreySizeRatio:telemetryNumericStats(concat('validPreySizeRatio')),
@@ -3180,6 +3263,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         preyMaxRatio:telemetryNumericStats(concat('preyMaxRatio')),
         validPreyMaxRatio:telemetryNumericStats(concat('validPreyMaxRatio')),
         rejectedTooLargeMaxRatio:telemetryNumericStats(concat('rejectedTooLargeMaxRatio')),
+        effectiveSizeRatio:telemetryNumericStats(concat('effectiveSizeRatio')),
+        validEffectiveSizeRatio:telemetryNumericStats(concat('validEffectiveSizeRatio')),
+        rejectedTooLargeEffectiveSizeRatio:telemetryNumericStats(concat('rejectedTooLargeEffectiveSizeRatio')),
+        packSizeMultiplier:telemetryNumericStats(concat('packSizeMultiplier')),
         preySizeMedian:telemetryNumericStats(concat('preySizeMedians'))
       },
       nearestDistances:{
@@ -5744,7 +5831,14 @@ if(Z>0.08){
       if(!prey) return;
       const contactR=this.size+prey.size+3.8;
       if(bestD2>contactR*contactR) return;
-      telemetryRecordPredationStage('contact',this,prey,{distance:Number(Math.sqrt(bestD2).toFixed(2))});
+      const sizeInfo=getEffectivePredationSizeRatio(this,prey,'attack');
+      const largePreySuccessMul=largePreySuccessMultiplier(sizeInfo.effectiveSizeRatio);
+      telemetryRecordPredationStage('contact',this,prey,{
+        distance:Number(Math.sqrt(bestD2).toFixed(2)),
+        rawSizeRatio:Number(sizeInfo.rawSizeRatio.toFixed(3)),
+        effectiveSizeRatio:Number(sizeInfo.effectiveSizeRatio.toFixed(3)),
+        packSizeMultiplier:Number(sizeInfo.packSizeMultiplier.toFixed(3))
+      });
       let pBase=0.26;
       const sizeEdge=clamp((this.size-prey.size)/Math.max(1,this.size),0,0.55);
       const sizeMul=0.72+sizeEdge*0.95;
@@ -5777,6 +5871,7 @@ if(Z>0.08){
       const riskMul=prey.predationRiskMul||1;
       p*=riskMul;
       defenseMul*=riskMul;
+      p*=largePreySuccessMul;
       p*= (worldEvent.predSuccessMul||1);
       if(prey.socialMode==='defense-school'){
         let herd=0, screen=0;
@@ -5799,7 +5894,17 @@ if(Z>0.08){
           prey.herdThreat=Math.max(prey.herdThreat||0,42);
         }
       }
-      telemetryRecordPredationStage('attempt',this,prey,{probability:Number(p.toFixed(3)),sizeMul:Number(sizeMul.toFixed(3)),defenseMul:Number(defenseMul.toFixed(3)),groupMul:Number(groupMul.toFixed(3))});
+      telemetryRecordPredationStage('attempt',this,prey,{
+        probability:Number(p.toFixed(3)),
+        sizeMul:Number(sizeMul.toFixed(3)),
+        largePreySuccessMul:Number(largePreySuccessMul.toFixed(3)),
+        rawSizeRatio:Number(sizeInfo.rawSizeRatio.toFixed(3)),
+        effectiveSizeRatio:Number(sizeInfo.effectiveSizeRatio.toFixed(3)),
+        packSizeMultiplier:Number(sizeInfo.packSizeMultiplier.toFixed(3)),
+        maxRawSizeRatio:Number(sizeInfo.maxRawSizeRatio.toFixed(3)),
+        defenseMul:Number(defenseMul.toFixed(3)),
+        groupMul:Number(groupMul.toFixed(3))
+      });
       const predationRoll=Math.random();
       if(predationRoll<p){
         const carn=this.genes.diet;
@@ -5839,7 +5944,16 @@ if(Z>0.08){
           energyAfter:predationEnergyAfter,
           storeNAfter:predationStoreNAfter
         });
-        telemetryRecordPredationStage('success',this,prey,{gain:Number(gain.toFixed(3)),energyBefore:predationEnergyBefore,energyAfter:predationEnergyAfter});
+        telemetryRecordPredationStage('success',this,prey,{
+          gain:Number(gain.toFixed(3)),
+          energyBefore:predationEnergyBefore,
+          energyAfter:predationEnergyAfter,
+          largePreySuccessMul:Number(largePreySuccessMul.toFixed(3)),
+          rawSizeRatio:Number(sizeInfo.rawSizeRatio.toFixed(3)),
+          effectiveSizeRatio:Number(sizeInfo.effectiveSizeRatio.toFixed(3)),
+          packSizeMultiplier:Number(sizeInfo.packSizeMultiplier.toFixed(3)),
+          maxRawSizeRatio:Number(sizeInfo.maxRawSizeRatio.toFixed(3))
+        });
         recordAction(this, `${topologyLabel(prey.morphologyTopology||topologyFromGenes(prey.genes))}を捕食した`);
         const scale=clamp((gain/60),0.6,2.0);
         const corpseE=gainRaw*0.32;
@@ -5858,7 +5972,7 @@ if(Z>0.08){
         peaceCounter=0;
       }
       else {
-        telemetryRecordPredationAttackFailure(this,prey,{probability:p,roll:predationRoll,sizeMul,defenseMul,groupMul});
+        telemetryRecordPredationAttackFailure(this,prey,{probability:p,roll:predationRoll,sizeMul,largePreySuccessMul,defenseMul,groupMul});
         const dx=(prey.x-this.x), dy=(prey.y-this.y);
         const d=Math.hypot(dx,dy)||1;
         prey.vx += (dx/d)*0.85;
@@ -8273,7 +8387,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const predatorSize=Math.max(0.001, predator?.size || 1);
     const moving=behavior!=='stationary' && Number(preySpeedRatio)>0;
     const base={speed:0.45,size:0.45,metabolism:0.50,fecundity:0.45,sense:0.50,diet:0.20,formSeed:0.18};
-    const targetSize=predatorSize*clamp(Number(preySizeRatio)||0.70,0.25,1.40);
+    const targetSize=predatorSize*clamp(Number(preySizeRatio)||0.70,0.25,2.40);
     const sizeGene=duelFindGene(base,'size',targetSize,(g)=>duelProbe(g).size);
     let genes={...base,size:sizeGene};
     if(moving){
@@ -8696,11 +8810,13 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       attackAttempted:attack,
       predationSucceeded:count('predationSucceeded'),
       sizeValid:count('sizeValid'),
+      sizeRejected:results.filter(r=>r.sizeRejected).length,
       preyInSense:count('preyInSense'),
       targetRate:target/n,
       contactRate:contact/n,
       attackRate:attack/n,
       successRate:count('predationSucceeded')/n,
+      sizeRejectionRate:results.filter(r=>r.sizeRejected).length/n,
       targetToContactRate:target ? contact/target : null,
       contactToAttackRate:contact ? attack/contact : null,
       attackToSuccessRate:attack ? count('predationSucceeded')/attack : null,
@@ -8730,6 +8846,12 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       averagePredatorStartSpeed:avg('predatorStartSpeed'),
       averagePreyStartSpeed:avg('preyStartSpeed'),
       averageActualSpeedRatio:avg('actualSpeedRatio'),
+      averagePreySizeRatio:avg('preySizeRatio'),
+      averageEffectiveSizeRatio:avg('effectiveSizeRatio'),
+      averagePackSizeMultiplier:avg('packSizeMultiplier'),
+      averageMaxRawSizeRatio:avg('maxRawSizeRatio'),
+      averageLargePreySuccessMul:avg('largePreySuccessMul'),
+      averagePackMateCount:avg('packMateCount'),
       kinematics:{
         meanPredatorSpeed:kavg('meanPredatorSpeed'),
         meanPreySpeed:kavg('meanPreySpeed'),
@@ -8899,7 +9021,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   function microPlacePreyNearPredator(predator,prey,opts={}){
     const ratio=Number(opts.sizeRatio ?? opts.preySizeRatio ?? 0.70);
     if(Number.isFinite(ratio)){
-      prey.size=Math.max(1,predator.size*clamp(ratio,0.25,1.40));
+      prey.size=Math.max(1,predator.size*clamp(ratio,0.25,2.40));
       if(prey.prepareSymbolDetails) prey.prepareSymbolDetails();
     }
     const behavior=duelNormalizeBehavior(opts.behaviorMode || opts.preyBehavior || 'stationary');
@@ -9574,11 +9696,18 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     frame++;
     const predatorGenes=duelPredatorGenes(rawOptions.predatorTemplate);
     const predator=duelMakeOrganism(W*0.5,H*0.5,predatorGenes,'predator',{energy:null,heading:0});
+    const packMateCount=clamp(Number(rawOptions.packMateCount||0),0,8)|0;
+    const packDuel=packMateCount>0 || rawOptions.predatorSocialMode==='hunt-pack' || rawOptions.packHunt===true;
+    if(packDuel){
+      predator.role='pack';
+      predator.socialMode='hunt-pack';
+      predator.sociality=Math.max(predator.sociality||0,0.56);
+    }
     const preyGenes=rawOptions.preyTemplate && typeof rawOptions.preyTemplate==='object' && rawOptions.preyTemplate.genes
       ? duelCloneGenes(rawOptions.preyTemplate.genes)
       : duelControlledPreyGenes(predator,rawOptions.preySizeRatio,rawOptions.preySpeedRatio,behavior);
     const prey=duelMakeOrganism(W*0.5,H*0.5,preyGenes,'prey',{preyDefenseMode:rawOptions.preyDefenseMode||'none'});
-    const requestedSizeRatio=clamp(Number(rawOptions.preySizeRatio)||0.70,0.25,1.40);
+    const requestedSizeRatio=clamp(Number(rawOptions.preySizeRatio)||0.70,0.25,2.40);
     prey.size=predator.size*requestedSizeRatio;
     prey.isMega=false;
     if(prey.prepareSymbolDetails) prey.prepareSymbolDetails();
@@ -9588,7 +9717,31 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const pose=duelApplyInitialPose(predator,prey,rawOptions);
     predator.nextPreyScan=frame;
     prey.nextPreyScan=frame+999999;
-    organisms.push(predator,prey);
+    const packMates=[];
+    if(packMateCount>0){
+      for(let i=0;i<packMateCount;i++){
+        const angle=(TAU*i/Math.max(1,packMateCount)) + 0.55;
+        const radius=28 + 4*(i%2);
+        const mate=duelMakeOrganism(
+          clamp(prey.x+Math.cos(angle)*radius,18,W-18),
+          clamp(prey.y+Math.sin(angle)*radius,18,H-18),
+          predatorGenes,
+          'predator',
+          {energy:predator.energy,heading:angle}
+        );
+        mate.role='pack';
+        mate.socialMode='hunt-pack';
+        mate.sociality=Math.max(mate.sociality||0,0.56);
+        mate.protect=999999;
+        mate.attackCD=999999;
+        mate.nextPreyScan=frame+999999;
+        mate.preyTargetId=null;
+        mate.chaseTimer=0;
+        mate._duelKind='packMate';
+        packMates.push(mate);
+      }
+    }
+    organisms.push(predator,prey,...packMates);
     buildSpatialIndex();
     const predatorChaseSpeed=duelEffectiveMaxSpeed(predator,{predatorChase:true});
     const requestedSpeedRatio=Number(rawOptions.preySpeedRatio)||0;
@@ -9598,6 +9751,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const startDistance=duelDistance(predator,prey);
     const startEnergy=predator.energy;
     const cls0=predationCandidateClassification(predator,prey,'target',startDistance);
+    const sizeInfo0=getEffectivePredationSizeRatio(predator,prey,'target');
+    const initialLargePreySuccessMul=largePreySuccessMultiplier(sizeInfo0.effectiveSizeRatio);
     const recordTrace=!!rawOptions.recordTrace;
     const trace=[];
     const result={
@@ -9654,6 +9809,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       within1_25xContactDistance:false,
       within1_1xContactDistance:false,
       preySizeRatio:prey.size/Math.max(predator.size,0.001),
+      effectiveSizeRatio:sizeInfo0.effectiveSizeRatio,
+      packSizeMultiplier:sizeInfo0.packSizeMultiplier,
+      maxRawSizeRatio:sizeInfo0.maxRawSizeRatio,
+      largePreySuccessMul:initialLargePreySuccessMul,
+      packMateCount,
       requestedPreySizeRatio:Number(rawOptions.preySizeRatio),
       requestedPreySpeedRatio:Number(rawOptions.preySpeedRatio),
       predatorSize:predator.size,
@@ -9717,6 +9877,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           result.attackAttempted=true;
           result.attackAttemptCount++;
           result.predatorEnergyAtAttack ??= predator.energy;
+          if(Number.isFinite(Number(e.effectiveSizeRatio))) result.effectiveSizeRatio=Number(e.effectiveSizeRatio);
+          if(Number.isFinite(Number(e.rawSizeRatio))) result.preySizeRatio=Number(e.rawSizeRatio);
+          if(Number.isFinite(Number(e.packSizeMultiplier))) result.packSizeMultiplier=Number(e.packSizeMultiplier);
+          if(Number.isFinite(Number(e.maxRawSizeRatio))) result.maxRawSizeRatio=Number(e.maxRawSizeRatio);
+          if(Number.isFinite(Number(e.largePreySuccessMul))) result.largePreySuccessMul=Number(e.largePreySuccessMul);
         } else if(e.stage==='success'){
           result.predationSucceeded=true;
           result.successStep ??= step;
@@ -9813,7 +9978,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const opts={
       predatorTemplate:options.predatorTemplate || 'viableCarnivore',
       preyTemplate:options.preyTemplate || 'controlledHerbivore',
-      preySizeRatio:clamp(Number(options.preySizeRatio ?? 0.70),0.25,1.40),
+      preySizeRatio:clamp(Number(options.preySizeRatio ?? 0.70),0.25,2.40),
       preySpeedRatio:clamp(Number(options.preySpeedRatio ?? 0.70),0,1.80),
       initialDistance:Number(options.initialDistance ?? 45),
       initialAngleDeg:Number(options.initialAngleDeg ?? 0),
@@ -9831,6 +9996,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       disableLowEnergySpeedPenalty:!!options.disableLowEnergySpeedPenalty,
       constantEnergy:!!options.constantEnergy,
       constantEnergyValue:options.constantEnergyValue,
+      predatorSocialMode:options.predatorSocialMode,
+      packHunt:!!options.packHunt,
+      packMateCount:clamp(Number(options.packMateCount||0),0,8)|0,
       seed:options.seed
     };
     const saved=capture();

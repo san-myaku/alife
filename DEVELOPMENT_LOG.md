@@ -474,3 +474,18 @@ contact時energyは両条件でほぼ同じだが、補正無効時はattack試�
 390x844で各600step。3試行とも起動・進行・save/load round trip成功、page errorなし。終了時個体数は各64、現存種数は60/60/57、FPS表示はいずれも60で、明確な性能悪化はなかった。
 ### 採用判断
 採用。success率90%、平均attack 2.65回、contact維持57.75step、距離再拡大5%で採用目安を満たした。補正無効より良い指標も出たが、今回は追加調整せず、低energy速度急落の不連続除去だけを採用する。
+## 2026-07-14 20:01 単独捕食サイズ上限1.8と大型獲物成功率ペナルティ
+### 変更前の問題
+単独捕食は `prey.size < predator.size` が実質的なhard gateで、自分と同サイズ以上の獲物を候補から完全除外していた。群れ狩りはtarget側1.12倍、attack側1.13倍で判定が分かれていた。
+### 新しいサイズ判定
+`rawSizeRatio = prey.size / predator.size`、`effectiveSizeRatio = prey.size / (predator.size * packSizeMultiplier)` を共通化し、target判定とattack判定を `effectiveSizeRatio <= 1.8` に揃えた。単独上限はraw 1.8、既存pack倍率1.12ではraw 2.016まで候補化できる。
+### 大型獲物成功率ペナルティ
+`challengeRatio = clamp((effectiveSizeRatio - 1.0) / 0.8, 0, 1)`、`smoothChallenge = challengeRatio^2 * (3 - 2 * challengeRatio)`、`largePreySuccessMul = 1.0 - 0.80 * smoothChallenge` を既存attack成功確率に追加した。effective 1.0で1.00、1.4で0.60、1.8で0.20。
+### Duel単独サイズ系列
+20反復、viable carnivore、stationary prey、速度比0、初期距離25、standard energy。サイズ0.70はtarget/contact/attack 20/20、success 17/20。1.00は20/20、10/20。1.20は20/20、11/20。1.40は20/20、5/20。1.60は20/20、4/20。1.80は20/20、7/20。1.81はtarget/contact/attack 0/20、sizeRejected 20/20。
+### 群れ比較
+packSizeMultiplierは1.12、raw上限は2.016。単独では1.90、2.00、2.10がsizeRejected 20/20。群れでは1.60、1.80、1.90、2.00がtarget/contact/attack 20/20、2.10がsizeRejected 20/20。群れsuccessは1.60が8/20、1.80が2/20、1.90が3/20、2.00が11/20で、20反復の乱数揺れはあるが1.8超の候補化とeffectiveSizeRatio低下は確認した。
+### 通常世界3試行
+390x844、各1,800step。page errorなし、NaNなし、save/load round trip成功。1.0超から1.8までの大型attemptは試行1/2/3で56/228/46、successは0/16/2。単独1.8超attemptとsuccessはいずれも0。pack 1.8超attemptは試行2で2件、success 0。終了時肉食は全試行0、草食118/42/122、雑食2/81/1、平均藻量0.656/0.584/0.691、capacity死213/67/233。明確な大量絶滅、NaN、ページエラーはなかった。
+### 採用判断
+採用。単独1.8までは挑戦可能、1.8超は単独拒否、群れでは既存pack倍率に応じて1.8超も対象化できる。サイズ差による成功倍率は連続低下し、target判定とattack判定の不一致も解消した。success率は20反復では揺れるため、今回追加調整は行わない。
