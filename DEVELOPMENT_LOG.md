@@ -538,3 +538,22 @@ inline script構文、`organism_render.js`構文、`git diff --check`、修正�
 短時間3試行ではambusher starvation deathsは旧12から修正後11へわずかに減少した。終了時肉食は旧3試行合計1、修正後0。今回の採否は、追跡状態の誤判定解消とtracking→contact改善を主指標にした。
 ### 採用判断
 採用。待ち伏せ中の静止は維持し、実追跡中だけ無目的遊泳処理を外せた。Micro Scenarioでcontact/successに到達し、通常世界でもtracking→contactと実追跡速度が明確に改善した。page error、NaN、save/load異常はなし。
+
+## 2026-07-14 22:49 感知範囲外target解除と近距離獲物再評価
+### 原因
+preyTargetId は死亡・保護・同種などの無効化では解除されていたが、距離がtarget有効性に含まれていなかった。そのため感知範囲を大きく外れた古い獲物を保持し、近くの獲物を再探索せず、さらに範囲外の獲物へ逃走刺激を与えていた。
+
+### 変更
+捕食探索距離を predationScanRadius() に共通化した。target が scanR * 1.25 を24連続step超えた場合に distanceExceeded として解除し、同じstepの既存scanで新targetを探せるようにした。target保持中も nextPreyScan 間隔で再評価し、bestDistance <= currentDistance * 0.65 または bestScore >= currentScore + 0.20 かつ bestDistance <= currentDistance * 0.90 の場合だけ targetChanged で切り替える。獲物への predatorThreatId / flee impulse は d <= scanR * 1.05 の場合だけ適用する。
+
+### Micro Scenario
+A release-switch: outOfRangeSteps 24, distanceExceeded 1, remoteFleeStimulusSteps 0, Aへの範囲外逃走刺激なし, Bへcontact/attack/success到達。
+B temporary-return: 範囲外10stepでは解除なし, target維持, outOfRangeSteps final 0。
+C ambush-hold: scanR * 1.10以内の通常待ち伏せは距離解除なし, ambushHoldSteps 70, 空腹による既存追跡移行は維持。
+
+### 通常世界3 seed前後比較
+旧挙動: tracking 419, contact 864, success 107, distanceExceeded 0, targetChanged 0, 範囲外target保持 988step, 範囲外逃走刺激 1067step, ambusher餓死14, 有効target保持餓死14, 終了時肉食 0/0/0。
+修正版: tracking 1536, contact 906, success 144, distanceExceeded 1, targetChanged 156, 範囲外target保持 31step, 範囲外逃走刺激 0step, ambusher餓死16, 有効target保持餓死15, 終了時肉食 0/1/0。
+
+### 採用判断
+採用。永久target固定と遠隔逃走刺激は解消し、短期範囲外targetと通常ambush holdは維持された。tracking/contact/successに重大な悪化はなく、page error・NaN・save/load異常なし。ただし短時間試験ではambusher餓死そのものは改善していないため、次はtargetChanged後の実追跡距離やambusherの獲物選択を別タスクで見る。

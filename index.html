@@ -1191,6 +1191,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   let duelExperimentActive = false;
   let duelDisableLowEnergySpeedPenalty = false;
   let activePreyChaseDirectedMovementFixEnabled = true;
+  let stalePreyTargetReleaseFixEnabled = true;
+  const PREDATION_TARGET_OUT_OF_RANGE_SCALE = 1.25;
+  const PREDATION_TARGET_OUT_OF_RANGE_GRACE = 24;
   const PREDATION_DUEL_HISTORY_LIMIT = 50;
   const PREDATION_STADIUM_HISTORY_LIMIT = 3;
   const PREDATION_STADIUM_ARENA_COUNT = 6;
@@ -1746,6 +1749,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         activeChaseLowEnergyPenaltySteps:0,
         activeChaseLowEnergySpeedMulSum:0,
         activeChaseLowEnergySpeedMulSamples:0,
+        targetOutOfRangeSteps:0,
+        targetOutOfRangeReleases:0,
+        targetReassessmentScans:0,
+        targetReassessmentSwitches:0,
+        remoteFleeStimulusSteps:0,
         lastTargetId:null,
         failureCounts:telemetryBlankPredationFailureCounts(),
         dominantFailureReason:null,
@@ -1849,6 +1857,48 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     } else {
       telemetryPredationIndividualAddFailure(rec,'targetNotAcquired');
     }
+  }
+  function predationScanRadius(predator){
+    const carn=Number(predator?.genes?.diet ?? 0);
+    return Number(predator?.senseR || 0)
+      * (predator?.morphologyTopology==='branch' ? 1.18 : 1.0)
+      * (1.04 + carn*0.22);
+  }
+  function predationTargetScore(predator,candidate,distance,scanR){
+    const sizeEdge=clamp(
+      (Number(predator?.size||0) - Number(candidate?.size||0))
+        / Math.max(1,Number(predator?.size||0)),
+      0,
+      0.8
+    );
+    const vulnerability=candidate?.socialMode==='defense-school' ? 0.76 : 1.0;
+    const score=
+      (1 - Number(distance||0)/Math.max(0.001,Number(scanR||0))) * 0.52
+      + sizeEdge * 0.50
+      + (1 - Number(candidate?.energy||0) / 160) * 0.32
+      + ((candidate?.fleeTimer || 0) > 0 ? 0.08 : 0);
+    return score * vulnerability;
+  }
+  function telemetryRecordTargetOutOfRange(o, prey, distance, scanR){
+    const rec=telemetryPredationIndividualRecord(o);
+    if(!rec) return;
+    rec.targetOutOfRangeSteps=(rec.targetOutOfRangeSteps||0)+1;
+  }
+  function telemetryRecordTargetDistanceRelease(o, prey){
+    const rec=telemetryPredationIndividualRecord(o);
+    if(!rec) return;
+    rec.targetOutOfRangeReleases=(rec.targetOutOfRangeReleases||0)+1;
+  }
+  function telemetryRecordTargetReassessment(o, switched=false){
+    const rec=telemetryPredationIndividualRecord(o);
+    if(!rec) return;
+    if(!switched) rec.targetReassessmentScans=(rec.targetReassessmentScans||0)+1;
+    if(switched) rec.targetReassessmentSwitches=(rec.targetReassessmentSwitches||0)+1;
+  }
+  function telemetryRecordRemoteFleeStimulus(o, prey, distance, scanR){
+    const rec=telemetryPredationIndividualRecord(o);
+    if(!rec) return;
+    rec.remoteFleeStimulusSteps=(rec.remoteFleeStimulusSteps||0)+1;
   }
   const PACK_HELPER_SIZE_CONTRIBUTION=0.53;
   const PACK_HELPER_RADIUS=76;
@@ -2204,7 +2254,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     rec.deathCause=causeKey || 'other';
     let recent=rec.samples.filter(s=>frame-s.frame<=60);
     if(!recent.length && o && !o.dead){
-      const scanR=(o.senseR||90)*(o.morphologyTopology==='branch'?1.18:1.0)*(1.04 + (o.genes?.diet||0)*0.22);
+      const scanR=predationScanRadius(o);
       telemetryRecordPredationSizeScan(o,scanPredationNeighborhood(o,scanR,'target'));
       recent=rec.samples.filter(s=>frame-s.frame<=60);
     }
@@ -3248,7 +3298,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         sameSpeciesExcludedEvents:sum(r=>r.sameSpeciesExcludedEvents),
         targetSwitchesBeforeSuccess:sum(r=>r.targetSwitchesBeforeSuccess),
         chaseFramesBeforeSuccess:sum(r=>r.chaseFramesBeforeSuccess),
-        attackAttemptsBeforeSuccess:sum(r=>r.attackAttemptsBeforeSuccess)
+        attackAttemptsBeforeSuccess:sum(r=>r.attackAttemptsBeforeSuccess),
+        targetOutOfRangeSteps:sum(r=>r.targetOutOfRangeSteps),
+        targetOutOfRangeReleases:sum(r=>r.targetOutOfRangeReleases),
+        targetReassessmentScans:sum(r=>r.targetReassessmentScans),
+        targetReassessmentSwitches:sum(r=>r.targetReassessmentSwitches),
+        remoteFleeStimulusSteps:sum(r=>r.remoteFleeStimulusSteps)
       },
       lifetimeFailureEvents,
       lifetimeFailureOrganisms,
@@ -5002,8 +5057,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function devPredationSizeOverlaySnapshot(){
     if(!devMode || !selectedOrganism || selectedOrganism.dead) return null;
     const o=selectedOrganism;
-    const carn=Number(o.genes?.diet ?? 0);
-    const scanR=o.senseR*(o.morphologyTopology==='branch'?1.18:1.0)*(1.04 + carn*0.22);
+    const scanR=predationScanRadius(o);
     const scan=scanPredationNeighborhood(o,scanR,'target');
     const target=organismById(o.preyTargetId);
     const targetCls=target ? predationCandidateClassification(o,target,'target') : null;
@@ -5083,7 +5137,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   class Organism{
     constructor(x,y,genes=null,bornByRepro=false,parentA=null,parentB=null){
       this.id=NEXT_ID++; this.x=x; this.y=y; this.vx=0; this.vy=0; this.energy=100; this.storeN=0; this.storeO=0.75; this.storeD=0; this.mem=1.0; this.age=0; this.fitness=0; this.moveCostSum=0; this.trail=[]; this.phase=Math.random()*TAU; this.attackCD=0; this.fleeTimer=0; this.protect=90; this.mutagenBoost=0; this.burstTimer=0; this.role='other';
-      this.preyTargetId=null; this.chaseTimer=0; this.nextPreyScan=Math.floor(rnd(0,12)); this.predatorThreatId=null; this.recentEvents=[]; this.lastAction='誕生'; this.lastActionFrame=frame; this.deathCause=null;
+      this.preyTargetId=null; this.preyTargetOutOfRangeSteps=0; this.chaseTimer=0; this.nextPreyScan=Math.floor(rnd(0,12)); this.predatorThreatId=null; this.recentEvents=[]; this.lastAction='誕生'; this.lastActionFrame=frame; this.deathCause=null;
       this.birthFrame=frame;
       this.grazingTimer=0;
       this.mateSeekT=0; this.callCD=0;
@@ -5299,6 +5353,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         this.vy += (rdy/rd)*rallyForce;
         if(sharedPrey && !this.preyTargetId){
           this.preyTargetId=sharedPrey.id;
+          this.preyTargetOutOfRangeSteps=0;
           this.chaseTimer=Math.max(this.chaseTimer, 95);
           telemetryRecordPredationStage('candidate',this,sharedPrey,{shared:true});
           telemetryRecordPredationStage('tracking',this,sharedPrey,{shared:true});
@@ -5324,20 +5379,42 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         if(this.chaseTimer<=0){
           if(this.preyTargetId!=null) telemetryEndChaseEpisode(this,'trackingStateEnded');
           this.preyTargetId=null;
+          this.preyTargetOutOfRangeSteps=0;
         }
         return;
       }
+      const scanR=predationScanRadius(this);
       let prey=organismById(this.preyTargetId);
       const validPrey=(p)=> predationCandidateClassification(this,p,'target').valid;
       if(!validPrey(prey)){
         if(prey) telemetryEndChaseEpisode(this,prey.dead?'preyDiedElsewhere':'targetInvalid',prey);
         else if(this.preyTargetId!=null) telemetryEndChaseEpisode(this,'targetLost');
-        prey=null; this.preyTargetId=null;
+        prey=null; this.preyTargetId=null; this.preyTargetOutOfRangeSteps=0;
       }
-      if(!prey && frame>=this.nextPreyScan){
+      if(prey){
+        const targetDistance=Math.hypot(prey.x-this.x,prey.y-this.y);
+        if(targetDistance>scanR*PREDATION_TARGET_OUT_OF_RANGE_SCALE){
+          telemetryRecordTargetOutOfRange(this,prey,targetDistance,scanR);
+          if(stalePreyTargetReleaseFixEnabled) this.preyTargetOutOfRangeSteps=(this.preyTargetOutOfRangeSteps||0)+1;
+        } else {
+          this.preyTargetOutOfRangeSteps=0;
+        }
+        if(stalePreyTargetReleaseFixEnabled && (this.preyTargetOutOfRangeSteps||0)>=PREDATION_TARGET_OUT_OF_RANGE_GRACE){
+          telemetryEndChaseEpisode(this,'distanceExceeded',prey);
+          telemetryRecordTargetDistanceRelease(this,prey);
+          prey=null;
+          this.preyTargetId=null;
+          this.chaseTimer=0;
+          this.preyTargetOutOfRangeSteps=0;
+        }
+      } else if(!prey){
+        this.preyTargetOutOfRangeSteps=0;
+      }
+      const shouldScan=frame>=this.nextPreyScan && (stalePreyTargetReleaseFixEnabled || !prey);
+      let reassessmentBest=null, reassessmentBestScore=-1;
+      if(shouldScan){
         this.nextPreyScan=frame + 8 + ((this.id+frame)%9);
         let best=null, bestScore=-1;
-        const scanR=this.senseR*(this.morphologyTopology==='branch'?1.18:1.0)*(1.04 + carn*0.22);
         perfStats.predationScans++;
         const scan=scanPredationNeighborhood(this,scanR,'target');
         for(const row of scan.rows){
@@ -5345,10 +5422,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           const o=organismById(row.preyId);
           if(!o) continue;
           const d=row.distance||1;
-          const sizeEdge=clamp((this.size-o.size)/Math.max(1,this.size),0,0.8);
-          const vulnerability=o.socialMode==='defense-school' ? 0.76 : 1.0;
-          const score=(1-d/scanR)*0.52 + sizeEdge*0.50 + (1-o.energy/160)*0.32 + ((o.fleeTimer||0)>0?0.08:0);
-          const finalScore=score*vulnerability;
+          const finalScore=predationTargetScore(this,o,d,scanR);
           if(finalScore>bestScore){ bestScore=finalScore; best=o; }
         }
         telemetryRecordPredationScan(this,{
@@ -5358,13 +5432,42 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           valid:scan.validPrey
         });
         telemetryRecordPredationSizeScan(this,scan);
-        if(best){
+        reassessmentBest=best;
+        reassessmentBestScore=bestScore;
+        if(prey) telemetryRecordTargetReassessment(this,false);
+        if(best && !prey){
           telemetryRecordPredationStage('candidate',this,best,{score:Number(bestScore.toFixed(3))});
           prey=best;
           this.preyTargetId=best.id;
+          this.preyTargetOutOfRangeSteps=0;
           this.chaseTimer=130 + Math.round(80*intent);
           telemetryRecordPredationStage('tracking',this,best);
           recordAction(this,'小型生命を追跡した');
+        }
+      }
+      if(stalePreyTargetReleaseFixEnabled && reassessmentBest && prey && reassessmentBest.id!==prey.id){
+        const previousPreyId=prey.id;
+        const currentDistance=Math.hypot(prey.x-this.x,prey.y-this.y)||1;
+        const currentScore=predationTargetScore(this,prey,currentDistance,scanR);
+        const bestDistance=Math.hypot(reassessmentBest.x-this.x,reassessmentBest.y-this.y)||1;
+        const muchCloser=bestDistance<=currentDistance*0.65;
+        const clearlyBetter=reassessmentBestScore>=currentScore+0.20 && bestDistance<=currentDistance*0.90;
+        if(muchCloser || clearlyBetter){
+          telemetryEndChaseEpisode(this,'targetChanged',prey);
+          telemetryRecordTargetReassessment(this,true);
+          prey=reassessmentBest;
+          this.preyTargetId=reassessmentBest.id;
+          this.preyTargetOutOfRangeSteps=0;
+          this.chaseTimer=130 + Math.round(80*intent);
+          telemetryRecordPredationStage('candidate',this,reassessmentBest,{
+            score:Number(reassessmentBestScore.toFixed(3)),
+            switched:true,
+            previousTargetId:previousPreyId
+          });
+          telemetryRecordPredationStage('tracking',this,reassessmentBest,{
+            switched:true,
+            previousTargetId:previousPreyId
+          });
         }
       }
       if(!prey) return;
@@ -5410,6 +5513,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this._predationChasingThisStep = true;
       this.vx += (dx/d)*chaseForce;
       this.vy += (dy/d)*chaseForce;
+      const canAlertPrey=!stalePreyTargetReleaseFixEnabled || d<=scanR*1.05;
+      if(canAlertPrey){
+      if(!stalePreyTargetReleaseFixEnabled && d>scanR*1.05) telemetryRecordRemoteFleeStimulus(this,prey,d,scanR);
       prey.predatorThreatId=this.id;
       const fleeMul=prey.morphologyTopology==='chain'?1.22:(prey.morphologyTopology==='ring'?0.92:1.0);
       prey.vx += (dx/d)*0.18*fleeMul;
@@ -5419,6 +5525,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(frame-(prey._lastFleeAction||0)>140){
         recordAction(prey,'捕食者から逃げた');
         prey._lastFleeAction=frame;
+      }
       }
     }
 
@@ -6225,6 +6332,7 @@ if(Z>0.08){
         this.attackCD=105;
         this.chaseTimer=0;
         this.preyTargetId=null;
+        this.preyTargetOutOfRangeSteps=0;
         predEvents++;
         peaceCounter=0;
       }
@@ -8594,7 +8702,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     o.storeO=Number.isFinite(Number(opts.storeO)) ? Number(opts.storeO) : 0.75;
     o.storeD=Number.isFinite(Number(opts.storeD)) ? Number(opts.storeD) : 0;
     o.mem=1;
-    o.attackCD=0; o.fleeTimer=0; o.herdThreat=0; o.predatorThreatId=null; o.preyTargetId=null; o.chaseTimer=0; o.nextPreyScan=frame;
+    o.attackCD=0; o.fleeTimer=0; o.herdThreat=0; o.predatorThreatId=null; o.preyTargetId=null; o.preyTargetOutOfRangeSteps=0; o.chaseTimer=0; o.nextPreyScan=frame;
     o.restT=0; o.restCD=999999; o.mateSeekT=0; o.callCD=999999; o.motionLevel=0; o.socialCount=0;
     o.vx=0; o.vy=0; o.heading=Number(opts.heading ?? 0);
     o._duelKind=kind;
@@ -9530,6 +9638,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         subject.role='ambusher';
         subject.socialMode='solitary';
         subject.preyTargetId=null;
+        subject.preyTargetOutOfRangeSteps=0;
         subject.chaseTimer=0;
         subject.nextPreyScan=frame;
         subject.restT=Number(opts.startRestT||0);
@@ -9550,6 +9659,53 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           initialDistance:opts.initialDistance ?? subject.senseR*0.75,
           initialAngleDeg:opts.initialAngleDeg ?? 0
         });
+      }
+      let staleTargetDiagnostic=null;
+      if(String(opts.scenarioType||'')==='stale-target-diagnostic'){
+        const variant=String(opts.variant || 'release-switch');
+        subject.role=variant==='ambush-hold' ? 'ambusher' : (opts.organismRole || 'other');
+        subject.socialMode='solitary';
+        subject.energy=clamp(Number(opts.energy ?? subject.reproThreshold*0.82),0,160);
+        subject.x=W*0.50; subject.y=H*0.50; subject.vx=0; subject.vy=0;
+        subject.restT=0; subject.restCD=999999;
+        const makePrey=(label)=>{
+          const p=microMakeParticipant({role:'prey',template:'controlled-prey',behaviorMode:'stationary',energyMode:'full'},participants.length);
+          p.staleLabel=label;
+          p.behaviorMode='stationary';
+          p.organism._microBehaviorMode='stationary';
+          p.organism.protect=0;
+          p.organism.vx=0; p.organism.vy=0;
+          participants.push(p);
+          organisms.push(p.organism);
+          return p.organism;
+        };
+        const placeRel=(o,dist,angle=0)=>{
+          o.x=clamp(subject.x+Math.cos(angle)*dist,18,W-18);
+          o.y=clamp(subject.y+Math.sin(angle)*dist,18,H-18);
+          o.vx=0; o.vy=0;
+        };
+        const preyA=makePrey('A');
+        const scanR=predationScanRadius(subject);
+        let preyB=null;
+        if(variant==='release-switch'){
+          placeRel(preyA,scanR*1.35,Math.PI/2);
+          preyB=makePrey('B');
+          placeRel(preyB,Math.max(28,duelContactRadius(subject,preyB)+8),-Math.PI/2);
+          subject.nextPreyScan=frame+PREDATION_TARGET_OUT_OF_RANGE_GRACE;
+        } else if(variant==='temporary-return'){
+          placeRel(preyA,scanR*1.30,Math.PI/2);
+          subject.nextPreyScan=frame+999999;
+        } else {
+          const ambushTrigger=0.55;
+          placeRel(preyA,Math.min(scanR*1.10,subject.senseR*ambushTrigger*1.25),Math.PI/2);
+          subject.nextPreyScan=frame+999999;
+        }
+        subject.preyTargetId=preyA.id;
+        subject.preyTargetOutOfRangeSteps=0;
+        subject.chaseTimer=130;
+        telemetryRecordPredationStage('candidate',subject,preyA,{diagnostic:true,variant});
+        telemetryRecordPredationStage('tracking',subject,preyA,{diagnostic:true,variant});
+        staleTargetDiagnostic={variant,preyA,preyB,scanR,initialTargetId:preyA.id};
       }
       if(subjectPart.behaviorMode==='chase' && !participants.some(p=>p.role==='prey' || p.role==='lure')){
         const prey=microMakeParticipant({role:'prey',template:'controlled-prey',behaviorMode:'straightEscape',energyMode:'full'},participants.length);
@@ -9586,6 +9742,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
               secondPreySpawned=true;
               break;
             }
+          }
+        }
+        if(staleTargetDiagnostic?.variant==='temporary-return'){
+          const dist=step<=10 ? staleTargetDiagnostic.scanR*1.30 : staleTargetDiagnostic.scanR*0.82;
+          const preyA=staleTargetDiagnostic.preyA;
+          if(preyA && !preyA.dead){
+            preyA.x=clamp(subject.x,18,W-18);
+            preyA.y=clamp(subject.y+dist,18,H-18);
+            preyA.vx=0; preyA.vy=0;
           }
         }
         buildSpatialIndex();
@@ -9677,6 +9842,36 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           finalRestT:subject.restT||0,
           finalEnergy:subject.energy||0,
           targetId:subject.preyTargetId||null
+        };
+      }
+      if(staleTargetDiagnostic){
+        const rec=telemetry.predationIndividuals.get(subject.id) || {};
+        const episodes=telemetry.chaseEpisodes.filter(ep=>ep.predatorId===subject.id);
+        const preyA=staleTargetDiagnostic.preyA;
+        const preyB=staleTargetDiagnostic.preyB;
+        observer.staleTarget={
+          variant:staleTargetDiagnostic.variant,
+          scanR:staleTargetDiagnostic.scanR,
+          initialTargetId:staleTargetDiagnostic.initialTargetId,
+          finalTargetId:subject.preyTargetId ?? null,
+          preyAId:preyA?.id ?? null,
+          preyBId:preyB?.id ?? null,
+          outOfRangeSteps:rec.targetOutOfRangeSteps||0,
+          preyTargetOutOfRangeStepsFinal:subject.preyTargetOutOfRangeSteps||0,
+          distanceExceededReleases:rec.targetOutOfRangeReleases||0,
+          targetReassessmentScans:rec.targetReassessmentScans||0,
+          targetReassessmentSwitches:rec.targetReassessmentSwitches||0,
+          remoteFleeStimulusSteps:rec.remoteFleeStimulusSteps||0,
+          preyAAlertedFromOutOfRange:!!(preyA && preyA.predatorThreatId===subject.id && Math.hypot(preyA.x-subject.x,preyA.y-subject.y)>staleTargetDiagnostic.scanR*1.05),
+          preyAFleeTimer:preyA?.fleeTimer || 0,
+          preyASpeed:preyA ? Math.hypot(preyA.vx||0,preyA.vy||0) : null,
+          ambushHoldSteps:rec.ambushHoldSteps||0,
+          activePreyChaseSteps:rec.activePreyChaseSteps||0,
+          reachedContact:!!rec.reachedContact,
+          attemptedAttack:!!rec.attemptedAttack,
+          succeededPredation:!!rec.succeededPredation,
+          chaseEndReasons:episodes.map(ep=>ep.endReason).filter(Boolean),
+          keptOriginalTarget:subject.preyTargetId===staleTargetDiagnostic.initialTargetId
         };
       }
       const result={
@@ -10050,6 +10245,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         mate.attackCD=999999;
         mate.nextPreyScan=frame+999999;
         mate.preyTargetId=null;
+        mate.preyTargetOutOfRangeSteps=0;
         mate.chaseTimer=0;
         mate._duelKind='packMate';
         packMates.push(mate);
@@ -12479,6 +12675,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       activePreyChaseDirectedMovementFixEnabled = enabled !== false;
       return {ok:true, activePreyChaseDirectedMovementFixEnabled};
     },
+    setStalePreyTargetReleaseFix(enabled=true){
+      stalePreyTargetReleaseFixEnabled = enabled !== false;
+      return {
+        ok:true,
+        stalePreyTargetReleaseFixEnabled,
+        outOfRangeScale:PREDATION_TARGET_OUT_OF_RANGE_SCALE,
+        outOfRangeGrace:PREDATION_TARGET_OUT_OF_RANGE_GRACE
+      };
+    },
     predationSizeFunnelSummary(options={}){
       return predationSizeFunnelSummary(options);
     },
@@ -12607,7 +12812,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       patches: patches.map(p=>({type:p.type,x:p.x,y:p.y,r:p.r})),
       plankton: plankton.map(p=>({x:p.x,y:p.y,vx:p.vx,vy:p.vy,t:p.t,kind:p.kind,fade:p.fade})),
       membranes: membranes.map(m=>({x1:m.x1,y1:m.y1,x2:m.x2,y2:m.y2,type:m.type,t:m.t})),
-      organisms: organisms.map(o=>({id:o.id,x:o.x,y:o.y,vx:o.vx,vy:o.vy,energy:o.energy,age:o.age,birthFrame:o.birthFrame,protect:o.protect,storeN:o.storeN,storeO:o.storeO,storeD:o.storeD,mem:o.mem,attackCD:o.attackCD,fleeTimer:o.fleeTimer,chaseTimer:o.chaseTimer,preyTargetId:o.preyTargetId,predatorThreatId:o.predatorThreatId,grazingTimer:o.grazingTimer,genes:o.genes,speciesKey:o.speciesKey,traits:o.traits||null,flags:o.flags||null,morphologyTopology:o.morphologyTopology||topologyFromGenes(o.genes),recentEvents:o.recentEvents||[],lastAction:o.lastAction||null,devInjected:!!o.devInjected,devInjectedLineage:!!o.devInjectedLineage,injectionBatchId:o.injectionBatchId||null,injectionStep:o.injectionStep??null,injectionGeneration:o.injectionGeneration??null,injectionAncestorId:o.injectionAncestorId??null,injectionParentId:o.injectionParentId??null})),
+      organisms: organisms.map(o=>({id:o.id,x:o.x,y:o.y,vx:o.vx,vy:o.vy,energy:o.energy,age:o.age,birthFrame:o.birthFrame,protect:o.protect,storeN:o.storeN,storeO:o.storeO,storeD:o.storeD,mem:o.mem,attackCD:o.attackCD,fleeTimer:o.fleeTimer,chaseTimer:o.chaseTimer,preyTargetId:o.preyTargetId,preyTargetOutOfRangeSteps:o.preyTargetOutOfRangeSteps||0,predatorThreatId:o.predatorThreatId,grazingTimer:o.grazingTimer,genes:o.genes,speciesKey:o.speciesKey,traits:o.traits||null,flags:o.flags||null,morphologyTopology:o.morphologyTopology||topologyFromGenes(o.genes),recentEvents:o.recentEvents||[],lastAction:o.lastAction||null,devInjected:!!o.devInjected,devInjectedLineage:!!o.devInjectedLineage,injectionBatchId:o.injectionBatchId||null,injectionStep:o.injectionStep??null,injectionGeneration:o.injectionGeneration??null,injectionAncestorId:o.injectionAncestorId??null,injectionParentId:o.injectionParentId??null})),
       extinctRecords,
       speciesStats:Array.from(speciesStats.entries()),
       discoveredRareTraits:Array.from(discoveredRareTraits),
@@ -12665,6 +12870,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         if(o.fleeTimer!=null) u.fleeTimer=o.fleeTimer;
         if(o.chaseTimer!=null) u.chaseTimer=o.chaseTimer;
         if(o.preyTargetId!=null) u.preyTargetId=o.preyTargetId;
+        u.preyTargetOutOfRangeSteps=Number.isFinite(Number(o.preyTargetOutOfRangeSteps)) ? Number(o.preyTargetOutOfRangeSteps) : 0;
         if(o.predatorThreatId!=null) u.predatorThreatId=o.predatorThreatId;
         if(o.grazingTimer!=null) u.grazingTimer=o.grazingTimer;
         u.devInjected=!!o.devInjected;
