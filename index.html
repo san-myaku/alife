@@ -115,6 +115,64 @@
   #fps-hud{ position:fixed; left:8px; bottom:8px; z-index:30; pointer-events:none; min-width:132px; white-space:nowrap; padding:4px 7px; border:1px solid rgba(123,223,242,.38); border-radius:8px; background:rgba(5,12,26,.62); color:#dbeafe; font:700 12px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace; font-variant-numeric:tabular-nums; box-shadow:0 4px 12px rgba(0,0,0,.20); }
   #fps-hud[data-level="mid"]{ border-color:rgba(247,183,49,.46); color:#ffe8ad; }
   #fps-hud[data-level="low"]{ border-color:rgba(255,107,107,.58); color:#ffc9c9; }
+  .observation-lab{ position:fixed; inset:0; z-index:60; display:none; color:#e8eefc; background:rgba(4,9,22,.94); }
+  .observation-lab.open{ display:grid; grid-template-rows:auto 1fr; }
+  .lab-topbar{ display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; padding:10px 12px; border-bottom:1px solid rgba(125,145,190,.28); background:rgba(7,16,34,.94); }
+  .lab-title{ font-weight:900; letter-spacing:.02em; line-height:1.2; }
+  .lab-title span{ display:block; color:#9fb3d1; font-size:.78rem; font-weight:600; margin-top:2px; }
+  .lab-actions{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; justify-content:flex-end; }
+  .lab-actions .btn{ min-height:34px; padding:7px 9px; border-radius:8px; }
+  .lab-select,.lab-input{ min-height:34px; border:1px solid #2d3a68; border-radius:8px; background:#071022; color:#e8eefc; padding:6px 8px; }
+  .lab-body{ min-height:0; display:grid; grid-template-rows:auto 1fr auto; gap:8px; padding:10px; overflow:hidden; }
+  .lab-controls{ display:grid; grid-template-columns:minmax(190px,1fr) auto auto auto; gap:8px; align-items:center; }
+  .lab-slider{ width:100%; }
+  .lab-grid{ min-height:0; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); grid-template-rows:repeat(2,minmax(0,1fr)); gap:8px; }
+  .stadium-card{ min-width:0; min-height:0; display:grid; grid-template-rows:auto 1fr auto; border:1px solid rgba(125,145,190,.32); border-radius:8px; background:rgba(7,16,34,.74); overflow:hidden; cursor:pointer; }
+  .stadium-card.success{ border-color:rgba(80,250,123,.62); }
+  .stadium-card.fail{ border-color:rgba(255,107,107,.62); }
+  .stadium-card.active{ box-shadow:0 0 0 2px rgba(125,211,252,.36); }
+  .stadium-head{ display:grid; grid-template-columns:1fr auto; gap:6px; padding:6px 7px; font-size:.72rem; color:#c8d7f2; background:rgba(10,18,41,.72); }
+  .stadium-name{ font-weight:800; color:#f5fbff; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .stadium-tags{ display:flex; gap:4px; flex-wrap:wrap; justify-content:flex-end; }
+  .stadium-tag{ border:1px solid rgba(125,211,252,.22); border-radius:999px; padding:1px 5px; color:#bdf; background:rgba(4,12,28,.52); }
+  .stadium-canvas{ width:100%; height:100%; display:block; background:#020617; }
+  .stadium-foot{ display:grid; grid-template-columns:1fr auto; gap:6px; align-items:center; padding:5px 7px; font-size:.70rem; color:#b8c7e6; background:rgba(7,16,34,.82); }
+  .stadium-state{ overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .lab-summary{ min-height:64px; max-height:22vh; overflow:auto; border:1px solid rgba(125,145,190,.26); border-radius:8px; background:rgba(7,16,34,.74); padding:7px; font-size:.76rem; }
+  .lab-summary table{ width:100%; border-collapse:collapse; }
+  .lab-summary th,.lab-summary td{ padding:3px 5px; border-bottom:1px solid rgba(125,145,190,.16); text-align:left; white-space:nowrap; }
+  .lab-summary th{ color:#dbeafe; font-weight:800; }
+  .lab-comment{ margin-top:6px; color:#fde68a; line-height:1.35; }
+  .lab-focus{ position:fixed; inset:10px; z-index:70; display:none; grid-template-rows:auto 1fr auto; gap:8px; padding:10px; border:1px solid rgba(125,211,252,.42); border-radius:8px; background:rgba(4,9,22,.98); }
+  .lab-focus.open{ display:grid; }
+  .lab-focus-top{ display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .lab-focus-main{ min-height:0; display:grid; grid-template-columns:minmax(0,1fr) 280px; gap:10px; }
+  .lab-focus-canvas{ width:100%; height:100%; min-height:320px; display:block; background:#020617; border-radius:8px; border:1px solid rgba(125,145,190,.26); }
+  .lab-focus-info{ overflow:auto; border:1px solid rgba(125,145,190,.26); border-radius:8px; padding:8px; background:rgba(7,16,34,.82); font-size:.82rem; line-height:1.45; }
+  .lab-dev{ display:none; border-top:1px solid rgba(125,145,190,.22); margin-top:8px; padding-top:8px; }
+  .observation-lab.dev .lab-dev{ display:block; }
+  .lab-dev-grid{ display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:4px; }
+  .lab-dev-grid textarea{ width:100%; min-height:78px; resize:vertical; border-radius:8px; background:#071022; color:#dbeafe; border:1px solid #1b2548; font:10px ui-monospace,Consolas,monospace; }
+  .lab-dev-arena{ display:grid; gap:4px; min-width:0; }
+  @media (max-width:900px){
+    .lab-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); grid-template-rows:repeat(3,minmax(0,1fr)); }
+    .lab-controls{ grid-template-columns:1fr auto auto; }
+    .lab-focus-main{ grid-template-columns:1fr; grid-template-rows:minmax(300px,1fr) auto; }
+    .lab-dev-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  }
+  @media (max-width:520px){
+    .lab-topbar{ grid-template-columns:1fr auto; padding:8px; }
+    .lab-title span{ display:none; }
+    .lab-actions{ grid-column:1 / -1; justify-content:flex-start; }
+    .lab-body{ padding:6px; gap:6px; }
+    .lab-controls{ grid-template-columns:1fr 1fr; gap:6px; }
+    .lab-grid{ gap:5px; }
+    .stadium-head{ padding:4px 5px; font-size:.62rem; }
+    .stadium-foot{ padding:4px 5px; font-size:.62rem; grid-template-columns:1fr; }
+    .lab-summary{ max-height:20vh; font-size:.64rem; }
+    .lab-focus{ inset:4px; padding:6px; }
+    .lab-focus-canvas{ min-height:260px; }
+  }
   @media (max-width:520px){ #fps-hud{ position:absolute; left:6px; top:8px; bottom:auto; min-width:0; max-width:calc(100vw - 18px); font-size:10px; padding:3px 6px; opacity:.78; } }
 </style>
 </head>
@@ -141,6 +199,9 @@
     </div>
     <div class="row">
       <button id="observe-btn" class="btn" style="width:100%">◎ 観察: OFF</button>
+    </div>
+    <div class="row">
+      <button id="lab-btn" class="btn" style="width:100%">観察ラボ</button>
     </div>
     <div class="row">
       <button id="microview-btn" class="btn" style="width:100%">🔬 遠景観察: ON</button>
@@ -415,6 +476,11 @@
       syncObserveUI();
     });
     syncObserveUI();
+  }
+
+  const labBtn = $('lab-btn');
+  if(labBtn){
+    labBtn.addEventListener('click', stadiumOpenLab);
   }
 
   const microViewBtn = $('microview-btn');
@@ -1124,6 +1190,31 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   let devShowPredationSizeOverlay = false;
   let duelExperimentActive = false;
   const PREDATION_DUEL_HISTORY_LIMIT = 50;
+  const PREDATION_STADIUM_HISTORY_LIMIT = 3;
+  const PREDATION_STADIUM_ARENA_COUNT = 6;
+  const PREDATION_STADIUM_TRACE_MAX_STEPS = 1200;
+  const predationStadiumHistory = [];
+  const predationStadiumLab = {
+    open:false,
+    initialized:false,
+    stadium:null,
+    playing:false,
+    time:0,
+    speed:1,
+    lastNow:0,
+    selectedArenaIndex:null,
+    showTrails:true,
+    showLabels:true,
+    devShowSense:false,
+    devShowContact:false,
+    devShowVectors:false,
+    devShowTarget:false,
+    savedWorld:null,
+    wasRunning:false,
+    canvases:[],
+    lastDrawKey:'',
+    status:''
+  };
   const TELEMETRY_DIAGNOSTIC_MATURITY_AGE = 180;
   const TELEMETRY_ENERGY_THRESHOLDS = [0.25,0.50,0.75,0.90,1.00,1.25];
   const TELEMETRY_PREDATION_INDIVIDUAL_LIMIT = 5200;
@@ -8199,6 +8290,40 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       options
     };
   }
+  function duelTraceFrame(step,predator,prey,result,pose,endReason=null){
+    const distance=duelDistance(predator,prey);
+    const headingOf=o=>Number.isFinite(o.heading) ? o.heading : Math.atan2(o.vy||0,o.vx||0);
+    return {
+      step,
+      predator:{
+        x:predator.x, y:predator.y, vx:predator.vx||0, vy:predator.vy||0,
+        size:predator.size, energy:predator.energy, maxSpeed:result.predatorStartSpeed,
+        heading:headingOf(predator)
+      },
+      prey:{
+        x:prey.x, y:prey.y, vx:prey.vx||0, vy:prey.vy||0,
+        size:prey.size, energy:prey.energy, maxSpeed:result.preyStartSpeed,
+        heading:headingOf(prey)
+      },
+      distance,
+      minimumDistance:Math.min(result.minDistance,distance),
+      targetAcquired:!!result.targetAcquired,
+      chaseActive:!!result.chaseStarted,
+      contactReached:!!result.contactReached,
+      attackAttempted:!!result.attackAttempted,
+      attackSucceeded:!!result.predationSucceeded,
+      predatorDead:!!result.predatorDied,
+      preyDead:!!result.preyDied,
+      endReason:endReason || result.endReason || null,
+      senseRange:pose.senseRange,
+      contactDistance:pose.contactDistance,
+      attackDistance:pose.contactDistance,
+      maxPreySize:predator.size,
+      targetDirection:Math.atan2(prey.y-predator.y,prey.x-predator.x),
+      energySpent:Math.max(0,result.predatorStartEnergy-predator.energy),
+      attackAttemptCount:result.attackAttemptCount||0
+    };
+  }
   function duelRunSingle(rawOptions, repeatIndex){
     const behavior=duelNormalizeBehavior(rawOptions.preyBehavior || rawOptions.preyHeadingMode);
     duelResetArena();
@@ -8228,6 +8353,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const startDistance=duelDistance(predator,prey);
     const startEnergy=predator.energy;
     const cls0=predationCandidateClassification(predator,prey,'target',startDistance);
+    const recordTrace=!!rawOptions.recordTrace;
+    const trace=[];
     const result={
       repeatIndex,
       spawned:true,
@@ -8277,9 +8404,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       predatorGenes:duelCloneGenes(predator.genes),
       preyGenes:duelCloneGenes(prey.genes)
     };
+    if(recordTrace) trace.push(duelTraceFrame(0,predator,prey,result,pose));
     let lastTarget=null;
     let eventCursor=telemetry.events.length;
     const maxSteps=clamp(Number(rawOptions.maxSteps)||600,1,2000)|0;
+    const traceMax=Math.min(PREDATION_STADIUM_TRACE_MAX_STEPS,maxSteps);
     for(let step=1; step<=maxSteps; step++){
       buildSpatialIndex();
       const prevDistance=duelDistance(predator,prey);
@@ -8335,6 +8464,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       }
       if(lastTarget!=null && nowTarget!=null && lastTarget!==nowTarget) result.targetSwitchCount++;
       lastTarget=nowTarget;
+      if(recordTrace && trace.length<=traceMax) trace.push(duelTraceFrame(step,predator,prey,result,pose));
       if(predator.dead || predator.energy<=0){
         result.predatorDied=true;
         result.endReason='energyDepleted';
@@ -8354,6 +8484,16 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     else if(result.attackAttempted && !result.predationSucceeded && result.endReason==='chaseTimeout') result.endReason='attackFailed';
     result.predatorEndEnergy=predator.energy;
     result.predatorEnergySpent=Math.max(0,startEnergy-predator.energy);
+    if(recordTrace){
+      if(trace.length){
+        const last=trace[trace.length-1];
+        last.endReason=result.endReason;
+        last.predatorDead=!!result.predatorDied;
+        last.preyDead=!!result.preyDied;
+        last.attackSucceeded=!!result.predationSucceeded;
+      }
+      result.trace=trace;
+    }
     organisms.length=0;
     newborn.length=0;
     return result;
@@ -8372,6 +8512,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       maxSteps:clamp(Number(options.maxSteps ?? 600),1,2000)|0,
       repeats:clamp(Number(options.repeats ?? 20),1,100)|0,
       restoreAfterRun:options.restoreAfterRun !== false,
+      recordTrace:!!options.recordTrace,
       seed:options.seed
     };
     const saved=capture();
@@ -8411,6 +8552,205 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       latest:predationDuelHistory[predationDuelHistory.length-1] || null,
       historyLimit:PREDATION_DUEL_HISTORY_LIMIT
     };
+  }
+
+  // ===== User observation lab: six-arena predation stadium =====
+  function stadiumPresetDefinitions(){
+    return {
+      'speed-ladder':{
+        name:'獲物の速度を比較',
+        description:'同じ捕食者が、速さだけが違う獲物を追う様子を比べます。',
+        arenas:[0.00,0.40,0.60,0.80,1.00,1.20].map((speed,i)=>({
+          label:`速度 ${speed.toFixed(2)}`,
+          preySizeRatio:0.70,
+          preySpeedRatio:speed,
+          preyBehavior:'straightEscape',
+          initialDistance:45
+        }))
+      },
+      'size-ladder':{
+        name:'獲物の大きさを比較',
+        description:'同じ速度の獲物で、サイズ上限付近の挙動を比べます。',
+        arenas:[0.50,0.70,0.85,0.95,0.99,1.01].map(size=>({
+          label:`サイズ ${size.toFixed(2)}`,
+          preySizeRatio:size,
+          preySpeedRatio:0.40,
+          preyBehavior:'straightEscape',
+          initialDistance:45
+        }))
+      },
+      'behavior-grid':{
+        name:'逃げ方を比較',
+        description:'静止、直線逃走、通常逃走を低速・高速で比べます。',
+        arenas:[
+          [0.40,'stationary'],[0.40,'straightEscape'],[0.40,'normal'],
+          [0.80,'stationary'],[0.80,'straightEscape'],[0.80,'normal']
+        ].map(([speed,behavior])=>({
+          label:`${behavior} ${speed.toFixed(2)}`,
+          preySizeRatio:0.70,
+          preySpeedRatio:speed,
+          preyBehavior:behavior,
+          initialDistance:45
+        }))
+      },
+      'distance-ladder':{
+        name:'追跡開始距離を比較',
+        description:'同じ獲物を、異なる初期距離から追わせます。',
+        arenas:[15,25,35,45,60,80].map(distance=>({
+          label:`距離 ${distance}`,
+          preySizeRatio:0.70,
+          preySpeedRatio:0.40,
+          preyBehavior:'straightEscape',
+          initialDistance:distance
+        }))
+      },
+      'current-bottleneck':{
+        name:'現在の捕食ボトルネック',
+        description:'接触できる境界とサイズ除外を一度に確認します。',
+        arenas:[
+          {label:'速度0.40',preySizeRatio:0.70,preySpeedRatio:0.40,preyBehavior:'straightEscape',initialDistance:45},
+          {label:'速度0.50',preySizeRatio:0.70,preySpeedRatio:0.50,preyBehavior:'straightEscape',initialDistance:45},
+          {label:'速度0.60',preySizeRatio:0.70,preySpeedRatio:0.60,preyBehavior:'straightEscape',initialDistance:45},
+          {label:'速度0.70',preySizeRatio:0.70,preySpeedRatio:0.70,preyBehavior:'straightEscape',initialDistance:45},
+          {label:'サイズ0.99',preySizeRatio:0.99,preySpeedRatio:0.40,preyBehavior:'straightEscape',initialDistance:45},
+          {label:'サイズ1.01',preySizeRatio:1.01,preySpeedRatio:0.00,preyBehavior:'stationary',initialDistance:45}
+        ]
+      }
+    };
+  }
+  function stadiumResultLabel(result){
+    if(!result) return '未生成';
+    if(result.predationSucceeded) return `捕食成功 step ${result.successStep ?? '?'}`;
+    if(result.endReason==='sizeRejected') return 'サイズ対象外';
+    if(result.endReason==='energyDepleted') return `energy切れ 最小距離 ${Number(result.minDistance||0).toFixed(1)}`;
+    if(result.endReason==='noContact') return `接触できず 最小距離 ${Number(result.minDistance||0).toFixed(1)}`;
+    if(result.endReason==='attackFailed') return '攻撃失敗';
+    if(result.endReason==='contactNoAttack') return '接触後に攻撃なし';
+    return result.endReason || '時間切れ';
+  }
+  function stadiumStateAt(arena, step){
+    const trace=arena?.trace || [];
+    if(!trace.length) return {frame:null,index:0,state:'未生成'};
+    const idx=Math.max(0,Math.min(trace.length-1,Math.floor(step)));
+    const frameData=trace[idx] || trace[trace.length-1];
+    let state='探索';
+    if(frameData.endReason==='sizeRejected') state='sizeRejected';
+    else if(frameData.attackSucceeded) state='捕食成功';
+    else if(frameData.predatorDead || frameData.endReason==='energyDepleted') state='energy枯渇';
+    else if(frameData.attackAttempted) state='攻撃';
+    else if(frameData.contactReached) state='接触';
+    else if(frameData.chaseActive) state='追跡';
+    else if(frameData.targetAcquired) state='target取得';
+    else if((arena.duelResult?.result?.endReason)==='sizeRejected') state='sizeRejected';
+    return {frame:frameData,index:idx,state};
+  }
+  function stadiumSummarizeArenas(arenas,presetName){
+    const rows=arenas.map(a=>{
+      const r=a.duelResult?.result || {};
+      return {
+        arenaIndex:a.arenaIndex,
+        label:a.label,
+        size:Number((a.options.preySizeRatio ?? 0).toFixed(3)),
+        speed:Number((a.options.preySpeedRatio ?? 0).toFixed(3)),
+        behavior:a.options.preyBehavior,
+        target:!!r.targetAcquired,
+        contact:!!r.contactReached,
+        attack:!!r.attackAttempted,
+        success:!!r.predationSucceeded,
+        contactStep:r.contactStep,
+        minDistance:r.minDistance,
+        endEnergy:r.predatorEndEnergy,
+        endReason:r.endReason
+      };
+    });
+    const comments=[];
+    const bySpeed=rows.filter(r=>r.target && r.speed!=null).sort((a,b)=>a.speed-b.speed);
+    const lastContact=bySpeed.filter(r=>r.contact).slice(-1)[0];
+    const firstNoContact=bySpeed.find(r=>r.target && !r.contact && r.endReason!=='sizeRejected');
+    if(lastContact) comments.push(`速度比 ${lastContact.speed.toFixed(2)} では接触できました。`);
+    if(firstNoContact) comments.push(`速度比 ${firstNoContact.speed.toFixed(2)} では接触前に失敗しました。`);
+    const sizeRejected=rows.filter(r=>r.endReason==='sizeRejected');
+    if(sizeRejected.length) comments.push(`${sizeRejected.map(r=>r.label).join('、')} はサイズ条件で対象外でした。`);
+    const successCount=rows.filter(r=>r.success).length;
+    comments.push(`このセットでは6条件中${successCount}条件で捕食成功しました。`);
+    return {
+      preset:presetName,
+      rows,
+      successCount,
+      contactCount:rows.filter(r=>r.contact).length,
+      targetCount:rows.filter(r=>r.target).length,
+      comments
+    };
+  }
+  function generatePredationStadium(options={}){
+    const presets=stadiumPresetDefinitions();
+    const presetKey=presets[options.preset] ? options.preset : 'speed-ladder';
+    const preset=presets[presetKey];
+    const maxSteps=clamp(Number(options.maxSteps ?? 600),1,1200)|0;
+    const createdAt=Date.now();
+    const arenas=preset.arenas.slice(0,PREDATION_STADIUM_ARENA_COUNT).map((arenaOptions,idx)=>{
+      const duelOptions={
+        preySizeRatio:arenaOptions.preySizeRatio,
+        preySpeedRatio:arenaOptions.preySpeedRatio,
+        initialDistance:arenaOptions.initialDistance,
+        preyBehavior:arenaOptions.preyBehavior,
+        preyDefenseMode:'none',
+        maxSteps,
+        repeats:1,
+        restoreAfterRun:true,
+        recordTrace:true
+      };
+      if(options.seed!=null) duelOptions.seed=Number(options.seed)+idx*1009;
+      const duel=runPredationDuel(duelOptions);
+      const result=duel.results?.[0] || null;
+      const trace=result?.trace || [];
+      return {
+        arenaIndex:idx,
+        label:arenaOptions.label || `Arena ${idx+1}`,
+        options:duelOptions,
+        duelResult:{summary:duel.summary,result},
+        trace
+      };
+    });
+    const maxTraceSteps=Math.max(0,...arenas.map(a=>Math.max(0,(a.trace?.length||1)-1)));
+    const summary=stadiumSummarizeArenas(arenas,preset.name);
+    const record={
+      stadiumId:`stadium-${createdAt}-${predationStadiumHistory.length+1}`,
+      preset:presetKey,
+      presetName:preset.name,
+      description:preset.description,
+      createdAt,
+      arenaCount:arenas.length,
+      arenas,
+      maxTraceSteps,
+      summary
+    };
+    predationStadiumHistory.push(record);
+    while(predationStadiumHistory.length>PREDATION_STADIUM_HISTORY_LIMIT) predationStadiumHistory.shift();
+    return record;
+  }
+  function predationStadiumSummary(stadiumId=null){
+    const chosen=stadiumId
+      ? predationStadiumHistory.find(s=>s.stadiumId===stadiumId)
+      : predationStadiumHistory[predationStadiumHistory.length-1];
+    return {
+      history:predationStadiumHistory.map(s=>({
+        stadiumId:s.stadiumId,
+        preset:s.preset,
+        presetName:s.presetName,
+        createdAt:s.createdAt,
+        arenaCount:s.arenaCount,
+        maxTraceSteps:s.maxTraceSteps,
+        summary:s.summary
+      })),
+      latest:chosen || null,
+      historyLimit:PREDATION_STADIUM_HISTORY_LIMIT
+    };
+  }
+  function clearPredationStadiumHistory(){
+    predationStadiumHistory.length=0;
+    if(predationStadiumLab.stadium) predationStadiumLab.stadium=null;
+    return {ok:true};
   }
 
   // ===== Developer organism injection =====
@@ -9272,6 +9612,481 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     setInterval(updateWarning,1000);
   }
 
+  function stadiumEnsureLabDom(){
+    let root=$('observation-lab');
+    if(root) return root;
+    root=document.createElement('div');
+    root.id='observation-lab';
+    root.className='observation-lab'+(devMode?' dev':'');
+    const presetOpts=Object.entries(stadiumPresetDefinitions()).map(([key,p])=>`<option value="${key}">${p.name}</option>`).join('');
+    root.innerHTML=`
+      <div class="lab-topbar">
+        <div class="lab-title">観察ラボ<span>1v1捕食スタジアム：同じ捕食者が異なる獲物を追う様子を6面で比較します。</span></div>
+        <div class="lab-actions">
+          <select id="lab-preset" class="lab-select">${presetOpts}</select>
+          <button id="lab-regenerate" class="btn" type="button">再実行</button>
+          <button id="lab-close" class="btn" type="button">閉じる</button>
+        </div>
+      </div>
+      <div class="lab-body">
+        <div class="lab-controls">
+          <input id="lab-timeline" class="lab-slider" type="range" min="0" max="600" step="1" value="0">
+          <select id="lab-speed" class="lab-select">
+            <option value="0.25">0.25x</option><option value="0.5">0.5x</option>
+            <option value="1" selected>1x</option><option value="2">2x</option><option value="4">4x</option>
+          </select>
+          <button id="lab-play" class="btn" type="button">再生</button>
+          <button id="lab-reset-time" class="btn" type="button">先頭</button>
+          <button id="lab-prev" class="btn" type="button">-1</button>
+          <button id="lab-next" class="btn" type="button">+1</button>
+          <label style="justify-content:flex-start;gap:6px"><input id="lab-trails" type="checkbox" checked> 軌跡</label>
+          <label style="justify-content:flex-start;gap:6px"><input id="lab-labels" type="checkbox" checked> 条件</label>
+        </div>
+        <div id="lab-grid" class="lab-grid"></div>
+        <div class="lab-summary">
+          <div id="lab-status">6つの実験を準備しています。</div>
+          <div id="lab-summary-table"></div>
+          <div id="lab-comment" class="lab-comment"></div>
+          <div class="lab-dev">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+              <label style="justify-content:flex-start;gap:6px"><input id="lab-dev-sense" type="checkbox"> 感知範囲</label>
+              <label style="justify-content:flex-start;gap:6px"><input id="lab-dev-contact" type="checkbox"> 接触範囲</label>
+              <label style="justify-content:flex-start;gap:6px"><input id="lab-dev-vectors" type="checkbox"> 速度ベクトル</label>
+              <label style="justify-content:flex-start;gap:6px"><input id="lab-dev-target" type="checkbox"> target方向</label>
+              <button id="lab-copy-json" class="btn" type="button">JSONコピー</button>
+            </div>
+            <div id="lab-dev-json" class="lab-dev-grid"></div>
+          </div>
+        </div>
+      </div>
+      <div id="lab-focus" class="lab-focus">
+        <div class="lab-focus-top">
+          <strong id="lab-focus-title">Arena</strong>
+          <button id="lab-focus-close" class="btn" type="button">全体表示へ戻る</button>
+        </div>
+        <div class="lab-focus-main">
+          <canvas id="lab-focus-canvas" class="lab-focus-canvas"></canvas>
+          <div id="lab-focus-info" class="lab-focus-info"></div>
+        </div>
+        <input id="lab-focus-timeline" class="lab-slider" type="range" min="0" max="600" step="1" value="0">
+      </div>
+    `;
+    document.body.appendChild(root);
+    const grid=root.querySelector('#lab-grid');
+    for(let i=0;i<PREDATION_STADIUM_ARENA_COUNT;i++){
+      const card=document.createElement('div');
+      card.className='stadium-card';
+      card.dataset.arena=String(i);
+      card.innerHTML=`
+        <div class="stadium-head">
+          <div><div class="stadium-name">Arena ${i+1}</div><div class="stadium-condition"></div></div>
+          <div class="stadium-tags"></div>
+        </div>
+        <canvas class="stadium-canvas"></canvas>
+        <div class="stadium-foot"><div class="stadium-state">未生成</div><div class="stadium-metrics"></div></div>
+      `;
+      card.addEventListener('click',()=>stadiumFocusArena(i));
+      grid.appendChild(card);
+    }
+    root.querySelector('#lab-close')?.addEventListener('click',stadiumCloseLab);
+    root.querySelector('#lab-regenerate')?.addEventListener('click',()=>stadiumGenerateFromUi(true));
+    root.querySelector('#lab-play')?.addEventListener('click',()=>{
+      predationStadiumLab.playing=!predationStadiumLab.playing;
+      predationStadiumLab.lastNow=0;
+      stadiumSyncControls();
+    });
+    root.querySelector('#lab-reset-time')?.addEventListener('click',()=>{ predationStadiumLab.time=0; predationStadiumLab.playing=false; stadiumSyncControls(); });
+    root.querySelector('#lab-prev')?.addEventListener('click',()=>{ predationStadiumLab.time=Math.max(0,Math.floor(predationStadiumLab.time)-1); predationStadiumLab.playing=false; stadiumSyncControls(); });
+    root.querySelector('#lab-next')?.addEventListener('click',()=>{ predationStadiumLab.time=Math.min(stadiumMaxStep(),Math.floor(predationStadiumLab.time)+1); predationStadiumLab.playing=false; stadiumSyncControls(); });
+    root.querySelector('#lab-preset')?.addEventListener('change',()=>stadiumGenerateFromUi(true));
+    root.querySelector('#lab-speed')?.addEventListener('change',ev=>{ predationStadiumLab.speed=Number(ev.target.value)||1; });
+    root.querySelector('#lab-timeline')?.addEventListener('input',ev=>{ predationStadiumLab.time=Number(ev.target.value)||0; predationStadiumLab.playing=false; stadiumSyncControls(false); });
+    root.querySelector('#lab-focus-timeline')?.addEventListener('input',ev=>{ predationStadiumLab.time=Number(ev.target.value)||0; predationStadiumLab.playing=false; stadiumSyncControls(false); });
+    root.querySelector('#lab-trails')?.addEventListener('change',ev=>{ predationStadiumLab.showTrails=!!ev.target.checked; });
+    root.querySelector('#lab-labels')?.addEventListener('change',ev=>{ predationStadiumLab.showLabels=!!ev.target.checked; });
+    root.querySelector('#lab-dev-sense')?.addEventListener('change',ev=>{ predationStadiumLab.devShowSense=!!ev.target.checked; });
+    root.querySelector('#lab-dev-contact')?.addEventListener('change',ev=>{ predationStadiumLab.devShowContact=!!ev.target.checked; });
+    root.querySelector('#lab-dev-vectors')?.addEventListener('change',ev=>{ predationStadiumLab.devShowVectors=!!ev.target.checked; });
+    root.querySelector('#lab-dev-target')?.addEventListener('change',ev=>{ predationStadiumLab.devShowTarget=!!ev.target.checked; });
+    root.querySelector('#lab-copy-json')?.addEventListener('click',async()=>{
+      const data=JSON.stringify(predationStadiumLab.stadium,null,2);
+      try{ await navigator.clipboard.writeText(data); }catch(_){}
+      const status=root.querySelector('#lab-status');
+      if(status) status.textContent='JSONをコピーしました。';
+    });
+    root.querySelector('#lab-dev-json')?.addEventListener('click',ev=>{
+      const btn=ev.target.closest('[data-rerun-arena]');
+      if(!btn || !predationStadiumLab.stadium) return;
+      const idx=Number(btn.dataset.rerunArena);
+      const box=root.querySelector(`[data-arena-json="${idx}"]`);
+      let parsed=null;
+      try{ parsed=JSON.parse(box?.value || '{}'); }catch(err){
+        const status=root.querySelector('#lab-status');
+        if(status) status.textContent=`Arena ${idx+1} のJSONを読めません: ${err.message}`;
+        return;
+      }
+      const opts={
+        preySizeRatio:parsed.preySizeRatio ?? parsed.options?.preySizeRatio ?? 0.70,
+        preySpeedRatio:parsed.preySpeedRatio ?? parsed.options?.preySpeedRatio ?? 0.70,
+        initialDistance:parsed.initialDistance ?? parsed.options?.initialDistance ?? 45,
+        preyBehavior:parsed.preyBehavior ?? parsed.options?.preyBehavior ?? 'straightEscape',
+        preyDefenseMode:parsed.preyDefenseMode ?? parsed.options?.preyDefenseMode ?? 'none',
+        maxSteps:parsed.maxSteps ?? parsed.options?.maxSteps ?? 600,
+        predatorEnergy:parsed.predatorEnergy ?? parsed.options?.predatorEnergy,
+        initialAngleDeg:parsed.initialAngleDeg ?? parsed.options?.initialAngleDeg ?? 0,
+        repeats:1,
+        restoreAfterRun:true,
+        recordTrace:true
+      };
+      const duel=runPredationDuel(opts);
+      const result=duel.results?.[0] || null;
+      const arena=predationStadiumLab.stadium.arenas[idx];
+      if(arena){
+        arena.label=parsed.label || arena.label || `Arena ${idx+1}`;
+        arena.options=opts;
+        arena.duelResult={summary:duel.summary,result};
+        arena.trace=result?.trace || [];
+        delete arena._view;
+      }
+      predationStadiumLab.stadium.maxTraceSteps=Math.max(0,...predationStadiumLab.stadium.arenas.map(a=>Math.max(0,(a.trace?.length||1)-1)));
+      predationStadiumLab.stadium.summary=stadiumSummarizeArenas(predationStadiumLab.stadium.arenas,predationStadiumLab.stadium.presetName);
+      predationStadiumLab.time=0;
+      predationStadiumLab.playing=false;
+      stadiumUpdateStaticDom();
+      stadiumSyncControls();
+    });
+    root.querySelector('#lab-focus-close')?.addEventListener('click',()=>stadiumFocusArena(null));
+    predationStadiumLab.initialized=true;
+    return root;
+  }
+  function stadiumOpenLab(){
+    const root=stadiumEnsureLabDom();
+    if(!predationStadiumLab.open){
+      predationStadiumLab.savedWorld=capture();
+      predationStadiumLab.wasRunning=running;
+    }
+    running=false;
+    $('start-btn').disabled=false;
+    $('pause-btn').disabled=true;
+    predationStadiumLab.open=true;
+    predationStadiumLab.lastNow=0;
+    root.classList.add('open');
+    if(!predationStadiumLab.stadium) stadiumGenerateFromUi(false);
+    stadiumSyncControls();
+  }
+  function stadiumCloseLab(){
+    const root=$('observation-lab');
+    predationStadiumLab.open=false;
+    predationStadiumLab.playing=false;
+    predationStadiumLab.selectedArenaIndex=null;
+    root?.classList.remove('open');
+    root?.querySelector('#lab-focus')?.classList.remove('open');
+    if(predationStadiumLab.savedWorld){
+      const wasRunning=predationStadiumLab.wasRunning;
+      restore(predationStadiumLab.savedWorld);
+      running=wasRunning;
+      $('start-btn').disabled=running;
+      $('pause-btn').disabled=!running;
+      predationStadiumLab.savedWorld=null;
+    }
+  }
+  function stadiumGenerateFromUi(playAfter=true){
+    const root=stadiumEnsureLabDom();
+    const preset=root.querySelector('#lab-preset')?.value || 'speed-ladder';
+    const status=root.querySelector('#lab-status');
+    if(status) status.textContent='6つの実験を準備しています。';
+    const stadium=generatePredationStadium({preset,maxSteps:600,recordTrace:true});
+    predationStadiumLab.stadium=stadium;
+    predationStadiumLab.time=0;
+    predationStadiumLab.playing=!!playAfter;
+    predationStadiumLab.lastNow=0;
+    stadiumUpdateStaticDom();
+    stadiumSyncControls();
+    return stadium;
+  }
+  function stadiumMaxStep(){
+    return predationStadiumLab.stadium?.maxTraceSteps || 0;
+  }
+  function stadiumSyncControls(updateSlider=true){
+    const root=$('observation-lab');
+    if(!root) return;
+    const max=stadiumMaxStep();
+    for(const id of ['lab-timeline','lab-focus-timeline']){
+      const el=root.querySelector('#'+id);
+      if(el){ el.max=String(max); if(updateSlider) el.value=String(Math.floor(predationStadiumLab.time)); }
+    }
+    const play=root.querySelector('#lab-play');
+    if(play) play.textContent=predationStadiumLab.playing ? '一時停止' : '再生';
+  }
+  function stadiumUpdateStaticDom(){
+    const root=stadiumEnsureLabDom();
+    const stadium=predationStadiumLab.stadium;
+    const status=root.querySelector('#lab-status');
+    if(status) status.textContent=stadium ? `${stadium.presetName}：${stadium.description}` : '未生成';
+    const cards=[...root.querySelectorAll('.stadium-card')];
+    for(const card of cards){
+      const idx=Number(card.dataset.arena)||0;
+      const arena=stadium?.arenas?.[idx];
+      card.classList.toggle('success',!!arena?.duelResult?.result?.predationSucceeded);
+      card.classList.toggle('fail',!!arena && !arena.duelResult?.result?.predationSucceeded);
+      card.querySelector('.stadium-name').textContent=arena ? `${idx+1}. ${arena.label}` : `Arena ${idx+1}`;
+      card.querySelector('.stadium-condition').textContent=arena ? `size ${arena.options.preySizeRatio.toFixed(2)} / speed ${arena.options.preySpeedRatio.toFixed(2)} / ${arena.options.preyBehavior}` : '';
+      card.querySelector('.stadium-tags').innerHTML=arena ? `<span class="stadium-tag">S ${arena.options.preySizeRatio.toFixed(2)}</span><span class="stadium-tag">V ${arena.options.preySpeedRatio.toFixed(2)}</span>` : '';
+      card.querySelector('.stadium-state').textContent=arena ? stadiumResultLabel(arena.duelResult.result) : '未生成';
+    }
+    stadiumUpdateSummaryDom();
+  }
+  function stadiumUpdateSummaryDom(){
+    const root=$('observation-lab');
+    const stadium=predationStadiumLab.stadium;
+    const box=root?.querySelector('#lab-summary-table');
+    const comment=root?.querySelector('#lab-comment');
+    if(!box || !stadium){ return; }
+    const rows=stadium.summary.rows || [];
+    box.innerHTML=`<table><thead><tr><th>条件</th><th>size</th><th>speed</th><th>T</th><th>C</th><th>A</th><th>✓</th><th>接触</th><th>最小距離</th><th>終了energy</th><th>理由</th></tr></thead><tbody>${
+      rows.map(r=>`<tr><td>${r.label}</td><td>${r.size.toFixed(2)}</td><td>${r.speed.toFixed(2)}</td><td>${r.target?'○':'-'}</td><td>${r.contact?'○':'-'}</td><td>${r.attack?'○':'-'}</td><td>${r.success?'○':'-'}</td><td>${r.contactStep??'-'}</td><td>${r.minDistance==null?'-':Number(r.minDistance).toFixed(1)}</td><td>${r.endEnergy==null?'-':Number(r.endEnergy).toFixed(1)}</td><td>${r.endReason||'-'}</td></tr>`).join('')
+    }</tbody></table>`;
+    if(comment) comment.textContent=(stadium.summary.comments||[]).join(' ');
+    const dev=root.querySelector('#lab-dev-json');
+    if(dev){
+      dev.innerHTML=(stadium.arenas||[]).map(a=>`<div class="lab-dev-arena"><textarea data-arena-json="${a.arenaIndex}">${JSON.stringify({
+        label:a.label,
+        preySizeRatio:a.options.preySizeRatio,
+        preySpeedRatio:a.options.preySpeedRatio,
+        initialDistance:a.options.initialDistance,
+        preyBehavior:a.options.preyBehavior,
+        maxSteps:a.options.maxSteps,
+        predatorEnergy:a.options.predatorEnergy,
+        initialAngleDeg:a.options.initialAngleDeg || 0,
+        result:a.duelResult?.result ? {
+          target:a.duelResult.result.targetAcquired,
+          contact:a.duelResult.result.contactReached,
+          attack:a.duelResult.result.attackAttempted,
+          success:a.duelResult.result.predationSucceeded,
+          minDistance:a.duelResult.result.minDistance,
+          endReason:a.duelResult.result.endReason
+        } : null
+      },null,2)}</textarea><button class="btn" type="button" data-rerun-arena="${a.arenaIndex}">この面を再実行</button></div>`).join('');
+    }
+  }
+  function stadiumFocusArena(index){
+    const root=stadiumEnsureLabDom();
+    predationStadiumLab.selectedArenaIndex=index==null ? null : Number(index);
+    const focus=root.querySelector('#lab-focus');
+    focus?.classList.toggle('open',predationStadiumLab.selectedArenaIndex!=null);
+    const cards=[...root.querySelectorAll('.stadium-card')];
+    for(const c of cards) c.classList.toggle('active',Number(c.dataset.arena)===predationStadiumLab.selectedArenaIndex);
+    stadiumSyncControls();
+  }
+  function stadiumWorldToArena(frameData,view,w,h,x,y){
+    const margin=view.margin;
+    const sx=(x-view.cx)*view.scale + w*0.5;
+    const sy=(y-view.cy)*view.scale + h*0.5;
+    return {x:clamp(sx,margin,w-margin),y:clamp(sy,margin,h-margin)};
+  }
+  function stadiumViewForArena(arena,w,h){
+    if(arena._view && arena._view.w===w && arena._view.h===h) return arena._view;
+    const xs=[],ys=[];
+    for(const t of arena.trace||[]){
+      xs.push(t.predator.x,t.prey.x); ys.push(t.predator.y,t.prey.y);
+    }
+    const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+    const margin=Math.max(14,Math.min(w,h)*0.08);
+    const spanX=Math.max(30,maxX-minX);
+    const spanY=Math.max(30,maxY-minY);
+    const scale=Math.min((w-margin*2)/spanX,(h-margin*2)/spanY,3.5);
+    arena._view={w,h,margin,cx:(minX+maxX)/2,cy:(minY+maxY)/2,scale};
+    return arena._view;
+  }
+  function stadiumResizeCanvas(canvas){
+    const rect=canvas.getBoundingClientRect();
+    const ratio=Math.min(window.devicePixelRatio||1, IS_MOBILE_VIEW ? 1.25 : 1.5);
+    const w=Math.max(160,Math.floor(rect.width*ratio));
+    const h=Math.max(110,Math.floor(rect.height*ratio));
+    if(canvas.width!==w || canvas.height!==h){ canvas.width=w; canvas.height=h; }
+    return {w,h,ratio};
+  }
+  function stadiumDrawOrganism(c,x,y,r,heading,color,label){
+    c.save();
+    c.translate(x,y);
+    c.rotate(heading||0);
+    c.fillStyle=color;
+    c.strokeStyle='rgba(255,255,255,.82)';
+    c.lineWidth=Math.max(1,r*0.13);
+    c.beginPath();
+    c.ellipse(0,0,r*1.25,r*0.82,0,0,TAU);
+    c.fill(); c.stroke();
+    c.beginPath();
+    c.moveTo(r*1.35,0);
+    c.lineTo(r*0.45,-r*0.38);
+    c.lineTo(r*0.45,r*0.38);
+    c.closePath();
+    c.fillStyle='rgba(255,255,255,.68)';
+    c.fill();
+    c.restore();
+    c.fillStyle='rgba(255,255,255,.88)';
+    c.font='700 10px system-ui';
+    c.fillText(label,x+r*0.9,y-r*0.9);
+  }
+  function stadiumDrawArena(canvas,arena,step,expanded=false){
+    if(!canvas || !arena) return;
+    const {w,h}=stadiumResizeCanvas(canvas);
+    const c=canvas.getContext('2d');
+    c.clearRect(0,0,w,h);
+    c.fillStyle='#020617';
+    c.fillRect(0,0,w,h);
+    const trace=arena.trace||[];
+    if(!trace.length) return;
+    const idx=Math.max(0,Math.min(trace.length-1,Math.floor(step)));
+    const t=trace[idx] || trace[trace.length-1];
+    const viewInfo=stadiumViewForArena(arena,w,h);
+    c.strokeStyle='rgba(125,145,190,.12)';
+    c.lineWidth=1;
+    for(let gx=0; gx<w; gx+=Math.max(24,w/8)){ c.beginPath(); c.moveTo(gx,0); c.lineTo(gx,h); c.stroke(); }
+    for(let gy=0; gy<h; gy+=Math.max(24,h/6)){ c.beginPath(); c.moveTo(0,gy); c.lineTo(w,gy); c.stroke(); }
+    const p=stadiumWorldToArena(t,viewInfo,w,h,t.predator.x,t.predator.y);
+    const q=stadiumWorldToArena(t,viewInfo,w,h,t.prey.x,t.prey.y);
+    if(predationStadiumLab.showTrails){
+      const start=Math.max(0,idx-(expanded?90:45));
+      const drawTrail=(who,color)=>{
+        c.lineWidth=expanded?2:1.3;
+        for(let i=start+1;i<=idx;i++){
+          const a=trace[i-1], b=trace[i];
+          if(!a||!b) continue;
+          const pa=stadiumWorldToArena(a,viewInfo,w,h,a[who].x,a[who].y);
+          const pb=stadiumWorldToArena(b,viewInfo,w,h,b[who].x,b[who].y);
+          c.strokeStyle=color.replace('ALPHA',String(0.12+0.42*((i-start)/(idx-start+1))));
+          c.beginPath(); c.moveTo(pa.x,pa.y); c.lineTo(pb.x,pb.y); c.stroke();
+        }
+      };
+      drawTrail('predator','rgba(96,165,250,ALPHA)');
+      drawTrail('prey','rgba(74,222,128,ALPHA)');
+    }
+    const predR=Math.max(4,t.predator.size*viewInfo.scale);
+    const preyR=Math.max(4,t.prey.size*viewInfo.scale);
+    if(predationStadiumLab.devShowSense || expanded && devMode){
+      c.strokeStyle='rgba(125,211,252,.16)';
+      c.lineWidth=1;
+      c.beginPath(); c.arc(p.x,p.y,t.senseRange*viewInfo.scale,0,TAU); c.stroke();
+    }
+    if(predationStadiumLab.devShowContact || expanded){
+      c.strokeStyle='rgba(251,146,60,.34)';
+      c.lineWidth=1.5;
+      c.beginPath(); c.arc(p.x,p.y,t.contactDistance*viewInfo.scale,0,TAU); c.stroke();
+    }
+    if(t.targetAcquired || predationStadiumLab.devShowTarget){
+      c.strokeStyle=t.targetAcquired?'rgba(250,204,21,.55)':'rgba(250,204,21,.20)';
+      c.lineWidth=1.5;
+      c.setLineDash([5,4]);
+      c.beginPath(); c.moveTo(p.x,p.y); c.lineTo(q.x,q.y); c.stroke();
+      c.setLineDash([]);
+    }
+    if(predationStadiumLab.devShowVectors || expanded && devMode){
+      const drawVec=(pt,o,col)=>{
+        c.strokeStyle=col; c.lineWidth=2;
+        c.beginPath(); c.moveTo(pt.x,pt.y); c.lineTo(pt.x+(o.vx||0)*28*viewInfo.scale,pt.y+(o.vy||0)*28*viewInfo.scale); c.stroke();
+      };
+      drawVec(p,t.predator,'rgba(147,197,253,.72)');
+      drawVec(q,t.prey,'rgba(134,239,172,.72)');
+    }
+    stadiumDrawOrganism(c,p.x,p.y,predR,t.predator.heading,'rgba(59,130,246,.86)','P');
+    stadiumDrawOrganism(c,q.x,q.y,preyR,t.prey.heading,'rgba(34,197,94,.86)','V');
+    if(t.contactReached){
+      c.strokeStyle='rgba(251,146,60,.9)';
+      c.lineWidth=3;
+      c.beginPath(); c.arc((p.x+q.x)/2,(p.y+q.y)/2,Math.max(10,predR+preyR),0,TAU); c.stroke();
+    }
+    if(t.attackAttempted){
+      c.strokeStyle='rgba(248,113,113,.95)';
+      c.lineWidth=3;
+      c.beginPath(); c.moveTo(p.x,p.y); c.lineTo(q.x,q.y); c.stroke();
+    }
+    const badge=t.attackSucceeded?'✓':(t.endReason==='sizeRejected'?'S':(t.predatorDead||t.endReason==='energyDepleted'?'E':(t.attackAttempted?'A':(t.contactReached?'C':(t.targetAcquired?'T':'')))));
+    if(badge){
+      c.fillStyle=t.attackSucceeded?'rgba(34,197,94,.92)':(badge==='E'||badge==='S'?'rgba(248,113,113,.92)':'rgba(250,204,21,.92)');
+      c.beginPath(); c.roundRect ? c.roundRect(w-34,8,26,22,6) : c.rect(w-34,8,26,22);
+      c.fill();
+      c.fillStyle='#061018'; c.font='900 14px system-ui'; c.textAlign='center'; c.fillText(badge,w-21,24); c.textAlign='left';
+    }
+    if(predationStadiumLab.showLabels || expanded){
+      c.fillStyle='rgba(2,6,23,.74)';
+      c.fillRect(6,h-34,w-12,28);
+      c.fillStyle='#dbeafe';
+      c.font=`${expanded?13:10}px ui-monospace,Consolas,monospace`;
+      const state=stadiumStateAt(arena,step).state;
+      c.fillText(`${state}  d=${t.distance.toFixed(1)} min=${t.minimumDistance.toFixed(1)} E=${t.predator.energy.toFixed(1)}`,12,h-15);
+    }
+  }
+  function stadiumRenderInfo(){
+    const root=$('observation-lab');
+    const stadium=predationStadiumLab.stadium;
+    if(!root || !stadium) return;
+    const step=Math.floor(predationStadiumLab.time);
+    const cards=[...root.querySelectorAll('.stadium-card')];
+    for(const card of cards){
+      const idx=Number(card.dataset.arena)||0;
+      const arena=stadium.arenas[idx];
+      if(!arena) continue;
+      const s=stadiumStateAt(arena,step);
+      const t=s.frame || arena.trace?.[arena.trace.length-1];
+      card.querySelector('.stadium-state').textContent=`${s.state} / ${stadiumResultLabel(arena.duelResult.result)}`;
+      card.querySelector('.stadium-metrics').textContent=t ? `step ${Math.min(step,arena.trace.length-1)} d ${t.distance.toFixed(1)} E ${t.predator.energy.toFixed(1)}` : '';
+    }
+    if(predationStadiumLab.selectedArenaIndex!=null){
+      const arena=stadium.arenas[predationStadiumLab.selectedArenaIndex];
+      const s=stadiumStateAt(arena,step);
+      const t=s.frame || arena.trace?.[arena.trace.length-1];
+      root.querySelector('#lab-focus-title').textContent=arena ? `${arena.arenaIndex+1}. ${arena.label}` : 'Arena';
+      const info=root.querySelector('#lab-focus-info');
+      if(info && arena && t){
+        const r=arena.duelResult.result;
+        info.innerHTML=[
+          `<b>${arena.label}</b>`,
+          `サイズ比: ${arena.options.preySizeRatio.toFixed(2)}`,
+          `速度比: ${arena.options.preySpeedRatio.toFixed(2)} / 実測 ${Number(r.actualSpeedRatio||0).toFixed(3)}`,
+          `行動: ${arena.options.preyBehavior}`,
+          `状態: ${s.state}`,
+          `現在距離: ${t.distance.toFixed(2)}`,
+          `最小距離: ${t.minimumDistance.toFixed(2)}`,
+          `捕食者energy: ${t.predator.energy.toFixed(2)}`,
+          `捕食者速度: ${Math.hypot(t.predator.vx,t.predator.vy).toFixed(3)}`,
+          `獲物速度: ${Math.hypot(t.prey.vx,t.prey.vy).toFixed(3)}`,
+          `target: ${t.targetAcquired ? 'yes' : 'no'}`,
+          `contact: ${t.contactReached ? 'yes' : 'no'}`,
+          `attack: ${t.attackAttempted ? 'yes' : 'no'}`,
+          `終了理由: ${r.endReason}`,
+          `結果: ${stadiumResultLabel(r)}`
+        ].join('<br>');
+      }
+    }
+  }
+  function drawPredationStadiumLab(now=performance.now()){
+    const root=$('observation-lab');
+    const stadium=predationStadiumLab.stadium;
+    if(!root || !stadium) return;
+    if(predationStadiumLab.playing){
+      if(!predationStadiumLab.lastNow) predationStadiumLab.lastNow=now;
+      const dt=Math.min(120,Math.max(0,now-predationStadiumLab.lastNow));
+      predationStadiumLab.time+=dt/1000*60*predationStadiumLab.speed;
+      if(predationStadiumLab.time>=stadiumMaxStep()){
+        predationStadiumLab.time=stadiumMaxStep();
+        predationStadiumLab.playing=false;
+      }
+      predationStadiumLab.lastNow=now;
+    } else {
+      predationStadiumLab.lastNow=now;
+    }
+    const step=Math.floor(predationStadiumLab.time);
+    const canvases=[...root.querySelectorAll('.stadium-canvas')];
+    for(let i=0;i<canvases.length;i++) stadiumDrawArena(canvases[i],stadium.arenas[i],step,false);
+    if(predationStadiumLab.selectedArenaIndex!=null){
+      const canvas=root.querySelector('#lab-focus-canvas');
+      stadiumDrawArena(canvas,stadium.arenas[predationStadiumLab.selectedArenaIndex],step,true);
+    }
+    stadiumRenderInfo();
+    stadiumSyncControls();
+  }
+
   function draw(){
     drawBackground();
     // レイヤー順：パッチ -> エフェクト -> 餌/死骸/プランクトン -> 個体 -> スパーク -> HUD -> 右下HUD
@@ -9323,6 +10138,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     predationDuelSummary(){
       return predationDuelSummary();
+    },
+    generatePredationStadium(options={}){
+      return generatePredationStadium(options);
+    },
+    predationStadiumSummary(stadiumId=null){
+      return predationStadiumSummary(stadiumId);
+    },
+    clearPredationStadiumHistory(){
+      return clearPredationStadiumHistory();
     },
     injectionLineageSummary(options={}){
       return injectionLineageSummary(options);
@@ -9580,10 +10404,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   function loop(now=performance.now()){
     updateFpsHud(now);
     const u0=performance.now();
-    if(running){ updateModel(); renderModelUi(); if(frame%20===0) reportMix(); }
+    if(!predationStadiumLab.open && running){ updateModel(); renderModelUi(); if(frame%20===0) reportMix(); }
     perfStats.updateMs = perfStats.updateMs*0.88 + (performance.now()-u0)*0.12;
     const d0=performance.now();
-    draw();
+    if(predationStadiumLab.open) drawPredationStadiumLab(now);
+    else draw();
     perfStats.drawMs = perfStats.drawMs*0.88 + (performance.now()-d0)*0.12;
     requestAnimationFrame(loop);
   }
