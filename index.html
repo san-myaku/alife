@@ -1190,6 +1190,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   let devShowPredationSizeOverlay = false;
   let duelExperimentActive = false;
   let duelDisableLowEnergySpeedPenalty = false;
+  let activePreyChaseDirectedMovementFixEnabled = true;
   const PREDATION_DUEL_HISTORY_LIMIT = 50;
   const PREDATION_STADIUM_HISTORY_LIMIT = 3;
   const PREDATION_STADIUM_ARENA_COUNT = 6;
@@ -1733,6 +1734,18 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         preDeathAmbushHoldWithValidTarget120:null,
         preDeathAmbushAverageTargetDistanceRatio:null,
         diedWithValidTarget:false,
+        activePreyChaseSteps:0,
+        activePreyChaseSpeedSum:0,
+        activePreyChaseEffectiveMaxSpeedSum:0,
+        activePreyChaseSamples:0,
+        activePreyChaseDesiredMulSum:0,
+        activeChaseAmbusherNoTargetDampingSteps:0,
+        activeChaseDesired035Steps:0,
+        activeChaseRestLimitedSteps:0,
+        activeChaseRandomWanderSteps:0,
+        activeChaseLowEnergyPenaltySteps:0,
+        activeChaseLowEnergySpeedMulSum:0,
+        activeChaseLowEnergySpeedMulSamples:0,
         lastTargetId:null,
         failureCounts:telemetryBlankPredationFailureCounts(),
         dominantFailureReason:null,
@@ -1785,6 +1798,32 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     o._telemetryAmbushHoldFrames.push({frame,validTarget,targetDistanceRatio});
     const cutoff=frame-140;
     while(o._telemetryAmbushHoldFrames.length && o._telemetryAmbushHoldFrames[0].frame<cutoff) o._telemetryAmbushHoldFrames.shift();
+  }
+  function telemetryRecordActivePreyChaseMotion(o, data={}){
+    if(!o || telemetryDiet(o)!=='c' || o._predationChasingThisStep!==true) return;
+    const rec=telemetryPredationIndividualRecord(o);
+    if(!rec) return;
+    rec.role=o.role || 'other';
+    rec.activePreyChaseSteps=(rec.activePreyChaseSteps||0)+1;
+    const speed=Number(data.speed);
+    const maxSpeed=Number(data.effectiveMaxSpeed);
+    const desired=Number(data.desiredSpeedMul);
+    if(Number.isFinite(speed)) rec.activePreyChaseSpeedSum=(rec.activePreyChaseSpeedSum||0)+speed;
+    if(Number.isFinite(maxSpeed)) rec.activePreyChaseEffectiveMaxSpeedSum=(rec.activePreyChaseEffectiveMaxSpeedSum||0)+maxSpeed;
+    if(Number.isFinite(desired)) rec.activePreyChaseDesiredMulSum=(rec.activePreyChaseDesiredMulSum||0)+desired;
+    rec.activePreyChaseSamples=(rec.activePreyChaseSamples||0)+1;
+    if(data.ambusherNoTargetDampingApplied) rec.activeChaseAmbusherNoTargetDampingSteps=(rec.activeChaseAmbusherNoTargetDampingSteps||0)+1;
+    if(data.desired035Applied) rec.activeChaseDesired035Steps=(rec.activeChaseDesired035Steps||0)+1;
+    if(data.restLimited) rec.activeChaseRestLimitedSteps=(rec.activeChaseRestLimitedSteps||0)+1;
+    if(data.randomWanderApplied) rec.activeChaseRandomWanderSteps=(rec.activeChaseRandomWanderSteps||0)+1;
+    if(data.lowEnergyPenaltyActive){
+      rec.activeChaseLowEnergyPenaltySteps=(rec.activeChaseLowEnergyPenaltySteps||0)+1;
+      const lowMul=Number(data.lowEnergySpeedMul);
+      if(Number.isFinite(lowMul)){
+        rec.activeChaseLowEnergySpeedMulSum=(rec.activeChaseLowEnergySpeedMulSum||0)+lowMul;
+        rec.activeChaseLowEnergySpeedMulSamples=(rec.activeChaseLowEnergySpeedMulSamples||0)+1;
+      }
+    }
   }
   function telemetryRecordPredationScan(o, stats){
     const rec=telemetryPredationIndividualRecord(o);
@@ -3175,6 +3214,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const ambushers=records.filter(r=>r.role==='ambusher');
     const ambusherStarvationDeaths=ambushers.filter(r=>r.deathCause==='starvation');
     const ambusherConfirmedStuckDeaths=ambusherStarvationDeaths.filter(r=>r.diedWithValidTarget && (r.preDeathAmbushHoldWithValidTarget120||0)>=60);
+    const weightedAvg=(rows,sumKey,countKey)=>{
+      let total=0, samples=0;
+      for(const r of rows){
+        const n=Number(r?.[countKey]||0);
+        const v=Number(r?.[sumKey]||0);
+        if(n>0 && Number.isFinite(v)){ total+=v; samples+=n; }
+      }
+      return samples ? total/samples : null;
+    };
     return {
       frame,
       windowFrames:wf,
@@ -3222,7 +3270,17 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         averagePreDeathTargetDistanceRatio:avg(ambusherStarvationDeaths.map(r=>r.preDeathAmbushAverageTargetDistanceRatio)),
         trackingStarted:ambushers.filter(r=>r.startedChase).length,
         contactReached:ambushers.filter(r=>r.reachedContact).length,
-        predationSucceeded:ambushers.filter(r=>r.succeededPredation).length
+        predationSucceeded:ambushers.filter(r=>r.succeededPredation).length,
+        activePreyChaseSteps:sum(r=>r.activePreyChaseSteps),
+        averageActivePreyChaseSpeed:weightedAvg(ambushers,'activePreyChaseSpeedSum','activePreyChaseSamples'),
+        averageActivePreyChaseEffectiveMaxSpeed:weightedAvg(ambushers,'activePreyChaseEffectiveMaxSpeedSum','activePreyChaseSamples'),
+        averageActivePreyChaseDesiredMul:weightedAvg(ambushers,'activePreyChaseDesiredMulSum','activePreyChaseSamples'),
+        activeChaseAmbusherNoTargetDampingSteps:sum(r=>r.activeChaseAmbusherNoTargetDampingSteps),
+        activeChaseDesired035Steps:sum(r=>r.activeChaseDesired035Steps),
+        activeChaseRestLimitedSteps:sum(r=>r.activeChaseRestLimitedSteps),
+        activeChaseRandomWanderSteps:sum(r=>r.activeChaseRandomWanderSteps),
+        activeChaseLowEnergyPenaltySteps:sum(r=>r.activeChaseLowEnergyPenaltySteps),
+        averageActiveChaseLowEnergySpeedMul:weightedAvg(ambushers,'activeChaseLowEnergySpeedMulSum','activeChaseLowEnergySpeedMulSamples')
       },
       energy:{
         averageBirthEnergy:avg(records.map(r=>r.birthEnergy)),
@@ -5254,6 +5312,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     }
 
     updatePredationIntent(){
+      this._ambushHoldingThisStep = false;
+      this._predationChasingThisStep = false;
       if(this.dead) return;
       if(this.chaseTimer>0) this.chaseTimer--;
       if(this.predatorThreatId && this.fleeTimer<=0) this.predatorThreatId=null;
@@ -5320,6 +5380,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       ) : 0;
       const ambushTriggerScale=0.55 + 0.45*ambushHunger;
       if(ambush && d>this.senseR*ambushTriggerScale){
+        this._ambushHoldingThisStep = true;
         telemetryRecordAmbushHold(this,prey,d);
         this.vx*=0.985; this.vy*=0.985;
         this.chaseTimer=Math.max(this.chaseTimer,20);
@@ -5346,6 +5407,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         this._kinematicsStep.appliedForceY=(dy/d)*chaseForce;
         this._kinematicsStep.chaseForce=chaseForce;
       }
+      this._predationChasingThisStep = true;
       this.vx += (dx/d)*chaseForce;
       this.vy += (dy/d)*chaseForce;
       prey.predatorThreatId=this.id;
@@ -5387,6 +5449,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this.separateFromNeighbors();
       const socialNeighbors = this.socialSteer();
       this.updatePredationIntent();
+      const isActivePreyChase = this._predationChasingThisStep === true;
+      const suppressNoTargetDrift = activePreyChaseDirectedMovementFixEnabled && isActivePreyChase;
+      let activeChaseAmbusherNoTargetDampingApplied = false;
+      let activeChaseRandomWanderApplied = false;
+      let activeChaseDesired035Applied = false;
+      let activeChaseRestLimited = false;
       const carnGene=this.genes.diet;
       const foodLedger=foodLedgerFor(this);
       const preyTarget=carnGene>=0.54 ? organismById(this.preyTargetId) : null;
@@ -5419,8 +5487,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         }
       }
 
-
-      if(this.role==='ambusher' && !nearest){ this.vx*=0.92; this.vy*=0.92; }
+      if(this.role==='ambusher' && !nearest && !suppressNoTargetDrift){
+        this.vx*=0.92; this.vy*=0.92;
+        if(isActivePreyChase) activeChaseAmbusherNoTargetDampingApplied = true;
+      }
       // Same-species mating calls: steer gently toward the nearest beacon
       if (this.energy>this.reproThreshold){
         let best=null, bd2=1e12;
@@ -5448,7 +5518,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         this.vy += Math.sin(ang+Math.PI/2)*turn;
       }
     }
-      else { this.vx += (Math.random()-0.5)*0.12; this.vy += (Math.random()-0.5)*0.12; }
+      else if(!suppressNoTargetDrift){
+        this.vx += (Math.random()-0.5)*0.12;
+        this.vy += (Math.random()-0.5)*0.12;
+        if(isActivePreyChase) activeChaseRandomWanderApplied = true;
+      }
 
       let senseMul=1.0, metaMul=1.0;
 const En= env.valueAt('algae', this.x,this.y); // N
@@ -5602,27 +5676,11 @@ if(Z>0.08){
       // Speed variability + resting
       let desired = 1.0;
       if(microStationary) desired = 0.0;
-      if(!nearest){
-        if(this.role==='ambusher') desired *= 0.35;
-        const lowEnergyThreshold=this.reproThreshold*0.45;
-        if(this.energy < lowEnergyThreshold){
-          const lowEnergyRatio=clamp(this.energy/Math.max(lowEnergyThreshold,0.001),0,1);
-          const lowEnergySpeedMul=0.55 + 0.45*lowEnergyRatio;
-          if(duelExperimentActive && duelDisableLowEnergySpeedPenalty){
-            if(this._kinematicsStep){
-              this._kinematicsStep.lowEnergySpeedPenaltySuppressed=true;
-              this._kinematicsStep.lowEnergySpeedMultiplier=1;
-              this._kinematicsStep.lowEnergySpeedWouldMultiplier=lowEnergySpeedMul;
-              this._kinematicsStep.lowEnergySpeedRatio=lowEnergyRatio;
-            }
-          } else {
-            desired *= lowEnergySpeedMul;
-            if(this._kinematicsStep){
-              this._kinematicsStep.lowEnergySpeedPenaltyActive=true;
-              this._kinematicsStep.lowEnergySpeedMultiplier=lowEnergySpeedMul;
-              this._kinematicsStep.lowEnergySpeedRatio=lowEnergyRatio;
-            }
-          }
+      if(suppressNoTargetDrift) this.restT = 0;
+      if(!nearest && !suppressNoTargetDrift){
+        if(this.role==='ambusher'){
+          desired *= 0.35;
+          if(isActivePreyChase) activeChaseDesired035Applied = true;
         }
         // chloroplast herbivores tend to "bask" calmly in daytime when not hungry enough to roam
         if(this.flags && this.flags.chl && !dayNight.isNight && this.genes.diet<=0.25 && this.energy < this.reproThreshold*0.70){
@@ -5632,12 +5690,39 @@ if(Z>0.08){
           desired *= 0.10;
           this.vx *= 0.85; this.vy *= 0.85;
           this.restT--;
+          if(isActivePreyChase) activeChaseRestLimited = true;
         } else if(this.restCD>0){
           this.restCD--;
         } else if(Math.random()<0.0025){
           this.restT = Math.floor(rnd(30,110));
           this.restCD = Math.floor(rnd(120,320));
           desired *= 0.10;
+          if(isActivePreyChase) activeChaseRestLimited = true;
+        }
+      }
+      const lowEnergyThreshold=this.reproThreshold*0.45;
+      let activeChaseLowEnergyPenalty = false;
+      let activeChaseLowEnergySpeedMul = null;
+      const shouldApplyLowEnergySpeedPenalty = !nearest || isActivePreyChase;
+      if(shouldApplyLowEnergySpeedPenalty && this.energy < lowEnergyThreshold){
+        const lowEnergyRatio=clamp(this.energy/Math.max(lowEnergyThreshold,0.001),0,1);
+        const lowEnergySpeedMul=0.55 + 0.45*lowEnergyRatio;
+        if(duelExperimentActive && duelDisableLowEnergySpeedPenalty){
+          if(this._kinematicsStep){
+            this._kinematicsStep.lowEnergySpeedPenaltySuppressed=true;
+            this._kinematicsStep.lowEnergySpeedMultiplier=1;
+            this._kinematicsStep.lowEnergySpeedWouldMultiplier=lowEnergySpeedMul;
+            this._kinematicsStep.lowEnergySpeedRatio=lowEnergyRatio;
+          }
+        } else {
+          desired *= lowEnergySpeedMul;
+          activeChaseLowEnergyPenalty = isActivePreyChase;
+          activeChaseLowEnergySpeedMul = lowEnergySpeedMul;
+          if(this._kinematicsStep){
+            this._kinematicsStep.lowEnergySpeedPenaltyActive=true;
+            this._kinematicsStep.lowEnergySpeedMultiplier=lowEnergySpeedMul;
+            this._kinematicsStep.lowEnergySpeedRatio=lowEnergyRatio;
+          }
         }
       }
 
@@ -5677,6 +5762,17 @@ if(Z>0.08){
 
       // Body direction follows actual movement slowly; joints carry most of the animation.
       const actualSp=Math.hypot(this.vx,this.vy);
+      telemetryRecordActivePreyChaseMotion(this,{
+        speed:actualSp,
+        effectiveMaxSpeed:maxSp,
+        desiredSpeedMul:desired,
+        ambusherNoTargetDampingApplied:activeChaseAmbusherNoTargetDampingApplied,
+        desired035Applied:activeChaseDesired035Applied,
+        restLimited:activeChaseRestLimited,
+        randomWanderApplied:activeChaseRandomWanderApplied,
+        lowEnergyPenaltyActive:activeChaseLowEnergyPenalty,
+        lowEnergySpeedMul:activeChaseLowEnergySpeedMul
+      });
       telemetryRecordFeedingMotion(this,{
         speed:actualSp,
         isFleeing:forageFleeing,
@@ -9175,6 +9271,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const kind=role==='prey' ? 'prey' : (role==='predator' || role==='subject' ? 'predator' : 'subject');
     const o=duelMakeOrganism(clamp(x,18,W-18),clamp(y,18,H-18),genes,kind,{energy:null,heading:Number(def.heading||0)});
     microNeutralTraits(o);
+    if(def.organismRole){
+      o.role=String(def.organismRole);
+      if(o.role==='ambusher') o.socialMode='solitary';
+    }
+    if(def.socialMode) o.socialMode=String(def.socialMode);
     o.age=String(def.ageMode||'mature').toLowerCase()==='newborn' ? 0 : (String(def.ageMode||'mature').toLowerCase()==='juvenile' ? 90 : 240);
     o.birthFrame=frame-o.age;
     microApplyEnergyMode(o,def.energyMode||'standard',def.energy);
@@ -9425,6 +9526,31 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         participants.push(prey);
         organisms.push(prey.organism);
       }
+      if(String(opts.scenarioType||'')==='ambusher-pursuit-diagnostic'){
+        subject.role='ambusher';
+        subject.socialMode='solitary';
+        subject.preyTargetId=null;
+        subject.chaseTimer=0;
+        subject.nextPreyScan=frame;
+        subject.restT=Number(opts.startRestT||0);
+        subject.restCD=0;
+        subject.energy=clamp(Number(opts.energy ?? subject.reproThreshold*0.44),0,160);
+        let preyPart=participants.find(p=>p.role==='prey');
+        if(!preyPart){
+          preyPart=microMakeParticipant({role:'prey',template:'controlled-prey',behaviorMode:'stationary',energyMode:'full'},participants.length);
+          participants.push(preyPart);
+          organisms.push(preyPart.organism);
+        }
+        preyPart.behaviorMode='stationary';
+        preyPart.organism._microBehaviorMode='stationary';
+        preyPart.organism.protect=0;
+        pose=microPlacePreyNearPredator(subject,preyPart.organism,{
+          sizeRatio:opts.preySizeRatio ?? 0.70,
+          behaviorMode:'stationary',
+          initialDistance:opts.initialDistance ?? subject.senseR*0.75,
+          initialAngleDeg:opts.initialAngleDeg ?? 0
+        });
+      }
       if(subjectPart.behaviorMode==='chase' && !participants.some(p=>p.role==='prey' || p.role==='lure')){
         const prey=microMakeParticipant({role:'prey',template:'controlled-prey',behaviorMode:'straightEscape',energyMode:'full'},participants.length);
         pose=microPlacePreyNearPredator(subject,prey.organism,{sizeRatio:0.70,speedRatio:1.20,behaviorMode:'straightEscape',initialDistance:45});
@@ -9529,6 +9655,29 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         const last=trace[trace.length-1];
         last.endReason=endReason;
         if(last.predator) last.predatorDead=!!subject.dead;
+      }
+      if(String(opts.scenarioType||'')==='ambusher-pursuit-diagnostic'){
+        const rec=telemetry.predationIndividuals.get(subject.id) || {};
+        observer.ambusherPursuit={
+          ambushHoldSteps:rec.ambushHoldSteps||0,
+          activePreyChaseSteps:rec.activePreyChaseSteps||0,
+          activeChaseAmbusherNoTargetDampingSteps:rec.activeChaseAmbusherNoTargetDampingSteps||0,
+          activeChaseDesired035Steps:rec.activeChaseDesired035Steps||0,
+          activeChaseRestLimitedSteps:rec.activeChaseRestLimitedSteps||0,
+          activeChaseRandomWanderSteps:rec.activeChaseRandomWanderSteps||0,
+          activeChaseLowEnergyPenaltySteps:rec.activeChaseLowEnergyPenaltySteps||0,
+          averageActivePreyChaseSpeed:(rec.activePreyChaseSamples||0) ? (rec.activePreyChaseSpeedSum||0)/rec.activePreyChaseSamples : null,
+          averageActivePreyChaseEffectiveMaxSpeed:(rec.activePreyChaseSamples||0) ? (rec.activePreyChaseEffectiveMaxSpeedSum||0)/rec.activePreyChaseSamples : null,
+          averageActivePreyChaseDesiredMul:(rec.activePreyChaseSamples||0) ? (rec.activePreyChaseDesiredMulSum||0)/rec.activePreyChaseSamples : null,
+          averageActiveChaseLowEnergySpeedMul:(rec.activeChaseLowEnergySpeedMulSamples||0) ? (rec.activeChaseLowEnergySpeedMulSum||0)/rec.activeChaseLowEnergySpeedMulSamples : null,
+          reachedContact:!!rec.reachedContact,
+          succeededPredation:!!rec.succeededPredation,
+          firstContactFrame:rec.firstContactFrame??null,
+          firstSuccessFrame:rec.firstSuccessFrame??null,
+          finalRestT:subject.restT||0,
+          finalEnergy:subject.energy||0,
+          targetId:subject.preyTargetId||null
+        };
       }
       const result={
         scenarioId,
@@ -12325,6 +12474,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     predationIndividualFunnelSummary(windowFrames=1800){
       return predationIndividualFunnelSummary(windowFrames);
+    },
+    setActivePreyChaseMovementFix(enabled=true){
+      activePreyChaseDirectedMovementFixEnabled = enabled !== false;
+      return {ok:true, activePreyChaseDirectedMovementFixEnabled};
     },
     predationSizeFunnelSummary(options={}){
       return predationSizeFunnelSummary(options);

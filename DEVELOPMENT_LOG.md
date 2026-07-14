@@ -521,3 +521,20 @@ index.htmlで390x844、各1,800step。page errorなし、NaNなし、save/load r
 inline script構文、`organism_render.js`構文、`git diff --check`、修正前3試行、修正後3試行、save/load round trip、page errorなし、NaNなしを確認した。
 ### 採用判断
 採用。短時間試験ではambusherのcontact/捕食成功は増えなかったが、有効targetを保持したまま長時間待ち続けて餓死するケースが8例から1例へ減り、待ち伏せ戦略を維持しつつ空腹時に能動追跡へ移る目的を満たした。
+## 2026-07-14 21:43 追跡中ambusherの移動先なし判定修正
+### 原因
+`preyTarget` を実際に追跡しているambusherでも、通常餌・死骸側の `nearest` は `null` のままだった。そのため有効獲物へchaseForceを加えた直後に、無目的個体向けの `vx/vy *= 0.92`、`desired *= 0.35`、rest、random wander が重ねて適用されていた。
+### 状態分離
+`updatePredationIntent()` の各step開始時に `_ambushHoldingThisStep` と `_predationChasingThisStep` をリセットするようにした。待ち伏せ分岐へ入ったstepだけ `_ambushHoldingThisStep=true`、実際に獲物方向へchaseForceを加える直前だけ `_predationChasingThisStep=true` を設定する。
+### 外した誤適用
+実追跡中のambusherから、無目的時の `vx/vy *= 0.92`、`desired *= 0.35`、rest開始・rest速度制限、random wander を外した。待ち伏せhold中と無目的時は従来の低速挙動を維持した。
+### 維持した低energy補正
+連続的な低energy速度補正は、実追跡中にも適用されるまま維持した。通常餌へ向かう `nearest` あり個体の既存挙動を変えないため、低energy補正の対象は従来の `!nearest` と実追跡中に限定した。
+### Micro Scenario結果
+`ambusher-pursuit-diagnostic` で、空腹ambusher、stationary草食、距離45、最大300stepを実行。active chase 91step、ambush hold 0step、0.92追加減衰0step、0.35適用0step、rest適用0step、random wander 0step、low-energy補正91step。step 91でcontactと捕食成功に到達した。
+### 通常世界前後比較
+390x844、同一3乱数列、各1,800step。旧挙動はtracking 15、contact 4、success 2、tracking→contact 26.7%、active chase平均速度0.113、平均effective max 0.114、追跡中0.35適用3,046step、rest 2,869step、random wander 21,843step、0.92減衰3,046step。修正版はtracking 18、contact 7、success 3、tracking→contact 38.9%、active chase平均速度0.459、平均effective max 0.477、追跡中0.35/rest/random/0.92はいずれも0step。low-energy補正は23,244stepで維持された。
+### 待ち伏せ餓死への影響
+短時間3試行ではambusher starvation deathsは旧12から修正後11へわずかに減少した。終了時肉食は旧3試行合計1、修正後0。今回の採否は、追跡状態の誤判定解消とtracking→contact改善を主指標にした。
+### 採用判断
+採用。待ち伏せ中の静止は維持し、実追跡中だけ無目的遊泳処理を外せた。Micro Scenarioでcontact/successに到達し、通常世界でもtracking→contactと実追跡速度が明確に改善した。page error、NaN、save/load異常はなし。
