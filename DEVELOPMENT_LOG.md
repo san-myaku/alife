@@ -632,3 +632,34 @@ I restore時call消去: call 1件ありの状態から別saveをrestoreし、cal
 inline script構文、`organism_render.js`構文、`scripts/*.cjs`構文、`git diff --check` はOK。Micro A-I OK。同一seed 41001/42001/43001 各1,800step OK。3 seedでpage errorなし、NaN/Infinityなし、save/load round trip OK。通常版・開発者版起動OK。`index.html` と `alife_symbolic_shapes_v1.html` の SHA256 一致。凍結版 SHA256 は `1DD2B28D6FC7D2471370CF2B88C00CD87319DD285F255C8123408F108463816B` のまま。FPSスモークは390x844/120個体で平均41.8、最終44FPS。
 ### 採用判断
 採用。死亡・未成熟・成熟の状態判定が、行動、繁殖、UI、診断、dev機能、過密淘汰、時間進行で同じ基準になった。繁殖成熟年齢式、繁殖コスト、clutch、捕食、速度、個体数上限、speciesKey、traits/flags、topology、セーブバージョン、Wikiは変更していない。
+## 2026-07-15 繁殖 energy 保存
+### 変更前の問題
+繁殖で生まれた子は `Organism` コンストラクタ既定の `energy=100` のまま誕生していた。一方で親は clutch 別倍率、配偶者は軽い倍率コストだけを支払うため、親・配偶者が失った energy を超える子 energy が新規生成されていた。基準コミット `0a180210f89f8b0bd10e96f87233377ba57f316f` の一時監査では 3 seed 合計 681 繁殖イベントすべてが energy 生成イベントで、最大 conservation residual は +306.7295957342592 だった。
+
+### 実装
+成熟判定を履歴用の `hasReachedReproductiveMaturity(o)`、現在繁殖参加可能判定の `canParticipateInReproduction(o)`、energy 閾値も含む `canReproduceNow(o)` に分離した。肉食成熟履歴・成熟前後捕食分類は履歴判定を使い、行動・配偶者候補・mating call・UI は現在繁殖可能判定を使うようにした。`isReproductivelyMature(o)` は互換 alias として残し、現在の生存個体の参加可能判定を表すことをコメントした。
+
+`REPRODUCTION_ENERGY_TRANSFER_EFFICIENCY=0.90`、`REPRODUCTION_CHILD_ENERGY_MAX=100` を追加した。親 energy 倍率 1仔=0.55、2仔=0.40、3仔=0.30、4仔以上 `0.30 * (3 / clutch)^0.9` は維持した。配偶者倍率 2仔以下=0.92、4仔以下=0.88、それ以上=0.84 も維持した。`reproductionEnergyPlan(parent,mate,clutch)` で親・配偶者の損失を繁殖投資として計算し、その 90% を clutch で割って子 energy とした。子 energy は 100 を上限に clamp する。
+
+`tryReproduce()` は冒頭で `!canReproduceNow(this)` なら `[]` を返すようにし、死亡・未成熟・energy 不足・energy 閾値同値では直接呼び出しでも繁殖しない。配偶者候補も `canReproduceNow(o)` と同一 `speciesKey` を要求し、配偶者側も `energy > reproThreshold` を満たす必要がある。子は生成直後、出生テレメトリ前に `c.energy = energyPlan.childEnergy` を受け取り、出生テレメトリの `birthEnergy` に実際の初期 energy を記録する。すべての子生成後、親と配偶者へ計画済み `parentAfter` / `mateAfter` を適用し、個別の `this.energy *= mult` / `mate.energy *= mm` は削除した。
+
+### Micro A-I
+A 無性1仔: parentAfter 55、parentInvestment 45、childEnergy 40.5、totalChildEnergy 40.5、energy creation 0。B 無性2仔: parentAfter 40、parentInvestment 60、childEnergy 27、totalChildEnergy 54、transferLoss 6。C 無性3仔: parentAfter 30、parentInvestment 70、childEnergy 21、totalChildEnergy 63、transferLoss 7。D 有性2仔: parentAfter 40、mateAfter 92、totalInvestment 68、offspringEnergyPool 61.2、childEnergy 30.6、totalChildEnergy 61.2。E parent/mate energy 160 の有性1仔: childEnergy 76.32 で 100 以下、energy 生成なし、transferLoss 8.48。F 未成熟本人の直接 `tryReproduce()` は kids 0。G `energy === reproThreshold` は本人・配偶者とも繁殖不可、kids 0。H 死亡済み成熟到達個体は `hasReachedReproductiveMaturity=true`、`canParticipateInReproduction=false`、`canReproduceNow=false`、肉食テレメトリ成熟履歴 true。I 出生テレメトリ `birthEnergy` は 40.5 で子の実 `energy` と一致し、固定 100 ではない。
+
+### 3 seed 1,800step 比較
+基準コミット合計: 出生 873、繁殖 681、食性別出生 h/m/c=732/93/48、食性別繁殖 h/m/c=576/74/31、平均新生児 energy 100、energy 生成イベント 681、最大 conservation residual +306.7295957342592、新生児餓死 26、餓死 137、捕食死 68、過密死 490、最大個体数 126、終了個体数 123/123/124、終了肉食数 2/0/0、肉食出生 48、肉食成熟 34、肉食繁殖 31、再播種 0。
+
+修正版合計: 出生 761、繁殖 593、食性別出生 h/m/c=628/110/23、食性別繁殖 h/m/c=484/90/19、平均新生児 energy 44.294991227019686、energy 生成イベント 0、最大 conservation residual -3.106539209902916（正の residual 最大 0）、新生児餓死 44、餓死 157、捕食死 65、過密死 362、最大個体数 126、終了個体数 122/124/123、終了肉食数 0/0/0、肉食出生 23、肉食成熟 9、肉食繁殖 19、再播種 0。
+
+修正版 seed 別平均新生児 energy: 41001=40.103、42001=48.055、43001=44.727。clutch 別平均新生児 energy は 41001: 1仔46.705/2仔31.177/3仔26.670/4仔19.382、42001: 1仔57.061/2仔36.977/3仔26.773/4仔17.834、43001: 1仔53.826/2仔35.967/3仔22.035/4仔19.223。有性/無性別平均は 41001: sexual 50.407 / asexual 40.230、42001: sexual 61.739 / asexual 46.807、43001: sexual 59.524 / asexual 41.797。
+
+成熟到達率は修正版で 41001=0.7465、42001=0.7753、43001=0.7726。食性別成熟到達率は 41001 h/m/c=0.7365/0.7910/0、42001 h/m/c=0.7922/0.8571/0.4、43001 h/m/c=0.7912/0.6364/0.5。fecundity 別の過密死確認では、各 seed とも young/mature 分類は個体固有 maturityAge 基準で、過密死は今回の範囲では成熟後のみだった。
+
+### seed42001 6,000step
+修正版は population 継続。出生 1240、繁殖 947、食性別出生 h/m/c=1181/46/13、食性別繁殖 h/m/c=903/36/8、平均新生児 energy 53.87762047288545、energy 生成イベント 0、最大 conservation residual -3.473919423958659（正の residual 最大 0）、新生児餓死 14、餓死 56、捕食死 16、過密死 1108、最大個体数 126、終了個体数 124、最大肉食数 28、終了肉食数 0、肉食出生 13、肉食成熟 6、肉食繁殖 8、再播種 0。爆発的な出生・大量死・絶滅再播種はなかったが、肉食系統は終了時 0 だった。これは補償調整せず、今回の検証結果として扱う。
+
+### 検証
+inline script 構文 OK、`organism_render.js` 構文 OK、`scripts/*.cjs` 構文 OK、`git diff --check` OK。Micro A-I OK。3 seed 各1,800step OK。seed42001 6,000step OK。save/load round trip OK。通常版・開発者版・同期済みコピー版起動 OK。`index.html` と `alife_symbolic_shapes_v1.html` の SHA256 は一致。凍結版 `alife_env_seaglass_v1_fixed_v5_eco5_PATCH_metabolism_v7.html` は未変更。page error なし、NaN/Infinity なし。FPS smoke は 390x844 / 120個体で平均 41.6 FPS。
+
+### 採用判断
+採用。繁殖した子の energy は固定 100 ではなく、親・配偶者の energy 損失から 90% 効率で配分される。子の合計 energy は繁殖投資を超えず、energy 生成イベントは 0、正の conservation residual 最大 0。既存の clutch 分布・親倍率・配偶者倍率・成熟年齢式・有性/無性経路は維持した。未成熟・死亡・energy 不足・閾値同値個体は直接呼び出しでも繁殖しない。出生テレメトリは実際の初期 energy と一致する。

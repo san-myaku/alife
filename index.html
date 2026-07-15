@@ -1099,9 +1099,20 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     }
     return reproductiveMaturityAgeFromGenes(o.genes);
   }
-  function isReproductivelyMature(o){
-    if(!o || o.dead) return false;
+  function hasReachedReproductiveMaturity(o){
+    if(!o) return false;
     return Number(o.age || 0) >= reproductiveMaturityAgeFor(o);
+  }
+  function canParticipateInReproduction(o){
+    return !!o && !o.dead && hasReachedReproductiveMaturity(o);
+  }
+  function canReproduceNow(o){
+    return canParticipateInReproduction(o) &&
+      Number(o.energy || 0) > Number(o.reproThreshold || 0);
+  }
+  // Compatibility alias: current living participation, not historical maturity.
+  function isReproductivelyMature(o){
+    return canParticipateInReproduction(o);
   }
   function speciesPalette(key){
     const s=String(key||'0000000');
@@ -1155,6 +1166,52 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
       }
     }
     return p;
+  }
+  const REPRODUCTION_ENERGY_TRANSFER_EFFICIENCY = 0.90;
+  const REPRODUCTION_CHILD_ENERGY_MAX = 100;
+  function reproductionParentEnergyMultiplier(clutch){
+    if(clutch===1) return 0.55;
+    if(clutch===2) return 0.40;
+    if(clutch===3) return 0.30;
+    return 0.30 * Math.pow(3 / Math.max(1, clutch), 0.9);
+  }
+  function reproductionMateEnergyMultiplier(clutch){
+    if(clutch<=2) return 0.92;
+    if(clutch<=4) return 0.88;
+    return 0.84;
+  }
+  function reproductionEnergyPlan(parent,mate,clutch){
+    const safeClutch=Math.max(1, clutch|0);
+    const parentBefore=Math.max(0, Number(parent?.energy)||0);
+    const parentMultiplier=reproductionParentEnergyMultiplier(safeClutch);
+    const parentAfter=parentBefore*parentMultiplier;
+    const parentInvestment=Math.max(0, parentBefore-parentAfter);
+    const sexual=!!mate;
+    const mateBefore=sexual ? Math.max(0, Number(mate.energy)||0) : 0;
+    const mateMultiplier=sexual ? reproductionMateEnergyMultiplier(safeClutch) : 1;
+    const mateAfter=sexual ? mateBefore*mateMultiplier : mateBefore;
+    const mateInvestment=sexual ? Math.max(0, mateBefore-mateAfter) : 0;
+    const totalInvestment=parentInvestment+mateInvestment;
+    const offspringEnergyPool=totalInvestment*REPRODUCTION_ENERGY_TRANSFER_EFFICIENCY;
+    const childEnergy=clamp(offspringEnergyPool/safeClutch,0,REPRODUCTION_CHILD_ENERGY_MAX);
+    const totalChildEnergy=childEnergy*safeClutch;
+    return {
+      clutch:safeClutch,
+      sexual,
+      parentBefore,
+      parentAfter,
+      parentInvestment,
+      parentMultiplier,
+      mateBefore,
+      mateAfter,
+      mateInvestment,
+      mateMultiplier,
+      totalInvestment,
+      offspringEnergyPool,
+      childEnergy,
+      totalChildEnergy,
+      transferLoss:Math.max(0,totalInvestment-totalChildEnergy)
+    };
   }
 let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food=[]; const corpses=[]; const plankton=[]; const patches=[]; const calls=[];
   const rings=[]; const predationBlooms=[]; const waterCurrents=[]; const membranes=[];
@@ -1678,7 +1735,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function telemetryUpdateCarnivoreProgress(o){
     const rec=telemetryCarnivoreLifeRecord(o);
     if(!rec) return null;
-    if(isReproductivelyMature(o)) rec.matured=true;
+    if(hasReachedReproductiveMaturity(o)) rec.matured=true;
     const ratio=telemetryEnergyRatio(o);
     rec.maxEnergyRatio=Math.max(rec.maxEnergyRatio, ratio);
     if(rec.predationSuccesses>0) rec.maxEnergyRatioAfterPredation=Math.max(rec.maxEnergyRatioAfterPredation, ratio);
@@ -2657,7 +2714,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     rec.predationSuccesses++;
     rec.neverPredated=false;
     rec.lastPredationFrame=frame;
-    if(isReproductivelyMature(o)) rec.maturePredation=true;
+    if(hasReachedReproductiveMaturity(o)) rec.maturePredation=true;
     else rec.preMaturePredation=true;
     telemetryUpdateCarnivoreProgress(o);
     telemetryRecordPredationSuccessEnergy(o,data);
@@ -2755,6 +2812,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       childPostMutationDiet,
       childPreMutationDietType,
       parentCarnivore:(parent?.genes?.diet ?? 0) >= 0.66,
+      birthEnergy:Number(child.energy||0),
       speciesKey:child.speciesKey,
       survived60:null,
       survived180:null,
@@ -2774,6 +2832,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       childPreMutationDietType,
       childPostMutationDiet,
       crossedDietClass:parentDiet!==childDiet,
+      birthEnergy:rec.birthEnergy,
       clutch,
       index
     });
@@ -2784,7 +2843,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       telemetryUpdateCarnivoreProgress(child);
       telemetryPredationIndividualRecord(child);
     }
-    telemetryPush({kind:'birth', id:child.id, diet:rec.diet, parentId:rec.parentId, parentDiet, parentExactDiet, parentCarnivore:rec.parentCarnivore, childPreMutationDiet, childPostMutationDiet, childPreMutationDietType, crossedDietClass:parentDiet!==childDiet, clutch, index});
+    telemetryPush({kind:'birth', id:child.id, diet:rec.diet, parentId:rec.parentId, parentDiet, parentExactDiet, parentCarnivore:rec.parentCarnivore, birthEnergy:rec.birthEnergy, childPreMutationDiet, childPostMutationDiet, childPreMutationDietType, crossedDietClass:parentDiet!==childDiet, clutch, index});
     telemetryPruneBirths();
   }
   function telemetryRecordReproduction(parent, kids){
@@ -3983,7 +4042,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     };
     const life=[...telemetry.carnivoreLife.values()].filter(r=>r.firstFrame>=cutoff || (r.deathFrame!=null && r.deathFrame>=cutoff) || r.deathFrame==null);
     const currentCarnivores=organisms.filter(o=>telemetryDiet(o)==='c');
-    const currentMatureCarnivores=currentCarnivores.filter(isReproductivelyMature);
+    const currentMatureCarnivores=currentCarnivores.filter(canParticipateInReproduction);
     const currentRatios=currentMatureCarnivores.map(telemetryEnergyRatio);
     const lifetimeMaxRatios=life.map(r=>r.maxEnergyRatio);
     const afterPredationRatios=life.filter(r=>r.predationSuccesses>0).map(r=>r.maxEnergyRatioAfterPredation);
@@ -4566,7 +4625,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(o.chaseTimer>0 || o.preyTargetId) return '追跡中';
     if((o.storeO??1)<0.22) return '低酸素';
     if(o.energy < o.reproThreshold*0.42) return '空腹';
-    if(isReproductivelyMature(o) && o.energy > o.reproThreshold) return '繁殖可能';
+    if(canReproduceNow(o)) return '繁殖可能';
     return '安定';
   }
   function dangerLabel(o){
@@ -5001,7 +5060,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const profile=speciesStrategyProfile(o.genes,o.flags,topo,o.role);
     const maturityAge=reproductiveMaturityAgeFor(o);
     const maturityRemaining=Number.isFinite(maturityAge) ? Math.max(0, Math.ceil(maturityAge - Number(o.age||0))) : null;
-    const reproductiveMaturityLine=isReproductivelyMature(o) ? '繁殖成熟：成熟済み' : `繁殖成熟：未成熟（残り${maturityRemaining ?? '?'}step）`;
+    const reproductiveMaturityLine=hasReachedReproductiveMaturity(o) ? '繁殖成熟：成熟済み' : `繁殖成熟：未成熟（残り${maturityRemaining ?? '?'}step）`;
     return [
       speciesNameFromGenes(o.genes,o.flags),
       `戦略：${profile.title}（${profile.role}）`,
@@ -5624,7 +5683,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         if(isActivePreyChase) activeChaseAmbusherNoTargetDampingApplied = true;
       }
       // Same-species mating calls: steer gently toward the nearest beacon
-      if(isReproductivelyMature(this) && this.energy>this.reproThreshold){
+      if(canReproduceNow(this)){
         let best=null, bd2=1e12;
         for(let i=0;i<calls.length;i++){
           const c=calls[i];
@@ -6099,11 +6158,11 @@ if(Z>0.08){
       // 繁殖
       telemetryRecordReproductionGate(this,'evaluated');
       if(!duelExperimentActive){
-        const reproductivelyMature = isReproductivelyMature(this);
-        if(!reproductivelyMature){
+        const canParticipate = canParticipateInReproduction(this);
+        if(!canParticipate){
           telemetryRecordReproductionGate(this,'immature');
           this.mateSeekT=0; this.callCD=0;
-        } else if(this.energy>this.reproThreshold){
+        } else if(canReproduceNow(this)){
         telemetryRecordReproductionGate(this,'eligible');
         // seeking state
         this.mateSeekT++; if(this.callCD>0) this.callCD--;
@@ -6384,12 +6443,12 @@ if(Z>0.08){
     }
 
     tryReproduce(){
-      if(this.dead) return [];
+      if(!canReproduceNow(this)) return [];
       // dynamic search radius expands with mate-seeking time
       let r = 50 + Math.min(70, this.mateSeekT * 0.20);
       let mate=null, bestD2=r*r;
       forEachOrgNeighbors(this.x,this.y,r,(o,dx,dy,d2)=>{
-        if(!o || o.dead || o===this || !isReproductivelyMature(o) || o.energy<o.reproThreshold) return;
+        if(!o || o===this || !canReproduceNow(o)) return;
         // same-species only
         if(o.speciesKey !== this.speciesKey) return;
         if(d2<bestD2){ bestD2=d2; mate=o; }
@@ -6408,6 +6467,7 @@ if(Z>0.08){
         pUp *= rp.decay;
       }
       clutch = Math.max(1, Math.min(rp.clutchMax, clutch));
+      const energyPlan = reproductionEnergyPlan(this,mate,clutch);
 
       for(let i=0;i<clutch;i++){
         let g;
@@ -6425,6 +6485,7 @@ if(Z>0.08){
         const c=new Organism(clamp(this.x+rnd(-childSpread,childSpread),10,W-10), clamp(this.y+rnd(-childSpread,childSpread),10,H-10), g, true, this.speciesKey, mate?.speciesKey||null);
         c.vx=this.vx*0.2; c.vy=this.vy*0.2;
         inheritInjectionLineage(this,mate,c);
+        c.energy = energyPlan.childEnergy;
         telemetryRecordBirth(this,c,i,clutch,{preMutationDiet});
 
         // Mendelian flags inheritance (glow/crown/colony)
@@ -6443,12 +6504,7 @@ if(Z>0.08){
       }
 
       // Energy cost handled here (remove outside energy cut)
-      let mult;
-      if(clutch===1) mult = 0.55;
-      else if(clutch===2) mult = 0.40;
-      else if(clutch===3) mult = 0.30;
-      else mult = 0.30 * Math.pow(3/clutch, 0.9);
-      this.energy *= mult;
+      this.energy = energyPlan.parentAfter;
 
       // fecundity leaves waste (clutch = heavier load)
       const reproD = 0.010 + 0.004*clutch;
@@ -6457,8 +6513,7 @@ if(Z>0.08){
 
       // optional: mild cost to mate as well (scale slightly with clutch)
       if(isSex){
-        const mm = (clutch<=2)? 0.92 : (clutch<=4? 0.88 : 0.84);
-        mate.energy *= mm;
+        mate.energy = energyPlan.mateAfter;
       }
 
       return kids;
@@ -8471,7 +8526,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       if(!o || o.dead) continue;
       const age=Number.isFinite(o.age) ? o.age : Math.max(0, frame-(o.birthFrame ?? frame));
       const row={o,score:capacityScore(o),age};
-      if(isReproductivelyMature(o)) mature.push(row);
+      if(canParticipateInReproduction(o)) mature.push(row);
       else young.push(row);
     }
     mature.sort((a,b)=>a.score-b.score || b.age-a.age || a.o.id-b.o.id);
