@@ -604,3 +604,31 @@ inline script構文、organism_render.js構文、scripts/*.cjs構文、git diff 
 採用。出生直後繁殖は0になり、最短成熟年齢180stepを確保した。出生数と繁殖数は減ったが、全食性で繁殖は残っており、今回の目的である「出生→成長→成熟→繁殖」の生活史ゲートを満たした。
 ### 再集計訂正
 最終確認として、基準コミットHTMLと修正版HTMLへ同じ一時プローブを注入し直し、相対読み込みを壊さないルート直下の一時HTMLで再集計した。旧: 総出生1277、総繁殖984、食性別繁殖 h/m/c=629/233/122、食性別出生 h/m/c=827/296/154、180step未満繁殖512、成熟前繁殖660、carnivore born 154、carnivore reproduced 122、餓死346、過密死621、終了時個体数123/121/120、終了時肉食0/3/0。修正後: 総出生586、総繁殖465、食性別繁殖 h/m/c=301/136/28、食性別出生 h/m/c=382/170/34、180step未満繁殖0、成熟前繁殖0、carnivore born 34、carnivore reproduced 28、餓死158、過密死159、終了時個体数124/124/125、終了時肉食4/0/0。page error、非有限値、save/load異常はいずれもなし。
+
+## 2026-07-15 生活史状態の一貫化
+### 変更前の問題
+死亡済み個体は捕食された同一step内でも後続順なら `step()` され得た。成熟判定は本体、UI、肉食テレメトリ、dev spawn、過密淘汰で固定180/240や `o.maturityAge` 直接比較が混在していた。未成熟個体も energy 条件だけで mating call を追跡でき、mating call の寿命は `draw()` 回数に依存していた。`restore()` の配列初期化では calls が消されず、旧世界の call が残り得た。
+### 変更
+`reproductiveMaturityAgeFor(o)` と `isReproductivelyMature(o)` を追加し、通常繁殖、配偶者候補、UIの「繁殖可能」、肉食成熟テレメトリ、過密淘汰、dev spawn を共通判定へ統一した。`Organism.step()` 冒頭とモデル更新ループの両方で死亡個体をskipし、`tryReproduce()` も死亡時は `[]` を返す。mating call 追跡条件へ成熟判定を追加し、call寿命更新を `updateModel()` のモデルstep単位へ移した。`restore()` では `calls.length=0` を明示した。
+### 境界修正
+`age = maturityAge - 1` の個体が同じstep内の `age++` 後に成熟扱いで繁殖へ進む問題が検証で見つかったため、age加算を繁殖判定の後へ移した。step開始時の未成熟状態では、そのstep中に call追跡・call発信・mateSeekT進行・繁殖抽選へ進まない。
+### 付随修正
+`personalSpaceR` に NaN が残る個体があり、利用側では `|| o.size` で実質フォールバックされていた。非有限値検証を満たすため、`prepareSymbolDetails()` で同じ実効値に相当する `this.size * 1.12` へ正規化した。
+### Micro A-I
+A 死亡個体の直接step: age/energy/位置/速度/mateSeekT/callCD変化なし、newborn/calls/telemetry増加なし。
+B 同一step内死亡: 先行個体stepで後続個体をdead化、後続step実行0、age増加なし、繁殖なし、step末尾で削除、死亡記録1回。
+C 成熟境界: fecundity 0.0/0.5/1.0 で maturityAge 420/300/180。age=maturityAge-1 は未成熟、age=maturityAge は成熟。
+D 未成熟交配行動: step開始 age=299/maturity=300、energy十分、同種callありでも call方向の追加加速なし、mateSeekT 0、call増加なし、newborn 0、immature gate 1。
+E 成熟済み交配行動: age=300/maturity=300、同種callへ x方向追加加速、mateSeekT 121→122、call 1件発信、eligible gate 1。
+F dev spawn: herbivore/omnivore/carnivore の newborn と juvenile は未成熟、mature は成熟済み。成熟個体のみ「繁殖可能」表示。
+G 過密淘汰: age 200 でも fecundity 0.0 個体は young、fecundity 1.0 個体は mature。capacityScore の成熟度差は個体固有maturityAge基準の期待差 0.05238095238095239 と一致。緊急上限超過時は mature 側が淘汰対象になり young は残存。
+H mating call寿命: t=180 は10モデルstep後170、停止中draw 100回後も170、4倍速1更新でframe +4かつ t=166。
+I restore時call消去: call 1件ありの状態から別saveをrestoreし、calls.length 0。
+### 3 seed結果
+41001: 出生236、繁殖170、食性別繁殖 h/m/c=125/44/1、成熟前繁殖0、180step未満繁殖0、死亡後行動0、死亡後繁殖0、捕食29、餓死48、捕食死29、過密死98、終了時個体数125、終了時肉食0、肉食成熟0、肉食成熟前捕食0、成熟後捕食2、call発生196、call残存55。
+42001: 出生193、繁殖147、食性別繁殖 h/m/c=37/98/12、成熟前繁殖0、180step未満繁殖0、死亡後行動0、死亡後繁殖0、捕食41、餓死62、捕食死41、過密死32、終了時個体数122、終了時肉食2、肉食成熟2、肉食成熟前捕食4、成熟後捕食10、call発生105、call残存40。
+43001: 出生251、繁殖190、食性別繁殖 h/m/c=162/23/5、成熟前繁殖0、180step未満繁殖0、死亡後行動0、死亡後繁殖0、捕食17、餓死55、捕食死17、過密死118、終了時個体数125、終了時肉食0、肉食成熟0、肉食成熟前捕食2、成熟後捕食3、call発生200、call残存51。
+### 検証
+inline script構文、`organism_render.js`構文、`scripts/*.cjs`構文、`git diff --check` はOK。Micro A-I OK。同一seed 41001/42001/43001 各1,800step OK。3 seedでpage errorなし、NaN/Infinityなし、save/load round trip OK。通常版・開発者版起動OK。`index.html` と `alife_symbolic_shapes_v1.html` の SHA256 一致。凍結版 SHA256 は `1DD2B28D6FC7D2471370CF2B88C00CD87319DD285F255C8123408F108463816B` のまま。FPSスモークは390x844/120個体で平均41.8、最終44FPS。
+### 採用判断
+採用。死亡・未成熟・成熟の状態判定が、行動、繁殖、UI、診断、dev機能、過密淘汰、時間進行で同じ基準になった。繁殖成熟年齢式、繁殖コスト、clutch、捕食、速度、個体数上限、speciesKey、traits/flags、topology、セーブバージョン、Wikiは変更していない。
