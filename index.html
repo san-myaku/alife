@@ -1194,6 +1194,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   let stalePreyTargetReleaseFixEnabled = true;
   const PREDATION_TARGET_OUT_OF_RANGE_SCALE = 1.25;
   const PREDATION_TARGET_OUT_OF_RANGE_GRACE = 24;
+  const DIRECT_PREDATION_SEPARATION_MUL = 0.15;
   const PREDATION_DUEL_HISTORY_LIMIT = 50;
   const PREDATION_STADIUM_HISTORY_LIMIT = 3;
   const PREDATION_STADIUM_ARENA_COUNT = 6;
@@ -5253,6 +5254,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           deep++;
         }
         if(this.role==='ambusher' && this.energy < this.reproThreshold*0.52) k *= 0.55;
+        const directPredationPair = this.preyTargetId===o.id || o.preyTargetId===this.id;
+        if(directPredationPair) k *= DIRECT_PREDATION_SEPARATION_MUL;
         pushX += nx*k;
         pushY += ny*k;
         hits++;

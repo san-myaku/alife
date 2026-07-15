@@ -573,3 +573,17 @@ A: ambusherをバースト圏外かつactive chase範囲内に置くと、active
 Micro A-C、同一seed前後3試行、save/load round tripでpage errorなし。最終差分からローカル診断コードと一時Micro確認関数は削除し、通常OFF時の追加recordsは残していない。
 ### 採用判断
 採用。短時間3 seedでは終了時肉食は増えていないが、ambusherがバースト圏外から獲物を逃がす挙動は0stepへ解消され、非ambusherの逃走刺激条件は維持された。次は個体間反発または接触後attack機会の阻害を別タスクで検証する。
+
+## 2026-07-15 09:18 捕食者と現在の獲物の間だけ個体間反発を弱める
+### 背景
+個体間反発は `personalSpaceR` を基準に `contact=(selfR+otherR)*0.82`、`soft=(selfR+otherR)*1.06` を使う一方、捕食接触は `this.size + prey.size + 3.8` を使う。形態によって `personalSpaceR` が大きくなるため、現在targetとの間でもattack距離外へ押し戻される可能性があった。
+### 変更
+`DIRECT_PREDATION_SEPARATION_MUL = 0.15` を追加し、`this.preyTargetId === o.id || o.preyTargetId === this.id` の直接捕食ペアだけ反発係数 `k` を15%へ縮小した。`contact`、`soft`、`deep`、`hits`、最終scale、探索半径、通常個体間反発、逃走、chaseForce、burst、低energy補正、attack成功率は変更していない。
+### Micro A-D
+A current target: 捕食者側・獲物側とも directPredationPair=true、反発倍率0.15、firstContact=4、firstAttack=4、非有限値なし。B target外個体: directPredationPair=false、倍率1.0。C target切替: A target時はAのみ0.15/Bは1.0、Bへ切替後はAが1.0/Bが0.15へ戻った。D バースト圏内逃走: predatorThreatId設定、fleeTimer=28、prey速度0.18、motionLevel=0.55で逃走処理は維持。
+### 通常世界3 seed
+41001/42001/43001を各1,800step。既存telemetryで tracking 107、contact 79、attack 79、success 31。tracking→contact 73.8%、contact→attack 100%、contact→success 39.2%。ambusherはtracking 9、contact 6、success 1、starvation deaths 8。全肉食starvation deaths 71、終了時肉食 0/0/0、総個体数 119/125/122。
+### 検証
+inline script構文、`organism_render.js`構文、`scripts/*.cjs`構文、`git diff --check`、Micro A-D、同一3 seed、save/load round trip、HTML SHA一致、凍結版差分なしを確認。page error、NaN、Infinityなし。FPSスモークは390x844で平均33.67、最終35FPS。
+### 採用判断
+採用。現在targetとの反発だけが両方向で15%になり、target外・target解除後の通常反発と獲物の逃走は維持された。短時間3 seedでは終了時肉食は増えないが、Microでcontact/attack到達を確認し、通常世界で重大な重複・振動・逃走不能・エラーは見られなかった。
