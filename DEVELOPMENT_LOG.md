@@ -602,3 +602,5 @@ A: age 299 / maturity 300 / energy十分で immature 1、eligible 0、newborn 0�
 inline script構文、organism_render.js構文、scripts/*.cjs構文、git diff --check、Micro A-F、同一3 seed、save/load round trip、通常/dev短時間起動を確認。index.html と alife_symbolic_shapes_v1.html の SHA は一致。page error、NaN、Infinityなし。凍結版は変更なし。
 ### 採用判断
 採用。出生直後繁殖は0になり、最短成熟年齢180stepを確保した。出生数と繁殖数は減ったが、全食性で繁殖は残っており、今回の目的である「出生→成長→成熟→繁殖」の生活史ゲートを満たした。
+### 再集計訂正
+最終確認として、基準コミットHTMLと修正版HTMLへ同じ一時プローブを注入し直し、相対読み込みを壊さないルート直下の一時HTMLで再集計した。旧: 総出生1277、総繁殖984、食性別繁殖 h/m/c=629/233/122、食性別出生 h/m/c=827/296/154、180step未満繁殖512、成熟前繁殖660、carnivore born 154、carnivore reproduced 122、餓死346、過密死621、終了時個体数123/121/120、終了時肉食0/3/0。修正後: 総出生586、総繁殖465、食性別繁殖 h/m/c=301/136/28、食性別出生 h/m/c=382/170/34、180step未満繁殖0、成熟前繁殖0、carnivore born 34、carnivore reproduced 28、餓死158、過密死159、終了時個体数124/124/125、終了時肉食4/0/0。page error、非有限値、save/load異常はいずれもなし。
