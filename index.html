@@ -1087,6 +1087,10 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     ];
   }
   function geneSet(src=null){ const v=src?Object.values(src):[], g={}; GENE_KEYS.forEach((k,i)=>g[k]=clamp(src?.[k]??v[GENE_INDEX[i]]??Math.random(),0,1)); return g; }
+  function reproductiveMaturityAgeFromGenes(g){
+    const fecundity = clamp(g?.fecundity ?? 0.5, 0, 1);
+    return Math.round(lerp(420, 180, fecundity));
+  }
   function speciesPalette(key){
     const s=String(key||'0000000');
     const speedQ=Number(s[0]||1)/3;
@@ -5198,6 +5202,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this.senseR = lerp(50, 140, this.genes.sense);
       this.senseCost = lerp(0.02, 0.08, this.genes.sense);
       this.reproThreshold = 60 + 50*this.genes.fecundity;
+      this.maturityAge = reproductiveMaturityAgeFromGenes(this.genes);
       this.localAlgaeFarm=null; this.predationRiskMul=1;
 
 
@@ -6078,7 +6083,12 @@ if(Z>0.08){
       // 繁殖
       telemetryRecordReproductionGate(this,'evaluated');
       if(!duelExperimentActive){
-      if(this.energy>this.reproThreshold){
+        if(!Number.isFinite(Number(this.maturityAge))) this.maturityAge = reproductiveMaturityAgeFromGenes(this.genes);
+        const reproductivelyMature = this.age >= this.maturityAge;
+        if(!reproductivelyMature){
+          telemetryRecordReproductionGate(this,'immature');
+          this.mateSeekT=0; this.callCD=0;
+        } else if(this.energy>this.reproThreshold){
         telemetryRecordReproductionGate(this,'eligible');
         // seeking state
         this.mateSeekT++; if(this.callCD>0) this.callCD--;
@@ -6361,7 +6371,8 @@ if(Z>0.08){
       let r = 50 + Math.min(70, this.mateSeekT * 0.20);
       let mate=null, bestD2=r*r;
       forEachOrgNeighbors(this.x,this.y,r,(o,dx,dy,d2)=>{
-        if(o===this || o.energy<o.reproThreshold) return;
+        if(o && !Number.isFinite(Number(o.maturityAge))) o.maturityAge = reproductiveMaturityAgeFromGenes(o.genes);
+        if(o===this || o.age<o.maturityAge || o.energy<o.reproThreshold) return;
         // same-species only
         if(o.speciesKey !== this.speciesKey) return;
         if(d2<bestD2){ bestD2=d2; mate=o; }
@@ -12864,6 +12875,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           maxRestoredId=Math.max(maxRestoredId,u.id);
         }
         u.vx=o.vx; u.vy=o.vy; u.energy=o.energy; u.age=o.age;
+        if(!Number.isFinite(Number(u.maturityAge))) u.maturityAge = reproductiveMaturityAgeFromGenes(u.genes);
         if(o.birthFrame!=null) u.birthFrame=o.birthFrame;
         if(o.protect!=null) u.protect=o.protect;
         if(o.storeN!=null) u.storeN=o.storeN;

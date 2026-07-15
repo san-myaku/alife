@@ -587,3 +587,18 @@ A current target: 捕食者側・獲物側とも directPredationPair=true、反�
 inline script構文、`organism_render.js`構文、`scripts/*.cjs`構文、`git diff --check`、Micro A-D、同一3 seed、save/load round trip、HTML SHA一致、凍結版差分なしを確認。page error、NaN、Infinityなし。FPSスモークは390x844で平均33.67、最終35FPS。
 ### 採用判断
 採用。現在targetとの反発だけが両方向で15%になり、target外・target解除後の通常反発と獲物の逃走は維持された。短時間3 seedでは終了時肉食は増えないが、Microでcontact/attack到達を確認し、通常世界で重大な重複・振動・逃走不能・エラーは見られなかった。
+## 2026-07-15 15:03 遺伝子依存の繁殖成熟年齢を導入
+### 背景
+新生児は energy=100 / age=0 で誕生する一方、繁殖閾値は `60 + 50 * fecundity` だったため、fecundity < 0.8 の個体は出生直後から energy 条件を満たし得た。繁殖処理には年齢ゲートがなく、出生直後の繁殖抽選が生活史と世代交代を歪める可能性があった。
+### 変更
+`reproductiveMaturityAgeFromGenes()` を追加し、fecundity 0.0/0.5/1.0 をそれぞれ 420/300/180step の成熟年齢へ写像した。`recalcPhenotype()` で `maturityAge` を再計算し、通常の繁殖ゲートで `age < maturityAge` の個体を `immature` として止める。未成熟時は繁殖確率計算、mating call、mateSeekT進行、tryReproduce() を行わず、`mateSeekT=0` / `callCD=0` に戻す。
+### 配偶者条件
+`tryReproduce()` の配偶者探索にも `o.age < o.maturityAge` を追加した。成熟済み親が未成熟個体を配偶者として選べない一方、相手がいない場合の既存の無性生殖経路は維持した。
+### Micro A-F
+A: age 299 / maturity 300 / energy十分で immature 1、eligible 0、newborn 0、mateSeekT 0、call 0。B: age 300 / maturity 300 で eligible 1、probabilityFailed 1、既存抽選へ進行。C: age 400 / energy不足で energyBelowThreshold 1。D: 未成熟候補 age 299 は eligibleMates 0、無性経路を維持。E: 成熟候補 age 320 は eligibleMates 1、有性候補として選択可能。F: fecundity 0.0=420、0.5=300、1.0=180。
+### 通常世界3 seed比較
+41001/42001/43001、各1,800step。旧: 総出生1063、総繁殖791、180step未満繁殖449、成熟前繁殖547、carnivore born 134、carnivore reproduced 95、餓死308、過密死444。修正後: 総出生648、総繁殖490、180step未満繁殖0、成熟前繁殖0、carnivore born 52、carnivore reproduced 38、餓死197、過密死176。終了時個体数は最終確認で124、終了時肉食は各seed合計の通常試験内で残存あり。
+### 検証
+inline script構文、organism_render.js構文、scripts/*.cjs構文、git diff --check、Micro A-F、同一3 seed、save/load round trip、通常/dev短時間起動を確認。index.html と alife_symbolic_shapes_v1.html の SHA は一致。page error、NaN、Infinityなし。凍結版は変更なし。
+### 採用判断
+採用。出生直後繁殖は0になり、最短成熟年齢180stepを確保した。出生数と繁殖数は減ったが、全食性で繁殖は残っており、今回の目的である「出生→成長→成熟→繁殖」の生活史ゲートを満たした。
