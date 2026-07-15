@@ -722,3 +722,59 @@ inline script 構文 OK。`organism_render.js` 構文 OK。`scripts/*.cjs` 構�
 
 ### 採用判断
 採用。通常ゲーム挙動・主要パラメータ・UI・save 形式・Wiki は変更していない。今回の変更は、肉食系統の途切れ位置を個体、世代、親子関係、死因で特定する診断機能に限定した。
+
+## 2026-07-16 Pack strategy lineage diagnosis and conserved prey sharing A/B
+
+### Purpose and baseline
+Baseline commit: `dde82a7bddd21ba9a2919df262576ba737e1b8c6`.
+The goal was diagnostic only for default play: compare pack / ambusher / other carnivore life-history failure points, then test diagnostic-only conserved prey energy and nutrient sharing for pack/hunt-pack group hunts. No default gameplay parameter was changed.
+
+### Implementation
+Added `carnivoreStrategyClass(o)` with fixed priority: `pack` when `role === 'pack'` or `socialMode === 'hunt-pack'`, then `ambusher` when `role === 'ambusher'`, otherwise `other`. Stored `birthStrategyClass` and `currentStrategyClass` on carnivore lineage records, birth records, population snapshots, and individual diagnostics.
+
+Reused the existing pack helper conditions by exposing `eligiblePackHelpersFor(predator, prey)` as a thin wrapper over the same helper collection used by `getEffectivePredationSizeRatio()`: non-dead, not predator/prey, same `speciesKey`, pack or hunt-pack, and inside the existing `PACK_HELPER_RADIUS`. Pack helper distance, size contribution, success probability, defense, chase force, cooldowns, prey flee, metabolism, birth energy, clutch, maturity, and reproduction parameters were not changed.
+
+Added diagnostic-only pack prey sharing controlled by `diagnosticPackSharing`. Defaults remain `shareFraction=0` and `detailedTelemetry=false`. `runSeededWorldDiagnostic()` can run `baseline`, `share30`, and `share40`; only normal predation successes by pack/hunt-pack killers with at least one eligible helper activate sharing. Gross energy is conserved: `sharePool = grossGain * shareFraction`, killer gets `grossGain - sharePool`, helpers split the pool equally, cap overflow is lost and not redistributed. `storeN` nutrient gain is split with the same ratio. Attack cost and prey defense remain killer-only.
+
+Added per-event conservation telemetry: original gross/nutrient gains, planned and actual killer/helper gains, overflow loss, residuals, helper IDs/strategies, helper chase costs, killer chase cost, effective size ratio, helper contribution, group/solo flags, and helper post-event survival classification. Detailed event storage is capped and enabled only for diagnostic runner runs.
+
+### Phase 0 clutch correction
+Cause: the previous clutch statistic used `stat(rows.map(r => r.clutch))`, and `stat()` maps values through `Number()`, so `null` clutch values from initial records became `0`. That mixed initial individuals into born clutch statistics and produced impossible averages below 1. The fix restricts clutch stats to born records with `Number.isFinite(clutch) && clutch >= 1`; `clutchIndex` is reported separately; empty samples report `null`.
+
+Corrected baseline mature-group clutch: seed41001 `n=2 avg=1.5 median=1.5 min=1 max=2`; seed42001 `n=2 avg=2 median=2 min=2 max=2`; seed43001 `n=0 avg=null median=null min=null max=null`.
+Corrected baseline premature-death clutch: seed41001 `n=4 avg=1.75`; seed42001 `n=11 avg=1.5455`; seed43001 `n=8 avg=1.5`.
+
+### Micro tests
+Existing lineage Micro A-I: all OK. Added pack sharing Micro A-I: strategy classification OK; clutch statistics exclude initial and separate clutchIndex; baseline helper gain 0; share30 plans 70/15/15 for gross 100 and two helpers; share40 plans 60/20/20; cap overflow is lost; nutrient conservation follows the same split; solo pack and non-pack predation remain baseline-equivalent.
+
+### 6,000-step A/B results
+All 9 runs completed with page error 0 and NaN/Infinity 0.
+
+Pack born results were identical across `baseline`, `share30`, and `share40` because no eligible group hunt event occurred in these seeds.
+
+| variant | seed | max carnivores | end carnivores | extinction frame | pack born maturity | pack born Level 3 | pack max depth | group hunts | helper energy |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| baseline | 41001 | 17 | 0 | 1122 | 0/1 | 0 | 2 | 0 | 0 |
+| baseline | 42001 | 29 | 0 | 1115 | 0/2 | 0 | 1 | 0 | 0 |
+| baseline | 43001 | 16 | 0 | 598 | 0/2 | 0 | 1 | 0 | 0 |
+| share30 | 41001 | 17 | 0 | 1122 | 0/1 | 0 | 2 | 0 | 0 |
+| share30 | 42001 | 29 | 0 | 1115 | 0/2 | 0 | 1 | 0 | 0 |
+| share30 | 43001 | 16 | 0 | 598 | 0/2 | 0 | 1 | 0 | 0 |
+| share40 | 41001 | 17 | 0 | 1122 | 0/1 | 0 | 2 | 0 | 0 |
+| share40 | 42001 | 29 | 0 | 1115 | 0/2 | 0 | 1 | 0 | 0 |
+| share40 | 43001 | 16 | 0 | 598 | 0/2 | 0 | 1 | 0 | 0 |
+
+Baseline strategy totals across 3 seeds: pack born `5`, maturity `0/5`, valid/target/chase `5/5`, contact `3/5`, attack `3/3`, first predation `0/3`, starvation before first predation `5`, Level 3 `0`. Ambusher born `19`, maturity `3/19`, contact `9/19`, first predation `4/9`, reproduced `2/3 eligible`, Level 3 `0`. Other born `3`, maturity `1/3`, contact `1/3`, first predation `1/1`, Level 3 `0`.
+
+World maintenance remained normal in all A/B runs: reseed `0`, end populations `69/120/113`, end carnivores `0/0/0`, end herbivore/omnivore/carnivore counts `34/35/0`, `120/0/0`, `112/1/0`.
+
+Conservation across 9 runs plus long run: max positive energy residual `1.4210854715202004e-14`, max positive nutrient residual `0`, energy generation events `0`, nutrient generation events `0`. Positive residuals above `1e-9` were not observed.
+
+### 12,000-step long run
+Selection rule chose `baseline seed41001`: highest pack born Level 3 tied at 0, then highest pack max generation depth 2 and persistence frame 1122. Result: max carnivores `17`, end carnivores `0`, final extinction frame `1122`, extinction episodes `2`, reappearance `1`, max generation depth `2`, pack born Level 3 `0/1`, group hunts `0`, helper energy `0`, reseed `0`, end population `122`, end diets `h=122/m=0/c=0`, page error `0`, NaN/Infinity `0`, energy/nutrient generation `0`.
+
+### Adoption judgment
+Do not adopt pack prey sharing as a production default from this run. `share30` and `share40` are conservation-safe and micro-verified, but they produced no behavioral difference because pack group hunts did not occur in the tested seeds. The dominant observed pack failure is before sharing can matter: pack born individuals failed to mature or failed at attack resolution before first predation. This supports diagnosing pack lineage loss as next-generation survival / juvenile survival plus attack-resolution failure, not lack of post-success group energy distribution in these runs.
+
+### Validation
+`node --check organism_render.js`: OK. `scripts/*.cjs`: OK. Inline script syntax: OK, 1 inline block. `git diff --check`: OK. `runCarnivoreLineageMicroTests()`: OK. `runPackSharingMicroTests()`: OK. `baseline/share30/share40` for seeds `41001/42001/43001` at 6,000 steps: OK. Selected 12,000-step run: OK. Save/load round trip: OK. Normal and developer boot: OK. `index.html` and `alife_symbolic_shapes_v1.html` SHA256 matched. Frozen HTML diff: none. FPS smoke at 1280x720/180 organisms: avg FPS `11.9`, avg update `8.57ms`, avg draw `49.09ms`, errors `0`; no major degradation from the known ~12 FPS baseline.
