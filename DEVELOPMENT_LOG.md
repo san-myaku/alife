@@ -663,3 +663,62 @@ inline script 構文 OK、`organism_render.js` 構文 OK、`scripts/*.cjs` 構�
 
 ### 採用判断
 採用。繁殖した子の energy は固定 100 ではなく、親・配偶者の energy 損失から 90% 効率で配分される。子の合計 energy は繁殖投資を超えず、energy 生成イベントは 0、正の conservation residual 最大 0。既存の clutch 分布・親倍率・配偶者倍率・成熟年齢式・有性/無性経路は維持した。未成熟・死亡・energy 不足・閾値同値個体は直接呼び出しでも繁殖しない。出生テレメトリは実際の初期 energy と一致する。
+
+## 2026-07-16 肉食系統消滅の生活史診断
+### 目的と基準
+基準コミット: `04e1a9c2cb96c27740c41de57b11261b93f8bb7e`。繁殖 energy 保存後、通常個体群は維持される一方で肉食系統が世代継続できず消滅するため、能力値・energy・捕食・繁殖・餌・UI・save 形式・Wiki を変更せず、出生、成長、成熟、獲物認識、追跡、接触、捕食、繁殖、次世代成熟のどこで途切れるかを診断した。
+
+### 実装
+`telemetryDiet(o) === 'c'` を肉食判定として使用し、新しい食性閾値は作っていない。個体には `birthDietClass` / `birthExactDiet` / `currentDietClass` / `currentExactDiet` を記録し、主分析は出生時肉食、現在肉食へ変異した個体は別集計にした。初期個体は `initial` / `generationDepth=0`、繁殖出生個体は `born` とし、`parentId` / `mateParentId` / `parentBirthDiet` / `generationDepth` / `clutch` / `clutchIndex` / `reproductionMode` を `telemetryRecordBirth()` 経由で保存する。世代深度は無性なら親 + 1、有性なら `Math.max(parentGenerationDepth, mateGenerationDepth) + 1`。
+
+`telemetry.carnivoreLife` と `telemetry.predationIndividuals` を拡張し、重複システムは作らなかった。出生時肉食個体について、60/120/180step 生存、成熟、valid prey、target、chase、2x/1.5x/1.25x/1.1x/contact、attack、first predation、repro threshold、eligible、reproduced、carnivore child、carnivore child matured を個体単位で追跡する。初回イベントは validPrey/target/chase/contact/attack/predation/eligibility/reproduction の frame/age/energy を初回値として保持し、成熟前後は `hasReachedReproductiveMaturity(o)` で pre/post に分けた。
+
+死亡時は `deathCause` / `deathAge` / `deathEnergy` / `deathMaturityRatio` / `deathEnergyRatio` / `deathStoreN` / `deathStoreO` / `deathStoreD` / `deathMem` と、`dominantLifeStageFailure` を記録する。親子連鎖は Level 1 = 肉食親が出生時肉食子を生む、Level 2 = その肉食子が成熟、Level 3 = その肉食子が繁殖して出生時肉食孫を生む。メモリ上限は `TELEMETRY_CARNIVORE_LINEAGE_LIMIT=6000` とし、個体詳細は肉食系統に限定する。
+
+開発者 API として `__alifeDebug.carnivoreLineageSummary()`、`runCarnivoreLineageMicroTests()`、`runSeededWorldDiagnostic()`、`diagnosticNumberHealth()` を追加した。通常 UI に大型診断パネルは追加していない。検証ランナー `scripts/carnivore_lineage_diagnostic.cjs` は seed ごとにページ初期化前から `Math.random` を固定し、通常世界 6,000step と長期 12,000step を JSON 出力する。
+
+### Micro A-I
+A 初期個体と出生個体: OK。親 initial=true/depth0、子 initial=false/depth1、parentId 一致。
+B 有性生殖の世代深度: OK。depth 2 と 4 の親から child depth 5。
+C 生存マイルストーン: OK。60/120/180/maturity は一度だけ記録。
+D 初回イベント: OK。初回 frame/age/energy は保持、回数は増加。
+E 成熟前後: OK。maturityAge-1 は pre、maturityAge は post。
+F 死亡段階: OK。初回捕食前餓死は `deathCause=starvation` / `diedBeforeFirstPredation`。
+G Level 1-3: OK。G0 -> G1 -> G2 の人工連鎖で Level 1/2/3 true。
+H 肉食以外へ変異した子: OK。総出生子には含め、出生時肉食子と Level 判定から除外。
+I 絶滅エピソード: OK。2,1,0,0,1,0 で extinctionEpisodeCount=2 / reappearanceCount=1。
+
+### 6,000step 通常世界診断
+正式結果: `carnivore_lineage_diagnostic_full.json`。全 seed で page error なし、NaN/Infinity なし、通常個体群維持、再播種 0。
+
+| seed | 最大肉食 | 終了肉食 | 絶滅frame | 絶滅episode | 再出現 | 初期肉食 | 出生肉食 | 最大世代 | Level3 born |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 41001 | 17 | 0 | 1122 | 2 | 1 | 16 | 6 | 2 | 0/6 |
+| 42001 | 29 | 0 | 1115 | 1 | 0 | 27 | 13 | 2 | 0/13 |
+| 43001 | 16 | 0 | 598 | 1 | 0 | 15 | 8 | 1 | 0/8 |
+
+出生時肉食 born ファネル: 41001 は 60/120/180 生存 6/6, 6/6, 4/6、成熟 2/6、valid/target/chase 6/6、contact 3/6、attack 3/3、first predation 2/3、threshold 2/2、eligible 1/2、reproduction 1/1、carnivore child 1/1、child matured 0/1。42001 は 13/13, 12/13, 6/13、成熟 2/13、valid/target/chase 13/13、contact 5/13、attack 5/5、first predation 2/5、threshold 2/2、eligible 2/2、reproduction 1/2、carnivore child 1/1、child matured 0/1。43001 は 8/8, 5/8, 3/8、成熟 0/8、valid/target/chase 8/8、contact 5/8、attack 5/5、first predation 1/5、threshold 1/1、eligible 0/1、reproduction 0、child matured 0。
+
+世代別では、41001 は G0:16/成熟15/捕食4/繁殖2/肉食子2、G1:3/成熟2/捕食2/繁殖1/肉食子1、G2:3/成熟0。42001 は G0:27/成熟26/捕食7/繁殖7/肉食子7、G1:12/成熟2/捕食2/繁殖1/肉食子1、G2:1/成熟0。43001 は G0:15/成熟15/捕食5/繁殖5/肉食子5、G1:8/成熟0。初期個体は繁殖できるが、born 個体の子または孫が成熟せず、born 親の Level 3 は全 seed で 0。
+
+死因は starvation が支配的。41001: starvation 18 / predation 4、死亡段階 diedBeforeFirstPredation 16。42001: starvation 34 / predation 6、diedBeforeFirstPredation 29。43001: starvation 18 / predation 5、diedBeforeFirstPredation 14。餓死の内訳は、出生後 60 未満 0、60-120 は 0/1/3、120-180 は 2/6/2、180 以降成熟前は 3/5/2、成熟後初回捕食前は 9/16/6、初回捕食後繁殖前は 3/1/0、繁殖後は 1/5/5。
+
+捕食失敗は valid prey / target / chase では詰まっていない。全 seed で born の valid prey, target, chase は 100%。一方で contact は 50.0%, 38.5%, 62.5%、attack 後 first predation は 66.7%, 40.0%, 20.0%。主要失敗理由は 41001 chaseFailed 8 / attackResolutionFailed 8、42001 chaseFailed 18 / attackResolutionFailed 13、43001 chaseFailed 9 / attackResolutionFailed 8。event counts では attackCooldownBlocked が多いが、主要分類では chase/contact と attack resolution がボトルネック。
+
+birthEnergy と clutch はサンプル少数だが傾向あり。成熟到達の平均 birthEnergy は 62.82 / 63.20 / 66.06、成熟前死亡は 42.05 / 40.17 / 40.81。繁殖成功群の平均 birthEnergy は 69.18 / 60.02 / 70.86、繁殖前死亡は 56.35 / 55.36 / 53.51。成熟前死亡群は clutch 平均 1.40 / 1.42 / 1.50 で、成熟群 0.18 / 0.14 / 0.00 より高い。因果断定はしないが、低 birthEnergy かつ born clutch 群で成熟率が低い傾向。
+
+肉食親の子の食性流出は、この正式実行では観測されなかった。肉食親の子は 41001 が c/m/h=5/0/0、42001 が 13/0/0、43001 が 8/0/0。現在肉食へ変異した非出生時肉食も全 seed で 0。過密死も 0。
+
+### 12,000step 長期確認
+6,000step で最も長く肉食が存続した seed は 41001（persistence frame 1122）なので 12,000step に採用。結果は 6,000step と同じく最大肉食17、終了肉食0、最終絶滅frame1122、絶滅episode2、再出現1、最大世代深度2、born Level3 0/6、通常個体群維持 true、再播種0、page error なし、NaN/Infinity なし。絶滅後の一時復活は 6,000step 内で 1 回あり、それ以降 12,000step までは肉食再出現なし。
+
+最後の肉食個体は id=122、born、generationDepth=2、age=228、maturityAge=254、energy=0.1849、reproThreshold=94.5466、捕食成功0、最後の捕食なし、繁殖0、子0、死因 starvation。
+
+### 診断結論
+支配的原因は G「次世代生存不足」。G0 は各 seed で繁殖し出生時肉食子を出すが、born 親の Level 3 は 0/6, 0/13, 0/8。G2 は 41001 と 42001 で存在するが成熟 0、43001 は G1 成熟 0。次点は A「幼体生存不足」。born 成熟率は 33.3%, 15.4%, 0.0% で、成熟前死亡群の birthEnergy は成熟群より低い。次点は D「攻撃解決不足」。contact/attack まで到達しても first predation は 2/3, 2/5, 1/5 で、主要失敗理由に attackResolutionFailed が残る。B 獲物認識不足、F 繁殖抽選不足、H 食性流出、I 過密淘汰は今回の主要原因ではない。E 捕食後 energy 不足も、捕食成功後の threshold 到達が 100%, 100%, 100% のため主因ではない。
+
+### 検証
+inline script 構文 OK。`organism_render.js` 構文 OK。`scripts/*.cjs` 構文 OK。`git diff --check` OK。Micro A-I OK。41001/42001/43001 各 6,000step OK。41001 12,000step OK。save/load round trip OK。通常版・開発者版起動 OK。`index.html` と `alife_symbolic_shapes_v1.html` の SHA256 は `CE1FD87CBB00090D2B60730548B7E38B3943C63E9E1D31824ABD75433CFB67AF` で一致。凍結版 `alife_env_seaglass_v1_fixed_v5_eco5_PATCH_metabolism_v7.html` は未変更。page error なし。NaN/Infinity なし。FPS smoke は 1280x720 / 180 個体 / average FPS 12、avg update 5.31ms、avg draw 51.23ms、errors なし。診断 telemetry は肉食系統限定かつ上限 6000 件で、無制限増加しない。
+
+### 採用判断
+採用。通常ゲーム挙動・主要パラメータ・UI・save 形式・Wiki は変更していない。今回の変更は、肉食系統の途切れ位置を個体、世代、親子関係、死因で特定する診断機能に限定した。
