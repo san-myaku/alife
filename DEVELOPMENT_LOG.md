@@ -963,3 +963,15 @@ inline script 構文 OK（`index.html` / ignored `alife_symbolic_shapes_v1.html`
 
 ### 検証
 inline script 構文 OK（`index.html` / ignored `alife_symbolic_shapes_v1.html`）。`organism_render.js` 構文 OK。`scripts/*.cjs` 構文 OK。`git diff --check` OK。5 seeds x 2,000 steps 完走。page error `0`、NaN/Infinity `0`、energy creation `0`、nutrient creation `0`。通常版起動 OK、開発者版起動 OK、save/load round trip OK。詳細は `artifacts/experiments/role_social_ecology.json`、判断 summary は `artifacts/experiments/role_social_ecology_decision.json`。
+
+## 2026-07-16 16:10 Evolvable life history strategies
+
+### 実装
+`evolvableLifeHistory: false` を追加し、通常デフォルトは旧挙動維持。ON 時だけ `energyCapacity`、`fecundity`、`parentalInvestment` を独立した生活史軸として使うようにした。新しい `energyCapacity` と `parentalInvestment` は欠損時に旧7遺伝子から決定論的 hash で補完し、初期個体で追加の `Math.random()` を消費しない。`energyCapacity` は `Math.pow(hashValue, 3.5)`、`maxEnergy = 160 * Math.pow(1000 / 160, energyCapacity)`。`parentalInvestment` は `0.25..0.75` の投資率へ写像する。
+
+feature ON の繁殖では、親の総投資 energy をクラッチで分け、子数増加で総 child energy が増えない構造にした。無性繁殖は `parent.energy * investmentRate * 0.90 / clutch`、有性繁殖は両親の `parentalInvestment` に基づく投資合算を使う。`MIN_VIABLE_BIRTH_ENERGY = 20` と容量連動の `effectiveReproThreshold = base + 0.14 * max(0, maxEnergy - 160)` を追加。role、diet、socialMode による子数・投資率・出生 energy 補正は追加していない。
+
+`__alifeDebug.setEvolvableLifeHistory()`, `lifeHistorySummary()`, `runLifeHistoryMicroTests()`, `runLifeHistoryReproducibilityMicroTest()` を追加。birth record へ `parentRole`, `parentSocialMode`, `parentEnergyCapacity`, `parentParentalInvestment`, `parentFecundity`, `clutch`, `totalInvestment`, `childEnergyEach`, `parentEnergyAfter` を保存する。reset 時に `roleShare` / `dietShare` を初期値へ戻し、環境 dots を完全初期化。dots 表示用乱数は専用 RNG に分離した。
+
+### 検証
+inline script 構文 OK、`organism_model.js` 構文 OK、`organism_render.js` 構文 OK、`scripts/*.cjs` 構文 OK、`git diff --check` OK。通常版起動 OK、開発者版起動 OK、save/load round trip OK。`runLifeHistoryMicroTests()` OK。短い seeded smoke（seed `41001`, `120` steps）で page error `0`、NaN/Infinity `0`、energy creation `0`、nutrient creation `0`。feature OFF の `averageMaxEnergy` は `160`、ON の初期平均 `maxEnergy` は約 `257.26`。

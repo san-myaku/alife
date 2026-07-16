@@ -333,6 +333,9 @@
   // ===== Design config =====
   // Keep tuning and ecology ledgers in one place before deeper model/render/ui splits.
   const CONFIG = Object.freeze({
+    features: Object.freeze({
+      evolvableLifeHistory: false
+    }),
     population: Object.freeze({
       starter: 64,
       maxDefault: 120,
@@ -422,6 +425,12 @@
       thresholdsOff: Object.freeze({ algae:0.20, cold:0.20, oxygen:0.18 })
     })
   });
+  const featureFlags = {
+    evolvableLifeHistory: CONFIG.features.evolvableLifeHistory
+  };
+  function evolvableLifeHistoryEnabled(){
+    return !!featureFlags.evolvableLifeHistory;
+  }
 
   // ===== UI State =====
   const ui={ speed:1, mutation:0.03, showSense:false, tool:'food', popMax:CONFIG.population.maxDefault, parallax:1.0, roleViz:false, observeField:null, microView:true, forceFullRender:true };
@@ -1078,7 +1087,53 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   }
 
   function speciesKey(g){ const base=`${q4(g.speed)}${q4(g.size)}${q4(g.sense)}${q4(g.diet)}`; const m=formFromGenes(g,base); const p=q3(m.pointiness); const a=m.aspect<1.33?0:(m.aspect<1.66?1:2); const pts=Math.max(1,Math.min(8,Math.round(m.points))); return `${base}${p}${a}${pts}`; }
-  const GENE_KEYS=['speed','size','metabolism','fecundity','sense','diet','formSeed'], GENE_INDEX=[0,1,2,3,4,5,10];
+  const BASE_GENE_KEYS=Object.freeze(['speed','size','metabolism','fecundity','sense','diet','formSeed']);
+  const LIFE_HISTORY_GENE_KEYS=Object.freeze(['energyCapacity','parentalInvestment']);
+  const GENE_KEYS=[...BASE_GENE_KEYS,...LIFE_HISTORY_GENE_KEYS], GENE_INDEX=[0,1,2,3,4,5,10,null,null];
+  const LEGACY_MAX_ENERGY = 160;
+  const LIFE_HISTORY_MAX_ENERGY_BASE = 160;
+  const LIFE_HISTORY_MAX_ENERGY_TOP = 1000;
+  const MIN_VIABLE_BIRTH_ENERGY = 20;
+  function finiteGeneValue(value,fallback=0.5){
+    const n=Number(value);
+    return clamp(Number.isFinite(n) ? n : fallback,0,1);
+  }
+  function baseGeneIdentityString(g){
+    return BASE_GENE_KEYS.map(k=>String(finiteGeneValue(g?.[k],0.5))).join(',');
+  }
+  function deterministicLifeHistoryGene(g,key){
+    return hash01(`${key}:${baseGeneIdentityString(g)}`);
+  }
+  function defaultEnergyCapacityGene(g){
+    return Math.pow(deterministicLifeHistoryGene(g,'energyCapacity'),3.5);
+  }
+  function defaultParentalInvestmentGene(g){
+    return deterministicLifeHistoryGene(g,'parentalInvestment');
+  }
+  function normalizeLifeHistoryGenes(g){
+    if(!g) return g;
+    g.energyCapacity = finiteGeneValue(g.energyCapacity, defaultEnergyCapacityGene(g));
+    g.parentalInvestment = finiteGeneValue(g.parentalInvestment, defaultParentalInvestmentGene(g));
+    return g;
+  }
+  function lifeHistoryEnergyCapacity(g){
+    return finiteGeneValue(g?.energyCapacity, defaultEnergyCapacityGene(g));
+  }
+  function lifeHistoryParentalInvestment(g){
+    return finiteGeneValue(g?.parentalInvestment, defaultParentalInvestmentGene(g));
+  }
+  function maxEnergyFromCapacity(capacity){
+    return LIFE_HISTORY_MAX_ENERGY_BASE * Math.pow(LIFE_HISTORY_MAX_ENERGY_TOP / LIFE_HISTORY_MAX_ENERGY_BASE, clamp(Number(capacity)||0,0,1));
+  }
+  function maxEnergyForGenes(g){
+    return maxEnergyFromCapacity(lifeHistoryEnergyCapacity(g));
+  }
+  function organismMaxEnergy(o){
+    return evolvableLifeHistoryEnabled() ? Math.max(1,Number(o?.maxEnergy ?? maxEnergyForGenes(o?.genes))) : LEGACY_MAX_ENERGY;
+  }
+  function parentalInvestmentRate(g){
+    return 0.25 + lifeHistoryParentalInvestment(g) * 0.50;
+  }
   function genePct(g,key){ return Math.round(clamp(g?.[key]??0,0,1)*100); }
   function geneSummaryLines(g){
     return [
@@ -1086,7 +1141,16 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
       `　　　視野${genePct(g,'sense')} 肉食${genePct(g,'diet')} 形${genePct(g,'formSeed')}`
     ];
   }
-  function geneSet(src=null){ const v=src?Object.values(src):[], g={}; GENE_KEYS.forEach((k,i)=>g[k]=clamp(src?.[k]??v[GENE_INDEX[i]]??Math.random(),0,1)); return g; }
+  function geneSet(src=null){
+    const v=src?Object.values(src):[], g={};
+    BASE_GENE_KEYS.forEach((k,i)=>{ g[k]=finiteGeneValue(src?.[k]??v[GENE_INDEX[i]]??Math.random(),0.5); });
+    if(src){
+      for(const k of LIFE_HISTORY_GENE_KEYS){
+        if(src[k]!=null) g[k]=finiteGeneValue(src[k],0.5);
+      }
+    }
+    return normalizeLifeHistoryGenes(g);
+  }
   function reproductiveMaturityAgeFromGenes(g){
     const fecundity = clamp(g?.fecundity ?? 0.5, 0, 1);
     return Math.round(lerp(420, 180, fecundity));
@@ -1106,9 +1170,50 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   function canParticipateInReproduction(o){
     return !!o && !o.dead && hasReachedReproductiveMaturity(o);
   }
+  function effectiveReproThresholdFor(o){
+    const base=Number(o?.reproThreshold || 0);
+    if(!evolvableLifeHistoryEnabled()) return base;
+    return base + 0.14 * Math.max(0, organismMaxEnergy(o) - LIFE_HISTORY_MAX_ENERGY_BASE);
+  }
+  function lifeHistoryClutchParamsFor(o){
+    const key=String(o?.speciesKey || speciesKey(o?.genes || {speed:0.5,size:0.5,metabolism:0.5,fecundity:0.5,sense:0.5,diet:0.5,formSeed:0.5}));
+    const fec=finiteGeneValue(o?.genes?.fecundity,0.5);
+    const jitter=hash01('lifeClutch:'+key);
+    const clutchMax=Math.max(1,Math.min(4,1 + Math.floor(clamp(fec*3.15 + jitter*0.85,0,3.999))));
+    let upP=0.10 + 0.56*fec + 0.08*(jitter-0.5);
+    upP=clamp(upP,0.06,0.74);
+    let decay=0.42 + 0.24*hash01('lifeClutchD:'+key);
+    decay=clamp(decay,0.38,0.70);
+    return {clutchMax,upP,decay};
+  }
+  function sampleReproductionClutch(o){
+    const rp=evolvableLifeHistoryEnabled() ? lifeHistoryClutchParamsFor(o) : getSpeciesReproParams(o?.speciesKey);
+    let clutch=1;
+    let pUp=rp.upP;
+    while(clutch < rp.clutchMax && Math.random() < pUp){
+      clutch++;
+      pUp *= rp.decay;
+    }
+    return Math.max(1, Math.min(rp.clutchMax, clutch));
+  }
+  function expectedReproductionClutchForGate(o){
+    if(!evolvableLifeHistoryEnabled()) return 1;
+    const rp=lifeHistoryClutchParamsFor(o);
+    const fec=finiteGeneValue(o?.genes?.fecundity,0.5);
+    return Math.max(1,Math.min(rp.clutchMax,Math.round(1 + fec*3)));
+  }
+  function projectedChildEnergyEach(parent,mate=null,clutch=null){
+    const safeClutch=Math.max(1,Number(clutch ?? expectedReproductionClutchForGate(parent))|0);
+    return reproductionEnergyPlan(parent,mate,safeClutch).childEnergy;
+  }
+  function lifeHistoryCanSupportBirth(parent,mate=null,clutch=null){
+    if(!evolvableLifeHistoryEnabled()) return true;
+    return projectedChildEnergyEach(parent,mate,clutch) >= MIN_VIABLE_BIRTH_ENERGY;
+  }
   function canReproduceNow(o){
-    return canParticipateInReproduction(o) &&
-      Number(o.energy || 0) > Number(o.reproThreshold || 0);
+    if(!canParticipateInReproduction(o)) return false;
+    if(Number(o.energy || 0) <= effectiveReproThresholdFor(o)) return false;
+    return lifeHistoryCanSupportBirth(o,null,expectedReproductionClutchForGate(o));
   }
   // Compatibility alias: current living participation, not historical maturity.
   function isReproductivelyMature(o){
@@ -1183,6 +1288,35 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   function reproductionEnergyPlan(parent,mate,clutch){
     const safeClutch=Math.max(1, clutch|0);
     const parentBefore=Math.max(0, Number(parent?.energy)||0);
+    if(evolvableLifeHistoryEnabled()){
+      const parentInvestment=parentBefore*parentalInvestmentRate(parent?.genes);
+      const parentAfter=Math.max(0,parentBefore-parentInvestment);
+      const sexual=!!mate;
+      const mateBefore=sexual ? Math.max(0, Number(mate.energy)||0) : 0;
+      const mateInvestment=sexual ? mateBefore*parentalInvestmentRate(mate?.genes) : 0;
+      const mateAfter=sexual ? Math.max(0,mateBefore-mateInvestment) : mateBefore;
+      const totalInvestment=parentInvestment+mateInvestment;
+      const offspringEnergyPool=totalInvestment*REPRODUCTION_ENERGY_TRANSFER_EFFICIENCY;
+      const childEnergy=Math.max(0,offspringEnergyPool/safeClutch);
+      const totalChildEnergy=childEnergy*safeClutch;
+      return {
+        clutch:safeClutch,
+        sexual,
+        parentBefore,
+        parentAfter,
+        parentInvestment,
+        parentMultiplier:null,
+        mateBefore,
+        mateAfter,
+        mateInvestment,
+        mateMultiplier:null,
+        totalInvestment,
+        offspringEnergyPool,
+        childEnergy,
+        totalChildEnergy,
+        transferLoss:Math.max(0,totalInvestment-totalChildEnergy)
+      };
+    }
     const parentMultiplier=reproductionParentEnergyMultiplier(safeClutch);
     const parentAfter=parentBefore*parentMultiplier;
     const parentInvestment=Math.max(0, parentBefore-parentAfter);
@@ -1811,7 +1945,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     }
   }
   function telemetryEnergyRatio(o){
-    return Math.max(0, Number(o?.energy||0)) / Math.max(1, Number(o?.reproThreshold||80));
+    return Math.max(0, Number(o?.energy||0)) / Math.max(1, effectiveReproThresholdFor(o) || 80);
   }
   function telemetryPruneCarnivoreLife(){
     if(telemetry.carnivoreLife.size<=TELEMETRY_CARNIVORE_LINEAGE_LIMIT) return;
@@ -2396,7 +2530,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const score=
       (1 - Number(distance||0)/Math.max(0.001,Number(scanR||0))) * 0.52
       + sizeEdge * 0.50
-      + (1 - Number(candidate?.energy||0) / 160) * 0.32
+      + (1 - Number(candidate?.energy||0) / organismMaxEnergy(candidate)) * 0.32
       + ((candidate?.fleeTimer || 0) > 0 ? 0.08 : 0);
     return score * vulnerability;
   }
@@ -2505,7 +2639,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const killerStoreNBefore=clamp01(predator?.storeN||0);
     const helperEnergyBefore=helpers.map(h=>Number(h.energy||0));
     const helperStoreNBefore=helpers.map(h=>clamp01(h.storeN||0));
-    const killerEnergyAfterGain=clamp(killerEnergyBefore + killerPlannedGrossGain - attackCost,0,160);
+    const killerEnergyAfterGain=clamp(killerEnergyBefore + killerPlannedGrossGain - attackCost,0,organismMaxEnergy(predator));
     const killerActualGain=Math.max(0,killerEnergyAfterGain - Math.max(0,killerEnergyBefore-attackCost));
     predator.energy=killerEnergyAfterGain;
     const killerNutrientPlanned=originalNutrientGain*(1-configuredShareFraction);
@@ -2521,7 +2655,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     for(let i=0;i<helpers.length;i++){
       const h=helpers[i];
       const before=helperEnergyBefore[i];
-      const after=clamp(before+helperPlannedGrossShare,0,160);
+      const after=clamp(before+helperPlannedGrossShare,0,organismMaxEnergy(h));
       h.energy=after;
       const actual=Math.max(0,after-before);
       helperActualGainTotal+=actual;
@@ -4080,6 +4214,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const parentRole=parent ? normalizeRole(parent.role) : null;
     const parentSocialMode=parent ? (parent.socialMode || 'solitary') : null;
     const parentRoleSocialGroup=parent ? packRoleSocialGroupKey(parentRole,parentSocialMode) : null;
+    const parentEnergyCapacity=parent ? lifeHistoryEnergyCapacity(parent.genes) : null;
+    const parentParentalInvestment=parent ? lifeHistoryParentalInvestment(parent.genes) : null;
+    const parentFecundity=parent ? finiteGeneValue(parent.genes?.fecundity,0.5) : null;
+    const totalInvestment=Number.isFinite(Number(meta?.totalInvestment)) ? Number(meta.totalInvestment) : null;
+    const childEnergyEach=Number.isFinite(Number(meta?.childEnergyEach)) ? Number(meta.childEnergyEach) : Number(child.energy||0);
+    const parentEnergyAfter=Number.isFinite(Number(meta?.parentEnergyAfter)) ? Number(meta.parentEnergyAfter) : null;
     const mateRole=mate ? normalizeRole(mate.role) : null;
     const mateSocialMode=mate ? (mate.socialMode || 'solitary') : null;
     const mateRoleSocialGroup=mate ? packRoleSocialGroupKey(mateRole,mateSocialMode) : null;
@@ -4112,6 +4252,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       parentRole,
       parentSocialMode,
       parentRoleSocialGroup,
+      parentEnergyCapacity,
+      parentParentalInvestment,
+      parentFecundity,
       parentSpeciesKey,
       mateRole,
       mateSocialMode,
@@ -4125,6 +4268,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       speciesKey:child.speciesKey,
       generationDepth,
       clutch,
+      totalInvestment,
+      childEnergyEach,
+      parentEnergyAfter,
       clutchIndex:index,
       reproductionMode,
       survived60:null,
@@ -4150,6 +4296,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       parentRole,
       parentSocialMode,
       parentRoleSocialGroup,
+      parentEnergyCapacity,
+      parentParentalInvestment,
+      parentFecundity,
       parentSpeciesKey,
       mateRole,
       mateSocialMode,
@@ -4171,6 +4320,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       generationDepth,
       reproductionMode,
       clutch,
+      totalInvestment,
+      childEnergyEach,
+      parentEnergyAfter,
       index,
       clutchIndex:index
     });
@@ -6403,7 +6555,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
 
   function topologyFromGenes(g){
     if(!g) return 'single';
-    const h=hash01('topology:'+Object.values(g).map(v=>Math.round((v||0)*97)).join('.'));
+    const h=hash01('topology:'+BASE_GENE_KEYS.map(k=>Math.round(finiteGeneValue(g?.[k],0.5)*97)).join('.'));
     const form=formFromGenes(g);
     if(form.layout>0.84 && form.wave>0.26 && (g.diet??0)<0.68) return 'amoeba';
     if((g.metabolism??0)>0.70 && (g.sense??0)>0.50 && (g.size??0)>0.40) return 'mesh';
@@ -6609,7 +6761,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     for(const d of defs){
       const fx=d.defense; if(!fx) continue;
       const loss=(fx.energyLoss||0) + 0.08*gainRaw;
-      predator.energy=clamp(predator.energy-loss,0,160);
+      predator.energy=clamp(predator.energy-loss,0,organismMaxEnergy(predator));
       predator.mem=clamp((predator.mem??1)-(fx.memDamage||0),0,1);
       predator.attackCD=Math.max(predator.attackCD||0,fx.cooldown||0);
       recordAction(predator,`${d.label}で弱った`);
@@ -6627,7 +6779,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       const fx=d.defense; if(!fx) continue;
       const hit=fx.retaliate||0;
       if(hit>0){
-        predator.energy=clamp(predator.energy-hit,0,160);
+        predator.energy=clamp(predator.energy-hit,0,organismMaxEnergy(predator));
         predator.attackCD=Math.max(predator.attackCD||0,fx.cooldown||0);
         recordAction(predator,`${d.label}の反撃を受けた`);
         retaliated=true;
@@ -7405,10 +7557,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     } 
     recalcPhenotype(){
       // === phenotype recompute (v1i) ===
+      normalizeLifeHistoryGenes(this.genes);
+      this.energyCapacity = lifeHistoryEnergyCapacity(this.genes);
+      this.parentalInvestment = lifeHistoryParentalInvestment(this.genes);
+      this.maxEnergy = evolvableLifeHistoryEnabled() ? maxEnergyFromCapacity(this.energyCapacity) : LEGACY_MAX_ENERGY;
       this.morphologyTopology = topologyFromGenes(this.genes);
       const form = this.form = formFromGenes(this.genes, this.speciesKey);
       this.maxSpeed = lerp(0.6, 3.2, this.genes.speed) * CONFIG.organism.movementSpeedScale;
-      const geneHash = hash01('g:' + Object.values(this.genes).join(','));
+      const geneHash = hash01('g:' + baseGeneIdentityString(this.genes));
       const baseSize = lerp(3.0, 11.0*CONFIG.organism.maxSizeScale, Math.pow(this.genes.size, 0.85));
       this.isMega = (this.genes.size > 0.97) || (geneHash > 0.985);
       this.size = baseSize * (this.isMega ? 1.65 : 1.0);
@@ -7942,7 +8098,7 @@ const Z = env.valueAt('detritus',  this.x,this.y); // D (detritus)
             this.grazingTimer=GRAZING_HOLD_STEPS;
             const gain=eaten*(54+30*(1-this.genes.diet))*plantDigestFactor(this.genes.diet);
             const energyBeforeGain=this.energy;
-            this.energy=clamp(this.energy+gain,0,160);
+            this.energy=clamp(this.energy+gain,0,organismMaxEnergy(this));
             microRecordEnergyFlow(this,'algaeGain',Math.max(0,this.energy-energyBeforeGain),'gain');
             this.storeN=clamp((this.storeN||0)+0.055*(gain/20),0,1);
             this.fitness+=0.04+eaten*4.2;
@@ -8170,7 +8326,7 @@ if(Z>0.08){
           if(gain>0){
             this.grazingTimer=GRAZING_HOLD_STEPS;
             const energyBeforeGain=this.energy;
-            this.energy=clamp(this.energy+gain,0,160);
+            this.energy=clamp(this.energy+gain,0,organismMaxEnergy(this));
             microRecordEnergyFlow(this,'algaeGain',Math.max(0,this.energy-energyBeforeGain),'gain');
             this.storeN = clamp((this.storeN||0) + 0.070*(gain/20), 0, 1);
             this.fitness += 0.05 + eaten*5.0;
@@ -8217,7 +8373,7 @@ if(Z>0.08){
           if(f.type==='algae' && window.env && window.env.sinkAlgaeAt) window.env.sinkAlgaeAt(f.x,f.y,0.020);
           recordFoodUse(f.type==='algae'?'algaeParticle':(f.type==='detritus'?'detritusParticle':'wildParticle'),this,gain,1);
           recordAction(this, f.type==='algae'?'藻を食べた':(f.type==='detritus'?'デトリタスを食べた':'エサを食べた'));
-          if(this.energy>160) this.energy=160;
+          if(this.energy>organismMaxEnergy(this)) this.energy=organismMaxEnergy(this);
           microRecordEnergyFlow(this,f.type==='detritus'?'corpseGain':(f.type==='algae'?'algaeGain':'otherGain'),Math.max(0,this.energy-energyBeforeGain),'gain');
           break;
         }
@@ -8234,7 +8390,7 @@ if(Z>0.08){
             const diet=dietTypeFromCarn(carn);
             const gain = c.energy*0.9 * clamp(0.82 + 0.78*Z, 0.55, 1.65) * rareFactor('scav') * meatDigestFactor(carn) * dietRareFactor(diet) * (diet==='m'?1.0:(diet==='c'?0.95:0.85));
             const energyBeforeGain=this.energy;
-            this.energy=clamp(this.energy+gain,0,160);
+            this.energy=clamp(this.energy+gain,0,organismMaxEnergy(this));
             microRecordEnergyFlow(this,'corpseGain',Math.max(0,this.energy-energyBeforeGain),'gain');
             this.storeN = clamp((this.storeN||0) + 0.040*(gain/40), 0, 1);
             this.fitness+=0.5;
@@ -8265,7 +8421,7 @@ if(Z>0.08){
           if(dx*dx+dy*dy <= rr*rr){
             const gain = 2.2 * clamp(0.70 + 0.90*En + 0.35*Et - 0.35*Z, 0.25, 1.90) * rareFactor('filter') * plantDigestFactor(carn) * dietRareFactor(diet) * filtEff;
             const energyBeforeGain=this.energy;
-            this.energy=clamp(this.energy+gain,0,160);
+            this.energy=clamp(this.energy+gain,0,organismMaxEnergy(this));
             microRecordEnergyFlow(this,'otherGain',Math.max(0,this.energy-energyBeforeGain),'gain');
             this.storeN = clamp((this.storeN||0) + 0.040*(gain/40), 0, 1);
             recordFoodUse('plankton',this,gain,1);
@@ -8333,7 +8489,8 @@ if(Z>0.08){
           calls.push({x:this.x, y:this.y, r: 100, t: 180, maxT:180, speciesKey:this.speciesKey});
           this.callCD = 240; // cooldown
         }
-        const p0=0.03; let p=p0*sigmoid((this.energy-this.reproThreshold)/8.0); p*= (1 + 0.18*fieldFavor)*(1 - 0.42*dirty); p*= clamp((Et-0.16)/0.48, 0.03, 1.18);
+        const effectiveReproThreshold=effectiveReproThresholdFor(this);
+        const p0=0.03; let p=p0*sigmoid((this.energy-effectiveReproThreshold)/8.0); p*= (1 + 0.18*fieldFavor)*(1 - 0.42*dirty); p*= clamp((Et-0.16)/0.48, 0.03, 1.18);
         // additional gates: local nutrients + body condition + internal stores (mild)
         let originalAlgaeMultiplier=1;
         let resourceLocationMul=1;
@@ -8652,15 +8809,11 @@ if(Z>0.08){
       const isSex = !!mate;
 
       // clutch size: species-level potential (max up to 9), actual is biased toward 1–2
-      const rp = getSpeciesReproParams(this.speciesKey);
-      let clutch = 1;
-      let pUp = rp.upP;
-      while(clutch < rp.clutchMax && Math.random() < pUp){
-        clutch++;
-        pUp *= rp.decay;
-      }
-      clutch = Math.max(1, Math.min(rp.clutchMax, clutch));
+      const clutch = sampleReproductionClutch(this);
       const energyPlan = reproductionEnergyPlan(this,mate,clutch);
+      if(evolvableLifeHistoryEnabled() && energyPlan.childEnergy < MIN_VIABLE_BIRTH_ENERGY){
+        return [];
+      }
       this._telemetryLastReproductionEnergyBefore=energyPlan.parentBefore;
       if(isSex && mate) mate._telemetryLastReproductionEnergyBefore=energyPlan.mateBefore;
 
@@ -8680,8 +8833,9 @@ if(Z>0.08){
         const c=new Organism(clamp(this.x+rnd(-childSpread,childSpread),10,W-10), clamp(this.y+rnd(-childSpread,childSpread),10,H-10), g, true, this.speciesKey, mate?.speciesKey||null);
         c.vx=this.vx*0.2; c.vy=this.vy*0.2;
         inheritInjectionLineage(this,mate,c);
-        c.energy = energyPlan.childEnergy;
-        telemetryRecordBirth(this,c,i,clutch,{preMutationDiet,mateParent:mate});
+        const childEnergyEach=evolvableLifeHistoryEnabled() ? Math.min(organismMaxEnergy(c),energyPlan.childEnergy) : energyPlan.childEnergy;
+        c.energy = childEnergyEach;
+        telemetryRecordBirth(this,c,i,clutch,{preMutationDiet,mateParent:mate,totalInvestment:energyPlan.totalInvestment,childEnergyEach,parentEnergyAfter:energyPlan.parentAfter});
 
         // Mendelian flags inheritance (glow/crown/colony)
         try{
@@ -9095,6 +9249,7 @@ const env = (function(){
     if(grazeScar) grazeScar.fill(0);
     _avgN=0.25; _avgO=0.75; _avgD=0.05; _avgC=0.25;
     lastPaint = -999;
+    resetDots();
     markAlgaeAllDirty();
   }
   function setViewMode(m){ viewMode = m; }
@@ -9414,21 +9569,33 @@ if(p.type==='oxygen'){
 
   // ---- Dots view (legacy) ----
   const dots = { algae:[], cold:[], oxygen:[] };
+  let dotRandomState = 0x6d2b79f5;
+  function dotRandom(){
+    dotRandomState = (dotRandomState + 0x6d2b79f5) >>> 0;
+    let t = dotRandomState;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+  function resetDots(){
+    for(const arr of Object.values(dots)) arr.length=0;
+    dotRandomState = 0x6d2b79f5;
+  }
   function maintainDots(type){
     const arr=dots[type]; const cap=caps[type];
     // update
     for(let i=arr.length-1;i>=0;--i){
       const d=arr[i]; d.t--;
-      d.x+=(Math.random()-0.5)*0.6; d.y+=(Math.random()-0.5)*0.6;
+      d.x+=(dotRandom()-0.5)*0.6; d.y+=(dotRandom()-0.5)*0.6;
       if(d.t<=0 || d.x<0 || d.x>W || d.y<0 || d.y>H) arr.splice(i,1);
     }
     let need = cap - arr.length; let tries=0;
     while(need>0 && tries<cap*6){
       tries++;
-      const cx=(Math.random()*ew)|0, cy=(Math.random()*eh)|0;
+      const cx=(dotRandom()*ew)|0, cy=(dotRandom()*eh)|0;
       const v=fields[type][idx(cx,cy)];
       if(v>Th_on[type]){
-        const x=(cx+Math.random())*cell, y=(cy+Math.random())*cell;
+        const x=(cx+dotRandom())*cell, y=(cy+dotRandom())*cell;
         arr.push({x,y,t: 200 + (v*200)|0, v});
         need--;
       }
@@ -9814,6 +9981,7 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
   return {
   ensure, seedFromPatches, tickFields, draw,
   maintainDots,
+  resetDots,
   reset: resetAll,
   valueAt: (type,x,y)=> valueAt(type,x,y),
   bestAlgaeNear: (x,y,r,minValue)=> bestAlgaeNear(x,y,r,minValue),
@@ -10769,6 +10937,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     calls.length=0;
     speciesCount.clear();
     speciesStats.clear();
+    Object.assign(roleShare, CONFIG.ecology.initialRoleShare);
+    Object.assign(dietShare, CONFIG.ecology.initialDietShare);
     extinctRecords.length=0;
     discoveredRareTraits.clear();
     evolutionMilestones.clear();
@@ -10944,7 +11114,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   // ===== Developer 1:1 predation duel experiments =====
   function duelCloneGenes(g){
     const out={};
-    for(const k of GENE_KEYS) out[k]=clamp(Number(g?.[k] ?? 0.5),0,1);
+    const normalized=geneSet(g || {});
+    for(const k of GENE_KEYS) out[k]=finiteGeneValue(normalized?.[k],0.5);
     return out;
   }
   function duelSeededRandom(seed){
@@ -13279,7 +13450,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   }
   function devCloneGenes(g){
     const out={};
-    for(const k of GENE_KEYS) out[k]=clamp(Number(g?.[k] ?? 0.5),0,1);
+    const normalized=geneSet(g || {});
+    for(const k of GENE_KEYS) out[k]=finiteGeneValue(normalized?.[k],0.5);
     return out;
   }
   function devRandomDietValue(type){
@@ -13436,7 +13608,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const species=speciesKey(g);
     const topology=topologyFromGenes(g);
     const form=formFromGenes(g,species);
-    const geneHash=hash01('g:' + Object.values(g).join(','));
+    const geneHash=hash01('g:' + baseGeneIdentityString(g));
     const baseSize=lerp(3.0, 11.0*CONFIG.organism.maxSizeScale, Math.pow(g.size,0.85));
     const social=socialStrategyFromGenes(g);
     const probe={
@@ -15955,7 +16127,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const geneStats=Object.fromEntries(ROLE_SOCIAL_GROUPS.map(k=>[k,roleSocialGeneStatBlank()]));
     for(let i=0;i<sampleCount;i++){
       const g={};
-      for(const key of GENE_KEYS) g[key]=random();
+      for(const key of BASE_GENE_KEYS) g[key]=random();
+      normalizeLifeHistoryGenes(g);
       const role=roleSocialRoleKey(computeRole(g));
       const social=socialStrategyFromGenes(g);
       const mode=roleSocialModeKey(social.mode);
@@ -16034,6 +16207,210 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       },{living:0,births:0,matured:0,firstPredation:0,reproduced:0,endPopulation:0})
     };
   }
+  function lifeHistoryMetricBlank(){
+    return {
+      count:0,
+      births:0,
+      matured:0,
+      reproduced:0,
+      maxGenerationDepth:0,
+      _livingSums:{maxEnergy:0,energyCapacity:0,fecundity:0,parentalInvestment:0},
+      _birthSums:{clutch:0,totalInvestment:0,childEnergy:0,parentEnergyAfter:0},
+      _birthSamples:{clutch:0,totalInvestment:0,childEnergy:0,parentEnergyAfter:0}
+    };
+  }
+  function lifeHistoryBlankByDiet(){
+    return {
+      herbivore:lifeHistoryMetricBlank(),
+      omnivore:lifeHistoryMetricBlank(),
+      carnivore:lifeHistoryMetricBlank()
+    };
+  }
+  function lifeHistoryBlankByRole(){
+    return Object.fromEntries(ROLE_SOCIAL_ROLES.map(k=>[k,lifeHistoryMetricBlank()]));
+  }
+  function lifeHistoryBlankBySocialMode(){
+    return Object.fromEntries(ROLE_SOCIAL_MODES.map(k=>[k,lifeHistoryMetricBlank()]));
+  }
+  function lifeHistoryMetricTargets(summary,diet,role,socialMode){
+    const d=roleSocialDietName(diet);
+    const r=roleSocialRoleKey(role);
+    const s=roleSocialModeKey(socialMode);
+    return [summary.totals, summary.byDiet[d], summary.byRole[r], summary.bySocialMode[s]].filter(Boolean);
+  }
+  function lifeHistoryAddLivingMetric(metric,o){
+    metric.count++;
+    const maxEnergy=organismMaxEnergy(o);
+    metric._livingSums.maxEnergy+=maxEnergy;
+    metric._livingSums.energyCapacity+=lifeHistoryEnergyCapacity(o?.genes);
+    metric._livingSums.fecundity+=finiteGeneValue(o?.genes?.fecundity,0.5);
+    metric._livingSums.parentalInvestment+=lifeHistoryParentalInvestment(o?.genes);
+    metric.maxGenerationDepth=Math.max(metric.maxGenerationDepth,telemetryLineageDepth(o,telemetry.births.get(o?.id) || null));
+  }
+  function lifeHistoryAddLiving(summary,o){
+    for(const metric of lifeHistoryMetricTargets(summary,o?.genes?.diet ?? o?.birthExactDiet ?? 0.5,o?.role,o?.socialMode)){
+      lifeHistoryAddLivingMetric(metric,o);
+    }
+  }
+  function lifeHistoryAddBirthValue(metric,key,value){
+    const n=Number(value);
+    if(!Number.isFinite(n)) return;
+    metric._birthSums[key]+=n;
+    metric._birthSamples[key]++;
+  }
+  function lifeHistoryAddBirthMetric(metric,birth){
+    metric.births++;
+    if(birth?.reachedMaturity!=null) metric.matured++;
+    if(birth?.reproducedFrame!=null) metric.reproduced++;
+    metric.maxGenerationDepth=Math.max(metric.maxGenerationDepth,Number(birth?.generationDepth||0));
+    lifeHistoryAddBirthValue(metric,'clutch',birth?.clutch);
+    lifeHistoryAddBirthValue(metric,'totalInvestment',birth?.totalInvestment);
+    lifeHistoryAddBirthValue(metric,'childEnergy',birth?.childEnergyEach ?? birth?.birthEnergy);
+    lifeHistoryAddBirthValue(metric,'parentEnergyAfter',birth?.parentEnergyAfter);
+  }
+  function lifeHistoryAddBirth(summary,birth){
+    for(const metric of lifeHistoryMetricTargets(summary,birth?.birthExactDiet ?? birth?.birthDietClass ?? birth?.diet,birth?.birthRole,birth?.birthSocialMode)){
+      lifeHistoryAddBirthMetric(metric,birth);
+    }
+  }
+  function lifeHistoryFinalizeMetric(metric){
+    const livingDen=metric.count || 0;
+    const sample=metric._birthSamples;
+    metric.averageMaxEnergy=livingDen ? metric._livingSums.maxEnergy/livingDen : null;
+    metric.averageEnergyCapacity=livingDen ? metric._livingSums.energyCapacity/livingDen : null;
+    metric.averageFecundity=livingDen ? metric._livingSums.fecundity/livingDen : null;
+    metric.averageParentalInvestment=livingDen ? metric._livingSums.parentalInvestment/livingDen : null;
+    metric.averageClutch=sample.clutch ? metric._birthSums.clutch/sample.clutch : null;
+    metric.averageTotalInvestment=sample.totalInvestment ? metric._birthSums.totalInvestment/sample.totalInvestment : null;
+    metric.averageChildEnergy=sample.childEnergy ? metric._birthSums.childEnergy/sample.childEnergy : null;
+    metric.averageParentEnergyAfter=sample.parentEnergyAfter ? metric._birthSums.parentEnergyAfter/sample.parentEnergyAfter : null;
+    delete metric._livingSums;
+    delete metric._birthSums;
+    delete metric._birthSamples;
+    return metric;
+  }
+  function lifeHistoryFinalizeTree(node){
+    if(!node || typeof node!=='object') return;
+    if(Object.prototype.hasOwnProperty.call(node,'_livingSums')){
+      lifeHistoryFinalizeMetric(node);
+      return;
+    }
+    for(const value of Object.values(node)) lifeHistoryFinalizeTree(value);
+  }
+  function lifeHistorySummary(){
+    telemetryMarkNewbornSurvival();
+    telemetryMarkCarnivoreMilestones();
+    const summary={
+      frame,
+      enabled:evolvableLifeHistoryEnabled(),
+      minViableBirthEnergy:MIN_VIABLE_BIRTH_ENERGY,
+      totals:lifeHistoryMetricBlank(),
+      byDiet:lifeHistoryBlankByDiet(),
+      byRole:lifeHistoryBlankByRole(),
+      bySocialMode:lifeHistoryBlankBySocialMode()
+    };
+    for(const o of organisms){
+      if(o && !o.dead) lifeHistoryAddLiving(summary,o);
+    }
+    for(const birth of telemetry.births.values()) lifeHistoryAddBirth(summary,birth);
+    lifeHistoryFinalizeTree(summary);
+    return summary;
+  }
+  function recalcLifeHistoryPhenotypes(){
+    for(const o of organisms){
+      if(!o) continue;
+      o.genes=geneSet(o.genes);
+      o.recalcPhenotype();
+      if(Number(o.energy||0)>organismMaxEnergy(o)) o.energy=organismMaxEnergy(o);
+    }
+  }
+  function setEvolvableLifeHistory(enabled){
+    featureFlags.evolvableLifeHistory = !!enabled;
+    recalcLifeHistoryPhenotypes();
+    return {
+      enabled:evolvableLifeHistoryEnabled(),
+      organisms:organisms.length,
+      averageMaxEnergy:organisms.length ? organisms.reduce((s,o)=>s+organismMaxEnergy(o),0)/organisms.length : null
+    };
+  }
+  function stableJson(value){
+    const seen=new Set();
+    const sortValue=(v)=>{
+      if(v==null || typeof v!=='object') return v;
+      if(seen.has(v)) return '[Circular]';
+      seen.add(v);
+      if(Array.isArray(v)) return v.map(sortValue);
+      const out={};
+      for(const key of Object.keys(v).sort()) out[key]=sortValue(v[key]);
+      return out;
+    };
+    return JSON.stringify(sortValue(value));
+  }
+  function lifeHistoryReproducibilitySnapshot(){
+    return {
+      counts:{organisms:organisms.length,food:food.length,corpses:corpses.length,plankton:plankton.length},
+      lifeHistory:lifeHistorySummary(),
+      safety:{
+        nanOrInfinity:diagnosticNumberHealth().badCount,
+        energyCreationEvents:telemetry.packHuntConservation.energyCreationEvents,
+        nutrientCreationEvents:telemetry.packHuntConservation.nutrientCreationEvents
+      }
+    };
+  }
+  function runLifeHistoryReproducibilityMicroTest(options={}){
+    const saved=capture();
+    const oldEnabled=evolvableLifeHistoryEnabled();
+    const seed=Number(options.seed ?? 41001);
+    const steps=Math.max(1,Math.min(2000,Number(options.steps ?? 180)));
+    const enabled=options.enabled==null ? oldEnabled : !!options.enabled;
+    try{
+      featureFlags.evolvableLifeHistory=enabled;
+      runSeededWorldDiagnostic({seed,steps,restoreAfterRun:false,targetConsensus:false,shareFraction:0,packAttackBase:0.78,variant:'lifeHistoryReproA'});
+      const first=lifeHistoryReproducibilitySnapshot();
+      const firstJson=stableJson(first);
+      runSeededWorldDiagnostic({seed,steps,restoreAfterRun:false,targetConsensus:false,shareFraction:0,packAttackBase:0.78,variant:'lifeHistoryReproB'});
+      const second=lifeHistoryReproducibilitySnapshot();
+      const secondJson=stableJson(second);
+      return {
+        ok:firstJson===secondJson,
+        seed,
+        steps,
+        enabled,
+        first,
+        second
+      };
+    } finally {
+      featureFlags.evolvableLifeHistory=oldEnabled;
+      restore(saved);
+    }
+  }
+  function runLifeHistoryMicroTests(){
+    const saved=capture();
+    const oldEnabled=evolvableLifeHistoryEnabled();
+    const results=[];
+    const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
+    try{
+      const genes=geneSet({speed:0.72,size:0.44,metabolism:0.52,fecundity:0.82,sense:0.68,diet:0.72,formSeed:0.31,energyCapacity:0.40,parentalInvestment:0.50});
+      const parent={energy:120,genes,speciesKey:speciesKey(genes),maxEnergy:maxEnergyForGenes(genes),dead:false,age:999,reproThreshold:90};
+      featureFlags.evolvableLifeHistory=false;
+      const legacyPlan=reproductionEnergyPlan(parent,null,2);
+      const legacyExpectedAfter=120*reproductionParentEnergyMultiplier(2);
+      add('feature OFF legacy reproduction plan', Math.abs(legacyPlan.parentAfter-legacyExpectedAfter)<1e-9 && legacyPlan.childEnergy<=REPRODUCTION_CHILD_ENERGY_MAX, {parentAfter:legacyPlan.parentAfter,expected:legacyExpectedAfter,childEnergy:legacyPlan.childEnergy});
+
+      featureFlags.evolvableLifeHistory=true;
+      const onPlan=reproductionEnergyPlan(parent,null,2);
+      add('feature ON investment conserves energy', onPlan.parentAfter===60 && onPlan.totalInvestment===60 && onPlan.childEnergy===27 && onPlan.totalChildEnergy<=onPlan.totalInvestment, {plan:onPlan});
+      const clutchParams=lifeHistoryClutchParamsFor(parent);
+      add('feature ON clutch cap', clutchParams.clutchMax>=1 && clutchParams.clutchMax<=4, clutchParams);
+
+      const repro=runLifeHistoryReproducibilityMicroTest({seed:41001,steps:180,enabled:false});
+      add('same seed summary reproducibility', repro.ok, {seed:repro.seed,steps:repro.steps,enabled:repro.enabled});
+    } finally {
+      featureFlags.evolvableLifeHistory=oldEnabled;
+      restore(saved);
+    }
+    return {ok:results.every(r=>r.ok),results};
+  }
 
   window.__alifeDebug = {
     counts(){
@@ -16098,6 +16475,18 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     packRoleSocialGroupSummary(){
       return packRoleSocialGroupSummary();
+    },
+    setEvolvableLifeHistory(enabled){
+      return setEvolvableLifeHistory(enabled);
+    },
+    lifeHistorySummary(){
+      return lifeHistorySummary();
+    },
+    runLifeHistoryReproducibilityMicroTest(options={}){
+      return runLifeHistoryReproducibilityMicroTest(options);
+    },
+    runLifeHistoryMicroTests(){
+      return runLifeHistoryMicroTests();
     },
     roleSocialEcologySummary(){
       return roleSocialEcologySummary();
@@ -16464,7 +16853,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           u.id=Number(o.id);
           maxRestoredId=Math.max(maxRestoredId,u.id);
         }
-        u.vx=o.vx; u.vy=o.vy; u.energy=o.energy; u.age=o.age;
+        u.vx=o.vx; u.vy=o.vy; u.energy=clamp(Number(o.energy||0),0,organismMaxEnergy(u)); u.age=o.age;
         u.role=normalizeRole(o.role ?? u.role);
         if(o.socialMode!=null) u.socialMode=o.socialMode;
         if(o.sociality!=null){
