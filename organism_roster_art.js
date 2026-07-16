@@ -274,6 +274,15 @@
     return hashStr32(key) % count;
   }
 
+  // formSeed buckets this list, so the "form" gene picks the plain-body silhouette.
+  // Order is load-bearing: the generator derives each form's formSeed from the index.
+  const SINGLE_SHAPES = [
+    "single-cell", "single-teardrop", "single-pear", "single-gourd", "single-clover",
+    "single-trefoil", "single-triangle", "single-fan", "single-star", "single-shard",
+    "single-crescent", "single-needle", "single-serpent", "single-forktail",
+    "single-sawback", "single-dart", "single-barb", "single-finned", "single-trap"
+  ];
+
   function visualKind(o) {
     const g = genesOf(o);
     const flags = o.flags || {};
@@ -289,10 +298,11 @@
       if ((g.speed || 0.5) > 0.62 || flags.chl) return "single-leaf";
       if ((o.form && o.form.aspect > 1.46) && (g.size || 0.5) > 0.38) return "single-spindle";
       // formSeed picks the plain-body silhouette so the "form" gene has real reach.
-      var singleShapes = ["single-cell", "single-teardrop", "single-pear", "single-gourd", "single-clover", "single-trefoil", "single-triangle", "single-fan", "single-crescent", "single-needle", "single-trap"];
+      var singleShapes = SINGLE_SHAPES;
       return singleShapes[Math.min(singleShapes.length - 1, Math.floor((g.formSeed == null ? 0.5 : g.formSeed) * singleShapes.length))];
     }
-    if (topology === "radial") return "radial-arms"; // spines/beads are now selectable appendages, not forms
+    // formSeed also splits the two radial bodies (spines/beads are appendages, not forms)
+    if (topology === "radial") return (g.formSeed == null ? 0.5 : g.formSeed) < 0.5 ? "radial-arms" : "radial-star";
     if (topology === "branch") return "branch-vesicles";
     if (topology === "ring") return "ring";
     if (topology === "amoeba") return "amoeba";
@@ -795,9 +805,137 @@
     }
     return pts;
   }
+  // sharp-tipped star: explicit tips joined by edges that bow deep toward the centre,
+  // so the points stay needle-sharp instead of rounding off into petals.
+  function _concaveStar(tips, inward) {
+    const segs = [];
+    for (let i = 0; i < tips.length; i++) {
+      const a = tips[i], b = tips[(i + 1) % tips.length];
+      const c = { x: (a.x + b.x) * 0.5 * inward, y: (a.y + b.y) * 0.5 * inward };
+      segs.push([a, c, c, b]);
+    }
+    return _sampleSegs(segs, 22);
+  }
+  // S-curved ribbon body: shared spine so the outline and the segment lines agree.
+  function _serpentSpine(r) {
+    const m = 56, cl = [];
+    for (let i = 0; i <= m; i++) {
+      const t = i / m;
+      cl.push({ x: r * 0.44 * Math.sin((t - 0.5) * Math.PI * 2.2), y: lerp(-r * 1.46, r * 1.46, t), t: t });
+    }
+    function halfW(t) { return r * 0.32 * Math.pow(Math.sin(Math.PI * t), 0.45); }  // tapers to a point at both ends
+    function nrm(i) {
+      const a = cl[Math.max(0, i - 1)], b = cl[Math.min(m, i + 1)];
+      const tx = b.x - a.x, ty = b.y - a.y, mm = Math.hypot(tx, ty) || 1;
+      return { nx: ty / mm, ny: -tx / mm };
+    }
+    return { m: m, cl: cl, halfW: halfW, nrm: nrm };
+  }
   function singleOutline(kind, r, o, rng) {
     const form = o.form || {};
     const pts = [], n = 84;
+    // ---- swimmers: nose points up (-y), tail trails down (+y) ----
+    if (kind === "single-dart") {
+      const apex = {x:0,y:-r*1.30}, bl = {x:-r*0.82,y:r*0.42}, tl = {x:-r*0.15,y:r*0.24},
+            tip = {x:0,y:r*2.05}, tr = {x:r*0.15,y:r*0.24}, br = {x:r*0.82,y:r*0.42};
+      return _sampleSegs([
+        [apex,{x:-r*0.24,y:-r*0.64},{x:-r*0.56,y:r*0.00},bl],
+        [bl,{x:-r*0.62,y:-r*0.10},{x:-r*0.36,y:-r*0.02},tl],  // swept-back barb, concave from outside
+        [tl,{x:-r*0.17,y:r*1.02},{x:-r*0.09,y:r*1.62},tip],   // long visible tail
+        [tip,{x:r*0.09,y:r*1.62},{x:r*0.17,y:r*1.02},tr],
+        [tr,{x:r*0.36,y:-r*0.02},{x:r*0.62,y:-r*0.10},br],
+        [br,{x:r*0.56,y:r*0.00},{x:r*0.24,y:-r*0.64},apex]
+      ], 16);
+    }
+    if (kind === "single-barb") {
+      // harpoon: two hooked cusps per side, a rear barb, then a long thin tail.
+      const apex = {x:0,y:-r*1.55}, tip = {x:0,y:r*2.15};
+      const L = [{x:-r*0.30,y:-r*0.70},{x:-r*0.15,y:-r*0.48},{x:-r*0.46,y:-r*0.14},{x:-r*0.24,y:r*0.08},{x:-r*0.62,y:r*0.36}];
+      const R = L.map(function(p){ return {x:-p.x, y:p.y}; });
+      const rootL = {x:-r*0.13,y:r*0.42}, rootR = {x:r*0.13,y:r*0.42};
+      return _sampleSegs([
+        [apex,{x:-r*0.10,y:-r*1.24},{x:-r*0.22,y:-r*0.92},L[0]],
+        [L[0],{x:-r*0.26,y:-r*0.60},{x:-r*0.19,y:-r*0.54},L[1]],
+        [L[1],{x:-r*0.24,y:-r*0.38},{x:-r*0.40,y:-r*0.26},L[2]],
+        [L[2],{x:-r*0.40,y:-r*0.04},{x:-r*0.30,y:r*0.02},L[3]],
+        [L[3],{x:-r*0.36,y:r*0.16},{x:-r*0.54,y:r*0.24},L[4]],
+        [L[4],{x:-r*0.40,y:r*0.10},{x:-r*0.22,y:r*0.28},rootL],
+        [rootL,{x:-r*0.15,y:r*1.20},{x:-r*0.08,y:r*1.74},tip],
+        [tip,{x:r*0.08,y:r*1.74},{x:r*0.15,y:r*1.20},rootR],
+        [rootR,{x:r*0.16,y:r*0.30},{x:r*0.40,y:r*0.10},R[4]],
+        [R[4],{x:r*0.54,y:r*0.24},{x:r*0.36,y:r*0.16},R[3]],
+        [R[3],{x:r*0.30,y:r*0.02},{x:r*0.40,y:-r*0.04},R[2]],
+        [R[2],{x:r*0.40,y:-r*0.26},{x:r*0.24,y:-r*0.38},R[1]],
+        [R[1],{x:r*0.19,y:-r*0.54},{x:r*0.26,y:-r*0.60},R[0]],
+        [R[0],{x:r*0.22,y:-r*0.92},{x:r*0.10,y:-r*1.24},apex]
+      ], 10);
+    }
+    if (kind === "single-finned") {
+      // notch cuts ~25% back from the lobe tips, as in the sketch; deeper than that
+      // and the body reads as a chevron rather than a fish.
+      const apex = {x:0,y:-r*1.40}, ll = {x:-r*0.86,y:r*1.34}, notch = {x:0,y:r*0.72}, rl = {x:r*0.86,y:r*1.34};
+      return _sampleSegs([
+        [apex,{x:-r*0.34,y:-r*1.00},{x:-r*0.88,y:r*0.44},ll],   // sharp nose, arced flank
+        [ll,{x:-r*0.54,y:r*1.02},{x:-r*0.26,y:r*0.78},notch],   // crescent tail notch
+        [notch,{x:r*0.26,y:r*0.78},{x:r*0.54,y:r*1.02},rl],
+        [rl,{x:r*0.88,y:r*0.44},{x:r*0.34,y:-r*1.00},apex]
+      ], 26);
+    }
+    if (kind === "single-forktail") {
+      // Two thin needles hang off the dome's chord. Spikes wide enough to touch the
+      // dome's corners read as the legs of an arch instead, so keep the roots narrow.
+      const chord = r * 0.04;
+      const dome = _sampleSegs([
+        [{x:-r*0.95,y:chord},{x:-r*1.00,y:-r*0.60},{x:-r*0.54,y:-r*0.92},{x:0,y:-r*0.90}],
+        [{x:0,y:-r*0.90},{x:r*0.54,y:-r*0.92},{x:r*1.00,y:-r*0.60},{x:r*0.95,y:chord}]
+      ], 30);
+      for (let i = 0; i < dome.length; i++) pts.push(dome[i]);
+      pts.push({x:r*0.62,y:chord});          // right needle
+      pts.push({x:r*0.40,y:r*2.05});
+      pts.push({x:r*0.28,y:chord});
+      pts.push({x:-r*0.28,y:chord});         // left needle
+      pts.push({x:-r*0.40,y:r*2.05});
+      pts.push({x:-r*0.62,y:chord});
+      return pts;
+    }
+    if (kind === "single-sawback") {
+      // smooth dome, sawtooth zigzag along the flat side (longest teeth in the middle)
+      // fewer, stubbier teeth: long thin ones read as jellyfish tentacles, not a saw
+      const chordY = r * 0.26, teeth = 6, cut = r * 0.10;
+      const dome = _sampleSegs([
+        [{x:-r*0.90,y:chordY},{x:-r*1.06,y:-r*0.62},{x:-r*0.52,y:-r*1.18},{x:0,y:-r*1.16}],
+        [{x:0,y:-r*1.16},{x:r*0.52,y:-r*1.18},{x:r*1.06,y:-r*0.62},{x:r*0.90,y:chordY}]
+      ], 30);
+      for (let i = 0; i < dome.length; i++) pts.push(dome[i]);
+      for (let k = 0; k < teeth; k++) {
+        const tx = r * 0.90 - r * 1.80 * ((k + 0.5) / teeth);
+        const len = r * (0.30 + 0.46 * Math.sin(Math.PI * (k + 0.5) / teeth));
+        pts.push({ x: tx, y: chordY + len });
+        // valleys bite back up into the dome, so this reads as a saw edge, not a comb
+        pts.push({ x: r * 0.90 - r * 1.80 * ((k + 1) / teeth), y: chordY - cut });
+      }
+      return pts;
+    }
+    if (kind === "single-serpent") {
+      const sp = _serpentSpine(r);
+      for (let i = 0; i <= sp.m; i++) { const nn = sp.nrm(i), w = sp.halfW(sp.cl[i].t); pts.push({ x: sp.cl[i].x + nn.nx * w, y: sp.cl[i].y + nn.ny * w }); }
+      for (let i = sp.m; i >= 0; i--) { const nn = sp.nrm(i), w = sp.halfW(sp.cl[i].t); pts.push({ x: sp.cl[i].x - nn.nx * w, y: sp.cl[i].y - nn.ny * w }); }
+      return pts;
+    }
+    if (kind === "single-star") {
+      const tips = [];
+      for (let k = 0; k < 6; k++) {           // a point faces up
+        const a = -Math.PI / 2 + k * TAU / 6;
+        tips.push({ x: Math.cos(a) * r * 1.26, y: Math.sin(a) * r * 1.26 });
+      }
+      return _concaveStar(tips, 0.26);
+    }
+    if (kind === "single-shard") {
+      return _concaveStar([
+        {x:0,y:-r*1.52}, {x:r*0.48,y:-r*0.50}, {x:r*0.46,y:r*0.44},
+        {x:0,y:r*1.52}, {x:-r*0.46,y:r*0.44}, {x:-r*0.48,y:-r*0.50}
+      ], 0.30);
+    }
     if (kind === "single-teardrop") {
       const A = {x:0,y:-r*1.30}, B = {x:r*0.92,y:-r*0.40}, C = {x:r*0.86,y:r*0.98},
             D = {x:0,y:r*1.02}, E = {x:-r*0.86,y:r*0.98}, F = {x:-r*0.92,y:-r*0.40};
@@ -852,6 +990,28 @@
     return pts;
   }
   function _centroid(pts){ let sx=0, sy=0; for (let i=0;i<pts.length;i++){ sx+=pts[i].x; sy+=pts[i].y; } return {x:sx/pts.length, y:sy/pts.length}; }
+  // per-point outward normals taken from the local tangent, so appendages sit correctly
+  // on concave edges (the centroid direction only works on convex blobs).
+  function _outlineNormals(pts) {
+    const c = _centroid(pts), n = pts.length, out = [];
+    let s = 0;
+    for (let i = 0; i < n; i++) {
+      const p0 = pts[(i - 1 + n) % n], p1 = pts[(i + 1) % n];
+      const tx = p1.x - p0.x, ty = p1.y - p0.y, m = Math.hypot(tx, ty) || 1;
+      const nx = ty / m, ny = -tx / m;
+      out.push({ nx: nx, ny: ny });
+      s += nx * (pts[i].x - c.x) + ny * (pts[i].y - c.y);
+    }
+    if (s < 0) for (let i = 0; i < n; i++) { out[i].nx = -out[i].nx; out[i].ny = -out[i].ny; }
+    return out;
+  }
+  // keep only the stretch of outline that reads as "body", so appendages don't
+  // sprout along a tail spike or a row of teeth.
+  function _zone(pts, normals, keep) {
+    const zp = [], zn = [];
+    for (let i = 0; i < pts.length; i++) if (keep(pts[i])) { zp.push(pts[i]); zn.push(normals[i]); }
+    return zp.length >= 6 ? { pts: zp, normals: zn } : { pts: pts, normals: normals };
+  }
   function _fillOutline(ctx, pts){ ctx.beginPath(); for (let i=0;i<pts.length;i++){ if(i===0) ctx.moveTo(pts[i].x,pts[i].y); else ctx.lineTo(pts[i].x,pts[i].y); } ctx.closePath(); }
   function drawBodyFromPts(ctx, o, r, pal, rng, pts, nuclei) {
     const form = o.form || {};
@@ -936,6 +1096,58 @@
     return pts;
   }
 
+  // Forms whose silhouette ends in a tail/spike/teeth: appendages stay above this y
+  // (in r units) so they hang off the body rather than the trailing spike.
+  const SWIMMER_ZONE_Y = {
+    "single-dart": 0.30, "single-barb": 0.34, "single-finned": 0.50,
+    "single-forktail": 0.08, "single-sawback": 0.24
+  };
+  // nucleus sits in the head for the swimmers, dead centre for the stars (r units)
+  const SWIMMER_NUC = {
+    "single-dart": { x: 0, y: -0.55, r: 0.15 }, "single-barb": { x: 0, y: -0.86, r: 0.12 },
+    "single-finned": { x: 0, y: -0.52, r: 0.16 }, "single-forktail": { x: 0, y: -0.42, r: 0.17 },
+    "single-sawback": { x: -0.30, y: -0.30, r: 0.15 },
+    "single-star": { x: 0, y: 0, r: 0.17 }, "single-shard": { x: 0, y: 0, r: 0.14 }
+  };
+
+  // Per-form scale for the sketch forms, set from each silhouette's vertical reach
+  // (roughly 1.06 / max|y| in r units) so nothing is clipped by the card.
+  const KIND_FIT = {
+    "single-dart": 0.51, "single-barb": 0.49, "single-forktail": 0.51,
+    "single-finned": 0.75, "single-serpent": 0.72, "single-shard": 0.69,
+    "single-star": 0.84, "single-sawback": 0.75, "radial-star": 0.55
+  };
+  // The sketched forms carry their character in the silhouette, so they stay bare
+  // unless the generator's appendage picker explicitly asks for one.
+  const SKETCH_FORMS = {
+    "single-star": 1, "single-shard": 1, "single-serpent": 1, "single-forktail": 1,
+    "single-sawback": 1, "single-dart": 1, "single-barb": 1, "single-finned": 1
+  };
+  function wantsAppendage(o, kind) {
+    if (!SKETCH_FORMS[kind]) return true;
+    return !!(o.appendageKind && o.appendageKind !== "auto");
+  }
+
+  function drawSerpent(ctx, o, r, pal, rng) {
+    const pts = singleOutline("single-serpent", r, o, rng);
+    if (wantsAppendage(o, "single-serpent")) appendageBehind(ctx, o, r, pal, rng, pts, { normals: _outlineNormals(pts) });
+    drawBodyFromPts(ctx, o, r, pal, rng, pts, [{ x: -r * 0.26, y: -r * 1.05, r: r * 0.11 }]);
+    const sp = _serpentSpine(r);
+    ctx.save();
+    _fillOutline(ctx, pts);
+    ctx.clip();
+    ctx.strokeStyle = hsla(pal.hue - 8, 58, 36, 0.44);
+    ctx.lineWidth = Math.max(0.8, r * 0.028);
+    for (let i = 6; i < sp.m - 4; i += 6) {
+      const nn = sp.nrm(i), w = sp.halfW(sp.cl[i].t) * 1.6;
+      ctx.beginPath();
+      ctx.moveTo(sp.cl[i].x - nn.nx * w, sp.cl[i].y - nn.ny * w);
+      ctx.lineTo(sp.cl[i].x + nn.nx * w, sp.cl[i].y + nn.ny * w);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   function drawSingle(ctx, o, r, pal, rng) {
     const kind = visualKind(o);
     if (kind === "single-leaf") { drawLeaf(ctx, o, r, pal, rng); drawRare(ctx, o, r, pal, rng); return; }
@@ -943,8 +1155,27 @@
     if (kind === "single-crescent") { drawCrescent(ctx, o, r, pal, rng); drawRare(ctx, o, r, pal, rng); return; }
     if (kind === "single-needle") { drawNeedle(ctx, o, r, pal, rng); drawRare(ctx, o, r, pal, rng); return; }
     if (kind === "single-trap") { drawTrap(ctx, o, r, pal, rng); drawRare(ctx, o, r, pal, rng); return; }
+    if (kind === "single-serpent") { drawSerpent(ctx, o, r, pal, rng); drawRare(ctx, o, r, pal, rng); return; }
     const pts = singleOutline(kind, r, o, rng);
-    appendageBehind(ctx, o, r, pal, rng, pts); // behind the body
+    // forms with tails/teeth: hang appendages on the body only, using true outline normals
+    const zoneY = SWIMMER_ZONE_Y[kind];
+    if (!wantsAppendage(o, kind)) {
+      /* bare silhouette */
+    } else if (zoneY != null) {
+      const nn = _outlineNormals(pts);
+      const z = _zone(pts, nn, function (p) { return p.y < r * zoneY; });
+      appendageBehind(ctx, o, r, pal, rng, z.pts, { normals: z.normals });
+    } else if (kind === "single-star" || kind === "single-shard") {
+      appendageBehind(ctx, o, r, pal, rng, pts, { normals: _outlineNormals(pts) });
+    } else {
+      appendageBehind(ctx, o, r, pal, rng, pts); // behind the body
+    }
+    if (SWIMMER_NUC[kind]) {
+      const nu = SWIMMER_NUC[kind];
+      drawBodyFromPts(ctx, o, r, pal, rng, pts, [{ x: nu.x * r, y: nu.y * r, r: nu.r * r }]);
+      drawRare(ctx, o, r, pal, rng);
+      return;
+    }
     if (kind === "single-gourd") {
       drawBodyFromPts(ctx, o, r, pal, rng, pts, [{ x: 0, y: -r * 0.66, r: r * 0.14 }, { x: 0, y: r * 0.60, r: r * 0.17 }]);
     } else if (kind === "single-clover") {
@@ -1070,10 +1301,54 @@
     ctx.restore();
   }
 
-  // radial topology now always renders the beaded-arms body; the old spoke/bead
-  // "radial-spines" / "radial-beads" looks live on as selectable appendages instead.
+  // radiolarian: a big central vesicle ringed by partitioned arm bases, each drawing
+  // out into a long tapered spike.
+  function drawRadialStar(ctx, o, r, pal, rng) {
+    const arms = 6 + variantIndex(o, "starn", 2);   // 6..7 spikes
+    ctx.save();
+    ctx.rotate((rng() - 0.5) * 0.6);
+    const baseR = r * 0.72, tipR = r * 1.92, spikeW = 0.17, cR = r * 0.40;
+    const pts = [], m = 240;
+    for (let i = 0; i < m; i++) {
+      const a = (i / m) * TAU;
+      let d = Infinity;
+      for (let k = 0; k < arms; k++) {
+        const dd = Math.abs(((a - k * TAU / arms + Math.PI) % TAU + TAU) % TAU - Math.PI);
+        if (dd < d) d = dd;
+      }
+      let rr = baseR * (0.90 + 0.10 * Math.cos(arms * a));
+      if (d < spikeW) rr = Math.max(rr, baseR + (tipR - baseR) * Math.pow(1 - d / spikeW, 1.7));
+      pts.push({ x: Math.cos(a) * rr, y: Math.sin(a) * rr });
+    }
+    _fillOutline(ctx, pts);
+    fillAndStroke(ctx, r, pal, 0.62);
+    ctx.save();
+    ctx.clip();
+    drawGranules(ctx, r * 0.62, pal, rng, 5, !!(o.flags && o.flags.chl));
+    drawSurfaceSpeckles(ctx, r, pal, rng, 14, 0.18);
+    ctx.restore();
+    ctx.strokeStyle = hsla(pal.hue - 10, 56, 38, 0.34);
+    ctx.lineWidth = Math.max(0.6, r * 0.018);
+    for (let k = 0; k < arms; k++) {
+      const a = (k + 0.5) * TAU / arms;   // partition between two arm bases
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * cR, Math.sin(a) * cR);
+      ctx.lineTo(Math.cos(a) * baseR * 0.94, Math.sin(a) * baseR * 0.94);
+      ctx.stroke();
+    }
+    for (let k = 0; k < arms; k++) {
+      const a = k * TAU / arms, d = (cR + baseR) * 0.5;
+      drawNucleus(ctx, Math.cos(a) * d, Math.sin(a) * d, r * 0.05, pal, rng, 0.8);
+    }
+    drawOvalCell(ctx, 0, 0, cR, cR * 0.94, 0, pal, rng, 0.82);
+    ctx.restore();
+  }
+
+  // radial topology renders the beaded-arms body or the spiked radiolarian; the old
+  // spoke/bead "radial-spines" / "radial-beads" looks live on as selectable appendages.
   function drawRadial(ctx, o, r, pal, rng) {
-    drawRadialArms(ctx, o, r, pal, rng);
+    if (visualKind(o) === "radial-star") drawRadialStar(ctx, o, r, pal, rng);
+    else drawRadialArms(ctx, o, r, pal, rng);
   }
 
   function drawBranch(ctx, o, r, pal, rng) {
@@ -1348,7 +1623,11 @@
     const sizeBoost = o.isMega ? 1.16 : 1;
     const sizeGene = clamp(g.size == null ? 0.5 : g.size, 0, 1);
     const topology = o.morphologyTopology || "single";
-    const fitScale = topology === "chain" ? 0.58 :
+    // `r` is a fixed radius, not a bounding-box fit: the card clips past ~1.19r
+    // vertically, so tall forms must be scaled down or their tails get cut off.
+    const kindFit = KIND_FIT[visualKind(o)];
+    const fitScale = kindFit != null ? kindFit :
+      topology === "chain" ? 0.58 :
       topology === "branch" ? 0.78 :
       topology === "radial" ? 0.86 :
       topology === "amoeba" ? 0.90 : 1;
@@ -1389,6 +1668,7 @@
     version: "generator-art-v1",
     drawOrganism,
     visualKind,
+    singleShapes: SINGLE_SHAPES,
     visualTypes: [
       { id:"all", label:"All forms" },
       { id:"single-cell", label:"single cell" },
@@ -1401,13 +1681,22 @@
       { id:"single-trefoil", label:"trefoil cell" },
       { id:"single-triangle", label:"triangle cell" },
       { id:"single-fan", label:"fan cell" },
+      { id:"single-star", label:"six-point star" },
+      { id:"single-shard", label:"elongated star shard" },
       { id:"single-crescent", label:"crescent" },
       { id:"single-needle", label:"needle cell" },
+      { id:"single-serpent", label:"segmented serpent" },
+      { id:"single-forktail", label:"domed fork-tail" },
+      { id:"single-sawback", label:"sawtooth dome" },
+      { id:"single-dart", label:"barbed dart" },
+      { id:"single-barb", label:"hooked harpoon" },
+      { id:"single-finned", label:"crescent-tailed fish" },
       { id:"single-trap", label:"toothed trap" },
       { id:"chain-beads", label:"bead chain" },
       { id:"chain-segment", label:"segmented long body" },
       { id:"ring", label:"cell ring" },
       { id:"radial-arms", label:"beaded arms" },
+      { id:"radial-star", label:"spiked radiolarian" },
       { id:"branch-vesicles", label:"branch vesicles" },
       { id:"cluster-bubbles", label:"bubble cluster" },
       { id:"cluster-rosette", label:"rosette cluster" },

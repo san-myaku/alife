@@ -265,6 +265,14 @@
     return M.rngFromKey('generator-type:'+type+':'+((sp.seed>>>0)||1));
   }
 
+  // visualKind() buckets formSeed over the plain-body shape list, so aim at each
+  // bucket's centre. Derived from the list itself: adding a form can't desync this.
+  var SINGLE_SEED = (function(){
+    var shapes = (A && A.singleShapes) || [], map = {};
+    for(var i=0;i<shapes.length;i++) map[shapes[i]] = (i + 0.5) / shapes.length;
+    return map;
+  })();
+
   function biasSpeciesForType(sp, type){
     var rr = typeRng(sp, type);
     if(type==='jelly'){
@@ -283,10 +291,11 @@
       sp.genes.sense = Math.min(sp.genes.sense, 0.48);
       sp.genes.diet = 0.36 + rr()*0.24;
       sp.genes.formSeed = Math.max(sp.genes.formSeed, 0.66 + rr()*0.22);
-    } else if(type==='radial-arms'){
+    } else if(type==='radial-arms' || type==='radial-star'){
       sp.genes.sense = Math.max(sp.genes.sense, 0.66);
       sp.genes.diet = 0.48 + rr()*0.22;
       sp.genes.metabolism = Math.min(sp.genes.metabolism, 0.60);
+      sp.genes.formSeed = type==='radial-star' ? 0.75 : 0.25; // formSeed splits the two radial bodies
     } else if(type==='mesh-lace'){
       sp.genes.metabolism = Math.max(sp.genes.metabolism, 0.76);
       sp.genes.sense = Math.max(sp.genes.sense, 0.58);
@@ -297,7 +306,7 @@
     } else if(type.indexOf('chain-')===0){
       sp.genes.speed = Math.max(sp.genes.speed, 0.54);
       sp.genes.sense = Math.max(sp.genes.sense, 0.42);
-    } else if({'single-teardrop':1,'single-pear':1,'single-gourd':1,'single-clover':1,'single-trefoil':1,'single-triangle':1,'single-fan':1,'single-crescent':1,'single-needle':1,'single-trap':1}[type]){
+    } else if(SINGLE_SEED[type] != null){
       // push toward "single" topology, then formSeed bucket picks the silhouette
       sp.genes.sense = Math.min(sp.genes.sense, 0.36);
       sp.genes.metabolism = Math.min(sp.genes.metabolism, 0.40);
@@ -305,10 +314,10 @@
       sp.genes.speed = Math.min(sp.genes.speed, 0.50);
       sp.flags.chl = false;
       sp.genes.size = 0.45 + rr()*0.20;
-      // trap reads as a carnivore (red); the rest keep their diet-driven colour
-      if(type==='single-trap') sp.genes.diet = 0.80 + rr()*0.14;
+      // the hunters read as carnivores (red); the rest keep their diet-driven colour
+      if({'single-trap':1,'single-dart':1,'single-barb':1}[type]) sp.genes.diet = 0.80 + rr()*0.14;
       else sp.genes.diet = Math.min(sp.genes.diet, 0.60);
-      sp.genes.formSeed = {'single-teardrop':0.13,'single-pear':0.22,'single-gourd':0.31,'single-clover':0.40,'single-trefoil':0.50,'single-triangle':0.59,'single-fan':0.68,'single-crescent':0.77,'single-needle':0.86,'single-trap':0.95}[type];
+      sp.genes.formSeed = SINGLE_SEED[type];
     }
     return sp;
   }
