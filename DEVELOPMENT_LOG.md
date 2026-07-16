@@ -895,3 +895,20 @@ Do not enable consensus by default yet. The mechanism clearly improves the targe
 
 ### Validation
 Inline script syntax OK. `organism_render.js` syntax OK. `scripts/*.cjs` syntax OK. `git diff --check` OK. Micro A-F OK. Artificial A/B OK. Seeds `41001/42001/43001` x baseline/consensus x 6,000 steps OK. Save/load round trip OK. Normal and developer boot OK. `index.html` and ignored `alife_symbolic_shapes_v1.html` SHA256 matched: `FC0B11CAFDD1B140BAB0CA6B6E7533E13DFA97FA33F14859A0EA23079B547C69`. FPS smoke in normal default mode: average FPS `17.17`, average update `7.67ms`, errors `0`. Frozen version was not modified.
+
+## 2026-07-16 段階式 A/B 実験基盤と pack attack base スクリーニング
+
+### 実験基盤
+`EXPERIMENT_PROTOCOL.md` と `scripts/experiment_harness.cjs` を追加し、baseline / candidate の paired run、軽量スクリーニングから本試験への自動昇格判定、主要指標差分、安全判定、JSON artifact、短い decision summary を共通化した。既存の `runSeededWorldDiagnostic()`、`runArtificialPackFormationExperiment()`、carnivore lineage / pack formation telemetry を再利用し、新しい大規模 telemetry は追加していない。
+
+### 実験条件
+実験名: `pack_attack_base`。baseline は `(0.78 + 0.095 * mates) * rareFactor('pack')`、candidate は `(1.00 + 0.095 * mates) * rareFactor('pack')`。変更因子は `packAttackBase` の診断 override のみで、通常デフォルトは `0.78` を維持。`targetConsensus=false`、`shareFraction=0`、target 共有・chaseForce・packBonus・helper 条件/半径・speciesKey・捕食 energy・birthEnergy・clutch・成熟年齢・代謝・移動速度・繁殖・餌供給・個体数上限・UI・save 形式は変更していない。
+
+### Stage 1 結果
+自然世界は seeds `41001/42001/43001`、`2,000` steps。人工 pack は group size `1/2/3/4`、`allSameTarget`、各 10 trials、最大 `260` steps。pooled pack 初回捕食率は `+0.25`、pack 成熟率は `+0.00`、pack attack 成功率は `+0.050446`。総終了個体数は `+0.013587`。page error、NaN/Infinity、energy 生成、nutrient 生成はいずれも `0`。Micro は既存 carnivore lineage / pack formation / pack sharing / pack consensus が OK。
+
+### 昇格判断
+Stage 1 は不合格。主要改善・3 seed 中 3 seed 非悪化・総終了個体数・安全条件は満たしたが、人工 2 体 pack all-same-target の成功率が baseline `0.90` から candidate `0.80` へ悪化し、非悪化条件を満たさなかった。本試験と完全検証は未実施。
+
+### 最終判断
+通常デフォルトは `0.78` のまま維持。candidate override は今後の診断用に残す。詳細結果は `artifacts/experiments/pack_attack_base.json`、判断 summary は `artifacts/experiments/pack_attack_base_decision.json`。

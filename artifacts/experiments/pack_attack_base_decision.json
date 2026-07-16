@@ -1,0 +1,29 @@
+{
+  "experiment": "pack_attack_base",
+  "stage": "screening",
+  "decision": "reject",
+  "primary": {
+    "firstPredationRateDelta": 0.25,
+    "maturityRateDelta": 0,
+    "packAttackSuccessRateDelta": 0.050446
+  },
+  "population": {
+    "endPopulationDeltaRate": 0.013587
+  },
+  "safety": {
+    "pageErrors": 0,
+    "nanOrInfinity": 0,
+    "energyCreationEvents": 0,
+    "nutrientCreationEvents": 0
+  },
+  "promotionChecks": {
+    "primaryImproved": true,
+    "seedNonWorseCount": 3,
+    "populationOk": true,
+    "artificial1NonWorse": true,
+    "artificial2NonWorse": false,
+    "safetyOk": true,
+    "microOk": true
+  },
+  "normalDefault": 0.78
+}

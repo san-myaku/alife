@@ -1427,6 +1427,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     shareFraction:0,
     detailedTelemetry:false,
     targetConsensus:false,
+    packAttackBase:0.78,
     variant:'baseline'
   };
   function telemetryPush(event){
@@ -2448,6 +2449,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   }
   function diagnosticPackShareFraction(){
     return clamp(Number(diagnosticPackSharing.shareFraction||0),0,0.95);
+  }
+  function diagnosticPackAttackBase(){
+    const value=Number(diagnosticPackSharing.packAttackBase);
+    return Number.isFinite(value) ? clamp(value,0.1,2.0) : 0.78;
   }
   function applyDiagnosticPackPreySharing(predator,prey,grossGain,nutrientGain,attackCost,sizeInfo){
     const helpers=(sizeInfo?.eligiblePackHelpers || eligiblePackHelpersFor(predator,prey,'attack')).filter(h=>h && !h.dead);
@@ -6018,6 +6023,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const packHuntSummary={
       variant:diagnosticPackSharing.variant || 'baseline',
       configuredShareFraction:diagnosticPackShareFraction(),
+      packAttackBase:diagnosticPackAttackBase(),
       events:packEvents.length,
       groupHuntEvents:packEvents.filter(e=>e.groupHunt).length,
       soloPackHuntEvents:packEvents.filter(e=>e.killerStrategy==='pack' && !e.groupHunt).length,
@@ -8380,7 +8386,7 @@ if(Z>0.08){
         let mates=0;
         forEachOrgNeighbors(prey.x,prey.y,76,(o2)=>{ if(o2!==this && o2.speciesKey===this.speciesKey && (o2.role==='pack' || o2.socialMode==='hunt-pack')) mates++; });
         attackProbabilityMateCount=mates;
-        basePackMultiplier=0.78 + 0.095*mates;
+        basePackMultiplier=diagnosticPackAttackBase() + 0.095*mates;
         rareFactorPack=rareFactor('pack');
         combinedPackMultiplier=basePackMultiplier * rareFactorPack;
         p*= combinedPackMultiplier;
@@ -14742,6 +14748,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     diagnosticPackSharing.shareFraction=clamp(Number(opts.shareFraction ?? 0),0,0.95);
     diagnosticPackSharing.detailedTelemetry=!!opts.packHuntTelemetry;
     diagnosticPackSharing.targetConsensus=!!opts.targetConsensus;
+    diagnosticPackSharing.packAttackBase=Number.isFinite(Number(opts.packAttackBase)) ? clamp(Number(opts.packAttackBase),0.1,2.0) : 0.78;
     diagnosticPackSharing.variant=String(opts.variant || (diagnosticPackSharing.shareFraction>0 ? `share${Math.round(diagnosticPackSharing.shareFraction*100)}` : 'baseline'));
     const saved=restoreAfterRun ? capture() : null;
     const oldRandom=Math.random;
@@ -14778,6 +14785,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         variant:diagnosticPackSharing.variant,
         shareFraction:diagnosticPackSharing.shareFraction,
         targetConsensus:diagnosticPackSharing.targetConsensus,
+        packAttackBase:diagnosticPackSharing.packAttackBase,
         normalPopulationMaintained:population.endPopulation>0,
         lineage,
         population,
@@ -15308,9 +15316,13 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const maxSteps=Math.max(20,Math.min(2000,Number(opts.maxSteps ?? 260)));
     const seedBase=Number(opts.seed ?? 91001);
     const targetConsensus=!!opts.targetConsensus;
+    const packAttackBase=Number.isFinite(Number(opts.packAttackBase)) ? clamp(Number(opts.packAttackBase),0.1,2.0) : 0.78;
     const groupSizes=Array.isArray(opts.groupSizes) && opts.groupSizes.length
       ? opts.groupSizes.map(Number).filter(n=>Number.isFinite(n) && n>=1 && n<=8)
       : [2,3,4];
+    const scenarioFilter=Array.isArray(opts.scenarios) && opts.scenarios.length
+      ? new Set(opts.scenarios.map(s=>String(s)))
+      : null;
     const saved=capture();
     const oldPackSharing={...diagnosticPackSharing};
     const oldRandom=Math.random;
@@ -15320,7 +15332,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       {key:'oneTarget',label:'one target'},
       {key:'allDifferentTargets',label:'all different targets'},
       {key:'allSameTarget',label:'all same target'}
-    ];
+    ].filter(s=>!scenarioFilter || scenarioFilter.has(s.key));
     const avg=arr=>{
       const a=arr.filter(v=>v!=null).map(Number).filter(Number.isFinite);
       return a.length ? a.reduce((s,x)=>s+x,0)/a.length : null;
@@ -15339,6 +15351,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       diagnosticPackSharing.shareFraction=0;
       diagnosticPackSharing.detailedTelemetry=true;
       diagnosticPackSharing.targetConsensus=targetConsensus;
+      diagnosticPackSharing.packAttackBase=packAttackBase;
       diagnosticPackSharing.variant=targetConsensus ? 'artificialPackConsensus' : 'artificialPackBaseline';
     };
     const makePack=(x,y,species='art-pack')=>{
@@ -15421,6 +15434,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       buildSpatialIndex();
       const summary=packFormationSummary({windowFrames:maxSteps+20});
       const attempts=summary.attacks;
+      const health=diagnosticNumberHealth({summary});
       const contact=summary.funnel.counts.reachedContact>0;
       const attack=attempts.total>0;
       const helperAttack=attempts.withEligibleHelper>0;
@@ -15438,7 +15452,12 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         success,
         firstPredationStep,
         energySpent:startEnergy-endEnergy,
-        deaths:pack.filter(o=>o.dead).length
+        deaths:pack.filter(o=>o.dead).length,
+        safety:{
+          nanOrInfinity:health.badCount,
+          energyCreationEvents:telemetry.packHuntConservation.energyCreationEvents,
+          nutrientCreationEvents:telemetry.packHuntConservation.nutrientCreationEvents
+        }
       };
     };
     try{
@@ -15460,11 +15479,16 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
             averageFirstPredationStep:avg(rows.map(r=>r.firstPredationStep)),
             averageEnergySpent:avg(rows.map(r=>r.energySpent)),
             deathRate:rate(rows.reduce((s,r)=>s+r.deaths,0),trials*groupSize),
+            safety:{
+              nanOrInfinity:rows.reduce((s,r)=>s+Number(r.safety?.nanOrInfinity||0),0),
+              energyCreationEvents:rows.reduce((s,r)=>s+Number(r.safety?.energyCreationEvents||0),0),
+              nutrientCreationEvents:rows.reduce((s,r)=>s+Number(r.safety?.nutrientCreationEvents||0),0)
+            },
             sampleRows:rows.slice(0,5)
           };
         }
       }
-      const run={seed:seedBase,trials,maxSteps,shareFraction:0,targetConsensus,results};
+      const run={seed:seedBase,trials,maxSteps,shareFraction:0,targetConsensus,packAttackBase,scenarios:scenarios.map(s=>s.key),results};
       telemetry.packFormation.artificialRuns.push(run);
       return run;
     } finally {
