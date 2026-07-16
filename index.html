@@ -334,7 +334,8 @@
   // Keep tuning and ecology ledgers in one place before deeper model/render/ui splits.
   const CONFIG = Object.freeze({
     features: Object.freeze({
-      evolvableLifeHistory: false
+      evolvableLifeHistory: false,
+      juvenileDevelopment: false
     }),
     population: Object.freeze({
       starter: 64,
@@ -360,6 +361,18 @@
         carnivoryBase: 12,
         carnivorySpeedWeight: 18,
         carnivorySenseWeight: 10
+      }),
+      juvenileDevelopment: Object.freeze({
+        birthBodyScale: 0.45,
+        birthSpeedScale: 0.62,
+        birthSenseRangeScale: 0.55,
+        birthMetabolicScale: 0.30,
+        birthSenseCostScale: 0.35,
+        birthMovementCostScale: 0.45,
+        birthDensityCostScale: 0.45,
+        birthBurstCostScale: 0.45,
+        birthViabilityResidualScale: 0.58,
+        visualStageCount: 4
       })
     }),
     rendering: Object.freeze({
@@ -442,10 +455,14 @@
     })
   });
   const featureFlags = {
-    evolvableLifeHistory: CONFIG.features.evolvableLifeHistory
+    evolvableLifeHistory: CONFIG.features.evolvableLifeHistory,
+    juvenileDevelopment: CONFIG.features.juvenileDevelopment
   };
   function evolvableLifeHistoryEnabled(){
     return !!featureFlags.evolvableLifeHistory;
+  }
+  function juvenileDevelopmentEnabled(){
+    return !!featureFlags.juvenileDevelopment;
   }
 
   // ===== UI State =====
@@ -1170,7 +1187,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     const potential=finiteGeneValue(g?.clutchPotential, defaultClutchPotentialGene(g));
     return Math.max(1,Math.min(10,1 + Math.floor(Math.pow(potential,2.2) * 9)));
   }
-  function minimumViableBirthEnergyForGenes(g){
+  function minimumViableBirthEnergyAdultEstimate(g){
     const speed=finiteGeneValue(g?.speed,0.5);
     const size=finiteGeneValue(g?.size,0.5);
     const metabolism=finiteGeneValue(g?.metabolism,0.5);
@@ -1185,6 +1202,17 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     const firstMealBudget=Math.pow(diet,cfg.carnivoryExponent)
       * (cfg.carnivoryBase + cfg.carnivorySpeedWeight * speed + cfg.carnivorySenseWeight * sense);
     return clamp(maintenanceBudget + firstMealBudget, cfg.floor, cfg.ceiling);
+  }
+  function minimumViableBirthEnergyForGenes(g){
+    const adultEstimate=minimumViableBirthEnergyAdultEstimate(g);
+    if(!juvenileDevelopmentEnabled()) return adultEstimate;
+    const cfg=CONFIG.lifeHistory.juvenileDevelopment;
+    const floor=CONFIG.lifeHistory.birthViability.floor;
+    return clamp(
+      floor + (adultEstimate - floor) * cfg.birthViabilityResidualScale,
+      floor,
+      CONFIG.lifeHistory.birthViability.ceiling
+    );
   }
   function storageStrategyClass(g){
     const capacity=lifeHistoryEnergyCapacity(g);
@@ -1347,6 +1375,90 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   }
   function canParticipateInReproduction(o){
     return !!o && !o.dead && hasReachedReproductiveMaturity(o);
+  }
+  function usesJuvenileDevelopment(o){
+    return (
+      juvenileDevelopmentEnabled()
+      && o
+      && o.lineageInitial === false
+    );
+  }
+  function juvenileDevelopmentProgress(o){
+    if(!usesJuvenileDevelopment(o)) return 1;
+    const maturityAge=Math.max(1,reproductiveMaturityAgeFor(o));
+    return clamp(Number(o.age || 0) / maturityAge,0,1);
+  }
+  function smoothDevelopmentProgress(o){
+    const p=juvenileDevelopmentProgress(o);
+    return p * p * (3 - 2 * p);
+  }
+  function developmentMultipliersFor(o){
+    if(!usesJuvenileDevelopment(o)){
+      return {
+        progress:1,
+        body:1,
+        speed:1,
+        senseRange:1,
+        metabolism:1,
+        senseCost:1,
+        movementCost:1,
+        densityCost:1,
+        burstCost:1
+      };
+    }
+    const cfg=CONFIG.lifeHistory.juvenileDevelopment;
+    const p=smoothDevelopmentProgress(o);
+    return {
+      progress:p,
+      body:lerp(cfg.birthBodyScale,1,p),
+      speed:lerp(cfg.birthSpeedScale,1,p),
+      senseRange:lerp(cfg.birthSenseRangeScale,1,p),
+      metabolism:lerp(cfg.birthMetabolicScale,1,p),
+      senseCost:lerp(cfg.birthSenseCostScale,1,p),
+      movementCost:lerp(cfg.birthMovementCostScale,1,p),
+      densityCost:lerp(cfg.birthDensityCostScale,1,p),
+      burstCost:lerp(cfg.birthBurstCostScale,1,p)
+    };
+  }
+  function juvenileVisualStage(o){
+    if(!usesJuvenileDevelopment(o)) return 3;
+    const count=Math.max(1,Math.round(CONFIG.lifeHistory.juvenileDevelopment.visualStageCount || 4));
+    return clamp(Math.floor(juvenileDevelopmentProgress(o) * count),0,count-1);
+  }
+  function juvenileVisualCachePart(o){
+    if(!usesJuvenileDevelopment(o)) return '';
+    if(juvenileDevelopmentProgress(o) >= 1) return '';
+    return `j${juvenileVisualStage(o)}`;
+  }
+  function applyDevelopmentPhenotype(o){
+    const adult=o?.adultPhenotype;
+    if(!o || !adult) return;
+    if(!juvenileDevelopmentEnabled()) return;
+    const m=developmentMultipliersFor(o);
+    const stage=juvenileVisualStage(o);
+    const cachePart=juvenileVisualCachePart(o);
+    const previousCachePart=o.developmentVisualCachePart;
+    o.developmentProgress=m.progress;
+    o.developmentBodyScale=m.body;
+    o.developmentSpeedScale=m.speed;
+    o.developmentMaxSpeedScale=m.speed;
+    o.developmentMetabolicScale=m.metabolism;
+    o.developmentSenseCostScale=m.senseCost;
+    o.developmentMovementCostScale=m.movementCost;
+    o.developmentDensityCostScale=m.densityCost;
+    o.developmentBurstCostScale=m.burstCost;
+    o.developmentSenseRangeScale=m.senseRange;
+    o.developmentVisualStage=stage;
+    o.developmentVisualCachePart=cachePart;
+    o.size=adult.size * m.body;
+    o.maxSpeed=adult.maxSpeed * m.speed;
+    o.baseMetabolic=adult.baseMetabolic * m.metabolism;
+    o.senseR=adult.senseR * m.senseRange;
+    o.senseCost=adult.senseCost * m.senseCost;
+    o.personalSpaceR=adult.personalSpaceR * m.body;
+    if(previousCachePart!==cachePart && (previousCachePart!==undefined || cachePart)){
+      o._symbol=null;
+    }
   }
   function effectiveReproThresholdFor(o){
     const base=Number(o?.reproThreshold || 0);
@@ -4303,6 +4415,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     rec.deathStoreO=clamp01(o.storeO||0);
     rec.deathStoreD=clamp01(o.storeD||0);
     rec.deathMem=clamp01(o.mem ?? 1);
+    if(juvenileDevelopmentEnabled()){
+      rec.developmentProgressAtDeath=juvenileDevelopmentProgress(o);
+      rec.developmentStageAtDeath=juvenileVisualStage(o);
+      rec.diedBeforeMaturity=!hasReachedReproductiveMaturity(o);
+    }
     rec.currentDietClass=telemetryDiet(o);
     rec.currentExactDiet=telemetryExactDiet(o);
     rec.dominantLifeStageFailure=telemetryDominantLifeStageFailure(rec);
@@ -4320,6 +4437,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       energy:Number(o.energy||0),
       energyRatio:ratio,
       maturityRatio:rec.deathMaturityRatio,
+      ...(juvenileDevelopmentEnabled() ? {
+        developmentProgressAtDeath:rec.developmentProgressAtDeath,
+        developmentStageAtDeath:rec.developmentStageAtDeath,
+        diedBeforeMaturity:rec.diedBeforeMaturity
+      } : {}),
       storeN:clamp01(o.storeN||0),
       storeD:clamp01(o.storeD||0),
       storeO:clamp01(o.storeO||0),
@@ -4430,6 +4552,20 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const projectedChildGenes=meta?.projectedChildGenes || meta?.plan?.projectedChildGenes || null;
     const minimumViableBirthEnergy=Number.isFinite(Number(meta?.minimumViableBirthEnergy)) ? Number(meta.minimumViableBirthEnergy) : null;
     const acceptedChildEnergyEach=Number.isFinite(Number(meta?.acceptedChildEnergyEach)) ? Number(meta.acceptedChildEnergyEach) : childEnergyEach;
+    const juvenileBirthGenes=projectedChildGenes || child.genes;
+    const juvenileMultipliers=developmentMultipliersFor(child);
+    const juvenileBirthFields=juvenileDevelopmentEnabled() ? {
+      juvenileDevelopmentEnabled:true,
+      birthBodyScale:juvenileMultipliers.body,
+      birthMetabolicScale:juvenileMultipliers.metabolism,
+      birthSenseCostScale:juvenileMultipliers.senseCost,
+      birthMovementCostScale:juvenileMultipliers.movementCost,
+      birthMaxSpeedScale:juvenileMultipliers.speed,
+      birthSenseRangeScale:juvenileMultipliers.senseRange,
+      maturityAge:reproductiveMaturityAgeFor(child),
+      minimumViableBirthEnergyAdultEstimate:minimumViableBirthEnergyAdultEstimate(juvenileBirthGenes),
+      minimumViableBirthEnergyAdjusted:minimumViableBirthEnergyForGenes(juvenileBirthGenes)
+    } : null;
     const lifeHistoryBirthFields=evolvableLifeHistoryEnabled() ? {
       parentClutchPotential,
       parentStorageClass:parent ? storageStrategyClass(parent.genes) : null,
@@ -4480,6 +4616,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       parentParentalInvestment,
       parentFecundity,
       ...(lifeHistoryBirthFields || {}),
+      ...(juvenileBirthFields || {}),
       parentSpeciesKey,
       mateRole,
       mateSocialMode,
@@ -4525,6 +4662,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       parentParentalInvestment,
       parentFecundity,
       ...(lifeHistoryBirthFields || {}),
+      ...(juvenileBirthFields || {}),
       parentSpeciesKey,
       mateRole,
       mateSocialMode,
@@ -4564,6 +4702,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(mate) telemetryRecordCarnivoreParentChildBirth(mate,child,rec);
     const birthEvent={kind:'birth', id:child.id, diet:rec.diet, birthDietClass:childDiet, birthExactDiet:childPostMutationDiet, currentDietClass:childDiet, currentExactDiet:childPostMutationDiet, birthStrategyClass:child.birthStrategyClass, currentStrategyClass:child.currentStrategyClass, birthRole:rec.birthRole, birthSocialMode:rec.birthSocialMode, speciesKey:child.speciesKey, parentId:rec.parentId, mateParentId, parentDiet, parentBirthDiet, parentExactDiet, parentBirthExactDiet, parentRole, parentSocialMode, parentRoleSocialGroup, parentSpeciesKey, mateRole, mateSocialMode, mateRoleSocialGroup, mateParentSpeciesKey, parentCarnivore:rec.parentCarnivore, birthEnergy:rec.birthEnergy, childPreMutationDiet, childPostMutationDiet, childPreMutationDietType, crossedDietClass:parentDiet!==childDiet, generationDepth, reproductionMode, clutch, index, clutchIndex:index};
     if(lifeHistoryBirthFields) Object.assign(birthEvent,lifeHistoryBirthFields);
+    if(juvenileBirthFields) Object.assign(birthEvent,juvenileBirthFields);
     telemetryPush(birthEvent);
     telemetryPruneBirths();
   }
@@ -4604,9 +4743,18 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const targetValid=!!(target && predationCandidateClassification(o,target,'target').valid);
     const ambushStats=telemetryRecentAmbushHoldStats(o,120);
     const birth=telemetry.births.get(o.id);
+    const includeJuvenileDeathFields=juvenileDevelopmentEnabled();
+    const deathDevelopmentProgress=includeJuvenileDeathFields ? juvenileDevelopmentProgress(o) : null;
+    const deathDevelopmentStage=includeJuvenileDeathFields ? juvenileVisualStage(o) : null;
+    const diedBeforeMaturity=includeJuvenileDeathFields ? !hasReachedReproductiveMaturity(o) : null;
     if(birth && birth.deathFrame==null){
       birth.deathFrame=frame;
       birth.deathCause=causeKey;
+      if(includeJuvenileDeathFields){
+        birth.developmentProgressAtDeath=deathDevelopmentProgress;
+        birth.developmentStageAtDeath=deathDevelopmentStage;
+        birth.diedBeforeMaturity=diedBeforeMaturity;
+      }
     }
     if(telemetry.activeChases.has(o.id)){
       telemetryEndChaseEpisode(o,causeKey==='starvation'?'energyDepleted':'predatorDied');
@@ -4630,6 +4778,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       role:o.role || 'other',
       socialMode:o.socialMode || 'solitary',
       roleSocialGroup:packRoleSocialGroupKey(o.role,o.socialMode || 'solitary'),
+      ...(includeJuvenileDeathFields ? {
+        developmentProgressAtDeath:deathDevelopmentProgress,
+        developmentStageAtDeath:deathDevelopmentStage,
+        diedBeforeMaturity
+      } : {}),
       diedWithValidTarget:targetValid,
       preDeathAmbushHold120:ambushStats.holdSteps,
       preDeathAmbushHoldWithValidTarget120:ambushStats.validTargetSteps,
@@ -7050,12 +7203,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(sym._spriteSignature) return sym._spriteSignature;
     const nodes = sym.nodes || [];
     const links = sym.extraLinks || [];
-    let s = `${o.speciesKey||speciesKey(o.genes)}:${Math.round((o.genes.formSeed||0)*1009)}:${sym.bodyPlan||o.morphologyTopology||'single'}:${nodes.length}:${links.length}`;
+    const baseKey=o.speciesKey||speciesKey(o.genes);
+    const developmentPart=juvenileVisualCachePart(o);
+    const spriteSpeciesKey=developmentPart ? `${baseKey}:${developmentPart}` : baseKey;
+    let s = `${spriteSpeciesKey}:${Math.round((o.genes.formSeed||0)*1009)}:${sym.bodyPlan||o.morphologyTopology||'single'}:${nodes.length}:${links.length}`;
     for(const n of nodes){
       s += `|${Math.round(n.x*2)},${Math.round(n.y*2)},${Math.round(n.r*2)},${n.shape},${n.parent},${n.kind||''}`;
     }
     for(const l of links) s += `>${l.a},${l.b},${l.kind||''}`;
-    sym._spriteSignature = `${o.speciesKey||speciesKey(o.genes)}:${Math.round((o.genes.formSeed||0)*1009)}:${Math.round(hash01(s)*0xffffffff).toString(36)}`;
+    sym._spriteSignature = `${spriteSpeciesKey}:${Math.round((o.genes.formSeed||0)*1009)}:${Math.round(hash01(s)*0xffffffff).toString(36)}`;
     return sym._spriteSignature;
   }
   function symbolSpriteFlags(o){
@@ -7763,7 +7919,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this.generationDepth=0;
       this.birthExactDiet=Number(this.genes.diet ?? 0.5);
       this.birthDietClass=dietTypeFromCarn(this.birthExactDiet);
-      this.recalcPhenotype(); this.updateColor();
+      this.recalcPhenotype(); applyDevelopmentPhenotype(this); this.updateColor();
       this.birthStrategyClass=carnivoreStrategyClass(this);
       this.currentStrategyClass=this.birthStrategyClass;
       this.aff = { aN: clamp(0.3 + 0.7*(1-this.genes.diet), -1, 1), aC: clamp(-0.2 - 0.8*this.genes.speed, -1, 1), aT: clamp(-0.3 - 0.5*this.genes.sense, -1, 1), aZ: (function(g){ let a=-0.7; if(g.diet>0.6) a+=0.4*(g.diet-0.6); if(g.speed<0.5) a+=0.2*(0.5-g.speed); return clamp(a,-1,1); })(this.genes) };;
@@ -7847,6 +8003,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       }
 
       this.prepareSymbolDetails();
+      this.adultPhenotype = {
+        size:this.size,
+        maxSpeed:this.maxSpeed,
+        baseMetabolic:this.baseMetabolic,
+        senseR:this.senseR,
+        senseCost:this.senseCost,
+        personalSpaceR:this.personalSpaceR
+      };
     }
     prepareSymbolDetails(){
       const __r = OrganismRender.buildSymbol(this, {SYMBOL_SHAPES, clamp, formFromGenes, rngFromKey, speciesKey, speciesPalette, topologyFromGenes});
@@ -8180,6 +8344,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
 
     step(){
       if(this.dead) return;
+      applyDevelopmentPhenotype(this);
       if(duelExperimentActive){
         this._kinematicsStep={
           startX:this.x,
@@ -8417,7 +8582,7 @@ if(Z>0.08){
       const burstBoost=predatorBursting ? CONFIG.ecology.predatorBurst.speedMultiplier : ((isAmbusherPredator(this) && this.burstTimer>0)?1.65:1.0);
       let predatorBurstEnergyCost=0;
       if(predatorBursting){
-        predatorBurstEnergyCost=CONFIG.ecology.predatorBurst.energyCost*(1+this.genes.speed);
+        predatorBurstEnergyCost=CONFIG.ecology.predatorBurst.energyCost*(1+this.genes.speed)*(this.developmentBurstCostScale ?? 1);
         const burstEnergyBefore=this.energy;
         this.energy=Math.max(0,this.energy-predatorBurstEnergyCost);
         microRecordEnergyFlow(this,'chaseRelatedCost',Math.max(0,burstEnergyBefore-this.energy),'loss');
@@ -8685,10 +8850,10 @@ if(Z>0.08){
       this.tryPredate();
 
       // エネルギー消費
-      const moveCost=0.03*(this.vx*this.vx + this.vy*this.vy);
+      const moveCost=0.03*(this.vx*this.vx + this.vy*this.vy)*(this.developmentMovementCostScale ?? 1);
       let neigh=0; forEachOrgNeighbors(this.x,this.y,35,(o)=>{ if(o!==this) neigh++; });
       const crowdEase = (this.socialMode==='cluster'||this.socialMode==='school'||this.socialMode==='hunt-pack'||this.socialMode==='defense-school') ? (1 - 0.42*(this.sociality||0)) : 1;
-      const densityCost=0.0042*neigh*clamp(crowdEase,0.50,1);
+      const densityCost=0.0042*neigh*clamp(crowdEase,0.50,1)*(this.developmentDensityCostScale ?? 1);
 
       // chloroplast trait: in daytime, calm herbivores can suppress basal metabolism (survival only)
       let baseMeta = (this.baseMetabolic*metaMul*worldEvent.metaMul);
@@ -16876,6 +17041,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       o.genes=geneSet(o.genes);
       o.speciesKey=speciesKey(o.genes);
       o.recalcPhenotype();
+      applyDevelopmentPhenotype(o);
       if(Number(o.energy||0)>organismMaxEnergy(o)) o.energy=organismMaxEnergy(o);
       speciesCount.set(o.speciesKey,(speciesCount.get(o.speciesKey)||0)+1);
       registerSpeciesStats(o);
@@ -16889,6 +17055,199 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       organisms:organisms.length,
       averageMaxEnergy:organisms.length ? organisms.reduce((s,o)=>s+organismMaxEnergy(o),0)/organisms.length : null
     };
+  }
+  function setJuvenileDevelopment(enabled){
+    featureFlags.juvenileDevelopment = !!enabled;
+    recalcLifeHistoryPhenotypes();
+    return {
+      enabled:juvenileDevelopmentEnabled(),
+      organisms:organisms.length
+    };
+  }
+  function juvenileDevelopmentMetricBlank(){
+    return {
+      births:0,
+      currentJuveniles:0,
+      matured:0,
+      maturityRate:null,
+      averageBirthEnergy:null,
+      averageMinimumViableBirthEnergy:null,
+      averageBirthEnergyMargin:null,
+      survived60:0,
+      survived120:0,
+      survived180:0,
+      maturityReached:0,
+      averageMaturityTime:null,
+      averageBodyScale:null,
+      averageMetabolicScale:null,
+      averageSenseCostScale:null,
+      averageMovementCostScale:null,
+      averageMaxSpeedScale:null,
+      averageSenseRangeScale:null,
+      juvenileStarvationDeaths:0,
+      juvenilePredationDeaths:0,
+      juvenilePredationSuccesses:0,
+      juvenileFeedingSuccesses:0,
+      maxGenerationDepth:0,
+      endingPopulation:0,
+      _sums:{birthEnergy:0,minimumBirthEnergy:0,birthEnergyMargin:0,maturityTime:0,bodyScale:0,metabolicScale:0,senseCostScale:0,movementCostScale:0,maxSpeedScale:0,senseRangeScale:0},
+      _samples:{birthEnergy:0,minimumBirthEnergy:0,birthEnergyMargin:0,maturityTime:0,scale:0}
+    };
+  }
+  function juvenileBlankByDiet(){
+    return Object.fromEntries(ROLE_SOCIAL_DIETS.map(k=>[k,juvenileDevelopmentMetricBlank()]));
+  }
+  function juvenileBlankByRole(){
+    return Object.fromEntries(ROLE_SOCIAL_ROLES.map(k=>[k,juvenileDevelopmentMetricBlank()]));
+  }
+  function juvenileBlankBySocialMode(){
+    return Object.fromEntries(ROLE_SOCIAL_MODES.map(k=>[k,juvenileDevelopmentMetricBlank()]));
+  }
+  function juvenileBlankRoleSocialFocus(){
+    return {
+      pursuit_hunt_pack:juvenileDevelopmentMetricBlank(),
+      pursuit_solitary:juvenileDevelopmentMetricBlank(),
+      ambusher:juvenileDevelopmentMetricBlank(),
+      scav:juvenileDevelopmentMetricBlank(),
+      filter:juvenileDevelopmentMetricBlank()
+    };
+  }
+  function juvenileRoleSocialFocusKey(role,socialMode){
+    const r=roleSocialRoleKey(role);
+    const s=roleSocialModeKey(socialMode);
+    if(r==='pursuit' && s==='hunt-pack') return 'pursuit_hunt_pack';
+    if(r==='pursuit' && s!=='hunt-pack') return 'pursuit_solitary';
+    if(r==='ambusher') return 'ambusher';
+    if(r==='scav') return 'scav';
+    if(r==='filter') return 'filter';
+    return null;
+  }
+  function juvenileDevelopmentTargets(summary,diet,role,socialMode,classKey){
+    const d=roleSocialDietName(diet);
+    const r=roleSocialRoleKey(role);
+    const s=roleSocialModeKey(socialMode);
+    const c=summary.byLifeHistoryClass[classKey] ? classKey : 'unknown';
+    const f=juvenileRoleSocialFocusKey(r,s);
+    const targets=[summary.totals,summary.byDiet[d],summary.byRole[r],summary.bySocialMode[s],summary.byLifeHistoryClass[c]].filter(Boolean);
+    if(f && summary.byRoleSocialFocus[f]) targets.push(summary.byRoleSocialFocus[f]);
+    return targets;
+  }
+  function juvenileMetricAddNumber(metric,key,value,sampleKey=key){
+    const n=Number(value);
+    if(!Number.isFinite(n)) return;
+    metric._sums[key]+=n;
+    metric._samples[sampleKey]++;
+  }
+  function juvenileDevelopmentAddBirth(metric,birth){
+    metric.births++;
+    if(birth?.survived60!=null) metric.survived60++;
+    if(birth?.survived120!=null) metric.survived120++;
+    if(birth?.survived180!=null) metric.survived180++;
+    if(birth?.reachedMaturity!=null){
+      metric.matured++;
+      metric.maturityReached++;
+      juvenileMetricAddNumber(metric,'maturityTime',Number(birth.reachedMaturity)-Number(birth.frame||0),'maturityTime');
+    }
+    const diedBeforeMaturity=birth?.diedBeforeMaturity===true || (birth?.deathFrame!=null && birth?.reachedMaturity==null);
+    if(diedBeforeMaturity && birth?.deathCause==='starvation') metric.juvenileStarvationDeaths++;
+    if(diedBeforeMaturity && birth?.deathCause==='predation') metric.juvenilePredationDeaths++;
+    const firstPredation=Number(birth?.firstPredationFrame);
+    const maturityFrame=Number(birth?.reachedMaturity);
+    if(Number.isFinite(firstPredation) && (!Number.isFinite(maturityFrame) || firstPredation<=maturityFrame)){
+      metric.juvenilePredationSuccesses++;
+      metric.juvenileFeedingSuccesses++;
+    }
+    metric.maxGenerationDepth=Math.max(metric.maxGenerationDepth,Number(birth?.generationDepth||0));
+    juvenileMetricAddNumber(metric,'birthEnergy',birth?.birthEnergy,'birthEnergy');
+    const minEnergy=Number.isFinite(Number(birth?.minimumViableBirthEnergyAdjusted))
+      ? Number(birth.minimumViableBirthEnergyAdjusted)
+      : Number(birth?.minimumViableBirthEnergy);
+    juvenileMetricAddNumber(metric,'minimumBirthEnergy',minEnergy,'minimumBirthEnergy');
+    const margin=Number.isFinite(Number(birth?.childEnergyMargin))
+      ? Number(birth.childEnergyMargin)
+      : (Number.isFinite(Number(birth?.birthEnergy)) && Number.isFinite(minEnergy) ? Number(birth.birthEnergy)-minEnergy : null);
+    juvenileMetricAddNumber(metric,'birthEnergyMargin',margin,'birthEnergyMargin');
+  }
+  function juvenileDevelopmentAddLiving(metric,o){
+    metric.endingPopulation++;
+    metric.maxGenerationDepth=Math.max(metric.maxGenerationDepth,telemetryLineageDepth(o,telemetry.births.get(o?.id) || null));
+    if(usesJuvenileDevelopment(o) && !hasReachedReproductiveMaturity(o)){
+      metric.currentJuveniles++;
+      const m=developmentMultipliersFor(o);
+      metric._sums.bodyScale+=m.body;
+      metric._sums.metabolicScale+=m.metabolism;
+      metric._sums.senseCostScale+=m.senseCost;
+      metric._sums.movementCostScale+=m.movementCost;
+      metric._sums.maxSpeedScale+=m.speed;
+      metric._sums.senseRangeScale+=m.senseRange;
+      metric._samples.scale++;
+    }
+  }
+  function juvenileDevelopmentFinalizeMetric(metric){
+    const s=metric._samples;
+    metric.maturityRate=metric.births ? metric.matured/metric.births : null;
+    metric.averageBirthEnergy=s.birthEnergy ? metric._sums.birthEnergy/s.birthEnergy : null;
+    metric.averageMinimumViableBirthEnergy=s.minimumBirthEnergy ? metric._sums.minimumBirthEnergy/s.minimumBirthEnergy : null;
+    metric.averageBirthEnergyMargin=s.birthEnergyMargin ? metric._sums.birthEnergyMargin/s.birthEnergyMargin : null;
+    metric.averageMaturityTime=s.maturityTime ? metric._sums.maturityTime/s.maturityTime : null;
+    metric.averageBodyScale=s.scale ? metric._sums.bodyScale/s.scale : null;
+    metric.averageMetabolicScale=s.scale ? metric._sums.metabolicScale/s.scale : null;
+    metric.averageSenseCostScale=s.scale ? metric._sums.senseCostScale/s.scale : null;
+    metric.averageMovementCostScale=s.scale ? metric._sums.movementCostScale/s.scale : null;
+    metric.averageMaxSpeedScale=s.scale ? metric._sums.maxSpeedScale/s.scale : null;
+    metric.averageSenseRangeScale=s.scale ? metric._sums.senseRangeScale/s.scale : null;
+    delete metric._sums;
+    delete metric._samples;
+    return metric;
+  }
+  function juvenileDevelopmentFinalizeTree(node){
+    if(!node || typeof node!=='object') return;
+    if(Object.prototype.hasOwnProperty.call(node,'_sums')){
+      juvenileDevelopmentFinalizeMetric(node);
+      return;
+    }
+    for(const value of Object.values(node)) juvenileDevelopmentFinalizeTree(value);
+  }
+  function juvenileDevelopmentSummary(){
+    telemetryMarkNewbornSurvival();
+    telemetryMarkCarnivoreMilestones();
+    const summary={
+      frame,
+      enabled:juvenileDevelopmentEnabled(),
+      config:CONFIG.lifeHistory.juvenileDevelopment,
+      totals:juvenileDevelopmentMetricBlank(),
+      byDiet:juvenileBlankByDiet(),
+      byRole:juvenileBlankByRole(),
+      bySocialMode:juvenileBlankBySocialMode(),
+      byLifeHistoryClass:lifeHistoryClassMetricMap(juvenileDevelopmentMetricBlank),
+      byRoleSocialFocus:juvenileBlankRoleSocialFocus()
+    };
+    for(const birth of telemetry.births.values()){
+      const classKey=lifeHistoryClassKeyFromRecord(birth);
+      for(const metric of juvenileDevelopmentTargets(summary,birth?.birthExactDiet ?? birth?.diet,birth?.birthRole,birth?.birthSocialMode,classKey)){
+        juvenileDevelopmentAddBirth(metric,birth);
+      }
+    }
+    for(const o of organisms){
+      if(!o || o.dead) continue;
+      const birth=telemetry.births.get(o.id) || null;
+      const classKey=lifeHistorySpeciesSuffix(o.genes);
+      for(const metric of juvenileDevelopmentTargets(summary,o?.genes?.diet ?? birth?.diet,o?.role,o?.socialMode,classKey)){
+        juvenileDevelopmentAddLiving(metric,o);
+      }
+    }
+    juvenileDevelopmentFinalizeTree(summary);
+    return summary;
+  }
+  function developmentMultipliersDebug(input){
+    if(input && input.genes) return developmentMultipliersFor(input);
+    const genes=geneSet(input || {});
+    return developmentMultipliersFor({
+      genes,
+      lineageInitial:false,
+      age:0,
+      maturityAge:reproductiveMaturityAgeFromGenes(genes)
+    });
   }
   function stableJson(value){
     const seen=new Set();
@@ -16907,6 +17266,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     return {
       counts:{organisms:organisms.length,food:food.length,corpses:corpses.length,plankton:plankton.length},
       lifeHistory:lifeHistorySummary(),
+      juvenile:juvenileDevelopmentEnabled() ? juvenileDevelopmentSummary() : null,
       safety:{
         nanOrInfinity:diagnosticNumberHealth().badCount,
         energyCreationEvents:telemetry.packHuntConservation.energyCreationEvents,
@@ -16917,11 +17277,14 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   function runLifeHistoryReproducibilityMicroTest(options={}){
     const saved=capture();
     const oldEnabled=evolvableLifeHistoryEnabled();
+    const oldJuvenile=juvenileDevelopmentEnabled();
     const seed=Number(options.seed ?? 41001);
     const steps=Math.max(1,Math.min(2000,Number(options.steps ?? 180)));
     const enabled=options.enabled==null ? oldEnabled : !!options.enabled;
+    const juvenile=options.juvenileDevelopment==null ? oldJuvenile : !!options.juvenileDevelopment;
     try{
       featureFlags.evolvableLifeHistory=enabled;
+      featureFlags.juvenileDevelopment=juvenile;
       runSeededWorldDiagnostic({seed,steps,restoreAfterRun:false,targetConsensus:false,shareFraction:0,packAttackBase:0.78,variant:'lifeHistoryReproA'});
       const first=lifeHistoryReproducibilitySnapshot();
       const firstJson=stableJson(first);
@@ -16933,20 +17296,24 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         seed,
         steps,
         enabled,
+        juvenileDevelopment:juvenile,
         first,
         second
       };
     } finally {
       featureFlags.evolvableLifeHistory=oldEnabled;
+      featureFlags.juvenileDevelopment=oldJuvenile;
       restore(saved);
     }
   }
   function runLifeHistoryMicroTests(){
     const saved=capture();
     const oldEnabled=evolvableLifeHistoryEnabled();
+    const oldJuvenile=juvenileDevelopmentEnabled();
     const results=[];
     const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
     try{
+      featureFlags.juvenileDevelopment=false;
       featureFlags.evolvableLifeHistory=false;
       const offGenes=geneSet({speed:0.72,size:0.44,metabolism:0.52,fecundity:0.82,sense:0.68,diet:0.72,formSeed:0.31,energyCapacity:0.40,parentalInvestment:0.50});
       const parent={energy:120,genes:offGenes,speciesKey:speciesKey(offGenes),maxEnergy:maxEnergyForGenes(offGenes),dead:false,age:999,reproThreshold:90};
@@ -17024,6 +17391,122 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       add('Micro F same seed summary reproducibility', repro.ok, {seed:repro.seed,steps:repro.steps,enabled:repro.enabled});
     } finally {
       featureFlags.evolvableLifeHistory=oldEnabled;
+      featureFlags.juvenileDevelopment=oldJuvenile;
+      restore(saved);
+    }
+    return {ok:results.every(r=>r.ok),results};
+  }
+  function runJuvenileDevelopmentMicroTests(){
+    const saved=capture();
+    const oldLife=evolvableLifeHistoryEnabled();
+    const oldJuvenile=juvenileDevelopmentEnabled();
+    const results=[];
+    const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
+    const close=(a,b,eps=1e-9)=>Math.abs(Number(a)-Number(b))<=eps;
+    const clear=()=>{
+      running=false;
+      frame=0;
+      generation=1;
+      organisms.length=0; newborn.length=0; food.length=0; corpses.length=0; plankton.length=0; patches.length=0; calls.length=0;
+      sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0;
+      speciesCount.clear();
+      resetTelemetry();
+    };
+    const genes=()=>normalizeLifeHistoryGenes({speed:0.82,size:0.62,metabolism:0.58,fecundity:0.55,sense:0.78,diet:0.82,formSeed:0.37,energyCapacity:0.4,clutchPotential:0.55,parentalInvestment:0.5},true);
+    const values=(o)=>({
+      size:o.size,
+      maxSpeed:o.maxSpeed,
+      baseMetabolic:o.baseMetabolic,
+      senseR:o.senseR,
+      senseCost:o.senseCost
+    });
+    try{
+      featureFlags.evolvableLifeHistory=true;
+      featureFlags.juvenileDevelopment=true;
+      clear();
+
+      const founder=new Organism(100,100,genes(),false);
+      add('Micro A founder compatibility',
+        founder.lineageInitial===true
+          && close(founder.developmentBodyScale,1)
+          && close(founder.developmentMetabolicScale,1)
+          && close(founder.developmentSenseCostScale,1)
+          && close(founder.developmentMovementCostScale,1),
+        {lineageInitial:founder.lineageInitial,body:founder.developmentBodyScale,metabolism:founder.developmentMetabolicScale,senseCost:founder.developmentSenseCostScale,movement:founder.developmentMovementCostScale}
+      );
+
+      const born=new Organism(110,100,genes(),true);
+      add('Micro B birth multipliers',
+        born.lineageInitial===false
+          && close(born.developmentBodyScale,0.45)
+          && close(born.developmentSpeedScale,0.62)
+          && close(born.developmentMetabolicScale,0.30)
+          && close(born.developmentSenseCostScale,0.35)
+          && close(born.developmentMovementCostScale,0.45),
+        {body:born.developmentBodyScale,speed:born.developmentSpeedScale,metabolism:born.developmentMetabolicScale,senseCost:born.developmentSenseCostScale,movement:born.developmentMovementCostScale}
+      );
+
+      const growth=new Organism(120,100,genes(),true);
+      const adult={...growth.adultPhenotype};
+      const maturity=Math.max(1,growth.maturityAge);
+      const samples=[];
+      for(const q of [0,0.25,0.50,0.75,1]){
+        growth.age=Math.round(maturity*q);
+        applyDevelopmentPhenotype(growth);
+        samples.push({q,...values(growth)});
+      }
+      const monotonic=['size','maxSpeed','baseMetabolic','senseR','senseCost'].every(k=>samples.every((row,i)=>i===0 || row[k]>=samples[i-1][k]-1e-9));
+      const mature=samples[samples.length-1];
+      add('Micro C monotonic growth',
+        monotonic
+          && close(mature.size,adult.size)
+          && close(mature.maxSpeed,adult.maxSpeed)
+          && close(mature.baseMetabolic,adult.baseMetabolic)
+          && close(mature.senseR,adult.senseR)
+          && close(mature.senseCost,adult.senseCost),
+        {samples,adult}
+      );
+
+      growth.age=Math.round(maturity*0.50);
+      applyDevelopmentPhenotype(growth);
+      const once=values(growth);
+      applyDevelopmentPhenotype(growth);
+      applyDevelopmentPhenotype(growth);
+      const thrice=values(growth);
+      add('Micro D repeated apply safety',
+        Object.keys(once).every(k=>close(once[k],thrice[k])),
+        {once,thrice}
+      );
+
+      const low={speed:0.1,size:0.35,metabolism:0.35,fecundity:0.5,sense:0.1,diet:0.1,formSeed:0.2};
+      const high={speed:1.0,size:0.70,metabolism:0.70,fecundity:0.5,sense:1.0,diet:1.0,formSeed:0.8};
+      featureFlags.juvenileDevelopment=false;
+      const off=minimumViableBirthEnergyForGenes(high);
+      const adultEstimate=minimumViableBirthEnergyAdultEstimate(high);
+      featureFlags.juvenileDevelopment=true;
+      const lowOn=minimumViableBirthEnergyForGenes(low);
+      const highOn=minimumViableBirthEnergyForGenes(high);
+      add('Micro E minimum birth energy adjustment',
+        close(off,adultEstimate)
+          && highOn<=adultEstimate+1e-9
+          && highOn>=CONFIG.lifeHistory.birthViability.floor
+          && highOn>lowOn,
+        {off,adultEstimate,lowOn,highOn,floor:CONFIG.lifeHistory.birthViability.floor}
+      );
+
+      const smoke=runSeededWorldDiagnostic({seed:41001,steps:120,restoreAfterRun:false,targetConsensus:false,shareFraction:0,packAttackBase:0.78,variant:'juvenileMicroConservation'});
+      add('Micro F juvenile conservation',
+        smoke?.conservation?.energyCreationEvents===0
+          && smoke?.conservation?.nutrientCreationEvents===0
+          && smoke?.health?.badCount===0,
+        {conservation:smoke?.conservation,health:smoke?.health}
+      );
+
+      const repro=runLifeHistoryReproducibilityMicroTest({seed:41001,steps:120,enabled:true,juvenileDevelopment:true});
+      add('Micro G juvenile reproducibility', repro.ok, {seed:repro.seed,steps:repro.steps,juvenileDevelopment:repro.juvenileDevelopment});
+    } finally {
+      featureFlags.evolvableLifeHistory=oldLife;
+      featureFlags.juvenileDevelopment=oldJuvenile;
       restore(saved);
     }
     return {ok:results.every(r=>r.ok),results};
@@ -17096,6 +17579,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     setEvolvableLifeHistory(enabled){
       return setEvolvableLifeHistory(enabled);
     },
+    setJuvenileDevelopment(enabled){
+      return setJuvenileDevelopment(enabled);
+    },
     lifeHistorySummary(){
       return lifeHistorySummary();
     },
@@ -17104,6 +17590,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     minimumViableBirthEnergyForGenes(genes){
       return minimumViableBirthEnergyForGenes(geneSet(genes || {}));
+    },
+    minimumViableBirthEnergyAdultEstimate(genes){
+      return minimumViableBirthEnergyAdultEstimate(geneSet(genes || {}));
+    },
+    developmentMultipliersFor(organismOrGenes){
+      return developmentMultipliersDebug(organismOrGenes || {});
+    },
+    juvenileDevelopmentSummary(){
+      return juvenileDevelopmentSummary();
     },
     lifeHistoryStrategyForGenes(genes){
       return lifeHistoryStrategyForGenes(geneSet(genes || {}));
@@ -17119,6 +17614,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     runLifeHistoryMicroTests(){
       return runLifeHistoryMicroTests();
+    },
+    runJuvenileDevelopmentMicroTests(){
+      return runJuvenileDevelopmentMicroTests();
     },
     roleSocialEcologySummary(){
       return roleSocialEcologySummary();
@@ -17438,7 +17936,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       patches: patches.map(p=>({type:p.type,x:p.x,y:p.y,r:p.r})),
       plankton: plankton.map(p=>({x:p.x,y:p.y,vx:p.vx,vy:p.vy,t:p.t,kind:p.kind,fade:p.fade})),
       membranes: membranes.map(m=>({x1:m.x1,y1:m.y1,x2:m.x2,y2:m.y2,type:m.type,t:m.t})),
-      organisms: organisms.map(o=>({id:o.id,x:o.x,y:o.y,vx:o.vx,vy:o.vy,energy:o.energy,age:o.age,birthFrame:o.birthFrame,protect:o.protect,storeN:o.storeN,storeO:o.storeO,storeD:o.storeD,mem:o.mem,attackCD:o.attackCD,fleeTimer:o.fleeTimer,chaseTimer:o.chaseTimer,preyTargetId:o.preyTargetId,preyTargetOutOfRangeSteps:o.preyTargetOutOfRangeSteps||0,predatorThreatId:o.predatorThreatId,grazingTimer:o.grazingTimer,genes:o.genes,role:normalizeRole(o.role),socialMode:o.socialMode,sociality:o.sociality,speciesKey:o.speciesKey,traits:o.traits||null,flags:o.flags||null,morphologyTopology:o.morphologyTopology||topologyFromGenes(o.genes),recentEvents:o.recentEvents||[],lastAction:o.lastAction||null,devInjected:!!o.devInjected,devInjectedLineage:!!o.devInjectedLineage,injectionBatchId:o.injectionBatchId||null,injectionStep:o.injectionStep??null,injectionGeneration:o.injectionGeneration??null,injectionAncestorId:o.injectionAncestorId??null,injectionParentId:o.injectionParentId??null})),
+      organisms: organisms.map(o=>({id:o.id,x:o.x,y:o.y,vx:o.vx,vy:o.vy,energy:o.energy,age:o.age,birthFrame:o.birthFrame,lineageInitial:o.lineageInitial,parentId:o.parentId??null,mateParentId:o.mateParentId??null,generationDepth:o.generationDepth??0,birthExactDiet:o.birthExactDiet??null,birthDietClass:o.birthDietClass??null,protect:o.protect,storeN:o.storeN,storeO:o.storeO,storeD:o.storeD,mem:o.mem,attackCD:o.attackCD,fleeTimer:o.fleeTimer,chaseTimer:o.chaseTimer,preyTargetId:o.preyTargetId,preyTargetOutOfRangeSteps:o.preyTargetOutOfRangeSteps||0,predatorThreatId:o.predatorThreatId,grazingTimer:o.grazingTimer,genes:o.genes,role:normalizeRole(o.role),socialMode:o.socialMode,sociality:o.sociality,speciesKey:o.speciesKey,traits:o.traits||null,flags:o.flags||null,morphologyTopology:o.morphologyTopology||topologyFromGenes(o.genes),recentEvents:o.recentEvents||[],lastAction:o.lastAction||null,devInjected:!!o.devInjected,devInjectedLineage:!!o.devInjectedLineage,injectionBatchId:o.injectionBatchId||null,injectionStep:o.injectionStep??null,injectionGeneration:o.injectionGeneration??null,injectionAncestorId:o.injectionAncestorId??null,injectionParentId:o.injectionParentId??null})),
       extinctRecords,
       speciesStats:Array.from(speciesStats.entries()),
       discoveredRareTraits:Array.from(discoveredRareTraits),
@@ -17486,6 +17984,12 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           maxRestoredId=Math.max(maxRestoredId,u.id);
         }
         u.vx=o.vx; u.vy=o.vy; u.energy=clamp(Number(o.energy||0),0,organismMaxEnergy(u)); u.age=o.age;
+        u.lineageInitial=typeof o.lineageInitial==='boolean' ? o.lineageInitial : true;
+        u.parentId=o.parentId ?? null;
+        u.mateParentId=o.mateParentId ?? null;
+        u.generationDepth=Number.isFinite(Number(o.generationDepth)) ? Number(o.generationDepth) : 0;
+        if(o.birthExactDiet!=null) u.birthExactDiet=Number(o.birthExactDiet);
+        if(o.birthDietClass!=null) u.birthDietClass=o.birthDietClass;
         u.role=normalizeRole(o.role ?? u.role);
         if(o.socialMode!=null) u.socialMode=o.socialMode;
         if(o.sociality!=null){
@@ -17521,6 +18025,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         u.morphologyTopology = o.morphologyTopology || topologyFromGenes(u.genes);
         u.recentEvents = Array.isArray(o.recentEvents) ? o.recentEvents.slice(-5) : [];
         u.lastAction = o.lastAction || u.lastAction || 'ロードされた';
+        u.recalcPhenotype();
+        applyDevelopmentPhenotype(u);
+        u.energy=clamp(Number(u.energy||0),0,organismMaxEnergy(u));
         recordRareTraitDiscovery(u);
         registerSpeciesStats(u);
 organisms.push(u);
