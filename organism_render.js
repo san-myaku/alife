@@ -327,7 +327,8 @@
         c.restore();
       }
 
-      const roleHue = ROLE_HUE[o.role] ?? sym.outlineHue;
+      const role = o.role==='pack' ? 'pursuit' : o.role;
+      const roleHue = ROLE_HUE[role] ?? sym.outlineHue;
       const outlineHue = ui.roleViz ? roleHue : sym.outlineHue;
       const energy = clamp(o.energy/160,0,1);
       const night = clamp01(dayNight.night ?? (dayNight.isNight ? 1 : 0));
@@ -335,7 +336,7 @@
       const motion = clamp(o.motionLevel||0,0,1.65);
       const predatorBursting=isPredatorBursting(this);
       const behavior = clamp(
-        motion + (o.fleeTimer>0?0.35:0) + (predatorBursting?0.34:((o.role==='ambusher' && o.burstTimer>0)?0.30:0)) + (o.mateSeekT>120?0.10:0),
+        motion + (o.fleeTimer>0?0.35:0) + (predatorBursting?0.34:((role==='ambusher' && o.burstTimer>0)?0.30:0)) + (o.mateSeekT>120?0.10:0),
         0, 1.9
       );
       const intent = clamp(0.18 + behavior, 0.16, 1.9);
@@ -385,7 +386,7 @@
         };
       }
 
-      const adaptationTags = adaptationProfilesFromGenes(o.genes, o.flags, topo, o.role);
+      const adaptationTags = adaptationProfilesFromGenes(o.genes, o.flags, topo, role);
       if(adaptationTags.length && !renderPerf.tiny){
         const form = o.form || formFromGenes(o.genes,o.speciesKey);
         const bodyR=Math.max(o.size*1.0,(sym.visualR||o.size)*0.48);

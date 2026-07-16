@@ -221,9 +221,10 @@
   function groupFor(sp, o){
     var flags = sp.flags || {};
     var special = o.isMega; // only genuine mega -> purple group; diet drives the rest
+    var role = o.role === 'pack' ? 'pursuit' : o.role;
     if(special) return GROUPS[3];
-    if((sp.genes.diet||0)>=0.66 || o.role==='ambusher' || o.role==='pack') return GROUPS[2];
-    if((sp.genes.diet||0)>0.33 || o.role==='scav') return GROUPS[1];
+    if((sp.genes.diet||0)>=0.66 || role==='ambusher' || role==='pursuit') return GROUPS[2];
+    if((sp.genes.diet||0)>0.33 || role==='scav') return GROUPS[1];
     return GROUPS[0];
   }
 

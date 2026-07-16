@@ -912,3 +912,37 @@ Stage 1 は不合格。主要改善・3 seed 中 3 seed 非悪化・総終了個
 
 ### 最終判断
 通常デフォルトは `0.78` のまま維持。candidate override は今後の診断用に残す。詳細結果は `artifacts/experiments/pack_attack_base.json`、判断 summary は `artifacts/experiments/pack_attack_base_decision.json`。
+## 2026-07-16 Pack role/socialMode 正規化
+
+### 目的
+`role === "pack"` が高速追跡型、`socialMode === "hunt-pack"` が実際の群れ狩りを表していた混線を整理した。生態パラメータの再調整や A/B は行わず、概念とコードの正規化だけを実施した。
+
+### 実装
+`role` は捕食スタイル、`socialMode` は社会行動として扱う。旧 `role: "pack"` は `normalizeRole()` で `pursuit` として互換復元する。実際の群れ狩り判定は `isPackHunter(o) => socialMode === "hunt-pack"` に一本化し、高速追跡型は `isPursuitPredator(o)`、待ち伏せ型は `isAmbusherPredator(o)` に分けた。
+
+helper 判定、群れ補正、target consensus、pack formation / lineage telemetry、pack attack 記録、debug summary、role visualization、save/load 復元、micro/artificial pack 生成を新定義へ合わせた。`carnivoreStrategyClass()` は `pack` / `pursuit` / `ambusher` / `other` を返す。追加診断として `window.__alifeDebug.packRoleSocialGroupSummary()` を追加し、A: `pursuit && hunt-pack`、B: `pursuit && !hunt-pack`、C: `!pursuit && hunt-pack`、D: neither の現存数、出生数、成熟数、初回捕食数、繁殖数、終了時個体数を返す。
+
+### 4群 smoke
+通常版 seed `41001` / `500` step:
+
+| group | living | births | matured | firstPredation | reproduced | endPopulation |
+|---|---:|---:|---:|---:|---:|---:|
+| A pursuit + hunt-pack | 0 | 0 | 0 | 0 | 0 | 0 |
+| B pursuit only | 2 | 1 | 0 | 1 | 0 | 2 |
+| C hunt-pack only | 2 | 0 | 0 | 0 | 0 | 2 |
+| D neither | 28 | 13 | 3 | 0 | 0 | 28 |
+
+dev 起動後 20 frame smoke:
+
+| group | living | births | matured | firstPredation | reproduced | endPopulation |
+|---|---:|---:|---:|---:|---:|---:|
+| A pursuit + hunt-pack | 2 | 0 | 0 | 0 | 0 | 2 |
+| B pursuit only | 2 | 0 | 0 | 0 | 0 | 2 |
+| C hunt-pack only | 2 | 0 | 0 | 0 | 0 | 2 |
+| D neither | 58 | 0 | 0 | 0 | 0 | 58 |
+
+### 検証
+inline script 構文 OK（`index.html` / ignored `alife_symbolic_shapes_v1.html` とも 2 blocks）。`node --check organism_render.js` OK。`scripts/*.cjs` 構文 OK。`git diff --check` OK。通常版起動 OK。開発者版起動 OK。save/load round trip OK。Pack sharing / formation / consensus Micro OK。通常版 seed `41001` / `500` step は page error 0、NaN/Infinity 0、diagnostic number health OK。dev 起動 smoke も page error 0、NaN/Infinity 0。`index.html` と ignored `alife_symbolic_shapes_v1.html` の SHA256 は `921EC6AC4A167B670BD53B19BECA0366506F01EF55D692DEB8AF1AB2E145B81D` で一致。凍結版は未変更。
+
+### 採用判断
+採用。通常デフォルトの概念を `role=pursuit` と `socialMode=hunt-pack` に分離し、旧 `role=pack` は互換入力としてのみ扱う。生態挙動は変わり得るが、通常版 / dev 版 / save-load / 既存 pack 診断の基本動作は維持できている。
