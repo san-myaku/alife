@@ -346,6 +346,22 @@
       movementSpeedScale: 0.25,
       maxSizeScale: IS_MOBILE_VIEW ? 2.0 * 0.7 : 2.0
     }),
+    lifeHistory: Object.freeze({
+      lifeHistoryCapacityReproThresholdScale: 0,
+      birthViability: Object.freeze({
+        floor: 20,
+        ceiling: 95,
+        base: 18,
+        metabolismWeight: 12,
+        senseWeight: 8,
+        speedSquaredWeight: 10,
+        sizeWeight: 4,
+        carnivoryExponent: 1.5,
+        carnivoryBase: 12,
+        carnivorySpeedWeight: 18,
+        carnivorySenseWeight: 10
+      })
+    }),
     rendering: Object.freeze({
       tinyEnterPop: 118,
       tinyExitPop: 96,
@@ -1086,10 +1102,17 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     return d + ' Z';
   }
 
-  function speciesKey(g){ const base=`${q4(g.speed)}${q4(g.size)}${q4(g.sense)}${q4(g.diet)}`; const m=formFromGenes(g,base); const p=q3(m.pointiness); const a=m.aspect<1.33?0:(m.aspect<1.66?1:2); const pts=Math.max(1,Math.min(8,Math.round(m.points))); return `${base}${p}${a}${pts}`; }
+  function legacySpeciesKey(g){ const base=`${q4(g.speed)}${q4(g.size)}${q4(g.sense)}${q4(g.diet)}`; const m=formFromGenes(g,base); const p=q3(m.pointiness); const a=m.aspect<1.33?0:(m.aspect<1.66?1:2); const pts=Math.max(1,Math.min(8,Math.round(m.points))); return `${base}${p}${a}${pts}`; }
+  function speciesKey(g){
+    const legacy=legacySpeciesKey(g);
+    return evolvableLifeHistoryEnabled() ? `${legacy}${lifeHistorySpeciesSuffix(g)}` : legacy;
+  }
   const BASE_GENE_KEYS=Object.freeze(['speed','size','metabolism','fecundity','sense','diet','formSeed']);
-  const LIFE_HISTORY_GENE_KEYS=Object.freeze(['energyCapacity','parentalInvestment']);
-  const GENE_KEYS=[...BASE_GENE_KEYS,...LIFE_HISTORY_GENE_KEYS], GENE_INDEX=[0,1,2,3,4,5,10,null,null];
+  const LEGACY_LIFE_HISTORY_GENE_KEYS=Object.freeze(['energyCapacity','parentalInvestment']);
+  const LIFE_HISTORY_GENE_KEYS=Object.freeze(['energyCapacity','clutchPotential','parentalInvestment']);
+  const GENE_KEYS=Object.freeze([...BASE_GENE_KEYS,...LIFE_HISTORY_GENE_KEYS]);
+  const LEGACY_REPRODUCTION_GENE_KEYS=Object.freeze([...BASE_GENE_KEYS,...LEGACY_LIFE_HISTORY_GENE_KEYS]);
+  const GENE_INDEX=Object.freeze([0,1,2,3,4,5,10]);
   const LEGACY_MAX_ENERGY = 160;
   const LIFE_HISTORY_MAX_ENERGY_BASE = 160;
   const LIFE_HISTORY_MAX_ENERGY_TOP = 1000;
@@ -1107,12 +1130,18 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   function defaultEnergyCapacityGene(g){
     return Math.pow(deterministicLifeHistoryGene(g,'energyCapacity'),3.5);
   }
+  function defaultClutchPotentialGene(g){
+    return Math.pow(deterministicLifeHistoryGene(g,'clutchPotential'),1.6);
+  }
   function defaultParentalInvestmentGene(g){
     return deterministicLifeHistoryGene(g,'parentalInvestment');
   }
-  function normalizeLifeHistoryGenes(g){
+  function normalizeLifeHistoryGenes(g,includeClutchPotential=evolvableLifeHistoryEnabled()){
     if(!g) return g;
     g.energyCapacity = finiteGeneValue(g.energyCapacity, defaultEnergyCapacityGene(g));
+    if(includeClutchPotential || g.clutchPotential!=null){
+      g.clutchPotential = finiteGeneValue(g.clutchPotential, defaultClutchPotentialGene(g));
+    }
     g.parentalInvestment = finiteGeneValue(g.parentalInvestment, defaultParentalInvestmentGene(g));
     return g;
   }
@@ -1121,6 +1150,9 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   }
   function lifeHistoryParentalInvestment(g){
     return finiteGeneValue(g?.parentalInvestment, defaultParentalInvestmentGene(g));
+  }
+  function lifeHistoryClutchPotential(g){
+    return finiteGeneValue(g?.clutchPotential, defaultClutchPotentialGene(g));
   }
   function maxEnergyFromCapacity(capacity){
     return LIFE_HISTORY_MAX_ENERGY_BASE * Math.pow(LIFE_HISTORY_MAX_ENERGY_TOP / LIFE_HISTORY_MAX_ENERGY_BASE, clamp(Number(capacity)||0,0,1));
@@ -1134,6 +1166,151 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   function parentalInvestmentRate(g){
     return 0.25 + lifeHistoryParentalInvestment(g) * 0.50;
   }
+  function desiredClutchFromGenes(g){
+    const potential=finiteGeneValue(g?.clutchPotential, defaultClutchPotentialGene(g));
+    return Math.max(1,Math.min(10,1 + Math.floor(Math.pow(potential,2.2) * 9)));
+  }
+  function minimumViableBirthEnergyForGenes(g){
+    const speed=finiteGeneValue(g?.speed,0.5);
+    const size=finiteGeneValue(g?.size,0.5);
+    const metabolism=finiteGeneValue(g?.metabolism,0.5);
+    const sense=finiteGeneValue(g?.sense,0.5);
+    const diet=finiteGeneValue(g?.diet,0.5);
+    const cfg=CONFIG.lifeHistory.birthViability;
+    const maintenanceBudget=cfg.base
+      + cfg.metabolismWeight * metabolism
+      + cfg.senseWeight * sense
+      + cfg.speedSquaredWeight * speed * speed
+      + cfg.sizeWeight * size;
+    const firstMealBudget=Math.pow(diet,cfg.carnivoryExponent)
+      * (cfg.carnivoryBase + cfg.carnivorySpeedWeight * speed + cfg.carnivorySenseWeight * sense);
+    return clamp(maintenanceBudget + firstMealBudget, cfg.floor, cfg.ceiling);
+  }
+  function storageStrategyClass(g){
+    const capacity=lifeHistoryEnergyCapacity(g);
+    if(capacity < 1/3) return 0;
+    if(capacity < 2/3) return 1;
+    return 2;
+  }
+  function offspringStrategyScore(g){
+    const desired=desiredClutchFromGenes(g);
+    const clutchScore=(desired - 1) / 9;
+    const investment=lifeHistoryParentalInvestment(g);
+    return clamp(0.65 * clutchScore + 0.35 * (1 - investment),0,1);
+  }
+  function offspringStrategyClass(g){
+    const score=offspringStrategyScore(g);
+    if(score < 0.33) return 0;
+    if(score < 0.67) return 1;
+    return 2;
+  }
+  function lifeHistorySpeciesSuffix(g){
+    return `E${storageStrategyClass(g)}R${offspringStrategyClass(g)}`;
+  }
+  function storageStrategyLabel(g){
+    return ['小容量','中容量','大容量'][storageStrategyClass(g)];
+  }
+  function offspringStrategyLabel(g){
+    return ['少数精鋭','中間繁殖','多産拡散'][offspringStrategyClass(g)];
+  }
+  function lifeHistoryStrategyLabel(g){
+    return `${storageStrategyLabel(g)}・${offspringStrategyLabel(g)}`;
+  }
+  function lifeHistoryStrategyForGenes(g){
+    const normalized=normalizeLifeHistoryGenes({...g},true);
+    const desired=desiredClutchFromGenes(normalized);
+    return {
+      storageClass:storageStrategyClass(normalized),
+      offspringStrategyClass:offspringStrategyClass(normalized),
+      suffix:lifeHistorySpeciesSuffix(normalized),
+      label:lifeHistoryStrategyLabel(normalized),
+      desiredClutch:desired,
+      energyCapacity:lifeHistoryEnergyCapacity(normalized),
+      clutchPotential:lifeHistoryClutchPotential(normalized),
+      parentalInvestment:lifeHistoryParentalInvestment(normalized),
+      parentalInvestmentRate:parentalInvestmentRate(normalized),
+      minimumViableBirthEnergy:minimumViableBirthEnergyForGenes(normalized)
+    };
+  }
+  function projectedOffspringGenes(parent,mate=null){
+    if(!mate){
+      return normalizeLifeHistoryGenes({...parent?.genes},true);
+    }
+    const result={};
+    for(const key of GENE_KEYS){
+      result[key]=(finiteGeneValue(parent?.genes?.[key],0.5) + finiteGeneValue(mate?.genes?.[key],0.5)) / 2;
+    }
+    return normalizeLifeHistoryGenes(result,true);
+  }
+  function planLifeHistoryReproduction(parent,mate=null){
+    const projectedChildGenes=projectedOffspringGenes(parent,mate);
+    const desiredClutch=desiredClutchFromGenes(projectedChildGenes);
+    const minimumChildEnergy=minimumViableBirthEnergyForGenes(projectedChildGenes);
+    const parentBefore=Math.max(0,Number(parent?.energy)||0);
+    const mateBefore=mate ? Math.max(0,Number(mate?.energy)||0) : 0;
+    const parentInvestment=parentBefore * parentalInvestmentRate(parent?.genes);
+    const mateInvestment=mate ? mateBefore * parentalInvestmentRate(mate?.genes) : 0;
+    const totalInvestment=parentInvestment + mateInvestment;
+    const transferLoss=totalInvestment * (1 - REPRODUCTION_ENERGY_TRANSFER_EFFICIENCY);
+    const distributableEnergy=totalInvestment * REPRODUCTION_ENERGY_TRANSFER_EFFICIENCY;
+    const affordableClutch=Math.max(0,Math.floor(distributableEnergy / Math.max(0.000001,minimumChildEnergy)));
+    const actualClutch=Math.max(0,Math.min(desiredClutch,affordableClutch));
+    const plannedChildEnergyEach=actualClutch > 0 ? distributableEnergy / actualClutch : 0;
+    const parentAfterBeforeRefund=Math.max(0,parentBefore-parentInvestment);
+    const mateAfterBeforeRefund=mate ? Math.max(0,mateBefore-mateInvestment) : mateBefore;
+    return {
+      projectedChildGenes,
+      desiredClutch,
+      affordableClutch,
+      actualClutch,
+      minimumChildEnergy,
+      minimumViableBirthEnergy:minimumChildEnergy,
+      parentBefore,
+      mateBefore,
+      parentInvestment,
+      mateInvestment,
+      totalInvestment,
+      transferLoss,
+      distributableEnergy,
+      offspringEnergyPool:distributableEnergy,
+      plannedChildEnergyEach,
+      childEnergy:plannedChildEnergyEach,
+      parentAfterBeforeRefund,
+      mateAfterBeforeRefund,
+      parentAfter:parentAfterBeforeRefund,
+      mateAfter:mateAfterBeforeRefund,
+      clutch:actualClutch,
+      sexual:!!mate,
+      parentMultiplier:null,
+      mateMultiplier:null,
+      totalChildEnergy:plannedChildEnergyEach * actualClutch
+    };
+  }
+  function finalizeLifeHistoryReproductionEnergy(plan,acceptedTotalChildEnergy){
+    const acceptedTotal=Math.max(0,Number(acceptedTotalChildEnergy)||0);
+    const distributable=Math.max(0,Number(plan?.distributableEnergy)||0);
+    const capacityOverflow=Math.max(0,distributable - acceptedTotal);
+    const totalInvestment=Math.max(0,Number(plan?.totalInvestment)||0);
+    const parentShare=totalInvestment>0 ? Math.max(0,Number(plan?.parentInvestment)||0)/totalInvestment : 0;
+    const mateShare=totalInvestment>0 ? Math.max(0,Number(plan?.mateInvestment)||0)/totalInvestment : 0;
+    const parentRefund=capacityOverflow * parentShare;
+    const mateRefund=capacityOverflow * mateShare;
+    const parentAfterFinal=Math.max(0,Number(plan?.parentAfterBeforeRefund)||0) + parentRefund;
+    const mateAfterFinal=Math.max(0,Number(plan?.mateAfterBeforeRefund)||0) + mateRefund;
+    const before=(Number(plan?.parentBefore)||0) + (Number(plan?.mateBefore)||0);
+    const after=parentAfterFinal + mateAfterFinal + acceptedTotal + Math.max(0,Number(plan?.transferLoss)||0);
+    const residual=after - before;
+    return {
+      acceptedTotalChildEnergy:acceptedTotal,
+      capacityOverflow,
+      capacityOverflowReturned:capacityOverflow,
+      parentRefund,
+      mateRefund,
+      parentAfterFinal,
+      mateAfterFinal,
+      conservationResidual:residual
+    };
+  }
   function genePct(g,key){ return Math.round(clamp(g?.[key]??0,0,1)*100); }
   function geneSummaryLines(g){
     return [
@@ -1146,10 +1323,11 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     BASE_GENE_KEYS.forEach((k,i)=>{ g[k]=finiteGeneValue(src?.[k]??v[GENE_INDEX[i]]??Math.random(),0.5); });
     if(src){
       for(const k of LIFE_HISTORY_GENE_KEYS){
+        if(k==='clutchPotential' && src[k]==null && !evolvableLifeHistoryEnabled()) continue;
         if(src[k]!=null) g[k]=finiteGeneValue(src[k],0.5);
       }
     }
-    return normalizeLifeHistoryGenes(g);
+    return normalizeLifeHistoryGenes(g, evolvableLifeHistoryEnabled() || g.clutchPotential!=null);
   }
   function reproductiveMaturityAgeFromGenes(g){
     const fecundity = clamp(g?.fecundity ?? 0.5, 0, 1);
@@ -1173,7 +1351,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   function effectiveReproThresholdFor(o){
     const base=Number(o?.reproThreshold || 0);
     if(!evolvableLifeHistoryEnabled()) return base;
-    return base + 0.14 * Math.max(0, organismMaxEnergy(o) - LIFE_HISTORY_MAX_ENERGY_BASE);
+    return base;
   }
   function lifeHistoryClutchParamsFor(o){
     const key=String(o?.speciesKey || speciesKey(o?.genes || {speed:0.5,size:0.5,metabolism:0.5,fecundity:0.5,sense:0.5,diet:0.5,formSeed:0.5}));
@@ -1187,6 +1365,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     return {clutchMax,upP,decay};
   }
   function sampleReproductionClutch(o){
+    if(evolvableLifeHistoryEnabled()) return desiredClutchFromGenes(o?.genes);
     const rp=evolvableLifeHistoryEnabled() ? lifeHistoryClutchParamsFor(o) : getSpeciesReproParams(o?.speciesKey);
     let clutch=1;
     let pUp=rp.upP;
@@ -1198,22 +1377,24 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   }
   function expectedReproductionClutchForGate(o){
     if(!evolvableLifeHistoryEnabled()) return 1;
-    const rp=lifeHistoryClutchParamsFor(o);
-    const fec=finiteGeneValue(o?.genes?.fecundity,0.5);
-    return Math.max(1,Math.min(rp.clutchMax,Math.round(1 + fec*3)));
+    return desiredClutchFromGenes(o?.genes);
   }
   function projectedChildEnergyEach(parent,mate=null,clutch=null){
     const safeClutch=Math.max(1,Number(clutch ?? expectedReproductionClutchForGate(parent))|0);
+    if(evolvableLifeHistoryEnabled()) return planLifeHistoryReproduction(parent,mate).plannedChildEnergyEach;
     return reproductionEnergyPlan(parent,mate,safeClutch).childEnergy;
   }
-  function lifeHistoryCanSupportBirth(parent,mate=null,clutch=null){
+  function lifeHistoryCanSupportBirth(parent,mate=null,clutch=null,recordDeferral=false){
     if(!evolvableLifeHistoryEnabled()) return true;
-    return projectedChildEnergyEach(parent,mate,clutch) >= MIN_VIABLE_BIRTH_ENERGY;
+    const plan=(clutch && typeof clutch==='object') ? clutch : planLifeHistoryReproduction(parent,mate);
+    const ok=plan.actualClutch >= 1;
+    if(!ok && recordDeferral) telemetryRecordLifeHistoryDeferral(parent,mate,plan);
+    return ok;
   }
-  function canReproduceNow(o){
+  function canReproduceNow(o,recordLifeHistoryDeferral=false){
     if(!canParticipateInReproduction(o)) return false;
     if(Number(o.energy || 0) <= effectiveReproThresholdFor(o)) return false;
-    return lifeHistoryCanSupportBirth(o,null,expectedReproductionClutchForGate(o));
+    return lifeHistoryCanSupportBirth(o,null,null,recordLifeHistoryDeferral);
   }
   // Compatibility alias: current living participation, not historical maturity.
   function isReproductivelyMature(o){
@@ -1289,32 +1470,18 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     const safeClutch=Math.max(1, clutch|0);
     const parentBefore=Math.max(0, Number(parent?.energy)||0);
     if(evolvableLifeHistoryEnabled()){
-      const parentInvestment=parentBefore*parentalInvestmentRate(parent?.genes);
-      const parentAfter=Math.max(0,parentBefore-parentInvestment);
-      const sexual=!!mate;
-      const mateBefore=sexual ? Math.max(0, Number(mate.energy)||0) : 0;
-      const mateInvestment=sexual ? mateBefore*parentalInvestmentRate(mate?.genes) : 0;
-      const mateAfter=sexual ? Math.max(0,mateBefore-mateInvestment) : mateBefore;
-      const totalInvestment=parentInvestment+mateInvestment;
-      const offspringEnergyPool=totalInvestment*REPRODUCTION_ENERGY_TRANSFER_EFFICIENCY;
-      const childEnergy=Math.max(0,offspringEnergyPool/safeClutch);
-      const totalChildEnergy=childEnergy*safeClutch;
+      const plan=planLifeHistoryReproduction(parent,mate);
       return {
-        clutch:safeClutch,
-        sexual,
-        parentBefore,
-        parentAfter,
-        parentInvestment,
+        ...plan,
+        clutch:plan.actualClutch,
+        sexual:!!mate,
+        parentAfter:plan.parentAfterBeforeRefund,
+        mateAfter:plan.mateAfterBeforeRefund,
         parentMultiplier:null,
-        mateBefore,
-        mateAfter,
-        mateInvestment,
         mateMultiplier:null,
-        totalInvestment,
-        offspringEnergyPool,
-        childEnergy,
-        totalChildEnergy,
-        transferLoss:Math.max(0,totalInvestment-totalChildEnergy)
+        offspringEnergyPool:plan.distributableEnergy,
+        childEnergy:plan.plannedChildEnergyEach,
+        totalChildEnergy:plan.plannedChildEnergyEach*plan.actualClutch
       };
     }
     const parentMultiplier=reproductionParentEnergyMultiplier(safeClutch);
@@ -1506,6 +1673,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     activeChases: new Map(),
     chaseEpisodes: [],
     birthOrigins: [],
+    lifeHistoryReproductionDeferrals: [],
     roleSocialInitial: [],
     feedingBehaviorBuckets: [],
     feedingPredation: [],
@@ -4184,6 +4352,33 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(gate==='reproduced') telemetryRecordCarnivoreReproduced(o);
     }
   }
+  function telemetryRecordLifeHistoryDeferral(parent,mate,plan){
+    if(!evolvableLifeHistoryEnabled() || !parent || !plan) return;
+    const row={
+      frame,
+      parentId:parent.id ?? null,
+      mateParentId:mate?.id ?? null,
+      diet:telemetryDiet(parent),
+      role:normalizeRole(parent.role),
+      socialMode:parent.socialMode || 'solitary',
+      storageClass:storageStrategyClass(parent.genes),
+      offspringStrategyClass:offspringStrategyClass(parent.genes),
+      lifeHistoryClass:lifeHistorySpeciesSuffix(parent.genes),
+      lifeHistoryLabel:lifeHistoryStrategyLabel(parent.genes),
+      desiredClutch:plan.desiredClutch,
+      affordableClutch:plan.affordableClutch,
+      actualClutch:plan.actualClutch,
+      minimumViableBirthEnergy:plan.minimumChildEnergy,
+      distributableEnergy:plan.distributableEnergy,
+      parentEnergyBefore:plan.parentBefore,
+      mateEnergyBefore:plan.mateBefore,
+      totalInvestment:plan.totalInvestment
+    };
+    telemetry.lifeHistoryReproductionDeferrals.push(row);
+    if(telemetry.lifeHistoryReproductionDeferrals.length>5000){
+      telemetry.lifeHistoryReproductionDeferrals.splice(0,telemetry.lifeHistoryReproductionDeferrals.length-4500);
+    }
+  }
   function telemetryPruneBirths(){
     if(telemetry.births.size<=5200) return;
     for(const [id,rec] of telemetry.births){
@@ -4215,6 +4410,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const parentSocialMode=parent ? (parent.socialMode || 'solitary') : null;
     const parentRoleSocialGroup=parent ? packRoleSocialGroupKey(parentRole,parentSocialMode) : null;
     const parentEnergyCapacity=parent ? lifeHistoryEnergyCapacity(parent.genes) : null;
+    const parentClutchPotential=evolvableLifeHistoryEnabled() && parent ? lifeHistoryClutchPotential(parent.genes) : null;
     const parentParentalInvestment=parent ? lifeHistoryParentalInvestment(parent.genes) : null;
     const parentFecundity=parent ? finiteGeneValue(parent.genes?.fecundity,0.5) : null;
     const totalInvestment=Number.isFinite(Number(meta?.totalInvestment)) ? Number(meta.totalInvestment) : null;
@@ -4231,6 +4427,34 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     child.role=normalizeRole(child.role);
     child.birthStrategyClass=carnivoreStrategyClass(child);
     child.currentStrategyClass=child.birthStrategyClass;
+    const projectedChildGenes=meta?.projectedChildGenes || meta?.plan?.projectedChildGenes || null;
+    const minimumViableBirthEnergy=Number.isFinite(Number(meta?.minimumViableBirthEnergy)) ? Number(meta.minimumViableBirthEnergy) : null;
+    const acceptedChildEnergyEach=Number.isFinite(Number(meta?.acceptedChildEnergyEach)) ? Number(meta.acceptedChildEnergyEach) : childEnergyEach;
+    const lifeHistoryBirthFields=evolvableLifeHistoryEnabled() ? {
+      parentClutchPotential,
+      parentStorageClass:parent ? storageStrategyClass(parent.genes) : null,
+      parentOffspringStrategyClass:parent ? offspringStrategyClass(parent.genes) : null,
+      parentLifeHistoryLabel:parent ? lifeHistoryStrategyLabel(parent.genes) : null,
+      desiredClutch:Number.isFinite(Number(meta?.desiredClutch)) ? Number(meta.desiredClutch) : null,
+      affordableClutch:Number.isFinite(Number(meta?.affordableClutch)) ? Number(meta.affordableClutch) : null,
+      actualClutch:Number.isFinite(Number(meta?.actualClutch)) ? Number(meta.actualClutch) : clutch,
+      minimumViableBirthEnergy,
+      plannedChildEnergyEach:Number.isFinite(Number(meta?.plannedChildEnergyEach)) ? Number(meta.plannedChildEnergyEach) : null,
+      acceptedChildEnergyEach,
+      childEnergyMargin:minimumViableBirthEnergy==null ? null : acceptedChildEnergyEach - minimumViableBirthEnergy,
+      transferLoss:Number.isFinite(Number(meta?.transferLoss)) ? Number(meta.transferLoss) : null,
+      capacityOverflowReturned:Number.isFinite(Number(meta?.capacityOverflowReturned)) ? Number(meta.capacityOverflowReturned) : null,
+      capacityOverflowReturnedShare:Number.isFinite(Number(meta?.capacityOverflowReturnedShare)) ? Number(meta.capacityOverflowReturnedShare) : null,
+      parentEnergyBefore:Number.isFinite(Number(meta?.parentEnergyBefore)) ? Number(meta.parentEnergyBefore) : null,
+      parentEnergyAfter,
+      mateEnergyBefore:Number.isFinite(Number(meta?.mateEnergyBefore)) ? Number(meta.mateEnergyBefore) : null,
+      mateEnergyAfter:Number.isFinite(Number(meta?.mateEnergyAfter)) ? Number(meta.mateEnergyAfter) : null,
+      projectedChildSpeed:Number.isFinite(Number(projectedChildGenes?.speed)) ? Number(projectedChildGenes.speed) : null,
+      projectedChildSize:Number.isFinite(Number(projectedChildGenes?.size)) ? Number(projectedChildGenes.size) : null,
+      projectedChildMetabolism:Number.isFinite(Number(projectedChildGenes?.metabolism)) ? Number(projectedChildGenes.metabolism) : null,
+      projectedChildSense:Number.isFinite(Number(projectedChildGenes?.sense)) ? Number(projectedChildGenes.sense) : null,
+      projectedChildDiet:Number.isFinite(Number(projectedChildGenes?.diet)) ? Number(projectedChildGenes.diet) : null
+    } : null;
     const rec={
       id:child.id,
       frame,
@@ -4255,6 +4479,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       parentEnergyCapacity,
       parentParentalInvestment,
       parentFecundity,
+      ...(lifeHistoryBirthFields || {}),
       parentSpeciesKey,
       mateRole,
       mateSocialMode,
@@ -4299,6 +4524,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       parentEnergyCapacity,
       parentParentalInvestment,
       parentFecundity,
+      ...(lifeHistoryBirthFields || {}),
       parentSpeciesKey,
       mateRole,
       mateSocialMode,
@@ -4336,7 +4562,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(isPackHunter(child)) packFormationRecord(child);
     telemetryRecordCarnivoreParentChildBirth(parent,child,rec);
     if(mate) telemetryRecordCarnivoreParentChildBirth(mate,child,rec);
-    telemetryPush({kind:'birth', id:child.id, diet:rec.diet, birthDietClass:childDiet, birthExactDiet:childPostMutationDiet, currentDietClass:childDiet, currentExactDiet:childPostMutationDiet, birthStrategyClass:child.birthStrategyClass, currentStrategyClass:child.currentStrategyClass, birthRole:rec.birthRole, birthSocialMode:rec.birthSocialMode, speciesKey:child.speciesKey, parentId:rec.parentId, mateParentId, parentDiet, parentBirthDiet, parentExactDiet, parentBirthExactDiet, parentRole, parentSocialMode, parentRoleSocialGroup, parentSpeciesKey, mateRole, mateSocialMode, mateRoleSocialGroup, mateParentSpeciesKey, parentCarnivore:rec.parentCarnivore, birthEnergy:rec.birthEnergy, childPreMutationDiet, childPostMutationDiet, childPreMutationDietType, crossedDietClass:parentDiet!==childDiet, generationDepth, reproductionMode, clutch, index, clutchIndex:index});
+    const birthEvent={kind:'birth', id:child.id, diet:rec.diet, birthDietClass:childDiet, birthExactDiet:childPostMutationDiet, currentDietClass:childDiet, currentExactDiet:childPostMutationDiet, birthStrategyClass:child.birthStrategyClass, currentStrategyClass:child.currentStrategyClass, birthRole:rec.birthRole, birthSocialMode:rec.birthSocialMode, speciesKey:child.speciesKey, parentId:rec.parentId, mateParentId, parentDiet, parentBirthDiet, parentExactDiet, parentBirthExactDiet, parentRole, parentSocialMode, parentRoleSocialGroup, parentSpeciesKey, mateRole, mateSocialMode, mateRoleSocialGroup, mateParentSpeciesKey, parentCarnivore:rec.parentCarnivore, birthEnergy:rec.birthEnergy, childPreMutationDiet, childPostMutationDiet, childPreMutationDietType, crossedDietClass:parentDiet!==childDiet, generationDepth, reproductionMode, clutch, index, clutchIndex:index};
+    if(lifeHistoryBirthFields) Object.assign(birthEvent,lifeHistoryBirthFields);
+    telemetryPush(birthEvent);
     telemetryPruneBirths();
   }
   function telemetryRecordReproduction(parent, kids){
@@ -4691,6 +4919,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     telemetry.activeChases.clear();
     telemetry.chaseEpisodes.length=0;
     telemetry.birthOrigins.length=0;
+    telemetry.lifeHistoryReproductionDeferrals.length=0;
     telemetry.roleSocialInitial.length=0;
     telemetry.feedingBehaviorBuckets.length=0;
     telemetry.feedingPredation.length=0;
@@ -7337,6 +7566,24 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     membranes.push(new MembraneSegment(px,py,x,y,'wall'));
     if(membranes.length>CONFIG.rendering.maxMembranes) membranes.splice(0,membranes.length-CONFIG.rendering.maxMembranes);
   }
+  function averageActualClutchForSpeciesKey(key){
+    let sum=0,n=0;
+    for(const birth of telemetry.births.values()){
+      if(birth?.speciesKey!==key) continue;
+      const v=Number(birth.actualClutch ?? birth.clutch);
+      if(Number.isFinite(v)){ sum+=v; n++; }
+    }
+    return n ? sum/n : null;
+  }
+  function selectedLifeHistoryLines(o){
+    if(!devMode || !evolvableLifeHistoryEnabled() || !o) return [];
+    const actualAvg=averageActualClutchForSpeciesKey(o.speciesKey);
+    return [
+      `生活史：${lifeHistoryStrategyLabel(o.genes)}`,
+      `基本クラッチ：${desiredClutchFromGenes(o.genes)} / 実クラッチ平均：${actualAvg==null ? 'n/a' : actualAvg.toFixed(1)}`,
+      `親投資率：${Math.round(parentalInvestmentRate(o.genes)*100)}% / 最大energy：${Math.round(organismMaxEnergy(o))}`
+    ];
+  }
   function selectedCardLines(o){
     const rare=rareTraitNames(o.flags).join('、') || 'なし';
     const carrier=traitCarrierNames(o.traits,o.flags).join('、') || 'なし';
@@ -7354,6 +7601,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       `形態：${topologyLabel(topo)}`,
       `食性：${dietLabelFromGenes(o.genes)}`,
       ...geneSummaryLines(o.genes),
+      ...selectedLifeHistoryLines(o),
       `状態：${statusLabel(o)}`,
       `エネルギー：${Math.round(o.energy)} / 年齢：${ageLabel(o)} / 世代：${generation}`,
       reproductiveMaturityLine,
@@ -8480,7 +8728,7 @@ if(Z>0.08){
         if(!canParticipate){
           telemetryRecordReproductionGate(this,'immature');
           this.mateSeekT=0; this.callCD=0;
-        } else if(canReproduceNow(this)){
+        } else if(canReproduceNow(this,true)){
         telemetryRecordReproductionGate(this,'eligible');
         // seeking state
         this.mateSeekT++; if(this.callCD>0) this.callCD--;
@@ -8807,35 +9055,47 @@ if(Z>0.08){
       const pick=(a,b)=>Math.random()<0.5?a:b;
       const kids=[];
       const isSex = !!mate;
-
-      // clutch size: species-level potential (max up to 9), actual is biased toward 1–2
-      const clutch = sampleReproductionClutch(this);
-      const energyPlan = reproductionEnergyPlan(this,mate,clutch);
-      if(evolvableLifeHistoryEnabled() && energyPlan.childEnergy < MIN_VIABLE_BIRTH_ENERGY){
-        return [];
+      const mutationKeys=evolvableLifeHistoryEnabled() ? GENE_KEYS : LEGACY_REPRODUCTION_GENE_KEYS;
+      let clutch, energyPlan, lifePlan=null;
+      if(evolvableLifeHistoryEnabled()){
+        lifePlan=planLifeHistoryReproduction(this,mate);
+        if(lifePlan.actualClutch < 1){
+          telemetryRecordLifeHistoryDeferral(this,mate,lifePlan);
+          return [];
+        }
+        clutch=lifePlan.actualClutch;
+        energyPlan=lifePlan;
+      } else {
+        // clutch size: species-level potential (max up to 9), actual is biased toward 1-2
+        clutch = sampleReproductionClutch(this);
+        energyPlan = reproductionEnergyPlan(this,mate,clutch);
       }
       this._telemetryLastReproductionEnergyBefore=energyPlan.parentBefore;
       if(isSex && mate) mate._telemetryLastReproductionEnergyBefore=energyPlan.mateBefore;
 
+      const birthRows=[];
+      let acceptedTotalChildEnergy=0;
       for(let i=0;i<clutch;i++){
         let g;
         let preMutationDiet;
         if(isSex){
-          g={}; for(const k of GENE_KEYS){ g[k]=pick(this.genes[k],mate.genes[k]); }
+          g={}; for(const k of mutationKeys){ g[k]=pick(finiteGeneValue(this.genes?.[k],0.5),finiteGeneValue(mate?.genes?.[k],0.5)); }
           preMutationDiet=g.diet;
-          for(const k of Object.keys(g)){ g[k]=clamp(g[k]+(Math.random()-0.5)*baseMut,0,1); }
+          for(const k of mutationKeys){ g[k]=clamp(g[k]+(Math.random()-0.5)*baseMut,0,1); }
         } else {
           g=Object.assign({}, this.genes);
+          if(evolvableLifeHistoryEnabled()) normalizeLifeHistoryGenes(g,true);
           preMutationDiet=g.diet;
-          for(const k of Object.keys(g)){ g[k]=clamp(g[k]+(Math.random()*2-1)*baseMut,0,1); }
+          for(const k of mutationKeys){ g[k]=clamp(finiteGeneValue(g[k],0.5)+(Math.random()*2-1)*baseMut,0,1); }
         }
+        if(evolvableLifeHistoryEnabled()) normalizeLifeHistoryGenes(g,true);
         const childSpread = adaptationProfilesFromGenes(this.genes, this.flags, this.morphologyTopology, this.role).includes('colonyBuilder') ? 8 : 20;
         const c=new Organism(clamp(this.x+rnd(-childSpread,childSpread),10,W-10), clamp(this.y+rnd(-childSpread,childSpread),10,H-10), g, true, this.speciesKey, mate?.speciesKey||null);
         c.vx=this.vx*0.2; c.vy=this.vy*0.2;
         inheritInjectionLineage(this,mate,c);
-        const childEnergyEach=evolvableLifeHistoryEnabled() ? Math.min(organismMaxEnergy(c),energyPlan.childEnergy) : energyPlan.childEnergy;
+        const childEnergyEach=evolvableLifeHistoryEnabled() ? Math.min(organismMaxEnergy(c),lifePlan.plannedChildEnergyEach) : energyPlan.childEnergy;
         c.energy = childEnergyEach;
-        telemetryRecordBirth(this,c,i,clutch,{preMutationDiet,mateParent:mate,totalInvestment:energyPlan.totalInvestment,childEnergyEach,parentEnergyAfter:energyPlan.parentAfter});
+        acceptedTotalChildEnergy+=childEnergyEach;
 
         // Mendelian flags inheritance (glow/crown/colony)
         try{
@@ -8850,10 +9110,25 @@ if(Z>0.08){
         // protection scaling for multi-birth
         c.protect = Math.max(40, 90 - 20*i);
         kids.push(c);
+        if(evolvableLifeHistoryEnabled()){
+          birthRows.push({child:c,index:i,preMutationDiet,acceptedChildEnergyEach:childEnergyEach});
+        } else {
+          telemetryRecordBirth(this,c,i,clutch,{preMutationDiet,mateParent:mate,totalInvestment:energyPlan.totalInvestment,childEnergyEach,parentEnergyAfter:energyPlan.parentAfter});
+        }
       }
 
       // Energy cost handled here (remove outside energy cut)
-      this.energy = energyPlan.parentAfter;
+      let lifeEnergyFinal=null;
+      if(evolvableLifeHistoryEnabled()){
+        lifeEnergyFinal=finalizeLifeHistoryReproductionEnergy(lifePlan,acceptedTotalChildEnergy);
+        if(lifeEnergyFinal.conservationResidual>telemetry.packHuntConservation.energyPositiveResidualMax){
+          telemetry.packHuntConservation.energyPositiveResidualMax=lifeEnergyFinal.conservationResidual;
+        }
+        if(lifeEnergyFinal.conservationResidual>1e-9) telemetry.packHuntConservation.energyCreationEvents++;
+        this.energy = lifeEnergyFinal.parentAfterFinal;
+      } else {
+        this.energy = energyPlan.parentAfter;
+      }
       this._telemetryLastReproductionEnergyAfter=this.energy;
 
       // fecundity leaves waste (clutch = heavier load)
@@ -8863,8 +9138,34 @@ if(Z>0.08){
 
       // optional: mild cost to mate as well (scale slightly with clutch)
       if(isSex){
-        mate.energy = energyPlan.mateAfter;
+        mate.energy = evolvableLifeHistoryEnabled() ? lifeEnergyFinal.mateAfterFinal : energyPlan.mateAfter;
         mate._telemetryLastReproductionEnergyAfter=mate.energy;
+      }
+
+      if(evolvableLifeHistoryEnabled()){
+        for(const row of birthRows){
+          telemetryRecordBirth(this,row.child,row.index,clutch,{
+            preMutationDiet:row.preMutationDiet,
+            mateParent:mate,
+            plan:lifePlan,
+            totalInvestment:lifePlan.totalInvestment,
+            transferLoss:lifePlan.transferLoss,
+            childEnergyEach:row.acceptedChildEnergyEach,
+            acceptedChildEnergyEach:row.acceptedChildEnergyEach,
+            plannedChildEnergyEach:lifePlan.plannedChildEnergyEach,
+            minimumViableBirthEnergy:lifePlan.minimumChildEnergy,
+            desiredClutch:lifePlan.desiredClutch,
+            affordableClutch:lifePlan.affordableClutch,
+            actualClutch:lifePlan.actualClutch,
+            capacityOverflowReturned:lifeEnergyFinal.capacityOverflowReturned,
+            capacityOverflowReturnedShare:lifeEnergyFinal.capacityOverflowReturned / Math.max(1,lifePlan.actualClutch),
+            parentEnergyBefore:lifePlan.parentBefore,
+            parentEnergyAfter:lifeEnergyFinal.parentAfterFinal,
+            mateEnergyBefore:lifePlan.mateBefore,
+            mateEnergyAfter:lifeEnergyFinal.mateAfterFinal,
+            projectedChildGenes:lifePlan.projectedChildGenes
+          });
+        }
       }
 
       return kids;
@@ -15059,6 +15360,12 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         reproduction,
         feeding,
         performance:perfDiagnostic,
+        conservation:{
+          energyPositiveResidualMax:telemetry.packHuntConservation.energyPositiveResidualMax,
+          nutrientPositiveResidualMax:telemetry.packHuntConservation.nutrientPositiveResidualMax,
+          energyCreationEvents:telemetry.packHuntConservation.energyCreationEvents,
+          nutrientCreationEvents:telemetry.packHuntConservation.nutrientCreationEvents
+        },
         telemetryCounts:{
           events:telemetry.events.length,
           samples:telemetry.samples.length,
@@ -16214,9 +16521,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       matured:0,
       reproduced:0,
       maxGenerationDepth:0,
-      _livingSums:{maxEnergy:0,energyCapacity:0,fecundity:0,parentalInvestment:0},
-      _birthSums:{clutch:0,totalInvestment:0,childEnergy:0,parentEnergyAfter:0},
-      _birthSamples:{clutch:0,totalInvestment:0,childEnergy:0,parentEnergyAfter:0}
+      _livingSums:{maxEnergy:0,energyCapacity:0,clutchPotential:0,fecundity:0,parentalInvestment:0,desiredClutch:0},
+      _birthSums:{clutch:0,desiredClutch:0,actualClutch:0,totalInvestment:0,childEnergy:0,plannedChildEnergy:0,acceptedChildEnergy:0,childEnergyMargin:0,parentEnergyAfter:0},
+      _birthSamples:{clutch:0,desiredClutch:0,actualClutch:0,totalInvestment:0,childEnergy:0,plannedChildEnergy:0,acceptedChildEnergy:0,childEnergyMargin:0,parentEnergyAfter:0}
     };
   }
   function lifeHistoryBlankByDiet(){
@@ -16243,8 +16550,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const maxEnergy=organismMaxEnergy(o);
     metric._livingSums.maxEnergy+=maxEnergy;
     metric._livingSums.energyCapacity+=lifeHistoryEnergyCapacity(o?.genes);
+    metric._livingSums.clutchPotential+=lifeHistoryClutchPotential(o?.genes);
     metric._livingSums.fecundity+=finiteGeneValue(o?.genes?.fecundity,0.5);
     metric._livingSums.parentalInvestment+=lifeHistoryParentalInvestment(o?.genes);
+    metric._livingSums.desiredClutch+=desiredClutchFromGenes(o?.genes);
     metric.maxGenerationDepth=Math.max(metric.maxGenerationDepth,telemetryLineageDepth(o,telemetry.births.get(o?.id) || null));
   }
   function lifeHistoryAddLiving(summary,o){
@@ -16264,8 +16573,13 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     if(birth?.reproducedFrame!=null) metric.reproduced++;
     metric.maxGenerationDepth=Math.max(metric.maxGenerationDepth,Number(birth?.generationDepth||0));
     lifeHistoryAddBirthValue(metric,'clutch',birth?.clutch);
+    lifeHistoryAddBirthValue(metric,'desiredClutch',birth?.desiredClutch);
+    lifeHistoryAddBirthValue(metric,'actualClutch',birth?.actualClutch ?? birth?.clutch);
     lifeHistoryAddBirthValue(metric,'totalInvestment',birth?.totalInvestment);
     lifeHistoryAddBirthValue(metric,'childEnergy',birth?.childEnergyEach ?? birth?.birthEnergy);
+    lifeHistoryAddBirthValue(metric,'plannedChildEnergy',birth?.plannedChildEnergyEach);
+    lifeHistoryAddBirthValue(metric,'acceptedChildEnergy',birth?.acceptedChildEnergyEach ?? birth?.childEnergyEach ?? birth?.birthEnergy);
+    lifeHistoryAddBirthValue(metric,'childEnergyMargin',birth?.childEnergyMargin);
     lifeHistoryAddBirthValue(metric,'parentEnergyAfter',birth?.parentEnergyAfter);
   }
   function lifeHistoryAddBirth(summary,birth){
@@ -16278,11 +16592,18 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const sample=metric._birthSamples;
     metric.averageMaxEnergy=livingDen ? metric._livingSums.maxEnergy/livingDen : null;
     metric.averageEnergyCapacity=livingDen ? metric._livingSums.energyCapacity/livingDen : null;
+    metric.averageClutchPotential=livingDen ? metric._livingSums.clutchPotential/livingDen : null;
     metric.averageFecundity=livingDen ? metric._livingSums.fecundity/livingDen : null;
     metric.averageParentalInvestment=livingDen ? metric._livingSums.parentalInvestment/livingDen : null;
+    metric.averageDesiredClutchLiving=livingDen ? metric._livingSums.desiredClutch/livingDen : null;
     metric.averageClutch=sample.clutch ? metric._birthSums.clutch/sample.clutch : null;
+    metric.averageDesiredClutch=sample.desiredClutch ? metric._birthSums.desiredClutch/sample.desiredClutch : null;
+    metric.averageActualClutch=sample.actualClutch ? metric._birthSums.actualClutch/sample.actualClutch : null;
     metric.averageTotalInvestment=sample.totalInvestment ? metric._birthSums.totalInvestment/sample.totalInvestment : null;
     metric.averageChildEnergy=sample.childEnergy ? metric._birthSums.childEnergy/sample.childEnergy : null;
+    metric.averagePlannedChildEnergy=sample.plannedChildEnergy ? metric._birthSums.plannedChildEnergy/sample.plannedChildEnergy : null;
+    metric.averageAcceptedChildEnergy=sample.acceptedChildEnergy ? metric._birthSums.acceptedChildEnergy/sample.acceptedChildEnergy : null;
+    metric.averageChildEnergyMargin=sample.childEnergyMargin ? metric._birthSums.childEnergyMargin/sample.childEnergyMargin : null;
     metric.averageParentEnergyAfter=sample.parentEnergyAfter ? metric._birthSums.parentEnergyAfter/sample.parentEnergyAfter : null;
     delete metric._livingSums;
     delete metric._birthSums;
@@ -16316,12 +16637,248 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     lifeHistoryFinalizeTree(summary);
     return summary;
   }
+  function lifeHistoryClassKeys(){
+    const keys=[];
+    for(let e=0;e<3;e++) for(let r=0;r<3;r++) keys.push(`E${e}R${r}`);
+    return keys;
+  }
+  function lifeHistoryClassMetricMap(blankFn){
+    const out=Object.fromEntries(lifeHistoryClassKeys().map(k=>[k,blankFn()]));
+    out.unknown=blankFn();
+    return out;
+  }
+  function lifeHistoryClassKeyFromRecord(record){
+    const e=Number(record?.parentStorageClass ?? record?.storageClass);
+    const r=Number(record?.parentOffspringStrategyClass ?? record?.offspringStrategyClass);
+    if(Number.isInteger(e) && e>=0 && e<=2 && Number.isInteger(r) && r>=0 && r<=2) return `E${e}R${r}`;
+    const s=String(record?.lifeHistoryClass || '');
+    return /^E[0-2]R[0-2]$/.test(s) ? s : 'unknown';
+  }
+  function lifeHistoryClassFromSpeciesKey(key){
+    const m=String(key||'').match(/E([0-2])R([0-2])$/);
+    return m ? {storageClass:Number(m[1]),offspringStrategyClass:Number(m[2]),key:`E${m[1]}R${m[2]}`} : null;
+  }
+  function stripLifeHistorySpeciesSuffix(key){
+    return String(key||'').replace(/E[0-2]R[0-2]$/,'');
+  }
+  function lifeHistoryBirthViabilityMetricBlank(){
+    return {
+      births:0,
+      matured:0,
+      reproduced:0,
+      maxGenerationDepth:0,
+      reproductionDeferrals:0,
+      capacityOverflowReturned:0,
+      _sums:{desiredClutch:0,actualClutch:0,minimumViableBirthEnergy:0,plannedChildEnergy:0,acceptedChildEnergy:0,childEnergyMargin:0},
+      _samples:{desiredClutch:0,actualClutch:0,minimumViableBirthEnergy:0,plannedChildEnergy:0,acceptedChildEnergy:0,childEnergyMargin:0}
+    };
+  }
+  function lifeHistoryMetricAddNumber(metric,key,value){
+    const n=Number(value);
+    if(!Number.isFinite(n)) return;
+    metric._sums[key]+=n;
+    metric._samples[key]++;
+  }
+  function lifeHistoryBirthViabilityTargets(summary,diet,role,socialMode,classKey){
+    const d=roleSocialDietName(diet);
+    const r=roleSocialRoleKey(role);
+    const s=roleSocialModeKey(socialMode);
+    const c=summary.byLifeHistoryClass[classKey] ? classKey : 'unknown';
+    return [summary.totals,summary.byDiet[d],summary.byRole[r],summary.bySocialMode[s],summary.byLifeHistoryClass[c]].filter(Boolean);
+  }
+  function lifeHistoryBirthViabilityAddBirth(metric,birth){
+    metric.births++;
+    if(birth?.reachedMaturity!=null) metric.matured++;
+    if(birth?.reproducedFrame!=null) metric.reproduced++;
+    metric.maxGenerationDepth=Math.max(metric.maxGenerationDepth,Number(birth?.generationDepth||0));
+    lifeHistoryMetricAddNumber(metric,'desiredClutch',birth?.desiredClutch);
+    lifeHistoryMetricAddNumber(metric,'actualClutch',birth?.actualClutch ?? birth?.clutch);
+    lifeHistoryMetricAddNumber(metric,'minimumViableBirthEnergy',birth?.minimumViableBirthEnergy);
+    lifeHistoryMetricAddNumber(metric,'plannedChildEnergy',birth?.plannedChildEnergyEach);
+    lifeHistoryMetricAddNumber(metric,'acceptedChildEnergy',birth?.acceptedChildEnergyEach ?? birth?.childEnergyEach ?? birth?.birthEnergy);
+    lifeHistoryMetricAddNumber(metric,'childEnergyMargin',birth?.childEnergyMargin);
+    const overflowShare=Number(birth?.capacityOverflowReturnedShare);
+    if(Number.isFinite(overflowShare)) metric.capacityOverflowReturned+=overflowShare;
+  }
+  function lifeHistoryBirthViabilityAddDeferral(metric,row){
+    metric.reproductionDeferrals++;
+    metric.maxGenerationDepth=Math.max(metric.maxGenerationDepth,Number(row?.generationDepth||0));
+  }
+  function lifeHistoryBirthViabilityFinalize(metric){
+    const sample=metric._samples;
+    metric.averageDesiredClutch=sample.desiredClutch ? metric._sums.desiredClutch/sample.desiredClutch : null;
+    metric.averageActualClutch=sample.actualClutch ? metric._sums.actualClutch/sample.actualClutch : null;
+    metric.clutchReductionRate=metric.averageDesiredClutch ? clamp(1 - (metric.averageActualClutch||0)/metric.averageDesiredClutch,0,1) : null;
+    metric.averageMinimumViableBirthEnergy=sample.minimumViableBirthEnergy ? metric._sums.minimumViableBirthEnergy/sample.minimumViableBirthEnergy : null;
+    metric.averagePlannedChildEnergy=sample.plannedChildEnergy ? metric._sums.plannedChildEnergy/sample.plannedChildEnergy : null;
+    metric.averageAcceptedChildEnergy=sample.acceptedChildEnergy ? metric._sums.acceptedChildEnergy/sample.acceptedChildEnergy : null;
+    metric.averageChildEnergyMargin=sample.childEnergyMargin ? metric._sums.childEnergyMargin/sample.childEnergyMargin : null;
+    delete metric._sums;
+    delete metric._samples;
+    return metric;
+  }
+  function lifeHistoryBirthViabilityFinalizeTree(node){
+    if(!node || typeof node!=='object') return;
+    if(Object.prototype.hasOwnProperty.call(node,'_sums')){
+      lifeHistoryBirthViabilityFinalize(node);
+      return;
+    }
+    for(const value of Object.values(node)) lifeHistoryBirthViabilityFinalizeTree(value);
+  }
+  function lifeHistoryBirthViabilitySummary(){
+    telemetryMarkNewbornSurvival();
+    telemetryMarkCarnivoreMilestones();
+    const summary={
+      frame,
+      enabled:evolvableLifeHistoryEnabled(),
+      floor:CONFIG.lifeHistory.birthViability.floor,
+      ceiling:CONFIG.lifeHistory.birthViability.ceiling,
+      totals:lifeHistoryBirthViabilityMetricBlank(),
+      byDiet:lifeHistoryBlankByDiet(),
+      byRole:lifeHistoryBlankByRole(),
+      bySocialMode:lifeHistoryBlankBySocialMode(),
+      byLifeHistoryClass:lifeHistoryClassMetricMap(lifeHistoryBirthViabilityMetricBlank)
+    };
+    summary.byDiet=Object.fromEntries(Object.keys(summary.byDiet).map(k=>[k,lifeHistoryBirthViabilityMetricBlank()]));
+    summary.byRole=Object.fromEntries(Object.keys(summary.byRole).map(k=>[k,lifeHistoryBirthViabilityMetricBlank()]));
+    summary.bySocialMode=Object.fromEntries(Object.keys(summary.bySocialMode).map(k=>[k,lifeHistoryBirthViabilityMetricBlank()]));
+    for(const birth of telemetry.births.values()){
+      const classKey=lifeHistoryClassKeyFromRecord(birth);
+      for(const metric of lifeHistoryBirthViabilityTargets(summary,birth?.birthExactDiet ?? birth?.diet,birth?.parentRole ?? birth?.birthRole,birth?.parentSocialMode ?? birth?.birthSocialMode,classKey)){
+        lifeHistoryBirthViabilityAddBirth(metric,birth);
+      }
+    }
+    for(const row of telemetry.lifeHistoryReproductionDeferrals){
+      const classKey=lifeHistoryClassKeyFromRecord(row);
+      for(const metric of lifeHistoryBirthViabilityTargets(summary,row?.diet,row?.role,row?.socialMode,classKey)){
+        lifeHistoryBirthViabilityAddDeferral(metric,row);
+      }
+    }
+    lifeHistoryBirthViabilityFinalizeTree(summary);
+    return summary;
+  }
+  function lifeHistorySpeciesRow(key){
+    return {
+      speciesKey:key,
+      count:0,
+      endingPopulation:0,
+      storageClass:null,
+      offspringStrategyClass:null,
+      lifeHistoryLabel:null,
+      averageEnergyCapacity:null,
+      averageMaxEnergy:null,
+      averageClutchPotential:null,
+      averageDesiredClutch:null,
+      averageActualClutch:null,
+      averageParentalInvestment:null,
+      averageParentalInvestmentRate:null,
+      births:0,
+      matured:0,
+      reproduced:0,
+      maxGenerationDepth:0,
+      _living:0,
+      _sums:{energyCapacity:0,maxEnergy:0,clutchPotential:0,desiredClutch:0,parentalInvestment:0,parentalInvestmentRate:0,actualClutch:0},
+      _samples:{actualClutch:0}
+    };
+  }
+  function lifeHistorySpeciesSummary(){
+    telemetryMarkNewbornSurvival();
+    telemetryMarkCarnivoreMilestones();
+    const rows=new Map();
+    const legacyGroups=new Map();
+    const classCounts=Object.fromEntries(lifeHistoryClassKeys().map(k=>[k,0]));
+    const rowFor=key=>{
+      const k=String(key||'unknown');
+      let row=rows.get(k);
+      if(!row){ row=lifeHistorySpeciesRow(k); rows.set(k,row); }
+      return row;
+    };
+    for(const o of organisms){
+      if(!o || o.dead) continue;
+      const row=rowFor(o.speciesKey);
+      row.count++;
+      row.endingPopulation++;
+      row._living++;
+      row.storageClass=storageStrategyClass(o.genes);
+      row.offspringStrategyClass=offspringStrategyClass(o.genes);
+      row.lifeHistoryLabel=lifeHistoryStrategyLabel(o.genes);
+      row._sums.energyCapacity+=lifeHistoryEnergyCapacity(o.genes);
+      row._sums.maxEnergy+=organismMaxEnergy(o);
+      row._sums.clutchPotential+=lifeHistoryClutchPotential(o.genes);
+      row._sums.desiredClutch+=desiredClutchFromGenes(o.genes);
+      row._sums.parentalInvestment+=lifeHistoryParentalInvestment(o.genes);
+      row._sums.parentalInvestmentRate+=parentalInvestmentRate(o.genes);
+      row.maxGenerationDepth=Math.max(row.maxGenerationDepth,telemetryLineageDepth(o,telemetry.births.get(o.id)||null));
+      const classKey=lifeHistorySpeciesSuffix(o.genes);
+      classCounts[classKey]=(classCounts[classKey]||0)+1;
+      const legacy=legacySpeciesKey(o.genes);
+      if(!legacyGroups.has(legacy)) legacyGroups.set(legacy,new Set());
+      legacyGroups.get(legacy).add(o.speciesKey);
+    }
+    for(const birth of telemetry.births.values()){
+      const row=rowFor(birth.speciesKey);
+      row.births++;
+      if(birth?.reachedMaturity!=null) row.matured++;
+      if(birth?.reproducedFrame!=null) row.reproduced++;
+      row.maxGenerationDepth=Math.max(row.maxGenerationDepth,Number(birth?.generationDepth||0));
+      const actual=Number(birth?.actualClutch ?? birth?.clutch);
+      if(Number.isFinite(actual)){
+        row._sums.actualClutch+=actual;
+        row._samples.actualClutch++;
+      }
+      if(row.storageClass==null){
+        const cls=lifeHistoryClassFromSpeciesKey(birth.speciesKey);
+        if(cls){
+          row.storageClass=cls.storageClass;
+          row.offspringStrategyClass=cls.offspringStrategyClass;
+          row.lifeHistoryLabel=['小容量','中容量','大容量'][cls.storageClass] + '・' + ['少数精鋭','中間繁殖','多産拡散'][cls.offspringStrategyClass];
+        }
+      }
+    }
+    const finalized=[...rows.values()].map(row=>{
+      const n=row._living;
+      row.averageEnergyCapacity=n ? row._sums.energyCapacity/n : null;
+      row.averageMaxEnergy=n ? row._sums.maxEnergy/n : null;
+      row.averageClutchPotential=n ? row._sums.clutchPotential/n : null;
+      row.averageDesiredClutch=n ? row._sums.desiredClutch/n : null;
+      row.averageActualClutch=row._samples.actualClutch ? row._sums.actualClutch/row._samples.actualClutch : null;
+      row.averageParentalInvestment=n ? row._sums.parentalInvestment/n : null;
+      row.averageParentalInvestmentRate=n ? row._sums.parentalInvestmentRate/n : null;
+      delete row._living;
+      delete row._sums;
+      delete row._samples;
+      return row;
+    }).sort((a,b)=>b.count-a.count || b.births-a.births || String(a.speciesKey).localeCompare(String(b.speciesKey)));
+    let splitLegacySpeciesCount=0;
+    let lifeHistorySplitSpeciesCount=0;
+    for(const set of legacyGroups.values()){
+      if(set.size>1){
+        splitLegacySpeciesCount++;
+        lifeHistorySplitSpeciesCount+=set.size;
+      }
+    }
+    return {
+      frame,
+      enabled:evolvableLifeHistoryEnabled(),
+      totalSpeciesCount:new Set(organisms.filter(o=>o && !o.dead).map(o=>o.speciesKey)).size,
+      legacySpeciesCount:legacyGroups.size,
+      splitLegacySpeciesCount,
+      lifeHistorySplitSpeciesCount,
+      lifeHistoryClassCounts:classCounts,
+      species:finalized
+    };
+  }
   function recalcLifeHistoryPhenotypes(){
+    speciesCount.clear();
+    speciesStats.clear();
     for(const o of organisms){
       if(!o) continue;
       o.genes=geneSet(o.genes);
+      o.speciesKey=speciesKey(o.genes);
       o.recalcPhenotype();
       if(Number(o.energy||0)>organismMaxEnergy(o)) o.energy=organismMaxEnergy(o);
+      speciesCount.set(o.speciesKey,(speciesCount.get(o.speciesKey)||0)+1);
+      registerSpeciesStats(o);
     }
   }
   function setEvolvableLifeHistory(enabled){
@@ -16390,21 +16947,81 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const results=[];
     const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
     try{
-      const genes=geneSet({speed:0.72,size:0.44,metabolism:0.52,fecundity:0.82,sense:0.68,diet:0.72,formSeed:0.31,energyCapacity:0.40,parentalInvestment:0.50});
-      const parent={energy:120,genes,speciesKey:speciesKey(genes),maxEnergy:maxEnergyForGenes(genes),dead:false,age:999,reproThreshold:90};
       featureFlags.evolvableLifeHistory=false;
+      const offGenes=geneSet({speed:0.72,size:0.44,metabolism:0.52,fecundity:0.82,sense:0.68,diet:0.72,formSeed:0.31,energyCapacity:0.40,parentalInvestment:0.50});
+      const parent={energy:120,genes:offGenes,speciesKey:speciesKey(offGenes),maxEnergy:maxEnergyForGenes(offGenes),dead:false,age:999,reproThreshold:90};
       const legacyPlan=reproductionEnergyPlan(parent,null,2);
       const legacyExpectedAfter=120*reproductionParentEnergyMultiplier(2);
       add('feature OFF legacy reproduction plan', Math.abs(legacyPlan.parentAfter-legacyExpectedAfter)<1e-9 && legacyPlan.childEnergy<=REPRODUCTION_CHILD_ENERGY_MAX, {parentAfter:legacyPlan.parentAfter,expected:legacyExpectedAfter,childEnergy:legacyPlan.childEnergy});
+      add('feature OFF speciesKey legacy', speciesKey(offGenes)===legacySpeciesKey(offGenes), {speciesKey:speciesKey(offGenes),legacySpeciesKey:legacySpeciesKey(offGenes),hasClutchPotential:Object.prototype.hasOwnProperty.call(offGenes,'clutchPotential')});
 
       featureFlags.evolvableLifeHistory=true;
-      const onPlan=reproductionEnergyPlan(parent,null,2);
-      add('feature ON investment conserves energy', onPlan.parentAfter===60 && onPlan.totalInvestment===60 && onPlan.childEnergy===27 && onPlan.totalChildEnergy<=onPlan.totalInvestment, {plan:onPlan});
-      const clutchParams=lifeHistoryClutchParamsFor(parent);
-      add('feature ON clutch cap', clutchParams.clutchMax>=1 && clutchParams.clutchMax<=4, clutchParams);
+      const lowClutch=normalizeLifeHistoryGenes({...offGenes,clutchPotential:0},true);
+      const highClutch=normalizeLifeHistoryGenes({...offGenes,clutchPotential:1},true);
+      const lowDesired=desiredClutchFromGenes(lowClutch);
+      const highDesired=desiredClutchFromGenes(highClutch);
+      const repeatedDesired=desiredClutchFromGenes(highClutch);
+      add('Micro A clutchPotential endpoints', lowDesired===1 && highDesired===10 && highDesired===repeatedDesired, {lowDesired,highDesired,repeatedDesired});
+      let rangeOk=true;
+      for(let i=0;i<=20;i++){
+        const d=desiredClutchFromGenes({...offGenes,clutchPotential:i/20});
+        if(d<1 || d>10) rangeOk=false;
+      }
+      add('Micro A desired clutch range', rangeOk, {});
 
-      const repro=runLifeHistoryReproducibilityMicroTest({seed:41001,steps:180,enabled:false});
-      add('same seed summary reproducibility', repro.ok, {seed:repro.seed,steps:repro.steps,enabled:repro.enabled});
+      const baseBirthGenes=normalizeLifeHistoryGenes({speed:0.5,size:0.5,metabolism:0.5,fecundity:0.5,sense:0.5,diet:0.5,formSeed:0.5,energyCapacity:0.4,clutchPotential:0.4,parentalInvestment:0.5},true);
+      const baseMin=minimumViableBirthEnergyForGenes(baseBirthGenes);
+      const monotonicKeys=['speed','size','metabolism','sense','diet'];
+      const mono=Object.fromEntries(monotonicKeys.map(k=>[k,minimumViableBirthEnergyForGenes({...baseBirthGenes,[k]:1})]));
+      const monoOk=monotonicKeys.every(k=>mono[k]>=baseMin);
+      const lowCost=minimumViableBirthEnergyForGenes({...baseBirthGenes,speed:0.1,sense:0.1,diet:0.1});
+      const highCost=minimumViableBirthEnergyForGenes({...baseBirthGenes,speed:1.0,sense:1.0,diet:1.0});
+      add('Micro B minimum birth energy monotonic', monoOk && highCost>lowCost, {baseMin,mono,lowCost,highCost});
+
+      const planParentFor=(childGenes,affordable)=>{
+        const min=minimumViableBirthEnergyForGenes(childGenes);
+        const rate=parentalInvestmentRate(childGenes);
+        return {energy:(min*affordable + min*0.1) / (rate * REPRODUCTION_ENERGY_TRANSFER_EFFICIENCY), genes:childGenes, speciesKey:speciesKey(childGenes), maxEnergy:maxEnergyForGenes(childGenes), dead:false, age:999, reproThreshold:20};
+      };
+      const desiredTen=normalizeLifeHistoryGenes({...baseBirthGenes,clutchPotential:1,parentalInvestment:0.5},true);
+      const desiredThree=normalizeLifeHistoryGenes({...baseBirthGenes,clutchPotential:0.55,parentalInvestment:0.5},true);
+      const planA=planLifeHistoryReproduction(planParentFor(desiredTen,4),null);
+      const planB=planLifeHistoryReproduction(planParentFor(desiredThree,8),null);
+      const poorParent=planParentFor(desiredTen,0);
+      poorParent.energy=planA.minimumChildEnergy*0.2;
+      const planC=planLifeHistoryReproduction(poorParent,null);
+      add('Micro C actual clutch limits', planA.desiredClutch===10 && planA.affordableClutch===4 && planA.actualClutch===4 && planB.desiredClutch===3 && planB.affordableClutch>=8 && planB.actualClutch===3 && planC.affordableClutch===0 && planC.actualClutch===0, {planA,planB,planC});
+
+      const e0r0=normalizeLifeHistoryGenes({...baseBirthGenes,energyCapacity:0,clutchPotential:0,parentalInvestment:1},true);
+      const e2r2=normalizeLifeHistoryGenes({...baseBirthGenes,energyCapacity:1,clutchPotential:1,parentalInvestment:0},true);
+      const e0r0Suffix=lifeHistorySpeciesSuffix(e0r0);
+      const e2r2Suffix=lifeHistorySpeciesSuffix(e2r2);
+      let classRangeOk=true;
+      for(const g of [e0r0,e2r2,baseBirthGenes]){
+        const e=storageStrategyClass(g), r=offspringStrategyClass(g);
+        if(e<0 || e>2 || r<0 || r>2) classRangeOk=false;
+      }
+      featureFlags.evolvableLifeHistory=false;
+      const offKey=speciesKey(e2r2);
+      const legacyKey=legacySpeciesKey(e2r2);
+      featureFlags.evolvableLifeHistory=true;
+      add('Micro D species classes', e0r0Suffix==='E0R0' && e2r2Suffix==='E2R2' && classRangeOk && offKey===legacyKey, {e0r0Suffix,e2r2Suffix,offKey,legacyKey});
+
+      const overflowGenes=normalizeLifeHistoryGenes({...baseBirthGenes,energyCapacity:0,clutchPotential:0,parentalInvestment:0.75},true);
+      const asexualParent={energy:500,genes:overflowGenes,speciesKey:speciesKey(overflowGenes),maxEnergy:maxEnergyForGenes(overflowGenes),dead:false,age:999,reproThreshold:20};
+      const asexualPlan=planLifeHistoryReproduction(asexualParent,null);
+      const asexualAccepted=asexualPlan.actualClutch * Math.min(maxEnergyForGenes(overflowGenes),asexualPlan.plannedChildEnergyEach);
+      const asexualFinal=finalizeLifeHistoryReproductionEnergy(asexualPlan,asexualAccepted);
+      const mateGenes=normalizeLifeHistoryGenes({...overflowGenes,parentalInvestment:0.2},true);
+      const sexualParent={energy:420,genes:overflowGenes,speciesKey:speciesKey(overflowGenes),maxEnergy:maxEnergyForGenes(overflowGenes),dead:false,age:999,reproThreshold:20};
+      const sexualMate={energy:360,genes:mateGenes,speciesKey:speciesKey(mateGenes),maxEnergy:maxEnergyForGenes(mateGenes),dead:false,age:999,reproThreshold:20};
+      const sexualPlan=planLifeHistoryReproduction(sexualParent,sexualMate);
+      const sexualAccepted=sexualPlan.actualClutch * Math.min(maxEnergyForGenes(overflowGenes),sexualPlan.plannedChildEnergyEach);
+      const sexualFinal=finalizeLifeHistoryReproductionEnergy(sexualPlan,sexualAccepted);
+      add('Micro E reproduction energy conservation', Math.abs(asexualFinal.conservationResidual)<1e-9 && Math.abs(sexualFinal.conservationResidual)<1e-9 && asexualFinal.capacityOverflowReturned>0 && sexualFinal.capacityOverflowReturned>0, {asexualFinal,sexualFinal});
+
+      const repro=runLifeHistoryReproducibilityMicroTest({seed:41001,steps:180,enabled:true});
+      add('Micro F same seed summary reproducibility', repro.ok, {seed:repro.seed,steps:repro.steps,enabled:repro.enabled});
     } finally {
       featureFlags.evolvableLifeHistory=oldEnabled;
       restore(saved);
@@ -16481,6 +17098,21 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     lifeHistorySummary(){
       return lifeHistorySummary();
+    },
+    desiredClutchFromGenes(genes){
+      return desiredClutchFromGenes(geneSet(genes || {}));
+    },
+    minimumViableBirthEnergyForGenes(genes){
+      return minimumViableBirthEnergyForGenes(geneSet(genes || {}));
+    },
+    lifeHistoryStrategyForGenes(genes){
+      return lifeHistoryStrategyForGenes(geneSet(genes || {}));
+    },
+    lifeHistoryBirthViabilitySummary(){
+      return lifeHistoryBirthViabilitySummary();
+    },
+    lifeHistorySpeciesSummary(){
+      return lifeHistorySpeciesSummary();
     },
     runLifeHistoryReproducibilityMicroTest(options={}){
       return runLifeHistoryReproducibilityMicroTest(options);
