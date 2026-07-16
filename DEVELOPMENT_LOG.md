@@ -946,3 +946,20 @@ inline script 構文 OK（`index.html` / ignored `alife_symbolic_shapes_v1.html`
 
 ### 採用判断
 採用。通常デフォルトの概念を `role=pursuit` と `socialMode=hunt-pack` に分離し、旧 `role=pack` は互換入力としてのみ扱う。生態挙動は変わり得るが、通常版 / dev 版 / save-load / 既存 pack 診断の基本動作は維持できている。
+
+## 2026-07-16 Role x SocialMode 生態マップ診断
+
+### 条件
+`EXPERIMENT_PROTOCOL.md` に沿って診断のみ実施。挙動・閾値・捕食倍率・energy は変更していない。静的診断は seed `61001`、50,000 gene samples。実世界診断は seeds `41001/42001/43001/44001/45001`、各 `2,000` steps、`targetConsensus=false`、`shareFraction=0`、`packAttackBase=0.78`。
+
+### 実装
+`window.__alifeDebug.roleSocialEcologySummary()`、`roleSocialStaticGeneSpaceSummary()`、`roleSocialReachabilitySummary()` と `scripts/role_social_ecology_diagnostic.cjs` を追加。既存 `computeRole()`、`socialStrategyFromGenes()`、`formFromGenes()`、`telemetry.births`、carnivore lineage / pack formation telemetry を再利用し、初期 census と親の role/socialMode 分類だけを birth record に最小追加した。`packRoleSocialGroupSummary()` は互換 API として維持。
+
+### 結果
+静的 A/B/C/D 比率は `4.646% / 4.078% / 1.416% / 89.860%`。A は遺伝的には極端に希少ではない。実世界 pooled では A は initial `19`、births `4`、matured `0`、first predation `0`、reproduced `0`、livingEnd `0`。C は births `3`、matured `2`、reproduced `1`、livingEnd `1` だが first predation は `0`。D-carnivore は births `33`、matured `11`、first predation `8`、reproduced `4`。C の内訳は scav births `2`、other births `1`。B は出生なしで、初期個体は solitary `12`、school `1`。
+
+### 判断
+支配的分類は「B. 出生はするが早期淘汰」。A は静的 gene 空間では十分発生可能だが、実世界では少数出生しても `survived180=0`、成熟・初回捕食・繁殖が 0。次に変更すべき一点は、pack attack 倍率ではなく `pursuit + hunt-pack` の初回捕食前生存、特に出生 energy / 単独時生存 / 初回捕食までの到達条件のどれが詰まっているかの切り分け。
+
+### 検証
+inline script 構文 OK（`index.html` / ignored `alife_symbolic_shapes_v1.html`）。`organism_render.js` 構文 OK。`scripts/*.cjs` 構文 OK。`git diff --check` OK。5 seeds x 2,000 steps 完走。page error `0`、NaN/Infinity `0`、energy creation `0`、nutrient creation `0`。通常版起動 OK、開発者版起動 OK、save/load round trip OK。詳細は `artifacts/experiments/role_social_ecology.json`、判断 summary は `artifacts/experiments/role_social_ecology_decision.json`。

@@ -1372,6 +1372,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     activeChases: new Map(),
     chaseEpisodes: [],
     birthOrigins: [],
+    roleSocialInitial: [],
     feedingBehaviorBuckets: [],
     feedingPredation: [],
     feedingPredationLife: new Map(),
@@ -4076,6 +4077,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const childPreMutationDiet=Number(meta?.preMutationDiet ?? childPostMutationDiet);
     const childPreMutationDietType=dietTypeFromCarn(childPreMutationDiet);
     const reproductionMode=telemetryReproMode(meta,mate);
+    const parentRole=parent ? normalizeRole(parent.role) : null;
+    const parentSocialMode=parent ? (parent.socialMode || 'solitary') : null;
+    const parentRoleSocialGroup=parent ? packRoleSocialGroupKey(parentRole,parentSocialMode) : null;
+    const mateRole=mate ? normalizeRole(mate.role) : null;
+    const mateSocialMode=mate ? (mate.socialMode || 'solitary') : null;
+    const mateRoleSocialGroup=mate ? packRoleSocialGroupKey(mateRole,mateSocialMode) : null;
     child.parentId=parent?.id ?? null;
     child.mateParentId=mateParentId;
     child.generationDepth=generationDepth;
@@ -4102,7 +4109,13 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       parentBirthDiet,
       parentExactDiet,
       parentBirthExactDiet,
+      parentRole,
+      parentSocialMode,
+      parentRoleSocialGroup,
       parentSpeciesKey,
+      mateRole,
+      mateSocialMode,
+      mateRoleSocialGroup,
       mateParentSpeciesKey,
       childPreMutationDiet,
       childPostMutationDiet,
@@ -4134,7 +4147,13 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       parentBirthDiet,
       parentExactDiet,
       parentBirthExactDiet,
+      parentRole,
+      parentSocialMode,
+      parentRoleSocialGroup,
       parentSpeciesKey,
+      mateRole,
+      mateSocialMode,
+      mateRoleSocialGroup,
       mateParentSpeciesKey,
       childDiet,
       birthDietClass:childDiet,
@@ -4165,7 +4184,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(isPackHunter(child)) packFormationRecord(child);
     telemetryRecordCarnivoreParentChildBirth(parent,child,rec);
     if(mate) telemetryRecordCarnivoreParentChildBirth(mate,child,rec);
-    telemetryPush({kind:'birth', id:child.id, diet:rec.diet, birthDietClass:childDiet, birthExactDiet:childPostMutationDiet, currentDietClass:childDiet, currentExactDiet:childPostMutationDiet, birthStrategyClass:child.birthStrategyClass, currentStrategyClass:child.currentStrategyClass, birthRole:rec.birthRole, birthSocialMode:rec.birthSocialMode, speciesKey:child.speciesKey, parentId:rec.parentId, mateParentId, parentDiet, parentBirthDiet, parentExactDiet, parentBirthExactDiet, parentSpeciesKey, mateParentSpeciesKey, parentCarnivore:rec.parentCarnivore, birthEnergy:rec.birthEnergy, childPreMutationDiet, childPostMutationDiet, childPreMutationDietType, crossedDietClass:parentDiet!==childDiet, generationDepth, reproductionMode, clutch, index, clutchIndex:index});
+    telemetryPush({kind:'birth', id:child.id, diet:rec.diet, birthDietClass:childDiet, birthExactDiet:childPostMutationDiet, currentDietClass:childDiet, currentExactDiet:childPostMutationDiet, birthStrategyClass:child.birthStrategyClass, currentStrategyClass:child.currentStrategyClass, birthRole:rec.birthRole, birthSocialMode:rec.birthSocialMode, speciesKey:child.speciesKey, parentId:rec.parentId, mateParentId, parentDiet, parentBirthDiet, parentExactDiet, parentBirthExactDiet, parentRole, parentSocialMode, parentRoleSocialGroup, parentSpeciesKey, mateRole, mateSocialMode, mateRoleSocialGroup, mateParentSpeciesKey, parentCarnivore:rec.parentCarnivore, birthEnergy:rec.birthEnergy, childPreMutationDiet, childPostMutationDiet, childPreMutationDietType, crossedDietClass:parentDiet!==childDiet, generationDepth, reproductionMode, clutch, index, clutchIndex:index});
     telemetryPruneBirths();
   }
   function telemetryRecordReproduction(parent, kids){
@@ -4229,6 +4248,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       parentDiet:birth?.parentDiet ?? null,
       parentCarnivore:!!birth?.parentCarnivore,
       role:o.role || 'other',
+      socialMode:o.socialMode || 'solitary',
+      roleSocialGroup:packRoleSocialGroupKey(o.role,o.socialMode || 'solitary'),
       diedWithValidTarget:targetValid,
       preDeathAmbushHold120:ambushStats.holdSteps,
       preDeathAmbushHoldWithValidTarget120:ambushStats.validTargetSteps,
@@ -4518,6 +4539,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     telemetry.activeChases.clear();
     telemetry.chaseEpisodes.length=0;
     telemetry.birthOrigins.length=0;
+    telemetry.roleSocialInitial.length=0;
     telemetry.feedingBehaviorBuckets.length=0;
     telemetry.feedingPredation.length=0;
     telemetry.feedingPredationLife.clear();
@@ -4574,6 +4596,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(o.generationDepth==null) o.generationDepth=0;
       telemetryUpdateCarnivoreProgress(o);
       telemetryPredationIndividualRecord(o);
+      telemetry.roleSocialInitial.push(roleSocialInitialCensusRecord(o));
       if(telemetryDiet(o)==='c') telemetryPredationSizeRecord(o);
     }
     telemetryUpdateCarnivorePopulationState();
@@ -15571,42 +15594,438 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     }
   }
 
-  function packRoleSocialGroupKey(role,socialMode){
-    const pursuit=normalizeRole(role)==='pursuit';
-    const pack=socialMode==='hunt-pack';
+  const ROLE_SOCIAL_ROLES = Object.freeze(['pursuit','ambusher','scav','filter','other']);
+  const ROLE_SOCIAL_MODES = Object.freeze(['solitary','hunt-pack','defense-school','trail','cluster','school']);
+  const ROLE_SOCIAL_GROUPS = Object.freeze(['A','B','C','D']);
+  const ROLE_SOCIAL_DIETS = Object.freeze(['herbivore','omnivore','carnivore']);
+  const ROLE_SOCIAL_GROUP_LABELS = Object.freeze({
+    A:'role=pursuit && socialMode=hunt-pack',
+    B:'role=pursuit && socialMode!=hunt-pack',
+    C:'role!=pursuit && socialMode=hunt-pack',
+    D:'role!=pursuit && socialMode!=hunt-pack'
+  });
+  function roleSocialRoleKey(role){
+    const r=normalizeRole(role);
+    return ROLE_SOCIAL_ROLES.includes(r) ? r : 'other';
+  }
+  function roleSocialModeKey(mode){
+    return ROLE_SOCIAL_MODES.includes(mode) ? mode : 'solitary';
+  }
+  function roleSocialDietName(value){
+    if(value==='h' || value==='herbivore') return 'herbivore';
+    if(value==='m' || value==='omnivore') return 'omnivore';
+    if(value==='c' || value==='carnivore') return 'carnivore';
+    const n=Number(value);
+    return dietTypeFromCarn(Number.isFinite(n) ? n : 0.5)==='h' ? 'herbivore'
+      : dietTypeFromCarn(Number.isFinite(n) ? n : 0.5)==='c' ? 'carnivore'
+      : 'omnivore';
+  }
+  function roleSocialGroupKey(role,socialMode){
+    const pursuit=roleSocialRoleKey(role)==='pursuit';
+    const pack=roleSocialModeKey(socialMode)==='hunt-pack';
     if(pursuit && pack) return 'A';
     if(pursuit && !pack) return 'B';
     if(!pursuit && pack) return 'C';
     return 'D';
   }
-  function packRoleSocialGroupSummary(){
-    const groups={
-      A:{label:'role=pursuit && socialMode=hunt-pack',living:0,births:0,matured:0,firstPredation:0,reproduced:0,endPopulation:0},
-      B:{label:'role=pursuit && socialMode!=hunt-pack',living:0,births:0,matured:0,firstPredation:0,reproduced:0,endPopulation:0},
-      C:{label:'role!=pursuit && socialMode=hunt-pack',living:0,births:0,matured:0,firstPredation:0,reproduced:0,endPopulation:0},
-      D:{label:'role!=pursuit && socialMode!=hunt-pack',living:0,births:0,matured:0,firstPredation:0,reproduced:0,endPopulation:0}
+  function packRoleSocialGroupKey(role,socialMode){
+    return roleSocialGroupKey(role,socialMode);
+  }
+  function roleSocialInitialCensusRecord(o){
+    const role=roleSocialRoleKey(o?.role);
+    const socialMode=roleSocialModeKey(o?.socialMode);
+    const exactDiet=Number(o?.genes?.diet ?? o?.birthExactDiet ?? 0.5);
+    return {
+      id:o?.id ?? null,
+      role,
+      socialMode,
+      group:roleSocialGroupKey(role,socialMode),
+      dietClass:roleSocialDietName(Number.isFinite(exactDiet) ? exactDiet : 0.5),
+      exactDiet:Number.isFinite(exactDiet) ? exactDiet : 0.5,
+      generationDepth:telemetryLineageDepth(o,telemetry.births.get(o?.id) || null),
+      age:Number(o?.age ?? 0),
+      maturityAge:reproductiveMaturityAgeFor(o)
     };
-    for(const o of organisms){
-      if(!o || o.dead) continue;
-      const key=packRoleSocialGroupKey(o.role,o.socialMode);
-      groups[key].living++;
-      groups[key].endPopulation++;
+  }
+  function roleSocialMetricBlank(){
+    return {
+      initial:0,
+      births:0,
+      livingEnd:0,
+      survived60:0,
+      survived120:0,
+      survived180:0,
+      matured:0,
+      firstPredation:0,
+      attackAttempts:0,
+      predationSuccesses:0,
+      reproduced:0,
+      starvationDeaths:0,
+      predationDeaths:0,
+      oldAgeDeaths:0,
+      otherDeaths:0,
+      maxGenerationDepth:0
+    };
+  }
+  function roleSocialBlankCross(){
+    const out={};
+    for(const role of ROLE_SOCIAL_ROLES){
+      out[role]={};
+      for(const mode of ROLE_SOCIAL_MODES) out[role][mode]=roleSocialMetricBlank();
+    }
+    return out;
+  }
+  function roleSocialBlankByDiet(){
+    const out={};
+    for(const diet of ROLE_SOCIAL_DIETS) out[diet]=roleSocialBlankCross();
+    return out;
+  }
+  function roleSocialBlankGroups(){
+    const out={};
+    for(const key of ROLE_SOCIAL_GROUPS) out[key]={label:ROLE_SOCIAL_GROUP_LABELS[key],...roleSocialMetricBlank()};
+    return out;
+  }
+  function roleSocialRuntimeRecord(role,socialMode,dietValue,generationDepth=0,id=null){
+    const r=roleSocialRoleKey(role), mode=roleSocialModeKey(socialMode);
+    return {
+      id,
+      role:r,
+      socialMode:mode,
+      group:roleSocialGroupKey(r,mode),
+      dietClass:roleSocialDietName(dietValue),
+      generationDepth:Number.isFinite(Number(generationDepth)) ? Math.max(0,Math.round(Number(generationDepth))) : 0
+    };
+  }
+  function roleSocialRecordFromBirth(birth){
+    return roleSocialRuntimeRecord(
+      birth?.birthRole,
+      birth?.birthSocialMode,
+      birth?.birthExactDiet ?? birth?.birthDietClass ?? birth?.diet,
+      birth?.generationDepth,
+      birth?.id
+    );
+  }
+  function roleSocialRecordFromOrganism(o){
+    return roleSocialRuntimeRecord(
+      o?.role,
+      o?.socialMode,
+      o?.genes?.diet ?? o?.birthExactDiet ?? 0.5,
+      telemetryLineageDepth(o,telemetry.births.get(o?.id) || null),
+      o?.id
+    );
+  }
+  function roleSocialMetricTargets(summary,rec){
+    const targets=[];
+    if(!summary || !rec) return targets;
+    if(summary.groups?.[rec.group]) targets.push(summary.groups[rec.group]);
+    if(summary.cross?.[rec.role]?.[rec.socialMode]) targets.push(summary.cross[rec.role][rec.socialMode]);
+    if(summary.byDiet?.[rec.dietClass]?.[rec.role]?.[rec.socialMode]) targets.push(summary.byDiet[rec.dietClass][rec.role][rec.socialMode]);
+    if(rec.group==='D' && rec.dietClass==='carnivore') targets.push(summary.dCarnivore);
+    if(rec.group==='C' && summary.cRoleBreakdown?.[rec.role]) targets.push(summary.cRoleBreakdown[rec.role]);
+    if(rec.group==='B' && summary.bSocialModeBreakdown?.[rec.socialMode]) targets.push(summary.bSocialModeBreakdown[rec.socialMode]);
+    return targets;
+  }
+  function roleSocialInc(summary,rec,field,amount=1){
+    const n=Number(amount);
+    if(!Number.isFinite(n) || !field) return;
+    for(const target of roleSocialMetricTargets(summary,rec)) target[field]=(target[field]||0)+n;
+  }
+  function roleSocialMax(summary,rec,field,value){
+    const n=Number(value);
+    if(!Number.isFinite(n) || !field) return;
+    for(const target of roleSocialMetricTargets(summary,rec)) target[field]=Math.max(target[field]||0,n);
+  }
+  function roleSocialAddDeath(summary,rec,cause){
+    const key = cause==='starvation' ? 'starvationDeaths'
+      : cause==='predation' ? 'predationDeaths'
+      : cause==='oldAge' ? 'oldAgeDeaths'
+      : 'otherDeaths';
+    roleSocialInc(summary,rec,key);
+  }
+  function roleSocialAddInitial(summary,initial){
+    if(!initial) return;
+    const rec=roleSocialRuntimeRecord(initial.role,initial.socialMode,initial.dietClass,initial.generationDepth,initial.id);
+    roleSocialInc(summary,rec,'initial');
+    roleSocialMax(summary,rec,'maxGenerationDepth',rec.generationDepth);
+  }
+  function roleSocialAddBirth(summary,birth){
+    const rec=roleSocialRecordFromBirth(birth);
+    roleSocialInc(summary,rec,'births');
+    roleSocialMax(summary,rec,'maxGenerationDepth',rec.generationDepth);
+    if(birth?.survived60!=null) roleSocialInc(summary,rec,'survived60');
+    if(birth?.survived120!=null) roleSocialInc(summary,rec,'survived120');
+    if(birth?.survived180!=null) roleSocialInc(summary,rec,'survived180');
+    const life=telemetry.carnivoreLife.get(birth?.id);
+    if(birth?.reachedMaturity!=null || life?.reachedMaturity) roleSocialInc(summary,rec,'matured');
+    if(birth?.firstPredationFrame!=null || life?.firstPredationSuccess) roleSocialInc(summary,rec,'firstPredation');
+    const attacks=Number(life?.attackCount ?? 0);
+    if(Number.isFinite(attacks) && attacks>0) roleSocialInc(summary,rec,'attackAttempts',attacks);
+    const successes=Number(life?.predationSuccessCount ?? 0);
+    if(Number.isFinite(successes) && successes>0) roleSocialInc(summary,rec,'predationSuccesses',successes);
+    else if(birth?.firstPredationFrame!=null) roleSocialInc(summary,rec,'predationSuccesses');
+    if(birth?.reproducedFrame!=null || life?.reproduced) roleSocialInc(summary,rec,'reproduced');
+    if(birth?.deathFrame!=null) roleSocialAddDeath(summary,rec,birth.deathCause || 'other');
+  }
+  function roleSocialAddLiving(summary,o){
+    const rec=roleSocialRecordFromOrganism(o);
+    roleSocialInc(summary,rec,'livingEnd');
+    roleSocialMax(summary,rec,'maxGenerationDepth',rec.generationDepth);
+  }
+  function roleSocialBlankTransitionMatrix(){
+    const matrix={};
+    for(const from of ROLE_SOCIAL_GROUPS){
+      matrix[from]={total:0};
+      for(const to of ROLE_SOCIAL_GROUPS) matrix[from][to]=0;
+    }
+    return matrix;
+  }
+  function roleSocialTransitionChangesBlank(){
+    return {
+      parentKnown:0,
+      huntPackParent:0,
+      huntPackLost:0,
+      huntPackGained:0,
+      pursuitParent:0,
+      pursuitLost:0,
+      pursuitGained:0
+    };
+  }
+  function roleSocialAddTransition(summary,birth){
+    const child=roleSocialRecordFromBirth(birth);
+    const parentGroup=ROLE_SOCIAL_GROUPS.includes(birth?.parentRoleSocialGroup)
+      ? birth.parentRoleSocialGroup
+      : (birth?.parentRole && birth?.parentSocialMode ? roleSocialGroupKey(birth.parentRole,birth.parentSocialMode) : null);
+    if(!parentGroup || !summary.parentChildTransitions.matrix[parentGroup]){
+      summary.parentChildTransitions.unknownParent++;
+      return;
+    }
+    summary.parentChildTransitions.matrix[parentGroup][child.group]++;
+    summary.parentChildTransitions.matrix[parentGroup].total++;
+    const changes=summary.parentChildTransitions.changes;
+    const parentMode=roleSocialModeKey(birth.parentSocialMode);
+    const parentRole=roleSocialRoleKey(birth.parentRole);
+    changes.parentKnown++;
+    if(parentMode==='hunt-pack'){
+      changes.huntPackParent++;
+      if(child.socialMode!=='hunt-pack') changes.huntPackLost++;
+    } else if(child.socialMode==='hunt-pack'){
+      changes.huntPackGained++;
+    }
+    if(parentRole==='pursuit'){
+      changes.pursuitParent++;
+      if(child.role!=='pursuit') changes.pursuitLost++;
+    } else if(child.role==='pursuit'){
+      changes.pursuitGained++;
+    }
+  }
+  function roleSocialRate(n,d){
+    return d ? n/d : null;
+  }
+  function roleSocialRateObject(n,d){
+    return {numerator:n||0,denominator:d||0,rate:roleSocialRate(n||0,d||0)};
+  }
+  function roleSocialFinalizeMetric(metric){
+    const birthDen=metric.births || 0;
+    const deathDen=(metric.initial||0) + birthDen;
+    metric.rates={
+      survived60:roleSocialRateObject(metric.survived60,birthDen),
+      survived120:roleSocialRateObject(metric.survived120,birthDen),
+      survived180:roleSocialRateObject(metric.survived180,birthDen),
+      maturity:roleSocialRateObject(metric.matured,birthDen),
+      firstPredation:roleSocialRateObject(metric.firstPredation,birthDen),
+      attackSuccess:roleSocialRateObject(metric.predationSuccesses,metric.attackAttempts||0),
+      reproduction:roleSocialRateObject(metric.reproduced,birthDen),
+      starvationDeath:roleSocialRateObject(metric.starvationDeaths,deathDen),
+      predationDeath:roleSocialRateObject(metric.predationDeaths,deathDen),
+      oldAgeDeath:roleSocialRateObject(metric.oldAgeDeaths,deathDen),
+      otherDeath:roleSocialRateObject(metric.otherDeaths,deathDen)
+    };
+    return metric;
+  }
+  function roleSocialFinalizeMetricTree(node){
+    if(!node || typeof node!=='object') return;
+    if(Object.prototype.hasOwnProperty.call(node,'initial') && Object.prototype.hasOwnProperty.call(node,'births')){
+      roleSocialFinalizeMetric(node);
+      return;
+    }
+    for(const value of Object.values(node)) roleSocialFinalizeMetricTree(value);
+  }
+  function roleSocialFinalizeTransitions(transitions){
+    const rates={};
+    for(const from of ROLE_SOCIAL_GROUPS){
+      rates[from]={total:transitions.matrix[from].total};
+      for(const to of ROLE_SOCIAL_GROUPS){
+        rates[from][to]=roleSocialRateObject(transitions.matrix[from][to],transitions.matrix[from].total);
+      }
+    }
+    transitions.rates=rates;
+    transitions.changeRates={
+      huntPackLoss:roleSocialRateObject(transitions.changes.huntPackLost,transitions.changes.huntPackParent),
+      pursuitLoss:roleSocialRateObject(transitions.changes.pursuitLost,transitions.changes.pursuitParent),
+      huntPackGainPerKnownParent:roleSocialRateObject(transitions.changes.huntPackGained,transitions.changes.parentKnown),
+      pursuitGainPerKnownParent:roleSocialRateObject(transitions.changes.pursuitGained,transitions.changes.parentKnown)
+    };
+  }
+  function roleSocialEcologySummary(){
+    telemetryMarkNewbornSurvival();
+    telemetryMarkCarnivoreMilestones();
+    telemetryUpdateCarnivorePopulationState();
+    const summary={
+      frame,
+      definition:{
+        A:ROLE_SOCIAL_GROUP_LABELS.A,
+        B:ROLE_SOCIAL_GROUP_LABELS.B,
+        C:ROLE_SOCIAL_GROUP_LABELS.C,
+        D:ROLE_SOCIAL_GROUP_LABELS.D,
+        dCarnivore:'D where diet >= 0.66',
+        notes:'initial is reset-time census; births and birth-derived milestones use telemetry.births grouped by birth role/socialMode; livingEnd uses current organisms.'
+      },
+      groups:roleSocialBlankGroups(),
+      dCarnivore:{label:'D and diet>=0.66',...roleSocialMetricBlank()},
+      cRoleBreakdown:{ambusher:roleSocialMetricBlank(),scav:roleSocialMetricBlank(),filter:roleSocialMetricBlank(),other:roleSocialMetricBlank()},
+      bSocialModeBreakdown:{solitary:roleSocialMetricBlank(),'defense-school':roleSocialMetricBlank(),trail:roleSocialMetricBlank(),cluster:roleSocialMetricBlank(),school:roleSocialMetricBlank()},
+      cross:roleSocialBlankCross(),
+      byDiet:roleSocialBlankByDiet(),
+      parentChildTransitions:{
+        matrix:roleSocialBlankTransitionMatrix(),
+        unknownParent:0,
+        changes:roleSocialTransitionChangesBlank()
+      }
+    };
+    const initialById=new Map();
+    for(const initial of telemetry.roleSocialInitial || []){
+      if(initial?.id!=null) initialById.set(initial.id,initial);
+      roleSocialAddInitial(summary,initial);
     }
     for(const birth of telemetry.births.values()){
-      const key=packRoleSocialGroupKey(birth.birthRole,birth.birthSocialMode);
-      groups[key].births++;
-      if(birth.reachedMaturity!=null) groups[key].matured++;
-      if(birth.firstPredationFrame!=null) groups[key].firstPredation++;
-      if(birth.reproducedFrame!=null) groups[key].reproduced++;
+      roleSocialAddBirth(summary,birth);
+      roleSocialAddTransition(summary,birth);
+    }
+    for(const o of organisms){
+      if(o && !o.dead) roleSocialAddLiving(summary,o);
+    }
+    const seenInitialDeaths=new Set();
+    for(const event of telemetry.events){
+      if(event?.kind!=='death' || event.id==null || !initialById.has(event.id) || telemetry.births.has(event.id) || seenInitialDeaths.has(event.id)) continue;
+      seenInitialDeaths.add(event.id);
+      const initial=initialById.get(event.id);
+      const rec=roleSocialRuntimeRecord(initial.role,initial.socialMode,initial.dietClass,initial.generationDepth,event.id);
+      roleSocialAddDeath(summary,rec,event.cause || 'other');
+    }
+    roleSocialFinalizeMetricTree(summary.groups);
+    roleSocialFinalizeMetricTree(summary.dCarnivore);
+    roleSocialFinalizeMetricTree(summary.cRoleBreakdown);
+    roleSocialFinalizeMetricTree(summary.bSocialModeBreakdown);
+    roleSocialFinalizeMetricTree(summary.cross);
+    roleSocialFinalizeMetricTree(summary.byDiet);
+    roleSocialFinalizeTransitions(summary.parentChildTransitions);
+    return summary;
+  }
+  function roleSocialGeneStatBlank(){
+    return {count:0,sums:{diet:0,speed:0,sense:0,size:0,metabolism:0,fecundity:0,sociality:0,'form.detail':0}};
+  }
+  function roleSocialAddGeneStat(stat,g,sociality,form){
+    stat.count++;
+    stat.sums.diet+=Number(g.diet||0);
+    stat.sums.speed+=Number(g.speed||0);
+    stat.sums.sense+=Number(g.sense||0);
+    stat.sums.size+=Number(g.size||0);
+    stat.sums.metabolism+=Number(g.metabolism||0);
+    stat.sums.fecundity+=Number(g.fecundity||0);
+    stat.sums.sociality+=Number(sociality||0);
+    stat.sums['form.detail']+=Number(form?.detail||0);
+  }
+  function roleSocialFinishGeneStat(stat){
+    const averages={};
+    for(const [key,value] of Object.entries(stat.sums)){
+      averages[key]=stat.count ? value/stat.count : null;
+    }
+    return {count:stat.count,averages};
+  }
+  function roleSocialStaticGeneSpaceSummary(options={}){
+    const sampleCount=Math.max(1,Math.min(500000,Number(options.samples ?? 50000)));
+    const seed=Number(options.seed ?? 61001);
+    const random=duelSeededRandom(seed);
+    const roles=Object.fromEntries(ROLE_SOCIAL_ROLES.map(k=>[k,0]));
+    const socialModes=Object.fromEntries(ROLE_SOCIAL_MODES.map(k=>[k,0]));
+    const groups=Object.fromEntries(ROLE_SOCIAL_GROUPS.map(k=>[k,0]));
+    const cross=Object.fromEntries(ROLE_SOCIAL_ROLES.map(r=>[r,Object.fromEntries(ROLE_SOCIAL_MODES.map(m=>[m,0]))]));
+    const cRoleBreakdown={ambusher:0,scav:0,filter:0,other:0};
+    const bSocialModeBreakdown={solitary:0,'defense-school':0,trail:0,cluster:0,school:0};
+    const geneStats=Object.fromEntries(ROLE_SOCIAL_GROUPS.map(k=>[k,roleSocialGeneStatBlank()]));
+    for(let i=0;i<sampleCount;i++){
+      const g={};
+      for(const key of GENE_KEYS) g[key]=random();
+      const role=roleSocialRoleKey(computeRole(g));
+      const social=socialStrategyFromGenes(g);
+      const mode=roleSocialModeKey(social.mode);
+      const form=formFromGenes(g);
+      const group=roleSocialGroupKey(role,mode);
+      roles[role]++;
+      socialModes[mode]++;
+      groups[group]++;
+      cross[role][mode]++;
+      if(group==='C' && cRoleBreakdown[role]!=null) cRoleBreakdown[role]++;
+      if(group==='B' && bSocialModeBreakdown[mode]!=null) bSocialModeBreakdown[mode]++;
+      roleSocialAddGeneStat(geneStats[group],g,social.sociality,form);
+    }
+    const rateMap=obj=>Object.fromEntries(Object.entries(obj).map(([k,v])=>[k,{count:v,rate:v/sampleCount}]));
+    const crossRates={};
+    for(const role of ROLE_SOCIAL_ROLES){
+      crossRates[role]={};
+      for(const mode of ROLE_SOCIAL_MODES) crossRates[role][mode]={count:cross[role][mode],rate:cross[role][mode]/sampleCount};
+    }
+    return {
+      seed,
+      samples:sampleCount,
+      roles:rateMap(roles),
+      socialModes:rateMap(socialModes),
+      cross:crossRates,
+      groups:rateMap(groups),
+      cRoleBreakdown:rateMap(cRoleBreakdown),
+      bSocialModeBreakdown:rateMap(bSocialModeBreakdown),
+      groupGeneMeans:Object.fromEntries(Object.entries(geneStats).map(([k,v])=>[k,roleSocialFinishGeneStat(v)]))
+    };
+  }
+  function roleSocialReachabilitySummary(){
+    return {
+      source:'computeRole() and socialStrategyFromGenes() current conditions',
+      groupMaxSizeGene:GROUP_MAX_SIZE_GENE,
+      notes:[
+        'pursuit + defense-school is unreachable because pursuit requires diet >= 0.66 while defense-school requires diet <= 0.34.',
+        'pursuit + trail is unreachable: high-sense pursuit that passes social/size gates is captured by hunt-pack before trail; low-sense pursuit cannot satisfy trail sense > 0.44.',
+        'pursuit + cluster is unreachable because pursuit speed is >= 0.55 or > 0.72; the only overlap with cluster speed < 0.58 is preempted by hunt-pack when social/size gates pass, otherwise solitary wins.',
+        'pursuit + school is narrow but reachable when speed > 0.72 and 0.38 < sense <= 0.42 with sufficient sociality and size <= GROUP_MAX_SIZE_GENE.',
+        'ambusher + hunt-pack is reachable only near the speed boundary: ambusher speed < 0.55 and hunt-pack speed > 0.52.',
+        'scav + hunt-pack is reachable only near the diet boundary: scav is omnivore and hunt-pack needs diet > 0.62, so diet is mainly 0.62 < diet < 0.66.',
+        'filter + hunt-pack is unreachable because filter requires herbivore or diet < 0.50 while hunt-pack requires diet > 0.62.',
+        'socialStrategyFromGenes() priority is solitary by low sociality, solitary by size, hunt-pack, defense-school, trail, cluster, then school.'
+      ]
+    };
+  }
+  function packRoleSocialGroupSummary(){
+    const ecology=roleSocialEcologySummary();
+    const groups={};
+    for(const key of ROLE_SOCIAL_GROUPS){
+      const g=ecology.groups[key];
+      groups[key]={
+        label:g.label,
+        living:g.livingEnd,
+        births:g.births,
+        matured:g.matured,
+        firstPredation:g.firstPredation,
+        reproduced:g.reproduced,
+        endPopulation:g.livingEnd
+      };
     }
     return {
       frame,
       definition:{
-        A:'role=pursuit && socialMode=hunt-pack',
-        B:'role=pursuit && socialMode!=hunt-pack',
-        C:'role!=pursuit && socialMode=hunt-pack',
-        D:'role!=pursuit && socialMode!=hunt-pack',
-        notes:'living/endPopulation use current organisms; births/matured/firstPredation/reproduced use telemetry.births grouped by birth role/socialMode.'
+        A:ROLE_SOCIAL_GROUP_LABELS.A,
+        B:ROLE_SOCIAL_GROUP_LABELS.B,
+        C:ROLE_SOCIAL_GROUP_LABELS.C,
+        D:ROLE_SOCIAL_GROUP_LABELS.D,
+        notes:'Compatibility view over roleSocialEcologySummary().'
       },
       groups,
       totals:Object.values(groups).reduce((acc,g)=>{
@@ -15679,6 +16098,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     packRoleSocialGroupSummary(){
       return packRoleSocialGroupSummary();
+    },
+    roleSocialEcologySummary(){
+      return roleSocialEcologySummary();
+    },
+    roleSocialStaticGeneSpaceSummary(options={}){
+      return roleSocialStaticGeneSpaceSummary(options);
+    },
+    roleSocialReachabilitySummary(){
+      return roleSocialReachabilitySummary();
     },
     runArtificialPackFormationExperiment(options={}){
       return runArtificialPackFormationExperiment(options);

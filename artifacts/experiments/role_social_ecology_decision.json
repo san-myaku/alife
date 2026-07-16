@@ -1,0 +1,1259 @@
+{
+  "experiment": "role_social_ecology",
+  "stage": "diagnostic",
+  "decision": "diagnostic_only",
+  "classification": {
+    "dominant": {
+      "key": "B. 出生はするが早期淘汰",
+      "score": 2.5,
+      "reason": "A births=4, survived180=0, maturity=0"
+    },
+    "next": []
+  },
+  "staticGeneSpace": {
+    "A": {
+      "count": 2323,
+      "rate": 0.04646
+    },
+    "B": {
+      "count": 2039,
+      "rate": 0.04078
+    },
+    "C": {
+      "count": 708,
+      "rate": 0.01416
+    },
+    "D": {
+      "count": 44930,
+      "rate": 0.8986
+    }
+  },
+  "pooled": {
+    "groups": {
+      "A": {
+        "label": "role=pursuit && socialMode=hunt-pack",
+        "initial": 19,
+        "births": 4,
+        "livingEnd": 0,
+        "survived60": 4,
+        "survived120": 4,
+        "survived180": 0,
+        "matured": 0,
+        "firstPredation": 0,
+        "attackAttempts": 2,
+        "predationSuccesses": 0,
+        "reproduced": 0,
+        "starvationDeaths": 17,
+        "predationDeaths": 6,
+        "oldAgeDeaths": 0,
+        "otherDeaths": 0,
+        "maxGenerationDepth": 1,
+        "rates": {
+          "survived60": {
+            "numerator": 4,
+            "denominator": 4,
+            "rate": 1
+          },
+          "survived120": {
+            "numerator": 4,
+            "denominator": 4,
+            "rate": 1
+          },
+          "survived180": {
+            "numerator": 0,
+            "denominator": 4,
+            "rate": 0
+          },
+          "maturity": {
+            "numerator": 0,
+            "denominator": 4,
+            "rate": 0
+          },
+          "firstPredation": {
+            "numerator": 0,
+            "denominator": 4,
+            "rate": 0
+          },
+          "attackSuccess": {
+            "numerator": 0,
+            "denominator": 2,
+            "rate": 0
+          },
+          "reproduction": {
+            "numerator": 0,
+            "denominator": 4,
+            "rate": 0
+          },
+          "starvationDeath": {
+            "numerator": 17,
+            "denominator": 23,
+            "rate": 0.7391304347826086
+          },
+          "predationDeath": {
+            "numerator": 6,
+            "denominator": 23,
+            "rate": 0.2608695652173913
+          },
+          "oldAgeDeath": {
+            "numerator": 0,
+            "denominator": 23,
+            "rate": 0
+          },
+          "otherDeath": {
+            "numerator": 0,
+            "denominator": 23,
+            "rate": 0
+          }
+        }
+      },
+      "B": {
+        "label": "role=pursuit && socialMode!=hunt-pack",
+        "initial": 13,
+        "births": 0,
+        "livingEnd": 0,
+        "survived60": 0,
+        "survived120": 0,
+        "survived180": 0,
+        "matured": 0,
+        "firstPredation": 0,
+        "attackAttempts": 0,
+        "predationSuccesses": 0,
+        "reproduced": 0,
+        "starvationDeaths": 11,
+        "predationDeaths": 2,
+        "oldAgeDeaths": 0,
+        "otherDeaths": 0,
+        "maxGenerationDepth": 0,
+        "rates": {
+          "survived60": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "survived120": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "survived180": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "maturity": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "firstPredation": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "attackSuccess": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "reproduction": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "starvationDeath": {
+            "numerator": 11,
+            "denominator": 13,
+            "rate": 0.8461538461538461
+          },
+          "predationDeath": {
+            "numerator": 2,
+            "denominator": 13,
+            "rate": 0.15384615384615385
+          },
+          "oldAgeDeath": {
+            "numerator": 0,
+            "denominator": 13,
+            "rate": 0
+          },
+          "otherDeath": {
+            "numerator": 0,
+            "denominator": 13,
+            "rate": 0
+          }
+        }
+      },
+      "C": {
+        "label": "role!=pursuit && socialMode=hunt-pack",
+        "initial": 4,
+        "births": 3,
+        "livingEnd": 1,
+        "survived60": 3,
+        "survived120": 3,
+        "survived180": 3,
+        "matured": 2,
+        "firstPredation": 0,
+        "attackAttempts": 3,
+        "predationSuccesses": 0,
+        "reproduced": 1,
+        "starvationDeaths": 4,
+        "predationDeaths": 2,
+        "oldAgeDeaths": 0,
+        "otherDeaths": 0,
+        "maxGenerationDepth": 2,
+        "rates": {
+          "survived60": {
+            "numerator": 3,
+            "denominator": 3,
+            "rate": 1
+          },
+          "survived120": {
+            "numerator": 3,
+            "denominator": 3,
+            "rate": 1
+          },
+          "survived180": {
+            "numerator": 3,
+            "denominator": 3,
+            "rate": 1
+          },
+          "maturity": {
+            "numerator": 2,
+            "denominator": 3,
+            "rate": 0.6666666666666666
+          },
+          "firstPredation": {
+            "numerator": 0,
+            "denominator": 3,
+            "rate": 0
+          },
+          "attackSuccess": {
+            "numerator": 0,
+            "denominator": 3,
+            "rate": 0
+          },
+          "reproduction": {
+            "numerator": 1,
+            "denominator": 3,
+            "rate": 0.3333333333333333
+          },
+          "starvationDeath": {
+            "numerator": 4,
+            "denominator": 7,
+            "rate": 0.5714285714285714
+          },
+          "predationDeath": {
+            "numerator": 2,
+            "denominator": 7,
+            "rate": 0.2857142857142857
+          },
+          "oldAgeDeath": {
+            "numerator": 0,
+            "denominator": 7,
+            "rate": 0
+          },
+          "otherDeath": {
+            "numerator": 0,
+            "denominator": 7,
+            "rate": 0
+          }
+        }
+      },
+      "D": {
+        "label": "role!=pursuit && socialMode!=hunt-pack",
+        "initial": 284,
+        "births": 1280,
+        "livingEnd": 613,
+        "survived60": 1234,
+        "survived120": 1182,
+        "survived180": 1101,
+        "matured": 978,
+        "firstPredation": 8,
+        "attackAttempts": 58,
+        "predationSuccesses": 11,
+        "reproduced": 563,
+        "starvationDeaths": 313,
+        "predationDeaths": 111,
+        "oldAgeDeaths": 0,
+        "otherDeaths": 527,
+        "maxGenerationDepth": 6,
+        "rates": {
+          "survived60": {
+            "numerator": 1234,
+            "denominator": 1280,
+            "rate": 0.9640625
+          },
+          "survived120": {
+            "numerator": 1182,
+            "denominator": 1280,
+            "rate": 0.9234375
+          },
+          "survived180": {
+            "numerator": 1101,
+            "denominator": 1280,
+            "rate": 0.86015625
+          },
+          "maturity": {
+            "numerator": 978,
+            "denominator": 1280,
+            "rate": 0.7640625
+          },
+          "firstPredation": {
+            "numerator": 8,
+            "denominator": 1280,
+            "rate": 0.00625
+          },
+          "attackSuccess": {
+            "numerator": 11,
+            "denominator": 58,
+            "rate": 0.1896551724137931
+          },
+          "reproduction": {
+            "numerator": 563,
+            "denominator": 1280,
+            "rate": 0.43984375
+          },
+          "starvationDeath": {
+            "numerator": 313,
+            "denominator": 1564,
+            "rate": 0.20012787723785166
+          },
+          "predationDeath": {
+            "numerator": 111,
+            "denominator": 1564,
+            "rate": 0.07097186700767263
+          },
+          "oldAgeDeath": {
+            "numerator": 0,
+            "denominator": 1564,
+            "rate": 0
+          },
+          "otherDeath": {
+            "numerator": 527,
+            "denominator": 1564,
+            "rate": 0.33695652173913043
+          }
+        }
+      }
+    },
+    "dCarnivore": {
+      "label": "D and diet>=0.66",
+      "initial": 66,
+      "births": 33,
+      "livingEnd": 0,
+      "survived60": 33,
+      "survived120": 28,
+      "survived180": 19,
+      "matured": 11,
+      "firstPredation": 8,
+      "attackAttempts": 58,
+      "predationSuccesses": 11,
+      "reproduced": 4,
+      "starvationDeaths": 82,
+      "predationDeaths": 15,
+      "oldAgeDeaths": 0,
+      "otherDeaths": 2,
+      "maxGenerationDepth": 3,
+      "rates": {
+        "survived60": {
+          "numerator": 33,
+          "denominator": 33,
+          "rate": 1
+        },
+        "survived120": {
+          "numerator": 28,
+          "denominator": 33,
+          "rate": 0.8484848484848485
+        },
+        "survived180": {
+          "numerator": 19,
+          "denominator": 33,
+          "rate": 0.5757575757575758
+        },
+        "maturity": {
+          "numerator": 11,
+          "denominator": 33,
+          "rate": 0.3333333333333333
+        },
+        "firstPredation": {
+          "numerator": 8,
+          "denominator": 33,
+          "rate": 0.24242424242424243
+        },
+        "attackSuccess": {
+          "numerator": 11,
+          "denominator": 58,
+          "rate": 0.1896551724137931
+        },
+        "reproduction": {
+          "numerator": 4,
+          "denominator": 33,
+          "rate": 0.12121212121212122
+        },
+        "starvationDeath": {
+          "numerator": 82,
+          "denominator": 99,
+          "rate": 0.8282828282828283
+        },
+        "predationDeath": {
+          "numerator": 15,
+          "denominator": 99,
+          "rate": 0.15151515151515152
+        },
+        "oldAgeDeath": {
+          "numerator": 0,
+          "denominator": 99,
+          "rate": 0
+        },
+        "otherDeath": {
+          "numerator": 2,
+          "denominator": 99,
+          "rate": 0.020202020202020204
+        }
+      }
+    },
+    "cRoleBreakdown": {
+      "ambusher": {
+        "initial": 0,
+        "births": 0,
+        "livingEnd": 0,
+        "survived60": 0,
+        "survived120": 0,
+        "survived180": 0,
+        "matured": 0,
+        "firstPredation": 0,
+        "attackAttempts": 0,
+        "predationSuccesses": 0,
+        "reproduced": 0,
+        "starvationDeaths": 0,
+        "predationDeaths": 0,
+        "oldAgeDeaths": 0,
+        "otherDeaths": 0,
+        "maxGenerationDepth": 0,
+        "rates": {
+          "survived60": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "survived120": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "survived180": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "maturity": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "firstPredation": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "attackSuccess": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "reproduction": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "starvationDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "predationDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "oldAgeDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "otherDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          }
+        }
+      },
+      "scav": {
+        "initial": 2,
+        "births": 2,
+        "livingEnd": 1,
+        "survived60": 2,
+        "survived120": 2,
+        "survived180": 2,
+        "matured": 2,
+        "firstPredation": 0,
+        "attackAttempts": 0,
+        "predationSuccesses": 0,
+        "reproduced": 1,
+        "starvationDeaths": 2,
+        "predationDeaths": 1,
+        "oldAgeDeaths": 0,
+        "otherDeaths": 0,
+        "maxGenerationDepth": 1,
+        "rates": {
+          "survived60": {
+            "numerator": 2,
+            "denominator": 2,
+            "rate": 1
+          },
+          "survived120": {
+            "numerator": 2,
+            "denominator": 2,
+            "rate": 1
+          },
+          "survived180": {
+            "numerator": 2,
+            "denominator": 2,
+            "rate": 1
+          },
+          "maturity": {
+            "numerator": 2,
+            "denominator": 2,
+            "rate": 1
+          },
+          "firstPredation": {
+            "numerator": 0,
+            "denominator": 2,
+            "rate": 0
+          },
+          "attackSuccess": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "reproduction": {
+            "numerator": 1,
+            "denominator": 2,
+            "rate": 0.5
+          },
+          "starvationDeath": {
+            "numerator": 2,
+            "denominator": 4,
+            "rate": 0.5
+          },
+          "predationDeath": {
+            "numerator": 1,
+            "denominator": 4,
+            "rate": 0.25
+          },
+          "oldAgeDeath": {
+            "numerator": 0,
+            "denominator": 4,
+            "rate": 0
+          },
+          "otherDeath": {
+            "numerator": 0,
+            "denominator": 4,
+            "rate": 0
+          }
+        }
+      },
+      "filter": {
+        "initial": 0,
+        "births": 0,
+        "livingEnd": 0,
+        "survived60": 0,
+        "survived120": 0,
+        "survived180": 0,
+        "matured": 0,
+        "firstPredation": 0,
+        "attackAttempts": 0,
+        "predationSuccesses": 0,
+        "reproduced": 0,
+        "starvationDeaths": 0,
+        "predationDeaths": 0,
+        "oldAgeDeaths": 0,
+        "otherDeaths": 0,
+        "maxGenerationDepth": 0,
+        "rates": {
+          "survived60": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "survived120": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "survived180": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "maturity": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "firstPredation": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "attackSuccess": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "reproduction": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "starvationDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "predationDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "oldAgeDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "otherDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          }
+        }
+      },
+      "other": {
+        "initial": 2,
+        "births": 1,
+        "livingEnd": 0,
+        "survived60": 1,
+        "survived120": 1,
+        "survived180": 1,
+        "matured": 0,
+        "firstPredation": 0,
+        "attackAttempts": 3,
+        "predationSuccesses": 0,
+        "reproduced": 0,
+        "starvationDeaths": 2,
+        "predationDeaths": 1,
+        "oldAgeDeaths": 0,
+        "otherDeaths": 0,
+        "maxGenerationDepth": 2,
+        "rates": {
+          "survived60": {
+            "numerator": 1,
+            "denominator": 1,
+            "rate": 1
+          },
+          "survived120": {
+            "numerator": 1,
+            "denominator": 1,
+            "rate": 1
+          },
+          "survived180": {
+            "numerator": 1,
+            "denominator": 1,
+            "rate": 1
+          },
+          "maturity": {
+            "numerator": 0,
+            "denominator": 1,
+            "rate": 0
+          },
+          "firstPredation": {
+            "numerator": 0,
+            "denominator": 1,
+            "rate": 0
+          },
+          "attackSuccess": {
+            "numerator": 0,
+            "denominator": 3,
+            "rate": 0
+          },
+          "reproduction": {
+            "numerator": 0,
+            "denominator": 1,
+            "rate": 0
+          },
+          "starvationDeath": {
+            "numerator": 2,
+            "denominator": 3,
+            "rate": 0.6666666666666666
+          },
+          "predationDeath": {
+            "numerator": 1,
+            "denominator": 3,
+            "rate": 0.3333333333333333
+          },
+          "oldAgeDeath": {
+            "numerator": 0,
+            "denominator": 3,
+            "rate": 0
+          },
+          "otherDeath": {
+            "numerator": 0,
+            "denominator": 3,
+            "rate": 0
+          }
+        }
+      }
+    },
+    "bSocialModeBreakdown": {
+      "solitary": {
+        "initial": 12,
+        "births": 0,
+        "livingEnd": 0,
+        "survived60": 0,
+        "survived120": 0,
+        "survived180": 0,
+        "matured": 0,
+        "firstPredation": 0,
+        "attackAttempts": 0,
+        "predationSuccesses": 0,
+        "reproduced": 0,
+        "starvationDeaths": 10,
+        "predationDeaths": 2,
+        "oldAgeDeaths": 0,
+        "otherDeaths": 0,
+        "maxGenerationDepth": 0,
+        "rates": {
+          "survived60": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "survived120": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "survived180": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "maturity": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "firstPredation": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "attackSuccess": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "reproduction": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "starvationDeath": {
+            "numerator": 10,
+            "denominator": 12,
+            "rate": 0.8333333333333334
+          },
+          "predationDeath": {
+            "numerator": 2,
+            "denominator": 12,
+            "rate": 0.16666666666666666
+          },
+          "oldAgeDeath": {
+            "numerator": 0,
+            "denominator": 12,
+            "rate": 0
+          },
+          "otherDeath": {
+            "numerator": 0,
+            "denominator": 12,
+            "rate": 0
+          }
+        }
+      },
+      "defense-school": {
+        "initial": 0,
+        "births": 0,
+        "livingEnd": 0,
+        "survived60": 0,
+        "survived120": 0,
+        "survived180": 0,
+        "matured": 0,
+        "firstPredation": 0,
+        "attackAttempts": 0,
+        "predationSuccesses": 0,
+        "reproduced": 0,
+        "starvationDeaths": 0,
+        "predationDeaths": 0,
+        "oldAgeDeaths": 0,
+        "otherDeaths": 0,
+        "maxGenerationDepth": 0,
+        "rates": {
+          "survived60": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "survived120": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "survived180": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "maturity": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "firstPredation": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "attackSuccess": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "reproduction": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "starvationDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "predationDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "oldAgeDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "otherDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          }
+        }
+      },
+      "trail": {
+        "initial": 0,
+        "births": 0,
+        "livingEnd": 0,
+        "survived60": 0,
+        "survived120": 0,
+        "survived180": 0,
+        "matured": 0,
+        "firstPredation": 0,
+        "attackAttempts": 0,
+        "predationSuccesses": 0,
+        "reproduced": 0,
+        "starvationDeaths": 0,
+        "predationDeaths": 0,
+        "oldAgeDeaths": 0,
+        "otherDeaths": 0,
+        "maxGenerationDepth": 0,
+        "rates": {
+          "survived60": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "survived120": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "survived180": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "maturity": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "firstPredation": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "attackSuccess": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "reproduction": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "starvationDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "predationDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "oldAgeDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "otherDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          }
+        }
+      },
+      "cluster": {
+        "initial": 0,
+        "births": 0,
+        "livingEnd": 0,
+        "survived60": 0,
+        "survived120": 0,
+        "survived180": 0,
+        "matured": 0,
+        "firstPredation": 0,
+        "attackAttempts": 0,
+        "predationSuccesses": 0,
+        "reproduced": 0,
+        "starvationDeaths": 0,
+        "predationDeaths": 0,
+        "oldAgeDeaths": 0,
+        "otherDeaths": 0,
+        "maxGenerationDepth": 0,
+        "rates": {
+          "survived60": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "survived120": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "survived180": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "maturity": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "firstPredation": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "attackSuccess": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "reproduction": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "starvationDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "predationDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "oldAgeDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "otherDeath": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          }
+        }
+      },
+      "school": {
+        "initial": 1,
+        "births": 0,
+        "livingEnd": 0,
+        "survived60": 0,
+        "survived120": 0,
+        "survived180": 0,
+        "matured": 0,
+        "firstPredation": 0,
+        "attackAttempts": 0,
+        "predationSuccesses": 0,
+        "reproduced": 0,
+        "starvationDeaths": 1,
+        "predationDeaths": 0,
+        "oldAgeDeaths": 0,
+        "otherDeaths": 0,
+        "maxGenerationDepth": 0,
+        "rates": {
+          "survived60": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "survived120": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "survived180": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "maturity": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "firstPredation": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "attackSuccess": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "reproduction": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "starvationDeath": {
+            "numerator": 1,
+            "denominator": 1,
+            "rate": 1
+          },
+          "predationDeath": {
+            "numerator": 0,
+            "denominator": 1,
+            "rate": 0
+          },
+          "oldAgeDeath": {
+            "numerator": 0,
+            "denominator": 1,
+            "rate": 0
+          },
+          "otherDeath": {
+            "numerator": 0,
+            "denominator": 1,
+            "rate": 0
+          }
+        }
+      }
+    },
+    "parentChildTransitions": {
+      "matrix": {
+        "A": {
+          "total": 4,
+          "A": 4,
+          "B": 0,
+          "C": 0,
+          "D": 0
+        },
+        "B": {
+          "total": 0,
+          "A": 0,
+          "B": 0,
+          "C": 0,
+          "D": 0
+        },
+        "C": {
+          "total": 4,
+          "A": 0,
+          "B": 0,
+          "C": 3,
+          "D": 1
+        },
+        "D": {
+          "total": 1279,
+          "A": 0,
+          "B": 0,
+          "C": 0,
+          "D": 1279
+        }
+      },
+      "unknownParent": 0,
+      "changes": {
+        "parentKnown": 1287,
+        "huntPackParent": 8,
+        "huntPackLost": 1,
+        "huntPackGained": 0,
+        "pursuitParent": 4,
+        "pursuitLost": 0,
+        "pursuitGained": 0
+      },
+      "rates": {
+        "A": {
+          "total": 4,
+          "A": {
+            "numerator": 4,
+            "denominator": 4,
+            "rate": 1
+          },
+          "B": {
+            "numerator": 0,
+            "denominator": 4,
+            "rate": 0
+          },
+          "C": {
+            "numerator": 0,
+            "denominator": 4,
+            "rate": 0
+          },
+          "D": {
+            "numerator": 0,
+            "denominator": 4,
+            "rate": 0
+          }
+        },
+        "B": {
+          "total": 0,
+          "A": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "B": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "C": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          },
+          "D": {
+            "numerator": 0,
+            "denominator": 0,
+            "rate": null
+          }
+        },
+        "C": {
+          "total": 4,
+          "A": {
+            "numerator": 0,
+            "denominator": 4,
+            "rate": 0
+          },
+          "B": {
+            "numerator": 0,
+            "denominator": 4,
+            "rate": 0
+          },
+          "C": {
+            "numerator": 3,
+            "denominator": 4,
+            "rate": 0.75
+          },
+          "D": {
+            "numerator": 1,
+            "denominator": 4,
+            "rate": 0.25
+          }
+        },
+        "D": {
+          "total": 1279,
+          "A": {
+            "numerator": 0,
+            "denominator": 1279,
+            "rate": 0
+          },
+          "B": {
+            "numerator": 0,
+            "denominator": 1279,
+            "rate": 0
+          },
+          "C": {
+            "numerator": 0,
+            "denominator": 1279,
+            "rate": 0
+          },
+          "D": {
+            "numerator": 1279,
+            "denominator": 1279,
+            "rate": 1
+          }
+        }
+      },
+      "changeRates": {
+        "huntPackLoss": {
+          "numerator": 1,
+          "denominator": 8,
+          "rate": 0.125
+        },
+        "pursuitLoss": {
+          "numerator": 0,
+          "denominator": 4,
+          "rate": 0
+        },
+        "huntPackGainPerKnownParent": {
+          "numerator": 0,
+          "denominator": 1287,
+          "rate": 0
+        },
+        "pursuitGainPerKnownParent": {
+          "numerator": 0,
+          "denominator": 1287,
+          "rate": 0
+        }
+      }
+    }
+  },
+  "safety": {
+    "pageErrors": 0,
+    "nanOrInfinity": 0,
+    "energyCreationEvents": 0,
+    "nutrientCreationEvents": 0
+  },
+  "artifact": "artifacts\\experiments\\role_social_ecology.json"
+}
