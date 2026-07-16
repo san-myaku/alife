@@ -805,6 +805,14 @@
     }
     return pts;
   }
+  // Per-species shape dial in [0,1). Stable for a species, independent per `salt`, and
+  // nudged by formSeed so the "form" gene still has reach inside a single form.
+  function shapeVar(o, salt) {
+    const key = String(o.speciesKey || o.id || "x") + ":shape:" + salt + ":" +
+      Math.round(((o.genes || {}).formSeed || 0) * 997);
+    return hashStr32(key) / 4294967296;
+  }
+  function svLerp(o, salt, lo, hi) { return lo + (hi - lo) * shapeVar(o, salt); }
   // sharp-tipped star: explicit tips joined by edges that bow deep toward the centre,
   // so the points stay needle-sharp instead of rounding off into petals.
   function _concaveStar(tips, inward) {
@@ -817,124 +825,151 @@
     return _sampleSegs(segs, 22);
   }
   // S-curved ribbon body: shared spine so the outline and the segment lines agree.
-  function _serpentSpine(r) {
-    const m = 56, cl = [];
+  // Length, waviness and girth all vary per species, so a lineage can be a short fat
+  // grub or a long thin eel.
+  function _serpentSpine(r, o) {
+    const len = svLerp(o, "serpLen", 1.10, 2.45);     // half-length in r units
+    const waves = svLerp(o, "serpWave", 1.5, 3.0);
+    const amp = svLerp(o, "serpAmp", 0.22, 0.62);
+    const girth = svLerp(o, "serpGirth", 0.20, 0.40);
+    const m = 56 + Math.round(len * 10), cl = [];
     for (let i = 0; i <= m; i++) {
       const t = i / m;
-      cl.push({ x: r * 0.44 * Math.sin((t - 0.5) * Math.PI * 2.2), y: lerp(-r * 1.46, r * 1.46, t), t: t });
+      cl.push({ x: r * amp * Math.sin((t - 0.5) * Math.PI * waves), y: lerp(-r * len, r * len, t), t: t });
     }
-    function halfW(t) { return r * 0.32 * Math.pow(Math.sin(Math.PI * t), 0.45); }  // tapers to a point at both ends
+    function halfW(t) { return r * girth * Math.pow(Math.sin(Math.PI * t), 0.45); }  // tapers to a point at both ends
     function nrm(i) {
       const a = cl[Math.max(0, i - 1)], b = cl[Math.min(m, i + 1)];
       const tx = b.x - a.x, ty = b.y - a.y, mm = Math.hypot(tx, ty) || 1;
       return { nx: ty / mm, ny: -tx / mm };
     }
-    return { m: m, cl: cl, halfW: halfW, nrm: nrm };
+    return { m: m, cl: cl, halfW: halfW, nrm: nrm, segStep: Math.max(4, Math.round(m / 9)) };
   }
   function singleOutline(kind, r, o, rng) {
     const form = o.form || {};
     const pts = [], n = 84;
     // ---- swimmers: nose points up (-y), tail trails down (+y) ----
     if (kind === "single-dart") {
-      const apex = {x:0,y:-r*1.30}, bl = {x:-r*0.82,y:r*0.42}, tl = {x:-r*0.15,y:r*0.24},
-            tip = {x:0,y:r*2.05}, tr = {x:r*0.15,y:r*0.24}, br = {x:r*0.82,y:r*0.42};
+      const tl_ = svLerp(o, "dartTail", 1.35, 2.55);   // tail length
+      const bw_ = svLerp(o, "dartBarb", 0.60, 0.98);   // barb spread
+      const hd_ = svLerp(o, "dartHead", 1.05, 1.55);   // head length
+      const apex = {x:0,y:-r*hd_}, bl = {x:-r*bw_,y:r*0.42}, tl = {x:-r*0.15,y:r*0.24},
+            tip = {x:0,y:r*tl_}, tr = {x:r*0.15,y:r*0.24}, br = {x:r*bw_,y:r*0.42};
       return _sampleSegs([
-        [apex,{x:-r*0.24,y:-r*0.64},{x:-r*0.56,y:r*0.00},bl],
-        [bl,{x:-r*0.62,y:-r*0.10},{x:-r*0.36,y:-r*0.02},tl],  // swept-back barb, concave from outside
-        [tl,{x:-r*0.17,y:r*1.02},{x:-r*0.09,y:r*1.62},tip],   // long visible tail
-        [tip,{x:r*0.09,y:r*1.62},{x:r*0.17,y:r*1.02},tr],
-        [tr,{x:r*0.36,y:-r*0.02},{x:r*0.62,y:-r*0.10},br],
-        [br,{x:r*0.56,y:r*0.00},{x:r*0.24,y:-r*0.64},apex]
+        [apex,{x:-r*bw_*0.30,y:-r*hd_*0.49},{x:-r*bw_*0.68,y:r*0.00},bl],
+        [bl,{x:-r*bw_*0.76,y:-r*0.10},{x:-r*0.36,y:-r*0.02},tl],  // swept-back barb, concave from outside
+        [tl,{x:-r*0.17,y:r*tl_*0.50},{x:-r*0.09,y:r*tl_*0.79},tip],
+        [tip,{x:r*0.09,y:r*tl_*0.79},{x:r*0.17,y:r*tl_*0.50},tr],
+        [tr,{x:r*0.36,y:-r*0.02},{x:r*bw_*0.76,y:-r*0.10},br],
+        [br,{x:r*bw_*0.68,y:r*0.00},{x:r*bw_*0.30,y:-r*hd_*0.49},apex]
       ], 16);
     }
     if (kind === "single-barb") {
       // harpoon: two hooked cusps per side, a rear barb, then a long thin tail.
-      const apex = {x:0,y:-r*1.55}, tip = {x:0,y:r*2.15};
-      const L = [{x:-r*0.30,y:-r*0.70},{x:-r*0.15,y:-r*0.48},{x:-r*0.46,y:-r*0.14},{x:-r*0.24,y:r*0.08},{x:-r*0.62,y:r*0.36}];
+      const bl_ = svLerp(o, "barbLen", 1.30, 1.85), bt_ = svLerp(o, "barbTail", 1.55, 2.75),
+            bh_ = svLerp(o, "barbHook", 0.78, 1.30);   // how far the hooks flare out
+      const apex = {x:0,y:-r*bl_}, tip = {x:0,y:r*bt_};
+      const L = [{x:-r*0.30*bh_,y:-r*0.70},{x:-r*0.15,y:-r*0.48},{x:-r*0.46*bh_,y:-r*0.14},{x:-r*0.24,y:r*0.08},{x:-r*0.62*bh_,y:r*0.36}];
       const R = L.map(function(p){ return {x:-p.x, y:p.y}; });
       const rootL = {x:-r*0.13,y:r*0.42}, rootR = {x:r*0.13,y:r*0.42};
       return _sampleSegs([
-        [apex,{x:-r*0.10,y:-r*1.24},{x:-r*0.22,y:-r*0.92},L[0]],
+        [apex,{x:-r*0.10,y:-r*bl_*0.80},{x:-r*0.22,y:-r*bl_*0.59},L[0]],
         [L[0],{x:-r*0.26,y:-r*0.60},{x:-r*0.19,y:-r*0.54},L[1]],
         [L[1],{x:-r*0.24,y:-r*0.38},{x:-r*0.40,y:-r*0.26},L[2]],
         [L[2],{x:-r*0.40,y:-r*0.04},{x:-r*0.30,y:r*0.02},L[3]],
         [L[3],{x:-r*0.36,y:r*0.16},{x:-r*0.54,y:r*0.24},L[4]],
         [L[4],{x:-r*0.40,y:r*0.10},{x:-r*0.22,y:r*0.28},rootL],
-        [rootL,{x:-r*0.15,y:r*1.20},{x:-r*0.08,y:r*1.74},tip],
-        [tip,{x:r*0.08,y:r*1.74},{x:r*0.15,y:r*1.20},rootR],
+        [rootL,{x:-r*0.15,y:r*bt_*0.56},{x:-r*0.08,y:r*bt_*0.81},tip],
+        [tip,{x:r*0.08,y:r*bt_*0.81},{x:r*0.15,y:r*bt_*0.56},rootR],
         [rootR,{x:r*0.16,y:r*0.30},{x:r*0.40,y:r*0.10},R[4]],
         [R[4],{x:r*0.54,y:r*0.24},{x:r*0.36,y:r*0.16},R[3]],
         [R[3],{x:r*0.30,y:r*0.02},{x:r*0.40,y:-r*0.04},R[2]],
         [R[2],{x:r*0.40,y:-r*0.26},{x:r*0.24,y:-r*0.38},R[1]],
         [R[1],{x:r*0.19,y:-r*0.54},{x:r*0.26,y:-r*0.60},R[0]],
-        [R[0],{x:r*0.22,y:-r*0.92},{x:r*0.10,y:-r*1.24},apex]
+        [R[0],{x:r*0.22,y:-r*bl_*0.59},{x:r*0.10,y:-r*bl_*0.80},apex]
       ], 10);
     }
     if (kind === "single-finned") {
-      // notch cuts ~25% back from the lobe tips, as in the sketch; deeper than that
-      // and the body reads as a chevron rather than a fish.
-      const apex = {x:0,y:-r*1.40}, ll = {x:-r*0.86,y:r*1.34}, notch = {x:0,y:r*0.72}, rl = {x:r*0.86,y:r*1.34};
+      // notch cuts back from the lobe tips; much past ~45% and the body reads as a
+      // chevron rather than a fish, so keep the per-species range under that.
+      const hd_ = svLerp(o, "finHead", 1.15, 1.62), lb_ = svLerp(o, "finLobe", 1.14, 1.52),
+            sp_ = svLerp(o, "finSpread", 0.70, 1.02);
+      const nY = lb_ - (lb_ + hd_) * svLerp(o, "finNotch", 0.16, 0.34);
+      const apex = {x:0,y:-r*hd_}, ll = {x:-r*sp_,y:r*lb_}, notch = {x:0,y:r*nY}, rl = {x:r*sp_,y:r*lb_};
       return _sampleSegs([
-        [apex,{x:-r*0.34,y:-r*1.00},{x:-r*0.88,y:r*0.44},ll],   // sharp nose, arced flank
-        [ll,{x:-r*0.54,y:r*1.02},{x:-r*0.26,y:r*0.78},notch],   // crescent tail notch
-        [notch,{x:r*0.26,y:r*0.78},{x:r*0.54,y:r*1.02},rl],
-        [rl,{x:r*0.88,y:r*0.44},{x:r*0.34,y:-r*1.00},apex]
+        [apex,{x:-r*sp_*0.40,y:-r*hd_*0.71},{x:-r*sp_*1.02,y:r*0.44},ll],   // sharp nose, arced flank
+        [ll,{x:-r*sp_*0.63,y:r*(nY+lb_)*0.55},{x:-r*0.26,y:r*(nY+0.06)},notch],   // crescent tail notch
+        [notch,{x:r*0.26,y:r*(nY+0.06)},{x:r*sp_*0.63,y:r*(nY+lb_)*0.55},rl],
+        [rl,{x:r*sp_*1.02,y:r*0.44},{x:r*sp_*0.40,y:-r*hd_*0.71},apex]
       ], 26);
     }
     if (kind === "single-forktail") {
       // Two thin needles hang off the dome's chord. Spikes wide enough to touch the
       // dome's corners read as the legs of an arch instead, so keep the roots narrow.
       const chord = r * 0.04;
+      const dw = svLerp(o, "forkW", 0.78, 1.10), dd = svLerp(o, "forkDome", 0.66, 1.14),
+            nl = svLerp(o, "forkNeedle", 1.40, 2.60), nw = svLerp(o, "forkRoot", 0.24, 0.44),
+            ns = svLerp(o, "forkSpread", 0.28, 0.62);   // how far apart the needle tips sit
       const dome = _sampleSegs([
-        [{x:-r*0.95,y:chord},{x:-r*1.00,y:-r*0.60},{x:-r*0.54,y:-r*0.92},{x:0,y:-r*0.90}],
-        [{x:0,y:-r*0.90},{x:r*0.54,y:-r*0.92},{x:r*1.00,y:-r*0.60},{x:r*0.95,y:chord}]
+        [{x:-r*dw,y:chord},{x:-r*dw*1.05,y:-r*dd*0.53},{x:-r*dw*0.57,y:-r*dd*1.02},{x:0,y:-r*dd}],
+        [{x:0,y:-r*dd},{x:r*dw*0.57,y:-r*dd*1.02},{x:r*dw*1.05,y:-r*dd*0.53},{x:r*dw,y:chord}]
       ], 30);
       for (let i = 0; i < dome.length; i++) pts.push(dome[i]);
-      pts.push({x:r*0.62,y:chord});          // right needle
-      pts.push({x:r*0.40,y:r*2.05});
-      pts.push({x:r*0.28,y:chord});
-      pts.push({x:-r*0.28,y:chord});         // left needle
-      pts.push({x:-r*0.40,y:r*2.05});
-      pts.push({x:-r*0.62,y:chord});
+      const rOut = ns + nw * 0.5, rIn = ns - nw * 0.5;
+      pts.push({x:r*rOut,y:chord});          // right needle
+      pts.push({x:r*ns*0.72,y:r*nl});
+      pts.push({x:r*rIn,y:chord});
+      pts.push({x:-r*rIn,y:chord});          // left needle
+      pts.push({x:-r*ns*0.72,y:r*nl});
+      pts.push({x:-r*rOut,y:chord});
       return pts;
     }
     if (kind === "single-sawback") {
       // smooth dome, sawtooth zigzag along the flat side (longest teeth in the middle)
-      // fewer, stubbier teeth: long thin ones read as jellyfish tentacles, not a saw
-      const chordY = r * 0.26, teeth = 6, cut = r * 0.10;
+      // stubbier teeth read as a saw; long thin ones read as jellyfish tentacles
+      const chordY = r * 0.26, cut = r * 0.10;
+      const teeth = 5 + Math.floor(shapeVar(o, "sawN") * 5);      // 5..9 teeth
+      const dw = svLerp(o, "sawW", 0.78, 1.02), dd = svLerp(o, "sawDome", 0.98, 1.34),
+            base = svLerp(o, "sawBase", 0.22, 0.40), gain = svLerp(o, "sawGain", 0.30, 0.62);
       const dome = _sampleSegs([
-        [{x:-r*0.90,y:chordY},{x:-r*1.06,y:-r*0.62},{x:-r*0.52,y:-r*1.18},{x:0,y:-r*1.16}],
-        [{x:0,y:-r*1.16},{x:r*0.52,y:-r*1.18},{x:r*1.06,y:-r*0.62},{x:r*0.90,y:chordY}]
+        [{x:-r*dw,y:chordY},{x:-r*dw*1.18,y:-r*dd*0.53},{x:-r*dw*0.58,y:-r*dd*1.02},{x:0,y:-r*dd}],
+        [{x:0,y:-r*dd},{x:r*dw*0.58,y:-r*dd*1.02},{x:r*dw*1.18,y:-r*dd*0.53},{x:r*dw,y:chordY}]
       ], 30);
       for (let i = 0; i < dome.length; i++) pts.push(dome[i]);
       for (let k = 0; k < teeth; k++) {
-        const tx = r * 0.90 - r * 1.80 * ((k + 0.5) / teeth);
-        const len = r * (0.30 + 0.46 * Math.sin(Math.PI * (k + 0.5) / teeth));
+        const tx = r * dw - r * dw * 2 * ((k + 0.5) / teeth);
+        const len = r * (base + gain * Math.sin(Math.PI * (k + 0.5) / teeth));
         pts.push({ x: tx, y: chordY + len });
         // valleys bite back up into the dome, so this reads as a saw edge, not a comb
-        pts.push({ x: r * 0.90 - r * 1.80 * ((k + 1) / teeth), y: chordY - cut });
+        pts.push({ x: r * dw - r * dw * 2 * ((k + 1) / teeth), y: chordY - cut });
       }
       return pts;
     }
     if (kind === "single-serpent") {
-      const sp = _serpentSpine(r);
+      const sp = _serpentSpine(r, o);
       for (let i = 0; i <= sp.m; i++) { const nn = sp.nrm(i), w = sp.halfW(sp.cl[i].t); pts.push({ x: sp.cl[i].x + nn.nx * w, y: sp.cl[i].y + nn.ny * w }); }
       for (let i = sp.m; i >= 0; i--) { const nn = sp.nrm(i), w = sp.halfW(sp.cl[i].t); pts.push({ x: sp.cl[i].x - nn.nx * w, y: sp.cl[i].y - nn.ny * w }); }
       return pts;
     }
     if (kind === "single-star") {
+      const n = 5 + Math.floor(shapeVar(o, "starN") * 4);      // 5..8 points
+      const tipR = svLerp(o, "starTip", 1.06, 1.44);
+      const inward = svLerp(o, "starCut", 0.18, 0.38);         // how deep the edges bow in
       const tips = [];
-      for (let k = 0; k < 6; k++) {           // a point faces up
-        const a = -Math.PI / 2 + k * TAU / 6;
-        tips.push({ x: Math.cos(a) * r * 1.26, y: Math.sin(a) * r * 1.26 });
+      for (let k = 0; k < n; k++) {                            // a point faces up
+        const a = -Math.PI / 2 + k * TAU / n;
+        tips.push({ x: Math.cos(a) * r * tipR, y: Math.sin(a) * r * tipR });
       }
-      return _concaveStar(tips, 0.26);
+      return _concaveStar(tips, inward);
     }
     if (kind === "single-shard") {
+      const lng = svLerp(o, "shardLen", 1.28, 1.78);           // long axis
+      const wide = svLerp(o, "shardWide", 0.34, 0.60);         // side points
+      const mid = svLerp(o, "shardMid", 0.30, 0.62);           // where the side points sit
       return _concaveStar([
-        {x:0,y:-r*1.52}, {x:r*0.48,y:-r*0.50}, {x:r*0.46,y:r*0.44},
-        {x:0,y:r*1.52}, {x:-r*0.46,y:r*0.44}, {x:-r*0.48,y:-r*0.50}
-      ], 0.30);
+        {x:0,y:-r*lng}, {x:r*wide,y:-r*lng*mid}, {x:r*wide*0.95,y:r*lng*mid*0.62},
+        {x:0,y:r*lng}, {x:-r*wide*0.95,y:r*lng*mid*0.62}, {x:-r*wide,y:-r*lng*mid}
+      ], svLerp(o, "shardCut", 0.22, 0.40));
     }
     if (kind === "single-teardrop") {
       const A = {x:0,y:-r*1.30}, B = {x:r*0.92,y:-r*0.40}, C = {x:r*0.86,y:r*0.98},
@@ -951,12 +986,18 @@
       return pts;
     }
     const blobPh = rng() * TAU;
+    const pearP = kind !== "single-pear" ? null : {
+      bw: svLerp(o, "pearBot", 0.46, 0.80), ts: svLerp(o, "pearTopS", 0.28, 0.50),
+      tw: svLerp(o, "pearTop", 0.24, 0.62), bs: svLerp(o, "pearBotS", 0.40, 0.62),
+      waist: svLerp(o, "pearWaist", 0.02, 0.12)
+    };
     for (let i=0;i<n;i++){
       const a = (i/n)*TAU; let x, y;
       if (kind === "single-pear") {
+        // the two bulges are dialled per species: top-heavy, bottom-heavy or near-oval
         const cy = Math.sin(a), t = -cy;
-        const bottom = Math.exp(-Math.pow((t+0.5)/0.5,2)), top = Math.exp(-Math.pow((t-0.6)/0.36,2));
-        const w = 0.66*bottom + 0.40*top + 0.06;
+        const bottom = Math.exp(-Math.pow((t+0.5)/pearP.bs,2)), top = Math.exp(-Math.pow((t-0.6)/pearP.ts,2));
+        const w = pearP.bw*bottom + pearP.tw*top + pearP.waist;
         x = Math.cos(a)*r*w*1.45; y = cy*r*1.12;
       } else if (kind === "single-gourd") {
         // peanut / figure-8: two vertically stacked lobes with a pinched waist.
@@ -1110,13 +1151,25 @@
     "single-star": { x: 0, y: 0, r: 0.17 }, "single-shard": { x: 0, y: 0, r: 0.14 }
   };
 
-  // Per-form scale for the sketch forms, set from each silhouette's vertical reach
-  // (roughly 1.06 / max|y| in r units) so nothing is clipped by the card.
-  const KIND_FIT = {
-    "single-dart": 0.51, "single-barb": 0.49, "single-forktail": 0.51,
-    "single-finned": 0.75, "single-serpent": 0.72, "single-shard": 0.69,
-    "single-star": 0.84, "single-sawback": 0.75, "radial-star": 0.55
+  // `r` is a fixed radius, not a bounding-box fit, and the card clips past ~1.19r
+  // vertically / ~2.2r horizontally. These forms vary their silhouette per species,
+  // so a static per-form scale can't hold: measure the actual outline instead.
+  const VARIED_FORMS = {
+    "single-dart": 1, "single-barb": 1, "single-forktail": 1, "single-finned": 1,
+    "single-serpent": 1, "single-shard": 1, "single-star": 1, "single-sawback": 1,
+    "single-pear": 1
   };
+  function variedFit(kind, o) {
+    // sampled at r=1; every outline is linear in r, so this scales exactly.
+    const pts = singleOutline(kind, 1, o, rngFrom("fit:" + (o.speciesKey || "x")));
+    let my = 0, mx = 0;
+    for (let i = 0; i < pts.length; i++) {
+      const ay = Math.abs(pts[i].y), ax = Math.abs(pts[i].x);
+      if (ay > my) my = ay;
+      if (ax > mx) mx = ax;
+    }
+    return Math.min(1, 1.06 / Math.max(my, 1e-6), 2.10 / Math.max(mx, 1e-6));
+  }
   // The sketched forms carry their character in the silhouette, so they stay bare
   // unless the generator's appendage picker explicitly asks for one.
   const SKETCH_FORMS = {
@@ -1131,14 +1184,15 @@
   function drawSerpent(ctx, o, r, pal, rng) {
     const pts = singleOutline("single-serpent", r, o, rng);
     if (wantsAppendage(o, "single-serpent")) appendageBehind(ctx, o, r, pal, rng, pts, { normals: _outlineNormals(pts) });
-    drawBodyFromPts(ctx, o, r, pal, rng, pts, [{ x: -r * 0.26, y: -r * 1.05, r: r * 0.11 }]);
-    const sp = _serpentSpine(r);
+    const sp = _serpentSpine(r, o);
+    const head = sp.cl[Math.round(sp.m * 0.14)];   // ride the spine so it stays in the body
+    drawBodyFromPts(ctx, o, r, pal, rng, pts, [{ x: head.x, y: head.y, r: sp.halfW(head.t) * 0.52 }]);
     ctx.save();
     _fillOutline(ctx, pts);
     ctx.clip();
     ctx.strokeStyle = hsla(pal.hue - 8, 58, 36, 0.44);
     ctx.lineWidth = Math.max(0.8, r * 0.028);
-    for (let i = 6; i < sp.m - 4; i += 6) {
+    for (let i = sp.segStep; i < sp.m - 4; i += sp.segStep) {
       const nn = sp.nrm(i), w = sp.halfW(sp.cl[i].t) * 1.6;
       ctx.beginPath();
       ctx.moveTo(sp.cl[i].x - nn.nx * w, sp.cl[i].y - nn.ny * w);
@@ -1303,11 +1357,21 @@
 
   // radiolarian: a big central vesicle ringed by partitioned arm bases, each drawing
   // out into a long tapered spike.
+  function radialStarParams(o) {
+    return {
+      arms: 5 + Math.floor(shapeVar(o, "radN") * 4),        // 5..8 spikes
+      baseR: svLerp(o, "radBase", 0.60, 0.84),
+      tipR: svLerp(o, "radTip", 1.45, 2.30),
+      spikeW: svLerp(o, "radW", 0.11, 0.24),
+      cR: svLerp(o, "radCore", 0.30, 0.48)
+    };
+  }
   function drawRadialStar(ctx, o, r, pal, rng) {
-    const arms = 6 + variantIndex(o, "starn", 2);   // 6..7 spikes
+    const P = radialStarParams(o);
+    const arms = P.arms;
     ctx.save();
     ctx.rotate((rng() - 0.5) * 0.6);
-    const baseR = r * 0.72, tipR = r * 1.92, spikeW = 0.17, cR = r * 0.40;
+    const baseR = r * P.baseR, tipR = r * P.tipR, spikeW = P.spikeW, cR = r * P.cR;
     const pts = [], m = 240;
     for (let i = 0; i < m; i++) {
       const a = (i / m) * TAU;
@@ -1625,8 +1689,9 @@
     const topology = o.morphologyTopology || "single";
     // `r` is a fixed radius, not a bounding-box fit: the card clips past ~1.19r
     // vertically, so tall forms must be scaled down or their tails get cut off.
-    const kindFit = KIND_FIT[visualKind(o)];
-    const fitScale = kindFit != null ? kindFit :
+    const vkind = visualKind(o);
+    const fitScale = VARIED_FORMS[vkind] ? variedFit(vkind, o) :
+      vkind === "radial-star" ? Math.min(1, 1.06 / radialStarParams(o).tipR) :
       topology === "chain" ? 0.58 :
       topology === "branch" ? 0.78 :
       topology === "radial" ? 0.86 :
@@ -1669,6 +1734,23 @@
     drawOrganism,
     visualKind,
     singleShapes: SINGLE_SHAPES,
+    // Diagnostic: a silhouette's reach in r units *after* its fit scale. The card
+    // clips past ~1.06r vertically at the largest size gene, so tests can use this
+    // to prove a per-species shape never grows out of its card.
+    formExtent: function (kind, o) {
+      if (kind === "radial-star") {
+        const P = radialStarParams(o), fit = Math.min(1, 1.06 / P.tipR);
+        return { x: P.tipR * fit, y: P.tipR * fit, fit: fit };
+      }
+      const fit = VARIED_FORMS[kind] ? variedFit(kind, o) : 1;
+      const pts = singleOutline(kind, 1, o, rngFrom("fit:" + (o.speciesKey || "x")));
+      let my = 0, mx = 0;
+      for (let i = 0; i < pts.length; i++) {
+        my = Math.max(my, Math.abs(pts[i].y));
+        mx = Math.max(mx, Math.abs(pts[i].x));
+      }
+      return { x: mx * fit, y: my * fit, fit: fit };
+    },
     visualTypes: [
       { id:"all", label:"All forms" },
       { id:"single-cell", label:"single cell" },
@@ -1681,7 +1763,7 @@
       { id:"single-trefoil", label:"trefoil cell" },
       { id:"single-triangle", label:"triangle cell" },
       { id:"single-fan", label:"fan cell" },
-      { id:"single-star", label:"six-point star" },
+      { id:"single-star", label:"pointed star" },
       { id:"single-shard", label:"elongated star shard" },
       { id:"single-crescent", label:"crescent" },
       { id:"single-needle", label:"needle cell" },
