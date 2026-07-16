@@ -778,3 +778,74 @@ Do not adopt pack prey sharing as a production default from this run. `share30` 
 
 ### Validation
 `node --check organism_render.js`: OK. `scripts/*.cjs`: OK. Inline script syntax: OK, 1 inline block. `git diff --check`: OK. `runCarnivoreLineageMicroTests()`: OK. `runPackSharingMicroTests()`: OK. `baseline/share30/share40` for seeds `41001/42001/43001` at 6,000 steps: OK. Selected 12,000-step run: OK. Save/load round trip: OK. Normal and developer boot: OK. `index.html` and `alife_symbolic_shapes_v1.html` SHA256 matched. Frozen HTML diff: none. FPS smoke at 1280x720/180 organisms: avg FPS `11.9`, avg update `8.57ms`, avg draw `49.09ms`, errors `0`; no major degradation from the known ~12 FPS baseline.
+
+## 2026-07-16 Pack hunt formation, target agreement, and helper-count diagnostics
+
+### Purpose and baseline
+Baseline commit: `16da08d67c7a6665eae434eb1d461075662fd001`.
+The goal was diagnostic only: identify whether pack hunting breaks at same-species packmate presence, spatial proximity, target sharing, same-target chase, eligible helper formation, or attack resolution. No pack probability, chase force, pack bonus, target-sharing condition, helper radius, speciesKey condition, predation energy, birth energy, clutch, maturity, metabolism, reproduction, food supply, population cap, UI, save format, or Wiki behavior was changed. Defaults remain `shareFraction=0` and detailed pack telemetry OFF.
+
+### Implementation
+Added diagnostic-only `packHuntContextSnapshot(predator, prey)` and `__alifeDebug.packFormationSummary()`. The snapshot records the four existing pack-count definitions without normalizing them: social-range same-species packmates, chase bonus mates within predator 80, attack probability mates within prey 76, and existing eligible helpers from `eligiblePackHelpersFor()`.
+
+Detailed pack telemetry is gated by `diagnosticPackSharing.detailedTelemetry`, so normal play does not store per-step diagnostic arrays. When enabled, it records capped context events, target events, and every pack attack attempt including failures. Attack attempt records include helper counts, same-target/different-target/targetless helper classes, raw/final probability, roll, success, pack multiplier components, size/defense/group multipliers, and whether the existing chase/attack/helper counts agree.
+
+Added per-pack formation funnel fields: living same-species packmate, social-range mate, predator-80 mate, target, mate target, shared target, target switch, same/different target mate, same-target chase overlap, helper near prey, contact, attack with/without helper, success with/without helper, reproduction, pack child, and pack child matured. Death records classify born pack individuals as `diedWithoutAnyLivingPackMate`, `diedWithMateButNeverInRange`, `diedInRangeButNeverSharedTarget`, `diedAfterTargetSplit`, `diedAfterSoloAttackAttempts`, or `diedAfterHelperAttackAttempts`.
+
+Added `scripts/pack_hunt_formation_diagnostic.cjs` for baseline-only runs: Micro A-L, seeds `41001/42001/43001` at 6,000 steps with detailed pack telemetry enabled, artificial pack groups, save/load round trip, normal boot, and developer boot. Results are written to `artifacts/pack_formation_diagnostic.json`.
+
+### Micro A-L
+All OK.
+A solo pack: living/attack/eligible mates all 0. B same-species nearby pack: attack mate 1 and eligible helper 1. C different species: chase/attack/eligible all 0. D same-species ambusher: chase/attack/eligible all 0 under existing pack helper conditions. E dead pack: current chase and attack mate counts include it, eligible helper excludes it. F targetless sharing applies. G different target conflict is not converged. H same-target overlap is recorded. I count mismatch is recorded. J helper classification same/different/targetless = 1/1/1. K sibling speciesKey split is recorded and excluded from helper grouping. L failed helper attack increments attempt diagnostics but not success `packHuntEvents`.
+
+### 6,000-step baseline results
+All three runs completed with page error 0 and NaN/Infinity 0.
+
+| seed | max pack | formation born pack | mature formation born | end pack | max pack depth | max same-species pack alive | pack attacks | helper attacks | same-target helper attacks | helper success |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 41001 | 9 | 3 | 2 | 0 | 2 | 2 | 41 | 14 | 6 | 0 |
+| 42001 | 11 | 2 | 0 | 0 | 1 | 3 | 16 | 1 | 1 | 0 |
+| 43001 | 7 | 2 | 0 | 0 | 1 | 3 | 8 | 1 | 0 | 0 |
+
+Target diagnostics:
+seed41001 targetless share opportunities/applied `5/5`, already-same-target `894`, different-target opportunities `785`, same-target pursuit steps `495`, split/convergence `6/6`.
+seed42001 targetless share opportunities/applied `5/3`, already-same-target `613`, different-target opportunities `4`, same-target pursuit steps `125`, split/convergence `1/1`.
+seed43001 targetless share opportunities/applied `11/7`, already-same-target `716`, different-target opportunities `149`, same-target pursuit steps `148`, split/convergence `3/3`.
+
+Helper-count agreement across attack attempts was 100% in the three natural seed runs: `41/41`, `16/16`, `8/8`. Micro I still confirms the diagnostic can detect disagreement when the placement makes predator-80, prey-76, and eligible-helper counts differ.
+
+Helper-count attack buckets:
+seed41001 helper0 `27 attacks / 3 successes / 11.1%`, helper1 `14 / 0 / 0%`.
+seed42001 helper0 `15 / 1 / 6.7%`, helper2 `1 / 0 / 0%`.
+seed43001 helper0 `7 / 1 / 14.3%`, helper1 `1 / 0 / 0%`.
+
+SpeciesKey diagnostics:
+seed41001 sibling split pairs `0`, same-species role-mixed keys `1` (`pack` mixed with `other`). seed42001 sibling pairs `1`, species split `0`, role-mixed `0`. seed43001 sibling pairs `1`, species split `0`, role-mixed `0`.
+
+Born pack death classes:
+seed41001 `diedWithoutAnyLivingPackMate=2`, `diedAfterTargetSplit=1`. seed42001 `diedAfterTargetSplit=1`, `diedWithoutAnyLivingPackMate=1`. seed43001 `diedAfterTargetSplit=2`.
+
+### Artificial pack groups
+Each group size and scenario ran 30 trials for up to 260 steps.
+
+Group size 1: target convergence is trivially 100%; success ranged from 0% to 36.7%; helper attacks were only post-reproduction/secondary-world effects, not initial pack formation.
+Group size 2: all-targetless success 46.7%, helper attack 20.0%; one-target success 3.3%; all-different-target split 100% and success 13.3%; all-same-target success 0%.
+Group size 3: all-targetless success 23.3%, helper attack 30.0%; one-target success 6.7%; all-different-target split 100% and success 13.3%; all-same-target helper attack 46.7% and success 36.7%.
+Group size 4: all-targetless helper attack 96.7% and success 73.3%; one-target helper attack 93.3% and success 76.7%; all-different-target split 100% and success 0%; all-same-target helper attack 100% and success 63.3%.
+
+The control experiment indicates the mechanics can form same-target helper attacks when enough same-species pack individuals remain close, but all-different-target initialization strongly resists convergence, especially at group size 4.
+
+### Diagnosis
+Dominant cause: E, target conflict / target fragmentation. Natural runs show many same-target moments, but also substantial different-target opportunities and death classes dominated by `diedAfterTargetSplit` or no living mate. In artificial packs, all-different-target groups split 100% for sizes 2-4 and group size 4 produced 0% predation success despite four available pack individuals.
+
+Secondary cause 1: H, helper-attached attack resolution is insufficient. Natural seed helper attacks existed (`16` total with eligible helper across 3 seeds), including same-target helper attacks (`7` total), but helper success was 0.
+
+Secondary cause 2: I, juvenile/early energy pressure remains ahead of robust pack formation. Birth-strategy pack born maturity was `0/1`, `0/2`, and `0/2`; formation-born pack records reached maturity only in seed41001. Many born pack individuals die before sustained multi-generation pack structure.
+
+Not primary in these runs: A pure mate absence is not sufficient, because seed42001 and seed43001 born pack individuals did have living, social-range, and predator-80 mates. B speciesKey sibling split was not observed in natural runs. F helper-condition mismatch was not observed in natural attack attempts, though Micro I confirms it can occur by geometry. G small-pack attack penalty is present in formulas but not enough alone to explain target splitting and helper success 0.
+
+### Validation
+Inline script syntax OK. `node --check organism_render.js` OK. `scripts/*.cjs` syntax OK. `git diff --check` OK. Micro A-L OK. Seeds `41001/42001/43001` x 6,000 baseline OK. Artificial pack groups 1-4 x 4 scenarios x 30 trials OK. Save/load round trip OK. Normal and developer boot OK. `index.html` and ignored `alife_symbolic_shapes_v1.html` SHA256 matched: `7825580EC245BF44A67B3BCF568DAEA7EBB0AC22F72FC3561A1CDA3C7BC4010A`. Page error 0. NaN/Infinity 0. Normal-mode 180-organism FPS smoke: average FPS `10.83`, average update `8.06ms`, errors `0`; no major degradation from the known ~12 FPS smoke baseline. Detailed pack telemetry is capped (`context=3600`, `attackAttempts=3200`, `targetEvents=3200`) and disabled by default.
+
+### Adoption judgment
+Adopt as a diagnostic commit. It changes telemetry and developer runner only, keeps normal behavior and parameters unchanged, records all pack attack attempts including failures, compares the four existing pack-count definitions, separates target sharing from target conflict, separates same/different/targetless helpers, exposes speciesKey sibling split diagnostics, and completes the requested normal and artificial runs.

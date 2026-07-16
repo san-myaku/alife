@@ -1248,6 +1248,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   const TELEMETRY_FEEDING_PREDATION_LIMIT = 1600;
   const TELEMETRY_CARNIVORE_LINEAGE_LIMIT = 6000;
   const TELEMETRY_PACK_HUNT_EVENT_LIMIT = 2600;
+  const TELEMETRY_PACK_FORMATION_CONTEXT_LIMIT = 3600;
+  const TELEMETRY_PACK_ATTACK_ATTEMPT_LIMIT = 3200;
+  const TELEMETRY_PACK_TARGET_EVENT_LIMIT = 3200;
   const GRAZING_HOLD_STEPS = 8;
   const DEV_INJECTION_BATCH_LIMIT = 32;
   const DEV_SNAPSHOT_LIMIT = 8;
@@ -1392,6 +1395,22 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       nutrientPositiveResidualMax:0,
       energyCreationEvents:0,
       nutrientCreationEvents:0
+    },
+    packFormation: {
+      individuals:new Map(),
+      contextEvents:[],
+      attackAttempts:[],
+      targetEvents:[],
+      worldSteps:0,
+      maxPackWorld:0,
+      maxSameSpeciesPackWorld:0,
+      sameTargetPursuitSteps:0,
+      targetSplitEvents:0,
+      targetConvergenceEvents:0,
+      targetlessMateJoinedEvents:0,
+      differentTargetRefusedEvents:0,
+      previousSpeciesTargetState:new Map(),
+      artificialRuns:[]
     },
     worldReseedCount:0,
     runStartFrame: 0
@@ -2524,6 +2543,478 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     }
     return event;
   }
+  function telemetryPackFormationEnabled(){
+    return !!diagnosticPackSharing.detailedTelemetry;
+  }
+  function isPackHunter(o){
+    return !!(o && (o.role==='pack' || o.socialMode==='hunt-pack'));
+  }
+  function packSocialRangeFor(o){
+    if(!o) return 0;
+    let mode=o.socialMode || 'solitary';
+    const packHunter=mode==='hunt-pack' || o.role==='pack';
+    let sociality=o.sociality || 0;
+    if(packHunter) sociality=Math.max(sociality,0.42);
+    if((mode==='solitary' && !packHunter) || sociality<0.32) return 0;
+    if(packHunter && mode==='solitary') mode='hunt-pack';
+    if(mode==='defense-school') return clamp(o.senseR*(0.54 + sociality*0.52),54,152);
+    if(mode==='hunt-pack') return clamp(o.senseR*(0.50 + sociality*0.50),56,148);
+    return clamp(o.senseR*(0.38 + sociality*0.44),38,112);
+  }
+  function telemetryPackOrigin(o){
+    const rec=telemetry.carnivoreLife.get(o?.id);
+    if(rec) return rec.initial ? 'initial' : 'born';
+    return o?.lineageInitial===false ? 'born' : 'initial';
+  }
+  function packFormationRecord(o){
+    if(!o || !isPackHunter(o)) return null;
+    let rec=telemetry.packFormation.individuals.get(o.id);
+    if(!rec){
+      const birth=telemetry.births.get(o.id);
+      rec={
+        id:o.id,
+        firstFrame:frame,
+        birthFrame:o.birthFrame ?? birth?.frame ?? frame,
+        initial:telemetryPackOrigin(o)==='initial',
+        born:telemetryPackOrigin(o)==='born',
+        parentId:birth?.parentId ?? o.parentId ?? null,
+        mateParentId:birth?.mateParentId ?? o.mateParentId ?? null,
+        clutch:birth?.clutch ?? null,
+        clutchIndex:birth?.clutchIndex ?? null,
+        speciesKey:o.speciesKey,
+        parentSpeciesKey:birth?.parentSpeciesKey ?? null,
+        mateParentSpeciesKey:birth?.mateParentSpeciesKey ?? null,
+        generationDepth:telemetryLineageDepth(o,birth||null),
+        birthEnergy:Number(birth?.birthEnergy ?? o.energy ?? 0),
+        packBorn:!!birth,
+        survived60:false,
+        survived120:false,
+        survived180:false,
+        reachedMaturity:false,
+        hadLivingSameSpeciesPackMate:false,
+        hadPackMateWithinSocialRange:false,
+        hadPackMateWithinPredator80:false,
+        hadAnyTarget:false,
+        hadMateWithTarget:false,
+        receivedSharedTarget:false,
+        switchedToSharedTarget:false,
+        hadSameTargetMate:false,
+        hadDifferentTargetMate:false,
+        overlappedSameTargetChase:false,
+        hadHelperNearPrey:false,
+        reachedContact:false,
+        attemptedAttack:false,
+        attemptedAttackWithHelper:false,
+        attemptedAttackWithoutHelper:false,
+        predationSuccessWithHelper:false,
+        predationSuccessWithoutHelper:false,
+        reproduced:false,
+        producedPackChild:false,
+        producedPackChildThatMatured:false,
+        attackAttempts:0,
+        attackAttemptsWithHelper:0,
+        attackAttemptsWithoutHelper:0,
+        attackAttemptsWithSameTargetHelper:0,
+        successesWithHelper:0,
+        successesWithoutHelper:0,
+        negativePackMultiplierBeforeFirstPredation:0,
+        targetSplitEvents:0,
+        targetConvergenceEvents:0,
+        targetlessMateJoinedEvents:0,
+        differentTargetRefusedEvents:0,
+        dispersal:{},
+        lastNearbyPackTargetComposition:null,
+        death:null,
+        deathClass:null,
+        first:{}
+      };
+      telemetry.packFormation.individuals.set(o.id,rec);
+    }
+    rec.currentSpeciesKey=o.speciesKey;
+    rec.currentRole=o.role || null;
+    rec.currentSocialMode=o.socialMode || null;
+    rec.generationDepth=telemetryLineageDepth(o,telemetry.births.get(o.id)||null);
+    return rec;
+  }
+  function packMark(rec,key,o,prey=null,extra=null){
+    if(!rec || !key) return;
+    if(rec[key]!==true) rec[key]=true;
+    const base=key[0].toUpperCase()+key.slice(1);
+    if(rec.first[`first${base}Frame`]==null){
+      rec.first[`first${base}Frame`]=frame;
+      rec.first[`first${base}Age`]=Number(o?.age||0);
+      rec.first[`first${base}Energy`]=Number(o?.energy||0);
+      if(prey) rec.first[`first${base}PreyId`]=prey.id;
+      if(extra) rec.first[`first${base}Extra`]=extra;
+    }
+  }
+  function packNeighborCountsExact(predator,prey=null){
+    const socialRange=packSocialRangeFor(predator);
+    const targetId=prey?.id ?? predator?.preyTargetId ?? null;
+    const counts={
+      livingPackSameSpeciesWorld:0,
+      livingPackDifferentSpeciesWorld:0,
+      sameSpeciesPackWithinSocialRange:0,
+      sameSpeciesPackWithinPredator80:0,
+      sameSpeciesPackWithinPrey76:0,
+      sameTargetPackWithinSocialRange:0,
+      sameTargetPackWithinPredator80:0,
+      sameTargetPackWithinPrey76:0,
+      differentTargetPackWithinSocialRange:0,
+      differentTargetPackWithinPredator80:0,
+      differentTargetPackWithinPrey76:0,
+      targetlessPackWithinSocialRange:0,
+      targetlessPackWithinPredator80:0,
+      targetlessPackWithinPrey76:0,
+      existingChaseBonusMateCount:0,
+      existingAttackProbabilityMateCount:0,
+      existingEligibleHelperCount:0,
+      existingEligibleHelperIds:[],
+      sameTargetEligibleHelperCount:0,
+      differentTargetEligibleHelperCount:0,
+      targetlessEligibleHelperCount:0,
+      activeChaseSameTarget:0,
+      activeChaseDifferentTarget:0,
+      notActivelyChasing:0,
+      attackCooldownActive:0,
+      energyDepletedOrNearZero:0,
+      nearbyPackCount:0,
+      nearbyTargetlessCount:0,
+      nearbySameTargetCount:0,
+      nearbyDifferentTargetCount:0,
+      nearbyDistinctTargetCount:0
+    };
+    if(!predator) return counts;
+    const targetSet=new Set();
+    const classifyTarget=(o)=>{
+      if(o?.preyTargetId==null) return 'targetless';
+      if(targetId!=null && o.preyTargetId===targetId) return 'same';
+      return 'different';
+    };
+    const visit=(o,dPred,dPrey)=>{
+      if(!o || o===predator || !isPackHunter(o)) return;
+      if(o.dead) return;
+      const sameSpecies=o.speciesKey===predator.speciesKey;
+      if(sameSpecies) counts.livingPackSameSpeciesWorld++;
+      else counts.livingPackDifferentSpeciesWorld++;
+      if(!sameSpecies) return;
+      const cls=classifyTarget(o);
+      if(dPred<=socialRange){
+        counts.sameSpeciesPackWithinSocialRange++;
+        if(cls==='same') counts.sameTargetPackWithinSocialRange++;
+        else if(cls==='different') counts.differentTargetPackWithinSocialRange++;
+        else counts.targetlessPackWithinSocialRange++;
+      }
+      if(dPred<=80){
+        counts.sameSpeciesPackWithinPredator80++;
+        counts.nearbyPackCount++;
+        if(cls==='same'){ counts.sameTargetPackWithinPredator80++; counts.nearbySameTargetCount++; }
+        else if(cls==='different'){ counts.differentTargetPackWithinPredator80++; counts.nearbyDifferentTargetCount++; }
+        else { counts.targetlessPackWithinPredator80++; counts.nearbyTargetlessCount++; }
+        if(o.preyTargetId!=null) targetSet.add(o.preyTargetId);
+      }
+      if(prey && dPrey<=PACK_HELPER_RADIUS){
+        counts.sameSpeciesPackWithinPrey76++;
+        if(cls==='same') counts.sameTargetPackWithinPrey76++;
+        else if(cls==='different') counts.differentTargetPackWithinPrey76++;
+        else counts.targetlessPackWithinPrey76++;
+      }
+    };
+    for(const o of organisms){
+      if(!o || o===predator) continue;
+      const dPred=Math.hypot(o.x-predator.x,o.y-predator.y);
+      const dPrey=prey ? Math.hypot(o.x-prey.x,o.y-prey.y) : Infinity;
+      visit(o,dPred,dPrey);
+    }
+    counts.nearbyDistinctTargetCount=targetSet.size;
+    forEachOrgNeighbors(predator.x,predator.y,80,(o)=>{
+      if(o!==predator && o.speciesKey===predator.speciesKey && (o.role==='pack' || o.socialMode==='hunt-pack')) counts.existingChaseBonusMateCount++;
+    });
+    if(prey){
+      forEachOrgNeighbors(prey.x,prey.y,PACK_HELPER_RADIUS,(o2)=>{
+        if(o2!==predator && o2.speciesKey===predator.speciesKey && (o2.role==='pack' || o2.socialMode==='hunt-pack')) counts.existingAttackProbabilityMateCount++;
+      });
+      const eligible=eligiblePackHelpersFor(predator,prey,'attack');
+      counts.existingEligibleHelperCount=eligible.length;
+      counts.existingEligibleHelperIds=eligible.map(h=>h.id);
+      for(const h of eligible){
+        const cls=classifyTarget(h);
+        if(cls==='same') counts.sameTargetEligibleHelperCount++;
+        else if(cls==='different') counts.differentTargetEligibleHelperCount++;
+        else counts.targetlessEligibleHelperCount++;
+        if(h.attackCD>0) counts.attackCooldownActive++;
+        if(Number(h.energy||0)<=1) counts.energyDepletedOrNearZero++;
+        const actively=!!(h.chaseTimer>0 || h._predationChasingThisStep || h.preyTargetId!=null);
+        if(!actively) counts.notActivelyChasing++;
+        else if(cls==='same') counts.activeChaseSameTarget++;
+        else if(cls==='different') counts.activeChaseDifferentTarget++;
+      }
+    }
+    counts.allExistingCountsAgree=counts.existingChaseBonusMateCount===counts.existingAttackProbabilityMateCount
+      && counts.existingAttackProbabilityMateCount===counts.existingEligibleHelperCount;
+    return counts;
+  }
+  function packHuntContextSnapshot(predator,prey=null){
+    const target=prey || organismById(predator?.preyTargetId);
+    const counts=packNeighborCountsExact(predator,target);
+    const birth=telemetry.births.get(predator?.id);
+    return {
+      frame,
+      predatorId:predator?.id ?? null,
+      predatorInitialOrBorn:telemetryPackOrigin(predator),
+      predatorGenerationDepth:telemetryLineageDepth(predator,birth||null),
+      predatorAge:Number(predator?.age||0),
+      predatorMaturityAge:reproductiveMaturityAgeFor(predator),
+      predatorEnergy:Number(predator?.energy||0),
+      predatorSpeciesKey:predator?.speciesKey ?? null,
+      predatorRole:predator?.role ?? null,
+      predatorSocialMode:predator?.socialMode ?? null,
+      predatorSociality:Number(predator?.sociality||0),
+      preyId:target?.id ?? null,
+      preyDistance:target ? Math.hypot(target.x-predator.x,target.y-predator.y) : null,
+      preySpeciesKey:target?.speciesKey ?? null,
+      preySize:target ? Number(target.size||0) : null,
+      preyEnergy:target ? Number(target.energy||0) : null,
+      ...counts
+    };
+  }
+  function telemetryPushPackContext(stage,predator,prey=null,extra=null){
+    if(!telemetryPackFormationEnabled() || !isPackHunter(predator)) return null;
+    const snapshot=packHuntContextSnapshot(predator,prey);
+    snapshot.stage=stage;
+    if(extra) Object.assign(snapshot,extra);
+    telemetry.packFormation.contextEvents.push(snapshot);
+    if(telemetry.packFormation.contextEvents.length>TELEMETRY_PACK_FORMATION_CONTEXT_LIMIT){
+      telemetry.packFormation.contextEvents.splice(0,telemetry.packFormation.contextEvents.length-TELEMETRY_PACK_FORMATION_CONTEXT_LIMIT+300);
+    }
+    const rec=packFormationRecord(predator);
+    if(rec){
+      if(snapshot.livingPackSameSpeciesWorld>0) packMark(rec,'hadLivingSameSpeciesPackMate',predator,prey);
+      if(snapshot.sameSpeciesPackWithinSocialRange>0) packMark(rec,'hadPackMateWithinSocialRange',predator,prey);
+      if(snapshot.sameSpeciesPackWithinPredator80>0) packMark(rec,'hadPackMateWithinPredator80',predator,prey);
+      if(predator.preyTargetId!=null) packMark(rec,'hadAnyTarget',predator,prey);
+      if(snapshot.sameTargetPackWithinPredator80 + snapshot.differentTargetPackWithinPredator80 > 0) packMark(rec,'hadMateWithTarget',predator,prey);
+      if(snapshot.sameTargetPackWithinPredator80>0) packMark(rec,'hadSameTargetMate',predator,prey);
+      if(snapshot.differentTargetPackWithinPredator80>0) packMark(rec,'hadDifferentTargetMate',predator,prey);
+      if(snapshot.existingEligibleHelperCount>0) packMark(rec,'hadHelperNearPrey',predator,prey,{eligibleHelperCount:snapshot.existingEligibleHelperCount});
+      if(stage==='contact') packMark(rec,'reachedContact',predator,prey);
+      rec.lastNearbyPackTargetComposition={
+        nearbyPackCount:snapshot.nearbyPackCount,
+        nearbyTargetlessCount:snapshot.nearbyTargetlessCount,
+        nearbySameTargetCount:snapshot.nearbySameTargetCount,
+        nearbyDifferentTargetCount:snapshot.nearbyDifferentTargetCount,
+        nearbyDistinctTargetCount:snapshot.nearbyDistinctTargetCount
+      };
+    }
+    return snapshot;
+  }
+  function telemetryRecordPackTargetEvent(type,predator,mate=null,prey=null,extra=null){
+    if(!telemetryPackFormationEnabled() || !isPackHunter(predator)) return;
+    const rec=packFormationRecord(predator);
+    const item={
+      frame,
+      type,
+      predatorId:predator?.id ?? null,
+      mateId:mate?.id ?? null,
+      preyId:prey?.id ?? predator?.preyTargetId ?? null,
+      predatorTargetId:predator?.preyTargetId ?? null,
+      mateTargetId:mate?.preyTargetId ?? null,
+      predatorSpeciesKey:predator?.speciesKey ?? null,
+      mateSpeciesKey:mate?.speciesKey ?? null,
+      ...extra
+    };
+    telemetry.packFormation.targetEvents.push(item);
+    if(telemetry.packFormation.targetEvents.length>TELEMETRY_PACK_TARGET_EVENT_LIMIT){
+      telemetry.packFormation.targetEvents.splice(0,telemetry.packFormation.targetEvents.length-TELEMETRY_PACK_TARGET_EVENT_LIMIT+300);
+    }
+    if(!rec) return;
+    if(type==='shareApplied'){ packMark(rec,'receivedSharedTarget',predator,prey); rec.targetlessMateJoinedEvents++; }
+    if(type==='targetSwitch'){ packMark(rec,'switchedToSharedTarget',predator,prey); }
+    if(type==='shareOpportunityDifferentTarget' || type==='shareNotAppliedBecauseSelfHadTarget'){
+      rec.differentTargetRefusedEvents++;
+    }
+  }
+  function telemetryRecordPackAttackAttempt(predator,prey,data){
+    if(!telemetryPackFormationEnabled() || !isPackHunter(predator) || !prey) return null;
+    const snapshot=packHuntContextSnapshot(predator,prey);
+    const birth=telemetry.births.get(predator.id);
+    const helperBucket=snapshot.existingEligibleHelperCount>=3 ? '3+' : String(snapshot.existingEligibleHelperCount);
+    const rec={
+      frame,
+      predatorId:predator.id,
+      preyId:prey.id,
+      predatorAge:Number(predator.age||0),
+      predatorEnergy:Number(predator.energy||0),
+      birthEnergy:Number(birth?.birthEnergy ?? predator.energy ?? 0),
+      generationDepth:telemetryLineageDepth(predator,birth||null),
+      origin:telemetryPackOrigin(predator),
+      chaseBonusMateCount:snapshot.existingChaseBonusMateCount,
+      attackProbabilityMateCount:snapshot.existingAttackProbabilityMateCount,
+      eligibleHelperCount:snapshot.existingEligibleHelperCount,
+      eligibleHelperIds:snapshot.existingEligibleHelperIds,
+      sameTargetEligibleHelperCount:snapshot.sameTargetEligibleHelperCount,
+      differentTargetEligibleHelperCount:snapshot.differentTargetEligibleHelperCount,
+      targetlessEligibleHelperCount:snapshot.targetlessEligibleHelperCount,
+      activeChaseSameTarget:snapshot.activeChaseSameTarget,
+      activeChaseDifferentTarget:snapshot.activeChaseDifferentTarget,
+      notActivelyChasing:snapshot.notActivelyChasing,
+      attackCooldownActive:snapshot.attackCooldownActive,
+      energyDepletedOrNearZero:snapshot.energyDepletedOrNearZero,
+      rawAttackProbability:Number(data.rawAttackProbability||0),
+      finalAttackProbability:Number(data.finalAttackProbability||0),
+      predationRoll:Number(data.predationRoll||0),
+      success:!!data.success,
+      packProbabilityMultiplier:Number(data.packProbabilityMultiplier||1),
+      mates:Number(data.mates||0),
+      basePackMultiplier:Number(data.basePackMultiplier||1),
+      rareFactorPack:Number(data.rareFactorPack||1),
+      combinedPackMultiplier:Number(data.combinedPackMultiplier||1),
+      rawSizeRatio:Number(data.rawSizeRatio||0),
+      effectiveSizeRatio:Number(data.effectiveSizeRatio||0),
+      packSizeMultiplier:Number(data.packSizeMultiplier||1),
+      sizeSuccessMul:Number(data.sizeSuccessMul||1),
+      defenseMul:Number(data.defenseMul||1),
+      groupMul:Number(data.groupMul||1),
+      helperBucket,
+      allExistingCountsAgree:!!snapshot.allExistingCountsAgree
+    };
+    telemetry.packFormation.attackAttempts.push(rec);
+    if(telemetry.packFormation.attackAttempts.length>TELEMETRY_PACK_ATTACK_ATTEMPT_LIMIT){
+      telemetry.packFormation.attackAttempts.splice(0,telemetry.packFormation.attackAttempts.length-TELEMETRY_PACK_ATTACK_ATTEMPT_LIMIT+300);
+    }
+    const life=packFormationRecord(predator);
+    if(life){
+      packMark(life,'attemptedAttack',predator,prey,{eligibleHelperCount:rec.eligibleHelperCount});
+      life.attackAttempts++;
+      if(rec.eligibleHelperCount>0){ packMark(life,'attemptedAttackWithHelper',predator,prey); life.attackAttemptsWithHelper++; }
+      else { packMark(life,'attemptedAttackWithoutHelper',predator,prey); life.attackAttemptsWithoutHelper++; }
+      if(rec.sameTargetEligibleHelperCount>0) life.attackAttemptsWithSameTargetHelper++;
+      if(!life.firstPredationSuccess && rec.combinedPackMultiplier<0.999) life.negativePackMultiplierBeforeFirstPredation++;
+      if(rec.success){
+        if(rec.eligibleHelperCount>0){ packMark(life,'predationSuccessWithHelper',predator,prey); life.successesWithHelper++; }
+        else { packMark(life,'predationSuccessWithoutHelper',predator,prey); life.successesWithoutHelper++; }
+        life.firstPredationSuccess=true;
+      }
+    }
+    return rec;
+  }
+  function telemetryRecordPackDispersalMilestones(o){
+    if(!telemetryPackFormationEnabled() || !isPackHunter(o)) return;
+    const rec=packFormationRecord(o);
+    if(!rec || rec.initial) return;
+    const age=Math.max(0,Number(o.age||0));
+    for(const t of [0,10,30,60,120,180]){
+      if(age<t || rec.dispersal[t]) continue;
+      const birth=telemetry.births.get(o.id);
+      const parent=birth?.parentId!=null ? organismById(birth.parentId) : null;
+      let nearestSibling=null, nearestSiblingDistance=null;
+      let nearestSameSpeciesPack=null, nearestSameSpeciesPackDistance=null;
+      const siblings=telemetry.birthOrigins.filter(b=>b.childId!==o.id && b.frame===birth?.frame && b.parentId===birth?.parentId);
+      const siblingIds=siblings.map(b=>b.childId);
+      for(const sid of siblingIds){
+        const sib=organismById(sid);
+        if(!sib) continue;
+        const d=Math.hypot(sib.x-o.x,sib.y-o.y);
+        if(nearestSiblingDistance==null || d<nearestSiblingDistance){ nearestSiblingDistance=d; nearestSibling=sib; }
+      }
+      for(const mate of organisms){
+        if(!mate || mate===o || mate.dead || mate.speciesKey!==o.speciesKey || !isPackHunter(mate)) continue;
+        const d=Math.hypot(mate.x-o.x,mate.y-o.y);
+        if(nearestSameSpeciesPackDistance==null || d<nearestSameSpeciesPackDistance){ nearestSameSpeciesPackDistance=d; nearestSameSpeciesPack=mate; }
+      }
+      rec.dispersal[t]={
+        frame,
+        age,
+        parentDistance:parent ? Math.hypot(parent.x-o.x,parent.y-o.y) : null,
+        nearestSiblingId:nearestSibling?.id ?? null,
+        nearestSiblingDistance,
+        nearestSameSpeciesPackId:nearestSameSpeciesPack?.id ?? null,
+        nearestSameSpeciesPackDistance
+      };
+    }
+  }
+  function telemetryRecordPackWorldStep(){
+    if(!telemetryPackFormationEnabled()) return;
+    const pack=organisms.filter(o=>o && !o.dead && isPackHunter(o));
+    telemetry.packFormation.worldSteps++;
+    telemetry.packFormation.maxPackWorld=Math.max(telemetry.packFormation.maxPackWorld,pack.length);
+    const bySpecies=new Map();
+    for(const o of pack){
+      if(!bySpecies.has(o.speciesKey)) bySpecies.set(o.speciesKey,[]);
+      bySpecies.get(o.speciesKey).push(o);
+      const rec=packFormationRecord(o);
+      if(rec){
+        if(o.age>=60) packMark(rec,'survived60',o);
+        if(o.age>=120) packMark(rec,'survived120',o);
+        if(o.age>=180) packMark(rec,'survived180',o);
+        if(hasReachedReproductiveMaturity(o)) packMark(rec,'reachedMaturity',o);
+        telemetryRecordPackDispersalMilestones(o);
+      }
+      telemetryPushPackContext('stepStart',o,organismById(o.preyTargetId));
+    }
+    for(const [speciesKey,rows] of bySpecies){
+      telemetry.packFormation.maxSameSpeciesPackWorld=Math.max(telemetry.packFormation.maxSameSpeciesPackWorld,rows.length);
+      const targetRows=rows.filter(o=>o.preyTargetId!=null);
+      const targetIds=[...new Set(targetRows.map(o=>o.preyTargetId))];
+      let sameTargetPursuit=false;
+      for(const tid of targetIds){
+        const same=targetRows.filter(o=>o.preyTargetId===tid);
+        if(same.length>=2 && same.some(o=>o.chaseTimer>0 || o._predationChasingThisStep)){
+          sameTargetPursuit=true;
+          telemetry.packFormation.sameTargetPursuitSteps++;
+          for(const o of same){
+            const rec=packFormationRecord(o);
+            if(rec) packMark(rec,'overlappedSameTargetChase',o,organismById(tid),{sameTargetCount:same.length});
+          }
+        }
+      }
+      const state=targetIds.length>1 ? 'split' : (sameTargetPursuit ? 'sameTarget' : (targetRows.length ? 'singleTarget' : 'targetless'));
+      const prev=telemetry.packFormation.previousSpeciesTargetState.get(speciesKey);
+      if(prev && prev!==state){
+        if(state==='split'){
+          telemetry.packFormation.targetSplitEvents++;
+          for(const o of rows){ const rec=packFormationRecord(o); if(rec) rec.targetSplitEvents++; }
+        } else if(prev==='split' && (state==='sameTarget' || state==='singleTarget')){
+          telemetry.packFormation.targetConvergenceEvents++;
+          for(const o of rows){ const rec=packFormationRecord(o); if(rec) rec.targetConvergenceEvents++; }
+        }
+      }
+      telemetry.packFormation.previousSpeciesTargetState.set(speciesKey,state);
+    }
+  }
+  function telemetryRecordPackDeath(o,causeKey){
+    if(!telemetryPackFormationEnabled() || !isPackHunter(o)) return;
+    const rec=packFormationRecord(o);
+    if(!rec) return;
+    const snapshot=packHuntContextSnapshot(o,organismById(o.preyTargetId));
+    let deathClass='diedWithoutAnyLivingPackMate';
+    if(snapshot.livingPackSameSpeciesWorld<=0) deathClass='diedWithoutAnyLivingPackMate';
+    else if(snapshot.sameSpeciesPackWithinSocialRange<=0 && snapshot.sameSpeciesPackWithinPredator80<=0) deathClass='diedWithMateButNeverInRange';
+    else if(!rec.hadSameTargetMate && !rec.overlappedSameTargetChase) deathClass='diedInRangeButNeverSharedTarget';
+    else if(rec.targetSplitEvents>0 || snapshot.differentTargetPackWithinPredator80>0) deathClass='diedAfterTargetSplit';
+    else if(rec.attackAttemptsWithHelper>0) deathClass='diedAfterHelperAttackAttempts';
+    else if(rec.attackAttemptsWithoutHelper>0) deathClass='diedAfterSoloAttackAttempts';
+    rec.deathClass=deathClass;
+    rec.death={
+      deathFrame:frame,
+      deathAge:Number(o.age||0),
+      deathCause:causeKey || 'other',
+      deathEnergy:Number(o.energy||0),
+      reachedMaturity:!!rec.reachedMaturity,
+      firstPredationSuccess:!!rec.firstPredationSuccess,
+      livingSameSpeciesPackWorld:snapshot.livingPackSameSpeciesWorld,
+      sameSpeciesPackWithinSocialRange:snapshot.sameSpeciesPackWithinSocialRange,
+      sameSpeciesPackWithin80:snapshot.sameSpeciesPackWithinPredator80,
+      sameTargetPackWithin80:snapshot.sameTargetPackWithinPredator80,
+      differentTargetPackWithin80:snapshot.differentTargetPackWithinPredator80,
+      attackAttempts:rec.attackAttempts,
+      attackAttemptsWithHelper:rec.attackAttemptsWithHelper,
+      attackAttemptsWithoutHelper:rec.attackAttemptsWithoutHelper,
+      lastTargetId:o.preyTargetId ?? null,
+      lastNearbyPackTargetComposition:rec.lastNearbyPackTargetComposition,
+      deathClass
+    };
+  }
   function canAttemptPredation(predator, prey, context='target'){
     const info=getEffectivePredationSizeRatio(predator,prey,context);
     return Number.isFinite(info.effectiveSizeRatio) && info.effectiveSizeRatio>=0;
@@ -3375,8 +3866,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const parentExactDiet=Number(parent?.genes?.diet ?? 0.5);
     const parentBirthDiet=telemetryBirthDietClass(parent);
     const parentBirthExactDiet=telemetryBirthExactDiet(parent);
+    const parentSpeciesKey=parent?.speciesKey ?? null;
     const mate=meta?.mateParent || null;
     const mateParentId=mate?.id ?? meta?.mateParentId ?? null;
+    const mateParentSpeciesKey=mate?.speciesKey ?? meta?.mateParentSpeciesKey ?? null;
     const mateGenerationDepth=mate ? telemetryLineageDepth(mate,telemetry.births.get(mate.id) || null) : 0;
     const parentGenerationDepth=parent ? telemetryLineageDepth(parent,telemetry.births.get(parent.id) || null) : 0;
     const generationDepth=Math.max(parentGenerationDepth,mateGenerationDepth)+1;
@@ -3407,6 +3900,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       parentBirthDiet,
       parentExactDiet,
       parentBirthExactDiet,
+      parentSpeciesKey,
+      mateParentSpeciesKey,
       childPreMutationDiet,
       childPostMutationDiet,
       childPreMutationDietType,
@@ -3434,11 +3929,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       parentBirthDiet,
       parentExactDiet,
       parentBirthExactDiet,
+      parentSpeciesKey,
+      mateParentSpeciesKey,
       childDiet,
       birthDietClass:childDiet,
       birthExactDiet:childPostMutationDiet,
       birthStrategyClass:child.birthStrategyClass,
       currentStrategyClass:child.currentStrategyClass,
+      speciesKey:child.speciesKey,
       childPreMutationDiet,
       childPreMutationDietType,
       childPostMutationDiet,
@@ -3457,9 +3955,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       telemetryUpdateCarnivoreProgress(child);
       telemetryPredationIndividualRecord(child);
     }
+    if(isPackHunter(child)) packFormationRecord(child);
     telemetryRecordCarnivoreParentChildBirth(parent,child,rec);
     if(mate) telemetryRecordCarnivoreParentChildBirth(mate,child,rec);
-    telemetryPush({kind:'birth', id:child.id, diet:rec.diet, birthDietClass:childDiet, birthExactDiet:childPostMutationDiet, currentDietClass:childDiet, currentExactDiet:childPostMutationDiet, birthStrategyClass:child.birthStrategyClass, currentStrategyClass:child.currentStrategyClass, parentId:rec.parentId, mateParentId, parentDiet, parentBirthDiet, parentExactDiet, parentBirthExactDiet, parentCarnivore:rec.parentCarnivore, birthEnergy:rec.birthEnergy, childPreMutationDiet, childPostMutationDiet, childPreMutationDietType, crossedDietClass:parentDiet!==childDiet, generationDepth, reproductionMode, clutch, index, clutchIndex:index});
+    telemetryPush({kind:'birth', id:child.id, diet:rec.diet, birthDietClass:childDiet, birthExactDiet:childPostMutationDiet, currentDietClass:childDiet, currentExactDiet:childPostMutationDiet, birthStrategyClass:child.birthStrategyClass, currentStrategyClass:child.currentStrategyClass, speciesKey:child.speciesKey, parentId:rec.parentId, mateParentId, parentDiet, parentBirthDiet, parentExactDiet, parentBirthExactDiet, parentSpeciesKey, mateParentSpeciesKey, parentCarnivore:rec.parentCarnivore, birthEnergy:rec.birthEnergy, childPreMutationDiet, childPostMutationDiet, childPreMutationDietType, crossedDietClass:parentDiet!==childDiet, generationDepth, reproductionMode, clutch, index, clutchIndex:index});
     telemetryPruneBirths();
   }
   function telemetryRecordReproduction(parent, kids){
@@ -3468,6 +3967,13 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const carnivore=(parent.genes?.diet ?? 0) >= 0.66;
     telemetryPush({kind:'reproduction', id:parent.id, diet, carnivore, kids:kids.length});
     telemetryRecordCarnivoreReproduced(parent,kids);
+    if(isPackHunter(parent)){
+      const rec=packFormationRecord(parent);
+      if(rec){
+        packMark(rec,'reproduced',parent);
+        if(kids.some(k=>isPackHunter(k))) rec.producedPackChild=true;
+      }
+    }
     const mateId=kids.find(k=>k?.mateParentId!=null)?.mateParentId ?? null;
     const mate=mateId==null ? null : organismById(mateId);
     if(mate && mate!==parent) telemetryRecordCarnivoreReproduced(mate,kids);
@@ -3497,6 +4003,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     }
     telemetryEndChasesForPrey(o,'preyDiedElsewhere',o._telemetryKilledByPredatorId ?? null);
     telemetryRecordCarnivoreDeath(o,causeKey);
+    telemetryRecordPackDeath(o,causeKey);
     telemetryMarkPredationNutritionDeath(o,causeKey);
     telemetryRecordInjectionDeath(o,causeKey);
     telemetryRecordPredationSizeDeath(o,causeKey);
@@ -3791,6 +4298,20 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     telemetry.feedingPredation.length=0;
     telemetry.feedingPredationLife.clear();
     telemetry.packHuntEvents.length=0;
+    telemetry.packFormation.individuals.clear();
+    telemetry.packFormation.contextEvents.length=0;
+    telemetry.packFormation.attackAttempts.length=0;
+    telemetry.packFormation.targetEvents.length=0;
+    telemetry.packFormation.worldSteps=0;
+    telemetry.packFormation.maxPackWorld=0;
+    telemetry.packFormation.maxSameSpeciesPackWorld=0;
+    telemetry.packFormation.sameTargetPursuitSteps=0;
+    telemetry.packFormation.targetSplitEvents=0;
+    telemetry.packFormation.targetConvergenceEvents=0;
+    telemetry.packFormation.targetlessMateJoinedEvents=0;
+    telemetry.packFormation.differentTargetRefusedEvents=0;
+    telemetry.packFormation.previousSpeciesTargetState.clear();
+    telemetry.packFormation.artificialRuns.length=0;
     telemetry.carnivoreLineageArchive.prunedRecords=0;
     Object.assign(telemetry.packHuntConservation,{
       energyPositiveResidualMax:0,
@@ -4851,6 +5372,175 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       }
     };
   }
+  function packFormationSummary(options={}){
+    const opts=options || {};
+    const wf=telemetryWindowFrames(opts.windowFrames ?? 72000);
+    const cutoff=frame-wf;
+    const records=[...telemetry.packFormation.individuals.values()].filter(r=>{
+      if((r.birthFrame??r.firstFrame??0)>=cutoff || (r.firstFrame??0)>=cutoff) return true;
+      if(r.death?.deathFrame!=null && r.death.deathFrame>=cutoff) return true;
+      return !r.death;
+    });
+    const born=records.filter(r=>!r.initial);
+    const count=(arr,pred)=>arr.filter(pred).length;
+    const rate=(n,d)=>d ? n/d : null;
+    const nums=arr=>arr.map(Number).filter(Number.isFinite);
+    const stat=arr=>{
+      const a=nums(arr).sort((x,y)=>x-y);
+      if(!a.length) return {count:0,average:null,median:null,min:null,max:null};
+      const mid=Math.floor(a.length/2);
+      return {count:a.length,average:a.reduce((s,x)=>s+x,0)/a.length,median:a.length%2?a[mid]:(a[mid-1]+a[mid])*0.5,min:a[0],max:a[a.length-1]};
+    };
+    const targetEvents=telemetry.packFormation.targetEvents.filter(e=>e.frame>=cutoff);
+    const attacks=telemetry.packFormation.attackAttempts.filter(e=>e.frame>=cutoff);
+    const eventCount=type=>targetEvents.filter(e=>e.type===type).length;
+    const bucketRows={0:[],1:[],2:[],'3+':[]};
+    for(const a of attacks){
+      const key=a.helperBucket || (a.eligibleHelperCount>=3?'3+':String(a.eligibleHelperCount||0));
+      if(!bucketRows[key]) bucketRows[key]=[];
+      bucketRows[key].push(a);
+    }
+    const helperBuckets={};
+    for(const key of ['0','1','2','3+']){
+      const rows=bucketRows[key] || [];
+      const successes=count(rows,r=>r.success);
+      helperBuckets[key]={
+        attacks:rows.length,
+        successes,
+        successRate:rate(successes,rows.length),
+        averageP:stat(rows.map(r=>r.finalAttackProbability)).average,
+        averageRoll:stat(rows.map(r=>r.predationRoll)).average,
+        averageBirthEnergy:stat(rows.map(r=>r.birthEnergy)).average
+      };
+    }
+    const deathClasses={};
+    for(const r of born){
+      const k=r.deathClass || (r.death ? 'unclassified' : 'alive');
+      deathClasses[k]=(deathClasses[k]||0)+1;
+    }
+    const agreementCount=count(attacks,r=>r.allExistingCountsAgree);
+    const mismatchCount=attacks.length-agreementCount;
+    const multiplierClasses={
+      below1:count(attacks,r=>r.combinedPackMultiplier<0.999),
+      approx1:count(attacks,r=>Math.abs(r.combinedPackMultiplier-1)<=0.001),
+      above1:count(attacks,r=>r.combinedPackMultiplier>1.001)
+    };
+    const births=telemetry.birthOrigins.filter(b=>b.frame>=cutoff && (b.birthStrategyClass==='pack' || b.currentStrategyClass==='pack'));
+    const siblingGroups=new Map();
+    for(const b of births){
+      const key=`${b.frame}:${b.parentId ?? 'null'}:${b.mateParentId ?? 'null'}:${b.clutch ?? 'null'}`;
+      if(!siblingGroups.has(key)) siblingGroups.set(key,[]);
+      siblingGroups.get(key).push(b);
+    }
+    let packSiblingPairs=0, sameSpeciesSiblingPairs=0, differentSpeciesSiblingPairs=0, siblingExcludedBySpeciesKey=0;
+    for(const rows of siblingGroups.values()){
+      for(let i=0;i<rows.length;i++){
+        for(let j=i+1;j<rows.length;j++){
+          packSiblingPairs++;
+          if(rows[i].speciesKey===rows[j].speciesKey) sameSpeciesSiblingPairs++;
+          else { differentSpeciesSiblingPairs++; siblingExcludedBySpeciesKey++; }
+        }
+      }
+    }
+    const roleBySpecies=new Map();
+    const addRole=(speciesKey,strategy)=>{
+      if(!speciesKey) return;
+      if(!roleBySpecies.has(speciesKey)) roleBySpecies.set(speciesKey,new Set());
+      roleBySpecies.get(speciesKey).add((strategy==='pack'||strategy==='ambusher')?strategy:'other');
+    };
+    for(const o of organisms) if(o && !o.dead) addRole(o.speciesKey,carnivoreStrategyClass(o));
+    for(const b of telemetry.birthOrigins.filter(b=>b.frame>=cutoff)) addRole(b.speciesKey,b.birthStrategyClass);
+    let sameSpeciesRoleMixed=0;
+    const sameSpeciesRoleMixedKeys=[];
+    for(const [speciesKey,set] of roleBySpecies){
+      if(set.has('pack') && (set.has('ambusher') || set.has('other'))){
+        sameSpeciesRoleMixed++;
+        if(sameSpeciesRoleMixedKeys.length<24) sameSpeciesRoleMixedKeys.push({speciesKey,roles:[...set]});
+      }
+    }
+    const funnelCounts={
+      packBorn:born.length,
+      survived60:count(born,r=>r.survived60),
+      survived120:count(born,r=>r.survived120),
+      survived180:count(born,r=>r.survived180),
+      reachedMaturity:count(born,r=>r.reachedMaturity),
+      hadLivingSameSpeciesPackMate:count(born,r=>r.hadLivingSameSpeciesPackMate),
+      hadPackMateWithinSocialRange:count(born,r=>r.hadPackMateWithinSocialRange),
+      hadPackMateWithinPredator80:count(born,r=>r.hadPackMateWithinPredator80),
+      hadAnyTarget:count(born,r=>r.hadAnyTarget),
+      hadMateWithTarget:count(born,r=>r.hadMateWithTarget),
+      receivedSharedTarget:count(born,r=>r.receivedSharedTarget),
+      switchedToSharedTarget:count(born,r=>r.switchedToSharedTarget),
+      hadSameTargetMate:count(born,r=>r.hadSameTargetMate),
+      hadDifferentTargetMate:count(born,r=>r.hadDifferentTargetMate),
+      overlappedSameTargetChase:count(born,r=>r.overlappedSameTargetChase),
+      hadHelperNearPrey:count(born,r=>r.hadHelperNearPrey),
+      reachedContact:count(born,r=>r.reachedContact),
+      attemptedAttack:count(born,r=>r.attemptedAttack),
+      attemptedAttackWithHelper:count(born,r=>r.attemptedAttackWithHelper),
+      attemptedAttackWithoutHelper:count(born,r=>r.attemptedAttackWithoutHelper),
+      predationSuccessWithHelper:count(born,r=>r.predationSuccessWithHelper),
+      predationSuccessWithoutHelper:count(born,r=>r.predationSuccessWithoutHelper),
+      reproduced:count(born,r=>r.reproduced),
+      producedPackChild:count(born,r=>r.producedPackChild),
+      producedPackChildThatMatured:count(born,r=>r.producedPackChildThatMatured)
+    };
+    const rates={};
+    for(const [k,v] of Object.entries(funnelCounts)) rates[k]={numerator:v,denominator:born.length,rate:rate(v,born.length)};
+    return {
+      enabled:telemetryPackFormationEnabled(),
+      denominator:'packFormation records, born excludes initial records',
+      records:{total:records.length,initial:count(records,r=>r.initial),born:born.length,currentLivingPack:organisms.filter(o=>o && !o.dead && isPackHunter(o)).length},
+      maxPackWorld:telemetry.packFormation.maxPackWorld,
+      maxSameSpeciesPackWorld:telemetry.packFormation.maxSameSpeciesPackWorld,
+      maxGenerationDepth:records.reduce((m,r)=>Math.max(m,Number(r.generationDepth||0)),0),
+      funnel:{counts:funnelCounts,rates},
+      targetSharing:{
+        shareOpportunityTargetless:eventCount('shareOpportunityTargetless'),
+        shareOpportunityAlreadySameTarget:eventCount('shareOpportunityAlreadySameTarget'),
+        shareOpportunityDifferentTarget:eventCount('shareOpportunityDifferentTarget'),
+        shareOpportunityInvalidMateTarget:eventCount('shareOpportunityInvalidMateTarget'),
+        shareApplied:eventCount('shareApplied'),
+        shareNotAppliedBecauseSelfHadTarget:eventCount('shareNotAppliedBecauseSelfHadTarget'),
+        targetAcquired:eventCount('targetAcquired'),
+        targetSwitch:eventCount('targetSwitch'),
+        sameTargetPursuitSteps:telemetry.packFormation.sameTargetPursuitSteps,
+        targetSplitEvents:telemetry.packFormation.targetSplitEvents,
+        targetConvergenceEvents:telemetry.packFormation.targetConvergenceEvents,
+        differentTargetRefusedEvents:born.reduce((s,r)=>s+Number(r.differentTargetRefusedEvents||0),0)
+      },
+      attacks:{
+        total:attacks.length,
+        withEligibleHelper:count(attacks,a=>a.eligibleHelperCount>0),
+        withoutEligibleHelper:count(attacks,a=>a.eligibleHelperCount<=0),
+        withSameTargetHelper:count(attacks,a=>a.sameTargetEligibleHelperCount>0),
+        successes:count(attacks,a=>a.success),
+        successesWithEligibleHelper:count(attacks,a=>a.success && a.eligibleHelperCount>0),
+        successesWithSameTargetHelper:count(attacks,a=>a.success && a.sameTargetEligibleHelperCount>0),
+        helperBuckets,
+        averageChaseBonusMateCount:stat(attacks.map(a=>a.chaseBonusMateCount)).average,
+        averageAttackProbabilityMateCount:stat(attacks.map(a=>a.attackProbabilityMateCount)).average,
+        averageEligibleHelperCount:stat(attacks.map(a=>a.eligibleHelperCount)).average,
+        allExistingCountsAgree:{count:agreementCount,denominator:attacks.length,rate:rate(agreementCount,attacks.length)},
+        allExistingCountsMismatch:{count:mismatchCount,denominator:attacks.length,rate:rate(mismatchCount,attacks.length)},
+        packMultiplier:multiplierClasses,
+        negativeMultiplierBeforeFirstPredation:born.map(r=>({id:r.id,count:r.negativePackMultiplierBeforeFirstPredation||0})).filter(r=>r.count>0).slice(0,48)
+      },
+      speciesKey:{
+        packSiblingPairs,
+        sameSpeciesSiblingPairs,
+        differentSpeciesSiblingPairs,
+        siblingExcludedBySpeciesKey,
+        sameSpeciesRoleMixed,
+        sameSpeciesRoleMixedKeys
+      },
+      deathClasses,
+      dispersalSamples:born.map(r=>({id:r.id,parentId:r.parentId,speciesKey:r.speciesKey,dispersal:r.dispersal})).filter(r=>Object.keys(r.dispersal||{}).length).slice(0,48),
+      contextEventsStored:telemetry.packFormation.contextEvents.length,
+      attackAttemptsStored:telemetry.packFormation.attackAttempts.length,
+      targetEventsStored:telemetry.packFormation.targetEvents.length
+    };
+  }
   function carnivoreLineageSummary(options={}){
     const opts=typeof options==='number' ? {windowFrames:options} : (options || {});
     const wf=telemetryWindowFrames(opts.windowFrames ?? 72000);
@@ -5182,8 +5872,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         carnivoreLifeRecords:telemetry.carnivoreLife.size,
         predationIndividualRecords:telemetry.predationIndividuals.size,
         packHuntEvents:telemetry.packHuntEvents.length,
+        packFormationRecords:telemetry.packFormation.individuals.size,
+        packFormationContextEvents:telemetry.packFormation.contextEvents.length,
+        packAttackAttempts:telemetry.packFormation.attackAttempts.length,
+        packTargetEvents:telemetry.packFormation.targetEvents.length,
         carnivoreLineageLimit:TELEMETRY_CARNIVORE_LINEAGE_LIMIT,
         packHuntEventLimit:TELEMETRY_PACK_HUNT_EVENT_LIMIT,
+        packFormationContextLimit:TELEMETRY_PACK_FORMATION_CONTEXT_LIMIT,
+        packAttackAttemptLimit:TELEMETRY_PACK_ATTACK_ATTEMPT_LIMIT,
+        packTargetEventLimit:TELEMETRY_PACK_TARGET_EVENT_LIMIT,
         prunedCarnivoreLifeRecords:telemetry.carnivoreLineageArchive.prunedRecords
       },
       extinction:{
@@ -5226,6 +5923,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       generations:generationSummary,
       birthEnergyAndClutch:comparisonGroups,
       packHunt:packHuntSummary,
+      packFormation:packFormationSummary({windowFrames:wf}),
       deaths:{
         byCause:deathByCause,
         starvationBins,
@@ -6532,6 +7230,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         : (mode==='hunt-pack'
           ? clamp(this.senseR*(0.50 + sociality*0.50), 56, 148)
           : clamp(this.senseR*(0.38 + sociality*0.44), 38, 112));
+      if(packHunter) telemetryPushPackContext('socialSteer',this,organismById(this.preyTargetId));
       let wx=0, wy=0, wvx=0, wvy=0, wsum=0, count=0;
       let fleeX=0, fleeY=0, fleeW=0, predators=0;
       let rallyX=0, rallyY=0, rallyW=0, sharedPrey=null, sharedPreyW=0;
@@ -6553,9 +7252,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         if(packHunter && matePackHunter && o.preyTargetId){
           const matePrey = organismById(o.preyTargetId);
           if(matePrey && predationCandidateClassification(this,matePrey,'target').valid){
+            if(this.preyTargetId==null) telemetryRecordPackTargetEvent('shareOpportunityTargetless',this,o,matePrey,{distance:d,range});
+            else if(this.preyTargetId===matePrey.id) telemetryRecordPackTargetEvent('shareOpportunityAlreadySameTarget',this,o,matePrey,{distance:d,range});
+            else telemetryRecordPackTargetEvent('shareOpportunityDifferentTarget',this,o,matePrey,{distance:d,range});
             const rw = clamp(1 - d/range, 0.04, 1) * (0.42 + sociality*0.60);
             rallyX += matePrey.x*rw; rallyY += matePrey.y*rw; rallyW += rw;
             if(rw>sharedPreyW){ sharedPreyW=rw; sharedPrey=matePrey; }
+          } else {
+            telemetryRecordPackTargetEvent('shareOpportunityInvalidMateTarget',this,o,matePrey,{distance:d,range});
           }
         }
         const affinity = mode==='defense-school' ? 1.12 : (packHunter && matePackHunter ? 1.18 : 1.0);
@@ -6611,10 +7315,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           this.preyTargetId=sharedPrey.id;
           this.preyTargetOutOfRangeSteps=0;
           this.chaseTimer=Math.max(this.chaseTimer, 95);
+          telemetryRecordPackTargetEvent('shareApplied',this,null,sharedPrey,{source:'socialSteer'});
           telemetryRecordPredationStage('candidate',this,sharedPrey,{shared:true});
           telemetryRecordPredationStage('tracking',this,sharedPrey,{shared:true});
           if(frame-(this._lastPackShareAction||0)>170){ recordAction(this,'群れの獲物へ合流した'); this._lastPackShareAction=frame; }
         }
+      }
+      if(packHunter && rallyW>0 && sharedPrey && this.preyTargetId && this.preyTargetId!==sharedPrey.id){
+        telemetryRecordPackTargetEvent('shareNotAppliedBecauseSelfHadTarget',this,null,sharedPrey,{source:'socialSteer'});
       }
       this.socialCount = count;
       this.herdThreat = predators ? Math.max(this.herdThreat||0, 35 + predators*8) : Math.max(0,(this.herdThreat||0)-1);
@@ -6697,6 +7405,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           this.preyTargetId=best.id;
           this.preyTargetOutOfRangeSteps=0;
           this.chaseTimer=130 + Math.round(80*intent);
+          telemetryRecordPackTargetEvent('targetAcquired',this,null,best,{source:'scan',score:Number(bestScore.toFixed(3))});
           telemetryRecordPredationStage('tracking',this,best);
           recordAction(this,'小型生命を追跡した');
         }
@@ -6715,6 +7424,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           this.preyTargetId=reassessmentBest.id;
           this.preyTargetOutOfRangeSteps=0;
           this.chaseTimer=130 + Math.round(80*intent);
+          telemetryRecordPackTargetEvent('targetSwitch',this,null,reassessmentBest,{source:'reassessment',previousTargetId:previousPreyId,score:Number(reassessmentBestScore.toFixed(3))});
           telemetryRecordPredationStage('candidate',this,reassessmentBest,{
             score:Number(reassessmentBestScore.toFixed(3)),
             switched:true,
@@ -6730,6 +7440,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       const dx=prey.x-this.x, dy=prey.y-this.y;
       const d=Math.hypot(dx,dy)||1;
       telemetryRecordPredationChaseStep(this,prey);
+      telemetryPushPackContext('tracking',this,prey);
       const ambush=this.role==='ambusher';
       const burstCfg=CONFIG.ecology.predatorBurst;
       const ambushHunger=ambush ? clamp(
@@ -7461,10 +8172,16 @@ if(Z>0.08){
         sizeSuccessMul:Number(sizeSuccessMul.toFixed(3)),
         largePreySuccessMul:Number(sizeSuccessMul.toFixed(3))
       });
+      telemetryPushPackContext('contact',this,prey);
       let pBase=0.26;
       let defenseMul=1;
       let groupMul=1;
       let p=clamp(pBase*intent,0,0.74);
+      const rawAttackProbability=p;
+      let attackProbabilityMateCount=0;
+      let basePackMultiplier=1;
+      let rareFactorPack=1;
+      let combinedPackMultiplier=1;
       if(this.preyTargetId===prey.id) p*=1.18;
       if(this.morphologyTopology==='radial') p*=1.10;
       if(prey.morphologyTopology==='ring'){ defenseMul*=0.82; p*=0.82; }
@@ -7474,7 +8191,11 @@ if(Z>0.08){
       if(this.role==='pack' || this.socialMode==='hunt-pack'){
         let mates=0;
         forEachOrgNeighbors(prey.x,prey.y,76,(o2)=>{ if(o2!==this && o2.speciesKey===this.speciesKey && (o2.role==='pack' || o2.socialMode==='hunt-pack')) mates++; });
-        p*= (0.78 + 0.095*mates) * rareFactor('pack');
+        attackProbabilityMateCount=mates;
+        basePackMultiplier=0.78 + 0.095*mates;
+        rareFactorPack=rareFactor('pack');
+        combinedPackMultiplier=basePackMultiplier * rareFactorPack;
+        p*= combinedPackMultiplier;
       }
       const preyDefenses=predationDefensesFor(prey);
       for(const d of preyDefenses){
@@ -7530,6 +8251,23 @@ if(Z>0.08){
         groupMul:Number(groupMul.toFixed(3))
       });
       const predationRoll=Math.random();
+      telemetryRecordPackAttackAttempt(this,prey,{
+        rawAttackProbability,
+        finalAttackProbability:p,
+        predationRoll,
+        success:predationRoll<p,
+        packProbabilityMultiplier:combinedPackMultiplier,
+        mates:attackProbabilityMateCount,
+        basePackMultiplier,
+        rareFactorPack,
+        combinedPackMultiplier,
+        rawSizeRatio:sizeInfo.rawSizeRatio,
+        effectiveSizeRatio:sizeInfo.effectiveSizeRatio,
+        packSizeMultiplier:sizeInfo.packSizeMultiplier,
+        sizeSuccessMul,
+        defenseMul,
+        groupMul
+      });
       if(predationRoll<p){
         const carn=this.genes.diet;
         const diet=dietTypeFromCarn(carn);
@@ -9818,6 +10556,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         if(--calls[i].t<=0) calls.splice(i,1);
       }
       buildSpatialIndex();
+      telemetryRecordPackWorldStep();
       for(const o of organisms){
         if(!o.dead){
           o.step();
@@ -13862,7 +14601,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           samples:telemetry.samples.length,
           carnivoreLife:telemetry.carnivoreLife.size,
           predationIndividuals:telemetry.predationIndividuals.size,
-          birthOrigins:telemetry.birthOrigins.length
+          birthOrigins:telemetry.birthOrigins.length,
+          packFormationRecords:telemetry.packFormation.individuals.size,
+          packAttackAttempts:telemetry.packFormation.attackAttempts.length,
+          packTargetEvents:telemetry.packFormation.targetEvents.length
         },
         health
       };
@@ -14126,6 +14868,317 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     }
     return {ok:results.every(r=>r.ok), results};
   }
+  function runPackFormationMicroTests(){
+    const saved=capture();
+    const oldPackSharing={...diagnosticPackSharing};
+    const results=[];
+    const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
+    const clear=()=>{
+      running=false;
+      frame=0;
+      generation=1;
+      organisms.length=0; newborn.length=0; food.length=0; corpses.length=0; plankton.length=0; patches.length=0; calls.length=0;
+      sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0;
+      speciesCount.clear();
+      resetTelemetry();
+      diagnosticPackSharing.shareFraction=0;
+      diagnosticPackSharing.detailedTelemetry=true;
+      diagnosticPackSharing.variant='packFormationMicro';
+    };
+    const genes=(diet='c')=>Object.assign({}, diet==='c' ? DEV_VIABLE_GENES.carnivore : (diet==='m' ? DEV_VIABLE_GENES.omnivore : DEV_VIABLE_GENES.herbivore));
+    const org=(role,x,y,diet='c',species='pack-sp')=>{
+      const o=new Organism(x,y,genes(diet),true);
+      o.role=role;
+      o.socialMode=role==='pack' ? 'hunt-pack' : 'solitary';
+      o.sociality=role==='pack' ? 0.72 : 0.20;
+      o.speciesKey=species;
+      o.energy=90;
+      o.size=10;
+      o.senseR=140;
+      o.age=o.maturityAge;
+      o.protect=0;
+      o.attackCD=0;
+      o.birthFrame=frame-o.age;
+      o.lineageInitial=false;
+      organisms.push(o);
+      if(role==='pack') packFormationRecord(o);
+      return o;
+    };
+    try{
+      clear();
+      const aPack=org('pack',100,100,'c','a'), aPrey=org('other',116,100,'h','prey-a');
+      buildSpatialIndex();
+      const aSnap=packHuntContextSnapshot(aPack,aPrey);
+      add('Micro A solo pack', aSnap.livingPackSameSpeciesWorld===0 && aSnap.existingAttackProbabilityMateCount===0 && aSnap.existingEligibleHelperCount===0,
+        {livingMate:aSnap.livingPackSameSpeciesWorld,attackProbabilityMate:aSnap.existingAttackProbabilityMateCount,eligibleHelper:aSnap.existingEligibleHelperCount});
+
+      clear();
+      const bPack=org('pack',100,100,'c','b'), bMate=org('pack',116,100,'c','b'), bPrey=org('other',124,100,'h','prey-b');
+      buildSpatialIndex();
+      const bSnap=packHuntContextSnapshot(bPack,bPrey);
+      add('Micro B same species nearby pack', bSnap.existingAttackProbabilityMateCount===1 && bSnap.existingEligibleHelperCount===1,
+        {attackProbabilityMate:bSnap.existingAttackProbabilityMateCount,eligibleHelper:bSnap.existingEligibleHelperCount,mateId:bMate.id});
+
+      clear();
+      const cPack=org('pack',100,100,'c','c1'), cMate=org('pack',116,100,'c','c2'), cPrey=org('other',124,100,'h','prey-c');
+      buildSpatialIndex();
+      const cSnap=packHuntContextSnapshot(cPack,cPrey);
+      add('Micro C different species pack', cSnap.existingChaseBonusMateCount===0 && cSnap.existingAttackProbabilityMateCount===0 && cSnap.existingEligibleHelperCount===0,
+        {chase:cSnap.existingChaseBonusMateCount,attack:cSnap.existingAttackProbabilityMateCount,eligible:cSnap.existingEligibleHelperCount,mateId:cMate.id});
+
+      clear();
+      const dPack=org('pack',100,100,'c','d'), dAmb=org('ambusher',116,100,'c','d'), dPrey=org('other',124,100,'h','prey-d');
+      buildSpatialIndex();
+      const dSnap=packHuntContextSnapshot(dPack,dPrey);
+      add('Micro D same species ambusher', dSnap.existingChaseBonusMateCount===0 && dSnap.existingAttackProbabilityMateCount===0 && dSnap.existingEligibleHelperCount===0,
+        {chase:dSnap.existingChaseBonusMateCount,attack:dSnap.existingAttackProbabilityMateCount,eligible:dSnap.existingEligibleHelperCount,ambusherId:dAmb.id});
+
+      clear();
+      const ePack=org('pack',100,100,'c','e'), eDead=org('pack',116,100,'c','e'), ePrey=org('other',124,100,'h','prey-e');
+      eDead.dead=true;
+      buildSpatialIndex();
+      const eSnap=packHuntContextSnapshot(ePack,ePrey);
+      add('Micro E dead pack counted differences', eSnap.livingPackSameSpeciesWorld===0 && eSnap.existingEligibleHelperCount===0,
+        {livingMate:eSnap.livingPackSameSpeciesWorld,chase:eSnap.existingChaseBonusMateCount,attack:eSnap.existingAttackProbabilityMateCount,eligible:eSnap.existingEligibleHelperCount,deadMateId:eDead.id});
+
+      clear();
+      const fA=org('pack',100,100,'c','f'), fB=org('pack',112,100,'c','f'), fPrey=org('other',136,100,'h','prey-f');
+      fA.preyTargetId=fPrey.id; fA.chaseTimer=80; fB.preyTargetId=null;
+      buildSpatialIndex();
+      fB.socialSteer();
+      add('Micro F targetless sharing', fB.preyTargetId===fPrey.id && telemetry.packFormation.targetEvents.some(e=>e.type==='shareApplied'),
+        {bTarget:fB.preyTargetId,preyId:fPrey.id,shareApplied:telemetry.packFormation.targetEvents.filter(e=>e.type==='shareApplied').length});
+
+      clear();
+      const gA=org('pack',100,100,'c','g'), gB=org('pack',112,100,'c','g'), gX=org('other',136,100,'h','prey-gx'), gY=org('other',88,100,'h','prey-gy');
+      gA.preyTargetId=gX.id; gB.preyTargetId=gY.id; gA.chaseTimer=80; gB.chaseTimer=80;
+      buildSpatialIndex();
+      gB.socialSteer();
+      add('Micro G different target conflict', gB.preyTargetId===gY.id && telemetry.packFormation.targetEvents.some(e=>e.type==='shareOpportunityDifferentTarget'),
+        {bTarget:gB.preyTargetId,expectedTarget:gY.id,differentTargetEvents:telemetry.packFormation.targetEvents.filter(e=>e.type==='shareOpportunityDifferentTarget').length});
+
+      clear();
+      const hA=org('pack',100,100,'c','h'), hB=org('pack',112,100,'c','h'), hPrey=org('other',136,100,'h','prey-h');
+      hA.preyTargetId=hPrey.id; hB.preyTargetId=hPrey.id; hA.chaseTimer=80;
+      buildSpatialIndex();
+      telemetryRecordPackWorldStep();
+      add('Micro H same target overlap', telemetry.packFormation.sameTargetPursuitSteps>0,
+        {sameTargetPursuitSteps:telemetry.packFormation.sameTargetPursuitSteps});
+
+      clear();
+      const iPack=org('pack',100,100,'c','i'), iMate=org('pack',170,100,'c','i'), iPrey=org('other',250,100,'h','prey-i');
+      buildSpatialIndex();
+      const iSnap=packHuntContextSnapshot(iPack,iPrey);
+      add('Micro I count mismatch', iSnap.existingChaseBonusMateCount===1 && iSnap.existingAttackProbabilityMateCount===0 && iSnap.existingEligibleHelperCount===0 && !iSnap.allExistingCountsAgree,
+        {chase:iSnap.existingChaseBonusMateCount,attack:iSnap.existingAttackProbabilityMateCount,eligible:iSnap.existingEligibleHelperCount,agree:iSnap.allExistingCountsAgree});
+
+      clear();
+      const jPack=org('pack',100,100,'c','j'), jPrey=org('other',124,100,'h','prey-j'), jDiffPrey=org('other',160,100,'h','prey-j2');
+      const jSame=org('pack',118,104,'c','j'), jDiff=org('pack',118,96,'c','j'), jTargetless=org('pack',124,112,'c','j');
+      jPack.preyTargetId=jPrey.id; jSame.preyTargetId=jPrey.id; jDiff.preyTargetId=jDiffPrey.id; jTargetless.preyTargetId=null;
+      buildSpatialIndex();
+      const jSnap=packHuntContextSnapshot(jPack,jPrey);
+      add('Micro J helper classification', jSnap.existingEligibleHelperCount===3 && jSnap.sameTargetEligibleHelperCount===1 && jSnap.differentTargetEligibleHelperCount===1 && jSnap.targetlessEligibleHelperCount===1,
+        {eligible:jSnap.existingEligibleHelperCount,same:jSnap.sameTargetEligibleHelperCount,different:jSnap.differentTargetEligibleHelperCount,targetless:jSnap.targetlessEligibleHelperCount});
+
+      clear();
+      const kParent=org('pack',100,100,'c','k-parent');
+      resetTelemetry();
+      diagnosticPackSharing.detailedTelemetry=true;
+      const kA=new Organism(104,100,genes('c'),true), kB=new Organism(108,100,genes('c'),true);
+      for(const kid of [kA,kB]){
+        kid.role='pack'; kid.socialMode='hunt-pack'; kid.sociality=0.72; kid.energy=70;
+      }
+      kA.speciesKey='k-a'; kB.speciesKey='k-b';
+      telemetryRecordBirth(kParent,kA,0,2,{preMutationDiet:kA.genes.diet});
+      telemetryRecordBirth(kParent,kB,1,2,{preMutationDiet:kB.genes.diet});
+      organisms.push(kA,kB);
+      const kSummary=packFormationSummary({windowFrames:100});
+      add('Micro K sibling speciesKey split', kSummary.speciesKey.differentSpeciesSiblingPairs===1 && kSummary.speciesKey.siblingExcludedBySpeciesKey===1,
+        kSummary.speciesKey);
+
+      clear();
+      const lPack=org('pack',100,100,'c','l'), lHelper=org('pack',118,100,'c','l'), lPrey=org('other',124,100,'h','prey-l');
+      lPack.preyTargetId=lPrey.id; lHelper.preyTargetId=lPrey.id;
+      buildSpatialIndex();
+      const beforeEvents=telemetry.packHuntEvents.length;
+      telemetryRecordPackAttackAttempt(lPack,lPrey,{rawAttackProbability:0.1,finalAttackProbability:0,predationRoll:1,success:false,packProbabilityMultiplier:0.875,mates:1,basePackMultiplier:0.875,rareFactorPack:1,combinedPackMultiplier:0.875,rawSizeRatio:1,effectiveSizeRatio:1,packSizeMultiplier:1,sizeSuccessMul:1,defenseMul:1,groupMul:1});
+      const lSummary=packFormationSummary({windowFrames:100});
+      add('Micro L failed helper attack recorded', lSummary.attacks.withEligibleHelper===1 && lSummary.attacks.successesWithEligibleHelper===0 && telemetry.packHuntEvents.length===beforeEvents,
+        {withEligibleHelper:lSummary.attacks.withEligibleHelper,successesWithEligibleHelper:lSummary.attacks.successesWithEligibleHelper,packHuntEventsDelta:telemetry.packHuntEvents.length-beforeEvents});
+    } finally {
+      Object.assign(diagnosticPackSharing,oldPackSharing);
+      restore(saved);
+    }
+    return {ok:results.every(r=>r.ok), results};
+  }
+  function runArtificialPackFormationExperiment(options={}){
+    const opts=options || {};
+    const trials=Math.max(1,Math.min(200,Number(opts.trials ?? 30)));
+    const maxSteps=Math.max(20,Math.min(2000,Number(opts.maxSteps ?? 260)));
+    const seedBase=Number(opts.seed ?? 91001);
+    const saved=capture();
+    const oldPackSharing={...diagnosticPackSharing};
+    const oldRandom=Math.random;
+    const oldSpeed=ui.speed;
+    const scenarios=[
+      {key:'allTargetless',label:'all targetless'},
+      {key:'oneTarget',label:'one target'},
+      {key:'allDifferentTargets',label:'all different targets'},
+      {key:'allSameTarget',label:'all same target'}
+    ];
+    const avg=arr=>{
+      const a=arr.filter(v=>v!=null).map(Number).filter(Number.isFinite);
+      return a.length ? a.reduce((s,x)=>s+x,0)/a.length : null;
+    };
+    const rate=(n,d)=>d ? n/d : null;
+    const genes=(diet='c')=>Object.assign({}, diet==='c' ? DEV_VIABLE_GENES.carnivore : DEV_VIABLE_GENES.herbivore);
+    const clear=()=>{
+      running=false;
+      frame=0;
+      generation=1;
+      ui.speed=1;
+      organisms.length=0; newborn.length=0; food.length=0; corpses.length=0; plankton.length=0; patches.length=0; calls.length=0;
+      sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0;
+      speciesCount.clear();
+      resetTelemetry();
+      diagnosticPackSharing.shareFraction=0;
+      diagnosticPackSharing.detailedTelemetry=true;
+      diagnosticPackSharing.variant='artificialPackFormation';
+    };
+    const makePack=(x,y,species='art-pack')=>{
+      const o=new Organism(x,y,genes('c'),true);
+      o.role='pack';
+      o.socialMode='hunt-pack';
+      o.sociality=0.72;
+      o.speciesKey=species;
+      o.energy=100;
+      o.size=10;
+      o.senseR=150;
+      o.age=o.maturityAge;
+      o.protect=0;
+      o.attackCD=0;
+      o.birthFrame=frame-o.age;
+      o.lineageInitial=false;
+      o.nextPreyScan=frame;
+      organisms.push(o);
+      packFormationRecord(o);
+      return o;
+    };
+    const makePrey=(x,y,species)=>{
+      const o=new Organism(x,y,genes('h'),true);
+      o.role='other';
+      o.socialMode='solitary';
+      o.speciesKey=species;
+      o.energy=80;
+      o.size=9;
+      o.senseR=100;
+      o.age=o.maturityAge;
+      o.protect=0;
+      o.attackCD=0;
+      o.birthFrame=frame-o.age;
+      o.lineageInitial=false;
+      o.nextPreyScan=frame+999999;
+      organisms.push(o);
+      return o;
+    };
+    const targetStats=(pack)=>{
+      const live=pack.filter(o=>o && !o.dead);
+      const targets=live.map(o=>o.preyTargetId).filter(id=>id!=null);
+      const distinct=[...new Set(targets)];
+      return {live:live.length,targeted:targets.length,distinct:distinct.length,allSame:live.length>0 && targets.length===live.length && distinct.length===1,split:distinct.length>1};
+    };
+    const trial=(groupSize,scenario,trialIndex)=>{
+      clear();
+      Math.random=duelSeededRandom(seedBase + groupSize*10000 + trialIndex*31 + scenarios.findIndex(s=>s.key===scenario.key)*1000);
+      const cx=160, cy=160;
+      const pack=[];
+      for(let i=0;i<groupSize;i++){
+        const angle=(TAU*i/Math.max(1,groupSize)) + 0.25;
+        pack.push(makePack(cx+Math.cos(angle)*14,cy+Math.sin(angle)*14,'art-pack'));
+      }
+      const primary=makePrey(cx+52,cy,'art-prey-main');
+      const prey=[primary];
+      for(let i=1;i<Math.max(groupSize,2);i++){
+        const angle=TAU*i/Math.max(2,groupSize);
+        prey.push(makePrey(cx+52*Math.cos(angle),cy+52*Math.sin(angle),`art-prey-${i}`));
+      }
+      if(scenario.key==='oneTarget'){
+        pack[0].preyTargetId=primary.id; pack[0].chaseTimer=140;
+      } else if(scenario.key==='allDifferentTargets'){
+        for(let i=0;i<pack.length;i++){ pack[i].preyTargetId=prey[i%prey.length].id; pack[i].chaseTimer=140; }
+      } else if(scenario.key==='allSameTarget'){
+        for(const o of pack){ o.preyTargetId=primary.id; o.chaseTimer=140; }
+      }
+      const startEnergy=pack.reduce((s,o)=>s+o.energy,0);
+      let converged=false, split=false, sameTargetDuration=0, firstPredationStep=null;
+      for(let step=0;step<maxSteps;step++){
+        buildSpatialIndex();
+        const ts=targetStats(pack);
+        if(ts.allSame){ converged=true; sameTargetDuration++; }
+        if(ts.split) split=true;
+        updateModel();
+        const success=telemetry.packFormation.attackAttempts.find(a=>a.success);
+        if(success && firstPredationStep==null) firstPredationStep=step+1;
+        if(firstPredationStep!=null) break;
+        if(pack.every(o=>o.dead)) break;
+      }
+      buildSpatialIndex();
+      const summary=packFormationSummary({windowFrames:maxSteps+20});
+      const attempts=summary.attacks;
+      const contact=summary.funnel.counts.reachedContact>0;
+      const attack=attempts.total>0;
+      const helperAttack=attempts.withEligibleHelper>0;
+      const success=attempts.successes>0;
+      const endEnergy=pack.filter(o=>!o.dead).reduce((s,o)=>s+o.energy,0);
+      return {
+        groupSize,
+        scenario:scenario.key,
+        targetConverged:converged,
+        targetSplit:split,
+        sameTargetDuration,
+        contact,
+        attack,
+        helperAttack,
+        success,
+        firstPredationStep,
+        energySpent:startEnergy-endEnergy,
+        deaths:pack.filter(o=>o.dead).length
+      };
+    };
+    try{
+      const results={};
+      for(const groupSize of [1,2,3,4]){
+        results[groupSize]={groupSize,scenarios:{}};
+        for(const scenario of scenarios){
+          const rows=[];
+          for(let i=0;i<trials;i++) rows.push(trial(groupSize,scenario,i));
+          results[groupSize].scenarios[scenario.key]={
+            trials,
+            targetConvergenceRate:rate(rows.filter(r=>r.targetConverged).length,trials),
+            targetSplitRate:rate(rows.filter(r=>r.targetSplit).length,trials),
+            averageSameTargetDuration:avg(rows.map(r=>r.sameTargetDuration)),
+            contactRate:rate(rows.filter(r=>r.contact).length,trials),
+            attackRate:rate(rows.filter(r=>r.attack).length,trials),
+            helperAttackRate:rate(rows.filter(r=>r.helperAttack).length,trials),
+            predationSuccessRate:rate(rows.filter(r=>r.success).length,trials),
+            averageFirstPredationStep:avg(rows.map(r=>r.firstPredationStep)),
+            averageEnergySpent:avg(rows.map(r=>r.energySpent)),
+            deathRate:rate(rows.reduce((s,r)=>s+r.deaths,0),trials*groupSize),
+            sampleRows:rows.slice(0,5)
+          };
+        }
+      }
+      const run={seed:seedBase,trials,maxSteps,shareFraction:0,results};
+      telemetry.packFormation.artificialRuns.push(run);
+      return run;
+    } finally {
+      Math.random=oldRandom;
+      ui.speed=oldSpeed;
+      Object.assign(diagnosticPackSharing,oldPackSharing);
+      restore(saved);
+    }
+  }
 
   window.__alifeDebug = {
     counts(){
@@ -14178,6 +15231,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     runPackSharingMicroTests(){
       return runPackSharingMicroTests();
+    },
+    runPackFormationMicroTests(){
+      return runPackFormationMicroTests();
+    },
+    packFormationSummary(options={}){
+      return packFormationSummary(options);
+    },
+    runArtificialPackFormationExperiment(options={}){
+      return runArtificialPackFormationExperiment(options);
     },
     runSeededWorldDiagnostic(options={}){
       return runSeededWorldDiagnostic(options);
