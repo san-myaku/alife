@@ -849,3 +849,49 @@ Inline script syntax OK. `node --check organism_render.js` OK. `scripts/*.cjs` s
 
 ### Adoption judgment
 Adopt as a diagnostic commit. It changes telemetry and developer runner only, keeps normal behavior and parameters unchanged, records all pack attack attempts including failures, compares the four existing pack-count definitions, separates target sharing from target conflict, separates same/different/targetless helpers, exposes speciesKey sibling split diagnostics, and completes the requested normal and artificial runs.
+
+## 2026-07-16 Pack target consensus A/B
+
+### Purpose and baseline
+Baseline commit: `693e95f8afb4c09b16cecfc1cbb94344d6db43cc`.
+The goal was to implement only a pack target-consensus mechanism and test whether aligning nearby same-species pack targets reduces target fragmentation and improves predation or lineage continuity. Birth energy, clutch, maturity, metabolism, predation probability, `0.78 + 0.095 * mates`, chase force, pack bonus, helper conditions/radius, speciesKey, predation energy, energy sharing, reproduction, food, population cap, UI, save format, and Wiki were not changed. `shareFraction` remains `0`.
+
+### Implementation
+Added feature flag `diagnosticPackSharing.targetConsensus`, default `false`. Normal baseline behavior is unchanged unless the flag is enabled through diagnostic runs.
+
+In `socialSteer()`, pack/hunt-pack individuals now optionally tally valid `preyTargetId`s held by living same-species pack/hunt-pack mates inside the existing social range. For targetless individuals, existing target sharing remains in place. For individuals already holding a different target, consensus switching is allowed only when the consensus target is valid, support is at least 1, the current target has 0 mate support, there is no tie/current support, the switch cooldown is clear, and the consensus target is not too far: `<= currentDistance * 1.25`, or `<= currentDistance * 1.50` with support >= 2. The logic consumes no random numbers.
+
+Added transient per-organism state: `packConsensusTargetId`, `packConsensusHoldT`, and `packConsensusSwitchCD`. Hold defaults to 50 steps and switch cooldown to 40 steps. Held targets are cleared when dead/invalid/far. Target oscillation is counted when the same individual returns to a prior target within 60 steps.
+
+Added telemetry counters: `consensusOpportunities`, `consensusApplied`, `consensusSwitches`, `consensusKeptCurrent`, `consensusBlockedByDistance`, `consensusBlockedByCooldown`, `consensusTargetInvalid`, and `targetOscillations`.
+
+### Micro A-F
+All OK and all consensus operations consumed 0 random calls.
+A targetless pack joined mate target. B unsupported current target switched to supported consensus. C current target with support was kept. D distant consensus target was blocked. E cooldown blocked switching. F dead held target cleared and allowed reselection.
+
+### Artificial A/B
+Each group size/scenario ran 30 trials for 260 steps. Key case, 4 pack all-different-targets: baseline convergence `46.7%`, split `100%`, same-target duration `0.73`, helper attack `3.3%`, predation success `3.3%`; consensus convergence `76.7%`, split `100%`, same-target duration `20.03`, helper attack `10.0%`, predation success `10.0%`. Consensus improved convergence and success in this hardest case, but did not reduce the split rate.
+
+4 pack one-target: baseline success `86.7%`, consensus `56.7%`. 4 pack all-same-target: baseline success `56.7%`, consensus `53.3%`. 2 and 3 pack scenarios were mixed; consensus improved some target durations but was not uniformly better.
+
+### 6,000-step world A/B
+All six runs completed with page error 0 and NaN/Infinity 0.
+
+| variant | seed | formation born pack | mature | max pack depth | same-target pursuit | helper attacks | same-target helper attacks | helper successes | pack Level 3 | end pack |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| baseline | 41001 | 3 | 2 | 2 | 495 | 14 | 6 | 0 | 0 | 0 |
+| consensus | 41001 | 15 | 11 | 5 | 2857 | 41 | 28 | 2 | 0 | 0 |
+| baseline | 42001 | 2 | 0 | 1 | 125 | 1 | 1 | 0 | 0 | 0 |
+| consensus | 42001 | 2 | 0 | 1 | 126 | 1 | 1 | 0 | 0 | 0 |
+| baseline | 43001 | 2 | 0 | 1 | 148 | 1 | 0 | 0 | 0 | 0 |
+| consensus | 43001 | 2 | 0 | 1 | 147 | 1 | 0 | 0 | 0 | 0 |
+
+Consensus target switches/oscillations: seed41001 `12 switches / 1 oscillation`, seed42001 `0 / 0`, seed43001 `1 / 2`. Natural split event counts did not decrease: `6/1/3` remained `6/1/3`. Different-target opportunities decreased in capped event view and consensus counters show most cases were kept current due current support/tie/hold, with low oscillation.
+
+Population remained viable: consensus end populations were `50`, `92`, `120`; end carnivores remained `0` in all seeds. Energy/nutrient generation events remained `0`; max positive energy residuals were only floating-point noise (`<= 2.84e-14`).
+
+### Adoption judgment
+Do not enable consensus by default yet. The mechanism clearly improves the targeted artificial 4-pack all-different case and seed41001 same-target pursuit/helper attacks, with low oscillation and no conservation/page/NaN issues. However, it did not reduce split event counts in natural runs or the hard artificial split-rate metric, did not produce pack Level 3, and was mixed or worse in several artificial scenarios. Keep it as a feature-flagged diagnostic/candidate implementation for the next tuning decision; do not add attack-probability or energy compensation in this task.
+
+### Validation
+Inline script syntax OK. `organism_render.js` syntax OK. `scripts/*.cjs` syntax OK. `git diff --check` OK. Micro A-F OK. Artificial A/B OK. Seeds `41001/42001/43001` x baseline/consensus x 6,000 steps OK. Save/load round trip OK. Normal and developer boot OK. `index.html` and ignored `alife_symbolic_shapes_v1.html` SHA256 matched: `FC0B11CAFDD1B140BAB0CA6B6E7533E13DFA97FA33F14859A0EA23079B547C69`. FPS smoke in normal default mode: average FPS `17.17`, average update `7.67ms`, errors `0`. Frozen version was not modified.

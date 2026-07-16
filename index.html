@@ -1409,6 +1409,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       targetConvergenceEvents:0,
       targetlessMateJoinedEvents:0,
       differentTargetRefusedEvents:0,
+      consensusOpportunities:0,
+      consensusApplied:0,
+      consensusSwitches:0,
+      consensusKeptCurrent:0,
+      consensusBlockedByDistance:0,
+      consensusBlockedByCooldown:0,
+      consensusTargetInvalid:0,
+      targetOscillations:0,
       previousSpeciesTargetState:new Map(),
       artificialRuns:[]
     },
@@ -1418,6 +1426,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   const diagnosticPackSharing = {
     shareFraction:0,
     detailedTelemetry:false,
+    targetConsensus:false,
     variant:'baseline'
   };
   function telemetryPush(event){
@@ -2622,6 +2631,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         targetConvergenceEvents:0,
         targetlessMateJoinedEvents:0,
         differentTargetRefusedEvents:0,
+        consensusOpportunities:0,
+        consensusApplied:0,
+        consensusSwitches:0,
+        consensusKeptCurrent:0,
+        consensusBlockedByDistance:0,
+        consensusBlockedByCooldown:0,
+        consensusTargetInvalid:0,
+        targetOscillations:0,
         dispersal:{},
         lastNearbyPackTargetComposition:null,
         death:null,
@@ -2833,6 +2850,151 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(type==='shareOpportunityDifferentTarget' || type==='shareNotAppliedBecauseSelfHadTarget'){
       rec.differentTargetRefusedEvents++;
     }
+  }
+  function telemetryRecordPackConsensusEvent(type,predator,prey=null,extra=null){
+    if(!telemetryPackFormationEnabled() || !isPackHunter(predator)) return;
+    const keyByType={
+      consensusOpportunities:'consensusOpportunities',
+      consensusApplied:'consensusApplied',
+      consensusSwitches:'consensusSwitches',
+      consensusKeptCurrent:'consensusKeptCurrent',
+      consensusBlockedByDistance:'consensusBlockedByDistance',
+      consensusBlockedByCooldown:'consensusBlockedByCooldown',
+      consensusTargetInvalid:'consensusTargetInvalid',
+      targetOscillations:'targetOscillations'
+    };
+    const key=keyByType[type];
+    if(key && telemetry.packFormation[key]!=null) telemetry.packFormation[key]++;
+    const rec=packFormationRecord(predator);
+    if(rec && key && rec[key]!=null) rec[key]++;
+    telemetryRecordPackTargetEvent(type,predator,null,prey,extra);
+  }
+  function packConsensusEnabled(){
+    return !!diagnosticPackSharing.targetConsensus;
+  }
+  function packConsensusTargetValidFor(predator,prey){
+    return !!(predator && prey && !prey.dead && predationCandidateClassification(predator,prey,'target').valid);
+  }
+  function packConsensusTargetDistance(predator,prey){
+    return (predator && prey) ? Math.hypot(prey.x-predator.x,prey.y-predator.y) : Infinity;
+  }
+  function packConsensusTargetTooFar(predator,prey,scale=1.65){
+    if(!predator || !prey) return true;
+    const scanR=predationScanRadius(predator);
+    return packConsensusTargetDistance(predator,prey) > scanR * PREDATION_TARGET_OUT_OF_RANGE_SCALE * scale;
+  }
+  function packConsensusClearInvalidTarget(predator){
+    if(!packConsensusEnabled() || !isPackHunter(predator)) return;
+    if(predator.packConsensusHoldT==null) predator.packConsensusHoldT=0;
+    if(predator.packConsensusSwitchCD==null) predator.packConsensusSwitchCD=0;
+    if(!Array.isArray(predator._packConsensusTargetHistory)) predator._packConsensusTargetHistory=[];
+    const current=organismById(predator.preyTargetId);
+    if(predator.preyTargetId!=null && !packConsensusTargetValidFor(predator,current)){
+      const clearedId=predator.preyTargetId;
+      predator.preyTargetId=null;
+      predator.preyTargetOutOfRangeSteps=0;
+      predator.chaseTimer=0;
+      if(predator.packConsensusTargetId===clearedId){
+        predator.packConsensusTargetId=null;
+        predator.packConsensusHoldT=0;
+      }
+      telemetryRecordPackConsensusEvent('consensusTargetInvalid',predator,current,{clearedTargetId:clearedId,reason:'currentTargetInvalid'});
+    }
+    const held=organismById(predator.packConsensusTargetId);
+    if(predator.packConsensusTargetId!=null && (!packConsensusTargetValidFor(predator,held) || packConsensusTargetTooFar(predator,held))){
+      const clearedId=predator.packConsensusTargetId;
+      predator.packConsensusTargetId=null;
+      predator.packConsensusHoldT=0;
+      telemetryRecordPackConsensusEvent('consensusTargetInvalid',predator,held,{clearedTargetId:clearedId,reason:'heldTargetInvalidOrFar'});
+    }
+  }
+  function packConsensusRegisterVote(votes,predator,mate,prey,distance){
+    if(!votes || !predator || !mate || !prey) return;
+    let row=votes.get(prey.id);
+    if(!row){
+      row={targetId:prey.id,prey,support:0,supporterIds:[],minMateDistance:Infinity,predatorDistance:packConsensusTargetDistance(predator,prey)};
+      votes.set(prey.id,row);
+    }
+    row.support++;
+    row.supporterIds.push(mate.id);
+    row.minMateDistance=Math.min(row.minMateDistance,Number(distance||0));
+  }
+  function packConsensusBestVote(votes){
+    if(!votes || !votes.size) return null;
+    let best=null, tie=false;
+    for(const row of votes.values()){
+      if(!best || row.support>best.support){ best=row; tie=false; }
+      else if(row.support===best.support){ tie=true; }
+    }
+    if(best) best.tie=tie;
+    return best;
+  }
+  function packConsensusNoteTargetChange(predator,newTargetId,previousTargetId){
+    if(!predator || newTargetId==null || previousTargetId===newTargetId) return false;
+    if(!Array.isArray(predator._packConsensusTargetHistory)) predator._packConsensusTargetHistory=[];
+    const hist=predator._packConsensusTargetHistory;
+    if(previousTargetId!=null) hist.push({targetId:previousTargetId,frame});
+    const oscillated=hist.some(h=>h.targetId===newTargetId && frame-Number(h.frame||0)<=60);
+    hist.push({targetId:newTargetId,frame});
+    while(hist.length>10) hist.shift();
+    if(oscillated) telemetryRecordPackConsensusEvent('targetOscillations',predator,organismById(newTargetId),{previousTargetId,newTargetId});
+    return oscillated;
+  }
+  function packConsensusAdoptTarget(predator,prey,previousTargetId,reason,extra=null){
+    if(!packConsensusEnabled() || !predator || !prey) return;
+    predator.packConsensusTargetId=prey.id;
+    predator.packConsensusHoldT=50;
+    predator.packConsensusSwitchCD=40;
+    packConsensusNoteTargetChange(predator,prey.id,previousTargetId);
+    telemetryRecordPackConsensusEvent('consensusApplied',predator,prey,{reason,previousTargetId,...extra});
+    if(previousTargetId!=null && previousTargetId!==prey.id){
+      telemetryRecordPackConsensusEvent('consensusSwitches',predator,prey,{reason,previousTargetId,...extra});
+      packMark(packFormationRecord(predator),'switchedToSharedTarget',predator,prey,{consensus:true,previousTargetId});
+    } else {
+      packMark(packFormationRecord(predator),'receivedSharedTarget',predator,prey,{consensus:true});
+    }
+  }
+  function applyPackTargetConsensus(predator,votes){
+    if(!packConsensusEnabled() || !isPackHunter(predator) || !votes || !votes.size) return false;
+    const current=organismById(predator.preyTargetId);
+    if(!current || !packConsensusTargetValidFor(predator,current)) return false;
+    const best=packConsensusBestVote(votes);
+    if(!best){
+      return false;
+    }
+    telemetryRecordPackConsensusEvent('consensusOpportunities',predator,best.prey,{support:best.support,currentTargetId:current.id,currentSupport:votes.get(current.id)?.support||0});
+    if(!packConsensusTargetValidFor(predator,best.prey)){
+      telemetryRecordPackConsensusEvent('consensusTargetInvalid',predator,best.prey,{reason:'consensusInvalid',targetId:best.targetId});
+      return false;
+    }
+    const currentSupport=votes.get(current.id)?.support || 0;
+    if(best.targetId===current.id || best.tie || currentSupport>0){
+      telemetryRecordPackConsensusEvent('consensusKeptCurrent',predator,current,{reason:best.tie?'tieOrAmbiguous':'currentSupported',consensusTargetId:best.targetId,consensusSupport:best.support,currentSupport});
+      return false;
+    }
+    if(predator.packConsensusHoldT>0 && predator.packConsensusTargetId===current.id){
+      telemetryRecordPackConsensusEvent('consensusKeptCurrent',predator,current,{reason:'holdActive',consensusTargetId:best.targetId,consensusSupport:best.support,currentSupport});
+      return false;
+    }
+    if(predator.packConsensusSwitchCD>0){
+      telemetryRecordPackConsensusEvent('consensusBlockedByCooldown',predator,best.prey,{cooldown:predator.packConsensusSwitchCD,consensusSupport:best.support,currentTargetId:current.id});
+      return false;
+    }
+    const currentDistance=packConsensusTargetDistance(predator,current);
+    const consensusDistance=packConsensusTargetDistance(predator,best.prey);
+    const allowed=best.support>=2 ? consensusDistance<=currentDistance*1.50 : consensusDistance<=currentDistance*1.25;
+    if(!allowed){
+      telemetryRecordPackConsensusEvent('consensusBlockedByDistance',predator,best.prey,{consensusSupport:best.support,currentDistance,consensusDistance,currentTargetId:current.id});
+      return false;
+    }
+    const previousTargetId=current.id;
+    predator.preyTargetId=best.prey.id;
+    predator.preyTargetOutOfRangeSteps=0;
+    predator.chaseTimer=Math.max(predator.chaseTimer,95);
+    packConsensusAdoptTarget(predator,best.prey,previousTargetId,'consensusSwitch',{consensusSupport:best.support,currentDistance,consensusDistance,supporterIds:best.supporterIds});
+    telemetryRecordPredationStage('candidate',predator,best.prey,{consensus:true,switched:true,previousTargetId,consensusSupport:best.support});
+    telemetryRecordPredationStage('tracking',predator,best.prey,{consensus:true,switched:true,previousTargetId,consensusSupport:best.support});
+    return true;
   }
   function telemetryRecordPackAttackAttempt(predator,prey,data){
     if(!telemetryPackFormationEnabled() || !isPackHunter(predator) || !prey) return null;
@@ -4310,6 +4472,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     telemetry.packFormation.targetConvergenceEvents=0;
     telemetry.packFormation.targetlessMateJoinedEvents=0;
     telemetry.packFormation.differentTargetRefusedEvents=0;
+    telemetry.packFormation.consensusOpportunities=0;
+    telemetry.packFormation.consensusApplied=0;
+    telemetry.packFormation.consensusSwitches=0;
+    telemetry.packFormation.consensusKeptCurrent=0;
+    telemetry.packFormation.consensusBlockedByDistance=0;
+    telemetry.packFormation.consensusBlockedByCooldown=0;
+    telemetry.packFormation.consensusTargetInvalid=0;
+    telemetry.packFormation.targetOscillations=0;
     telemetry.packFormation.previousSpeciesTargetState.clear();
     telemetry.packFormation.artificialRuns.length=0;
     telemetry.carnivoreLineageArchive.prunedRecords=0;
@@ -5507,7 +5677,16 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         sameTargetPursuitSteps:telemetry.packFormation.sameTargetPursuitSteps,
         targetSplitEvents:telemetry.packFormation.targetSplitEvents,
         targetConvergenceEvents:telemetry.packFormation.targetConvergenceEvents,
-        differentTargetRefusedEvents:born.reduce((s,r)=>s+Number(r.differentTargetRefusedEvents||0),0)
+        differentTargetRefusedEvents:born.reduce((s,r)=>s+Number(r.differentTargetRefusedEvents||0),0),
+        consensusEnabled:packConsensusEnabled(),
+        consensusOpportunities:telemetry.packFormation.consensusOpportunities,
+        consensusApplied:telemetry.packFormation.consensusApplied,
+        consensusSwitches:telemetry.packFormation.consensusSwitches,
+        consensusKeptCurrent:telemetry.packFormation.consensusKeptCurrent,
+        consensusBlockedByDistance:telemetry.packFormation.consensusBlockedByDistance,
+        consensusBlockedByCooldown:telemetry.packFormation.consensusBlockedByCooldown,
+        consensusTargetInvalid:telemetry.packFormation.consensusTargetInvalid,
+        targetOscillations:telemetry.packFormation.targetOscillations
       },
       attacks:{
         total:attacks.length,
@@ -7080,6 +7259,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     constructor(x,y,genes=null,bornByRepro=false,parentA=null,parentB=null){
       this.id=NEXT_ID++; this.x=x; this.y=y; this.vx=0; this.vy=0; this.energy=100; this.storeN=0; this.storeO=0.75; this.storeD=0; this.mem=1.0; this.age=0; this.fitness=0; this.moveCostSum=0; this.trail=[]; this.phase=Math.random()*TAU; this.attackCD=0; this.fleeTimer=0; this.protect=90; this.mutagenBoost=0; this.burstTimer=0; this.role='other';
       this.preyTargetId=null; this.preyTargetOutOfRangeSteps=0; this.chaseTimer=0; this.nextPreyScan=Math.floor(rnd(0,12)); this.predatorThreatId=null; this.recentEvents=[]; this.lastAction='誕生'; this.lastActionFrame=frame; this.deathCause=null;
+      this.packConsensusTargetId=null; this.packConsensusHoldT=0; this.packConsensusSwitchCD=0; this._packConsensusTargetHistory=[];
       this.birthFrame=frame;
       this.grazingTimer=0;
       this.mateSeekT=0; this.callCD=0;
@@ -7230,10 +7410,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         : (mode==='hunt-pack'
           ? clamp(this.senseR*(0.50 + sociality*0.50), 56, 148)
           : clamp(this.senseR*(0.38 + sociality*0.44), 38, 112));
+      if(packHunter) packConsensusClearInvalidTarget(this);
       if(packHunter) telemetryPushPackContext('socialSteer',this,organismById(this.preyTargetId));
       let wx=0, wy=0, wvx=0, wvy=0, wsum=0, count=0;
       let fleeX=0, fleeY=0, fleeW=0, predators=0;
       let rallyX=0, rallyY=0, rallyW=0, sharedPrey=null, sharedPreyW=0;
+      const consensusVotes=(packHunter && packConsensusEnabled()) ? new Map() : null;
       forEachOrgNeighbors(this.x,this.y,range,(o,dx,dy,d2)=>{
         if(o===this || o.dead) return;
         const d=Math.sqrt(d2)||1;
@@ -7258,6 +7440,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
             const rw = clamp(1 - d/range, 0.04, 1) * (0.42 + sociality*0.60);
             rallyX += matePrey.x*rw; rallyY += matePrey.y*rw; rallyW += rw;
             if(rw>sharedPreyW){ sharedPreyW=rw; sharedPrey=matePrey; }
+            packConsensusRegisterVote(consensusVotes,this,o,matePrey,d);
           } else {
             telemetryRecordPackTargetEvent('shareOpportunityInvalidMateTarget',this,o,matePrey,{distance:d,range});
           }
@@ -7316,6 +7499,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           this.preyTargetOutOfRangeSteps=0;
           this.chaseTimer=Math.max(this.chaseTimer, 95);
           telemetryRecordPackTargetEvent('shareApplied',this,null,sharedPrey,{source:'socialSteer'});
+          if(packConsensusEnabled()){
+            telemetryRecordPackConsensusEvent('consensusOpportunities',this,sharedPrey,{reason:'targetlessShare',support:consensusVotes?.get(sharedPrey.id)?.support || 1});
+            packConsensusAdoptTarget(this,sharedPrey,null,'targetlessShare',{support:consensusVotes?.get(sharedPrey.id)?.support || 1});
+          }
           telemetryRecordPredationStage('candidate',this,sharedPrey,{shared:true});
           telemetryRecordPredationStage('tracking',this,sharedPrey,{shared:true});
           if(frame-(this._lastPackShareAction||0)>170){ recordAction(this,'群れの獲物へ合流した'); this._lastPackShareAction=frame; }
@@ -7324,6 +7511,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(packHunter && rallyW>0 && sharedPrey && this.preyTargetId && this.preyTargetId!==sharedPrey.id){
         telemetryRecordPackTargetEvent('shareNotAppliedBecauseSelfHadTarget',this,null,sharedPrey,{source:'socialSteer'});
       }
+      if(packHunter) applyPackTargetConsensus(this,consensusVotes);
       this.socialCount = count;
       this.herdThreat = predators ? Math.max(this.herdThreat||0, 35 + predators*8) : Math.max(0,(this.herdThreat||0)-1);
       this.motionLevel = Math.max(this.motionLevel||0, clamp(0.08 + count*0.025 + predators*0.16,0,0.70));
@@ -7513,7 +7701,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         };
       }
       if((this.age & 3)===0){ this.trail.push({x:this.x,y:this.y}); if(this.trail.length>16) this.trail.shift(); }
-      if(this.attackCD>0) this.attackCD--; if(this.protect>0) this.protect--; if(this.fleeTimer>0) this.fleeTimer--; if(this.mutagenBoost>0) this.mutagenBoost--; if(this.burstTimer>0) this.burstTimer--; if(this.grazingTimer>0) this.grazingTimer--; if(this.newSpeciesFlash>0) this.newSpeciesFlash--;
+      if(this.attackCD>0) this.attackCD--; if(this.protect>0) this.protect--; if(this.fleeTimer>0) this.fleeTimer--; if(this.mutagenBoost>0) this.mutagenBoost--; if(this.burstTimer>0) this.burstTimer--; if(this.grazingTimer>0) this.grazingTimer--; if(this.newSpeciesFlash>0) this.newSpeciesFlash--; if(this.packConsensusHoldT>0) this.packConsensusHoldT--; if(this.packConsensusSwitchCD>0) this.packConsensusSwitchCD--;
 
       // フィールド効果
       for(const e of effects){ const dx=e.x-this.x, dy=e.y-this.y; const d2=dx*dx+dy*dy; if(d2<e.r*e.r){ const d=Math.sqrt(d2)||1; if(e.type==='repel'){ this.vx -= (dx/d)*0.35; this.vy -= (dy/d)*0.35; this.attackCD=Math.max(this.attackCD,10); } if(e.type==='mutagen'){ this.mutagenBoost=60; } } }
@@ -14553,6 +14741,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const oldPackSharing={...diagnosticPackSharing};
     diagnosticPackSharing.shareFraction=clamp(Number(opts.shareFraction ?? 0),0,0.95);
     diagnosticPackSharing.detailedTelemetry=!!opts.packHuntTelemetry;
+    diagnosticPackSharing.targetConsensus=!!opts.targetConsensus;
     diagnosticPackSharing.variant=String(opts.variant || (diagnosticPackSharing.shareFraction>0 ? `share${Math.round(diagnosticPackSharing.shareFraction*100)}` : 'baseline'));
     const saved=restoreAfterRun ? capture() : null;
     const oldRandom=Math.random;
@@ -14588,6 +14777,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         worldReseedCount:lineage.extinction.worldReseedCount,
         variant:diagnosticPackSharing.variant,
         shareFraction:diagnosticPackSharing.shareFraction,
+        targetConsensus:diagnosticPackSharing.targetConsensus,
         normalPopulationMaintained:population.endPopulation>0,
         lineage,
         population,
@@ -15012,11 +15202,115 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     }
     return {ok:results.every(r=>r.ok), results};
   }
+  function runPackConsensusMicroTests(){
+    const saved=capture();
+    const oldPackSharing={...diagnosticPackSharing};
+    const oldRandom=Math.random;
+    const results=[];
+    const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
+    const clear=()=>{
+      running=false;
+      frame=0;
+      generation=1;
+      organisms.length=0; newborn.length=0; food.length=0; corpses.length=0; plankton.length=0; patches.length=0; calls.length=0;
+      sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0;
+      speciesCount.clear();
+      resetTelemetry();
+      diagnosticPackSharing.shareFraction=0;
+      diagnosticPackSharing.detailedTelemetry=true;
+      diagnosticPackSharing.targetConsensus=true;
+      diagnosticPackSharing.variant='packConsensusMicro';
+    };
+    const genes=(diet='c')=>Object.assign({}, diet==='c' ? DEV_VIABLE_GENES.carnivore : DEV_VIABLE_GENES.herbivore);
+    const org=(role,x,y,diet='c',species='cons-pack')=>{
+      const o=new Organism(x,y,genes(diet),true);
+      o.role=role;
+      o.socialMode=role==='pack' ? 'hunt-pack' : 'solitary';
+      o.sociality=role==='pack' ? 0.72 : 0.20;
+      o.speciesKey=species;
+      o.energy=100;
+      o.size=10;
+      o.senseR=140;
+      o.age=o.maturityAge;
+      o.protect=0;
+      o.attackCD=0;
+      o.birthFrame=frame-o.age;
+      o.lineageInitial=false;
+      organisms.push(o);
+      if(role==='pack') packFormationRecord(o);
+      return o;
+    };
+    const prey=(x,y,key)=>org('other',x,y,'h',key);
+    const withoutRandom=(fn)=>{
+      let calls=0;
+      Math.random=()=>{ calls++; return 0.123456789; };
+      try{ fn(); } finally { Math.random=oldRandom; }
+      return calls;
+    };
+    try{
+      clear();
+      const aLeader=org('pack',100,100,'c','a'), aJoin=org('pack',110,100,'c','a'), aPrey=prey(130,100,'a-prey');
+      aLeader.preyTargetId=aPrey.id; aLeader.chaseTimer=80; aJoin.preyTargetId=null;
+      buildSpatialIndex();
+      const aRandom=withoutRandom(()=>aJoin.socialSteer());
+      add('Micro A targetless joins mate target', aJoin.preyTargetId===aPrey.id && aRandom===0,
+        {target:aJoin.preyTargetId,expected:aPrey.id,randomCalls:aRandom,consensusApplied:telemetry.packFormation.consensusApplied});
+
+      clear();
+      const bMate=org('pack',108,100,'c','b'), bActor=org('pack',100,100,'c','b'), bConsensus=prey(120,100,'b-x'), bCurrent=prey(140,100,'b-y');
+      bMate.preyTargetId=bConsensus.id; bMate.chaseTimer=80; bActor.preyTargetId=bCurrent.id; bActor.chaseTimer=80;
+      buildSpatialIndex();
+      const bRandom=withoutRandom(()=>bActor.socialSteer());
+      add('Micro B unsupported current switches to supported consensus', bActor.preyTargetId===bConsensus.id && bRandom===0,
+        {target:bActor.preyTargetId,expected:bConsensus.id,randomCalls:bRandom,consensusSwitches:telemetry.packFormation.consensusSwitches});
+
+      clear();
+      const cMateX=org('pack',108,100,'c','c'), cActor=org('pack',100,100,'c','c'), cMateY=org('pack',112,100,'c','c'), cConsensus=prey(120,100,'c-x'), cCurrent=prey(140,100,'c-y');
+      cMateX.preyTargetId=cConsensus.id; cMateY.preyTargetId=cCurrent.id; cActor.preyTargetId=cCurrent.id;
+      buildSpatialIndex();
+      const cRandom=withoutRandom(()=>cActor.socialSteer());
+      add('Micro C current supported keeps current', cActor.preyTargetId===cCurrent.id && cRandom===0,
+        {target:cActor.preyTargetId,expected:cCurrent.id,randomCalls:cRandom,keptCurrent:telemetry.packFormation.consensusKeptCurrent});
+
+      clear();
+      const dMate=org('pack',108,100,'c','d'), dActor=org('pack',100,100,'c','d'), dFar=prey(160,100,'d-x'), dCurrent=prey(120,100,'d-y');
+      dMate.preyTargetId=dFar.id; dActor.preyTargetId=dCurrent.id;
+      buildSpatialIndex();
+      const dRandom=withoutRandom(()=>dActor.socialSteer());
+      add('Micro D consensus too far keeps current', dActor.preyTargetId===dCurrent.id && dRandom===0 && telemetry.packFormation.consensusBlockedByDistance>0,
+        {target:dActor.preyTargetId,expected:dCurrent.id,randomCalls:dRandom,blockedByDistance:telemetry.packFormation.consensusBlockedByDistance});
+
+      clear();
+      const eMate=org('pack',108,100,'c','e'), eActor=org('pack',100,100,'c','e'), eConsensus=prey(120,100,'e-x'), eCurrent=prey(140,100,'e-y');
+      eMate.preyTargetId=eConsensus.id; eActor.preyTargetId=eCurrent.id; eActor.packConsensusSwitchCD=10;
+      buildSpatialIndex();
+      const eRandom=withoutRandom(()=>eActor.socialSteer());
+      add('Micro E cooldown blocks switch', eActor.preyTargetId===eCurrent.id && eRandom===0 && telemetry.packFormation.consensusBlockedByCooldown>0,
+        {target:eActor.preyTargetId,expected:eCurrent.id,randomCalls:eRandom,blockedByCooldown:telemetry.packFormation.consensusBlockedByCooldown});
+
+      clear();
+      const fMate=org('pack',108,100,'c','f'), fActor=org('pack',100,100,'c','f'), fConsensus=prey(120,100,'f-x'), fDead=prey(140,100,'f-y');
+      fMate.preyTargetId=fConsensus.id; fActor.preyTargetId=fDead.id; fActor.packConsensusTargetId=fDead.id; fActor.packConsensusHoldT=40; fDead.dead=true;
+      buildSpatialIndex();
+      const fRandom=withoutRandom(()=>fActor.socialSteer());
+      add('Micro F dead held target clears and can reselect', fActor.preyTargetId===fConsensus.id && fActor.packConsensusTargetId===fConsensus.id && fRandom===0 && telemetry.packFormation.consensusTargetInvalid>0,
+        {target:fActor.preyTargetId,expected:fConsensus.id,holdTarget:fActor.packConsensusTargetId,randomCalls:fRandom,targetInvalid:telemetry.packFormation.consensusTargetInvalid});
+    } finally {
+      Math.random=oldRandom;
+      Object.assign(diagnosticPackSharing,oldPackSharing);
+      restore(saved);
+    }
+    return {ok:results.every(r=>r.ok), results};
+  }
   function runArtificialPackFormationExperiment(options={}){
     const opts=options || {};
     const trials=Math.max(1,Math.min(200,Number(opts.trials ?? 30)));
     const maxSteps=Math.max(20,Math.min(2000,Number(opts.maxSteps ?? 260)));
     const seedBase=Number(opts.seed ?? 91001);
+    const targetConsensus=!!opts.targetConsensus;
+    const groupSizes=Array.isArray(opts.groupSizes) && opts.groupSizes.length
+      ? opts.groupSizes.map(Number).filter(n=>Number.isFinite(n) && n>=1 && n<=8)
+      : [2,3,4];
     const saved=capture();
     const oldPackSharing={...diagnosticPackSharing};
     const oldRandom=Math.random;
@@ -15044,7 +15338,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       resetTelemetry();
       diagnosticPackSharing.shareFraction=0;
       diagnosticPackSharing.detailedTelemetry=true;
-      diagnosticPackSharing.variant='artificialPackFormation';
+      diagnosticPackSharing.targetConsensus=targetConsensus;
+      diagnosticPackSharing.variant=targetConsensus ? 'artificialPackConsensus' : 'artificialPackBaseline';
     };
     const makePack=(x,y,species='art-pack')=>{
       const o=new Organism(x,y,genes('c'),true);
@@ -15148,7 +15443,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     };
     try{
       const results={};
-      for(const groupSize of [1,2,3,4]){
+      for(const groupSize of groupSizes){
         results[groupSize]={groupSize,scenarios:{}};
         for(const scenario of scenarios){
           const rows=[];
@@ -15169,7 +15464,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           };
         }
       }
-      const run={seed:seedBase,trials,maxSteps,shareFraction:0,results};
+      const run={seed:seedBase,trials,maxSteps,shareFraction:0,targetConsensus,results};
       telemetry.packFormation.artificialRuns.push(run);
       return run;
     } finally {
@@ -15234,6 +15529,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     runPackFormationMicroTests(){
       return runPackFormationMicroTests();
+    },
+    runPackConsensusMicroTests(){
+      return runPackConsensusMicroTests();
     },
     packFormationSummary(options={}){
       return packFormationSummary(options);

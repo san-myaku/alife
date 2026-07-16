@@ -27,7 +27,11 @@ const steps = Math.max(1, Number(process.env.ALIFE_STEPS || 6000));
 const artificialTrials = Math.max(1, Number(process.env.ALIFE_PACK_TRIALS || 30));
 const artificialSteps = Math.max(20, Number(process.env.ALIFE_PACK_STEPS || 260));
 const viewport = { width: 390, height: 844 };
-const outputFile = process.env.ALIFE_DIAG_OUTPUT || path.join('artifacts', 'pack_formation_diagnostic.json');
+const outputFile = process.env.ALIFE_DIAG_OUTPUT || path.join('artifacts', 'pack_consensus_diagnostic.json');
+const variants = [
+  { name: 'baseline', targetConsensus: false },
+  { name: 'consensus', targetConsensus: true }
+];
 
 function compactPackFormation(lineage) {
   const pf = lineage?.packFormation || {};
@@ -53,6 +57,7 @@ function compactRun(run) {
   return {
     variant: run.variant,
     shareFraction: run.shareFraction,
+    targetConsensus: !!run.targetConsensus,
     seed: run.seed,
     steps: run.steps,
     elapsedMs: run.elapsedMs,
@@ -112,18 +117,19 @@ async function bootPage(browser, dev = false, initSeed = null) {
   return { page, errors, url };
 }
 
-async function runSeededDiagnostic(browser, seed) {
+async function runSeededDiagnostic(browser, variant, seed) {
   const seeded = await bootPage(browser, false, seed);
   try {
     const run = await seeded.page.evaluate(
-      ({ seed, steps }) => window.__alifeDebug.runSeededWorldDiagnostic({
+      ({ seed, steps, variant }) => window.__alifeDebug.runSeededWorldDiagnostic({
         seed,
         steps,
-        variant: 'baseline',
+        variant: variant.name,
         shareFraction: 0,
-        packHuntTelemetry: true
+        packHuntTelemetry: true,
+        targetConsensus: variant.targetConsensus
       }),
-      { seed, steps }
+      { seed, steps, variant }
     );
     return { run, errors: seeded.errors, url: seeded.url };
   } finally {
@@ -134,11 +140,25 @@ async function runSeededDiagnostic(browser, seed) {
 (async () => {
   const browser = await chromium.launch({ headless: true });
   const normal = await bootPage(browser, false, seeds[0] || 1);
-  const micro = await normal.page.evaluate(() => window.__alifeDebug.runPackFormationMicroTests());
-  const artificial = await normal.page.evaluate(
-    ({ trials, maxSteps }) => window.__alifeDebug.runArtificialPackFormationExperiment({ trials, maxSteps, seed: 92001 }),
-    { trials: artificialTrials, maxSteps: artificialSteps }
-  );
+  const packFormationMicro = await normal.page.evaluate(() => window.__alifeDebug.runPackFormationMicroTests());
+  const packConsensusMicro = await normal.page.evaluate(() => window.__alifeDebug.runPackConsensusMicroTests());
+  const micro = {
+    ok: !!(packFormationMicro?.ok && packConsensusMicro?.ok),
+    packFormation: packFormationMicro,
+    packConsensus: packConsensusMicro
+  };
+  const artificial = {};
+  for (const variant of variants) {
+    artificial[variant.name] = await normal.page.evaluate(
+      ({ trials, maxSteps, variant }) => window.__alifeDebug.runArtificialPackFormationExperiment({
+        trials,
+        maxSteps,
+        seed: 92001,
+        targetConsensus: variant.targetConsensus
+      }),
+      { trials: artificialTrials, maxSteps: artificialSteps, variant }
+    );
+  }
   const roundTrip = await normal.page.evaluate(() => window.__alifeDebug.roundTripSave());
   const normalBoot = await normal.page.evaluate(() => ({
     counts: window.__alifeDebug.counts(),
@@ -149,10 +169,12 @@ async function runSeededDiagnostic(browser, seed) {
 
   const runs = [];
   const runErrors = [];
-  for (const seed of seeds) {
-    const seededRun = await runSeededDiagnostic(browser, seed);
-    runs.push(seededRun.run);
-    runErrors.push({ seed, errors: seededRun.errors });
+  for (const variant of variants) {
+    for (const seed of seeds) {
+      const seededRun = await runSeededDiagnostic(browser, variant, seed);
+      runs.push(seededRun.run);
+      runErrors.push({ variant: variant.name, seed, errors: seededRun.errors });
+    }
   }
 
   const dev = await bootPage(browser, true, seeds[0] || 1);
@@ -171,12 +193,12 @@ async function runSeededDiagnostic(browser, seed) {
     htmlFile,
     seeds,
     steps,
-    variant: 'baseline',
+    variants,
     shareFraction: 0,
     artificial: {
       trials: artificialTrials,
       maxSteps: artificialSteps,
-      result: artificial
+      results: artificial
     },
     micro,
     runs: runs.map(compactRun),
