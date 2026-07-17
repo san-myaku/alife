@@ -9086,8 +9086,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(predictiveHuntingReserveEnabled() && this._chaseCommitmentState==='committed'){
         updateChaseCommitmentProgress(this,prey,d);
       }
-      const activeChase=!predictiveHuntingReserveEnabled()
-        || this._chaseCommitmentState==='committed';
+      const activeChase=true;
       telemetryRecordChaseCommitmentStep(this,prey,commitment,activeChase);
       telemetryRecordPredictiveIntentSample(this,{
         basePredationIntent,
@@ -9096,7 +9095,6 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         chaseIntent
       });
       telemetryPushPackContext('tracking',this,prey);
-      if(!activeChase) return;
       telemetryRecordPredationChaseStep(this,prey);
       const ambush=isAmbusherPredator(this);
       const burstCfg=CONFIG.ecology.predatorBurst;
@@ -19143,11 +19141,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       pred.preyTargetId=prey.id;
       pred.nextPreyScan=Number.MAX_SAFE_INTEGER;
       pred.updatePredationIntent();
-      add('Micro B tracking keeps target without chase force',
+      add('Micro B tracking applies chase force immediately',
         pred._chaseCommitmentState==='tracking'
           && pred.preyTargetId===prey.id
-          && Math.abs(pred.vx)<1e-12
-          && Math.abs(pred.vy)<1e-12,
+          && (Math.abs(pred.vx)>1e-12 || Math.abs(pred.vy)>1e-12),
         {state:pred._chaseCommitmentState,target:pred.preyTargetId,vx:pred.vx,vy:pred.vy}
       );
 
@@ -19200,10 +19197,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       pred.preyTargetId=prey.id;
       pred.nextPreyScan=Number.MAX_SAFE_INTEGER;
       pred.updatePredationIntent();
-      add('Micro G tracking has no target acceleration',
+      add('Micro G tracking keeps target acceleration',
         pred._chaseCommitmentState==='tracking'
-          && Math.abs(pred.vx)<1e-12
-          && Math.abs(pred.vy)<1e-12,
+          && (Math.abs(pred.vx)>1e-12 || Math.abs(pred.vy)>1e-12),
         {state:pred._chaseCommitmentState,vx:pred.vx,vy:pred.vy}
       );
 
