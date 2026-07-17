@@ -36,8 +36,28 @@
     return "hsla(" + ((h % 360) + 360) % 360 + "," + s + "%," + l + "%," + a + ")";
   }
 
+  function canonicalProfileFor(o) {
+    const model = global.OrganismModel;
+    if (!model || !model.canonicalSpeciesAppearanceEnabled || !model.canonicalSpeciesAppearanceEnabled()) return null;
+    if (!model.speciesAppearanceProfile) return null;
+    try { return model.speciesAppearanceProfile(o); } catch (_) { return null; }
+  }
+
   function genesOf(o) {
-    return o.genes || {};
+    const profile = canonicalProfileFor(o);
+    return profile?.canonicalVisualGenes || o.visualGenes || o.genes || {};
+  }
+
+  function topologyOf(o) {
+    const profile = canonicalProfileFor(o);
+    return profile?.topology || o.morphologyTopology || "single";
+  }
+
+  function canonicalSeedKey(o, salt) {
+    const profile = canonicalProfileFor(o);
+    if (profile) return profile.speciesKey + ":" + salt;
+    const g = o.genes || {};
+    return String(o.speciesKey || o.id || "x") + ":" + salt + ":" + Math.round((g.formSeed || 0) * 997);
   }
 
   function isSpecial(o) {
@@ -270,7 +290,7 @@
   }
 
   function variantIndex(o, salt, count) {
-    const key = String(o.speciesKey || o.id || "x") + ":" + salt + ":" + Math.round(((o.genes || {}).formSeed || 0) * 997);
+    const key = canonicalSeedKey(o, salt);
     return hashStr32(key) % count;
   }
 
@@ -286,7 +306,7 @@
   function visualKind(o) {
     const g = genesOf(o);
     const flags = o.flags || {};
-    const topology = o.morphologyTopology || "single";
+    const topology = topologyOf(o);
     if (topology === "chain") {
       return variantIndex(o, "chain", 2) === 1 ? "chain-segment" : "chain-beads";
     }
@@ -808,8 +828,7 @@
   // Per-species shape dial in [0,1). Stable for a species, independent per `salt`, and
   // nudged by formSeed so the "form" gene still has reach inside a single form.
   function shapeVar(o, salt) {
-    const key = String(o.speciesKey || o.id || "x") + ":shape:" + salt + ":" +
-      Math.round(((o.genes || {}).formSeed || 0) * 997);
+    const key = canonicalSeedKey(o, "shape:" + salt);
     return hashStr32(key) / 4294967296;
   }
   function svLerp(o, salt, lo, hi) { return lo + (hi - lo) * shapeVar(o, salt); }
@@ -1075,7 +1094,7 @@
     const c = _centroid(pts);
     const normals = opts && opts.normals;   // optional per-point true outward normals (for concave shapes)
     function norm(p, idx){ if (normals && idx != null && normals[idx]) return normals[idx]; const dx=p.x-c.x, dy=p.y-c.y, m=Math.hypot(dx,dy)||1; return {nx:dx/m, ny:dy/m}; }
-    let h = hashStr32((o.speciesKey || "x") + ":app:" + Math.round((g.formSeed || 0) * 997)) / 4294967296;
+    let h = hashStr32(canonicalSeedKey(o, "app")) / 4294967296;
     const PERIM = ["cilia", "spikes", "spokes", "beads"];  // fringe types that suit any silhouette
     let kind;
     if (o.appendageKind && o.appendageKind !== "auto") {
@@ -1680,13 +1699,13 @@
   function drawOrganism(ctx, o, w, h, opts) {
     opts = opts || {};
     const g = genesOf(o);
-    const key = (o.speciesKey || "x") + ":" + (o.id || "") + ":" + Math.round((g.formSeed || 0) * 1000);
+    const key = canonicalProfileFor(o) ? canonicalSeedKey(o, "draw") : (o.speciesKey || "x") + ":" + (o.id || "") + ":" + Math.round((g.formSeed || 0) * 1000);
     const rng = rngFrom(key);
     const pal = paletteFor(o, opts);
     const fill = opts.fill == null ? 0.42 : opts.fill;
     const sizeBoost = o.isMega ? 1.16 : 1;
     const sizeGene = clamp(g.size == null ? 0.5 : g.size, 0, 1);
-    const topology = o.morphologyTopology || "single";
+    const topology = topologyOf(o);
     // `r` is a fixed radius, not a bounding-box fit: the card clips past ~1.19r
     // vertically, so tall forms must be scaled down or their tails get cut off.
     const vkind = visualKind(o);

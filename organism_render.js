@@ -65,11 +65,21 @@
       }
   }
   function buildSymbol(o, env){
-    var SYMBOL_SHAPES=env.SYMBOL_SHAPES, clamp=env.clamp, formFromGenes=env.formFromGenes, rngFromKey=env.rngFromKey, speciesKey=env.speciesKey, speciesPalette=env.speciesPalette, topologyFromGenes=env.topologyFromGenes;
+    var SYMBOL_SHAPES=env.SYMBOL_SHAPES, clamp=env.clamp, formFromGenes=env.formFromGenes, rngFromKey=env.rngFromKey, speciesKey=env.speciesKey, speciesPalette=env.speciesPalette, topologyFromGenes=env.topologyFromGenes, canonicalSpeciesAppearanceEnabled=env.canonicalSpeciesAppearanceEnabled, speciesAppearanceProfile=env.speciesAppearanceProfile;
+      const canonical=!!(canonicalSpeciesAppearanceEnabled && canonicalSpeciesAppearanceEnabled());
+      const appearance=canonical && speciesAppearanceProfile ? speciesAppearanceProfile(o) : null;
+      const originalGenes=o.genes;
+      const originalForm=o.form;
+      const originalTopology=o.morphologyTopology;
+      if(appearance){
+        o.genes=appearance.canonicalVisualGenes || o.genes;
+        o.form=formFromGenes(o.genes,o.speciesKey);
+        o.morphologyTopology=appearance.topology || o.morphologyTopology;
+      }
       const geneKey = Object.values(o.genes).map(v=>Math.round(v*101)).join('.');
-      const seedKey = 'symbol:'+o.id+':'+geneKey;
+      const seedKey = appearance ? `species-symbol:${o.speciesKey}` : 'symbol:'+o.id+':'+geneKey;
       const rng = rngFromKey(seedKey);
-      const pal = speciesPalette(o.speciesKey || speciesKey(o.genes));
+      const pal = speciesPalette(o.speciesKey || speciesKey(o.genes,o.flags));
       const baseHue = pal.hue;
       const shapeNames = SYMBOL_SHAPES;
       const shapeCount = shapeNames.length;
@@ -278,8 +288,21 @@
         shapeRot: (rng()-0.5)*0.42,
         wiggleAmp: 0.14 + 0.54*o.genes.speed + 0.24*o.genes.sense,
         wiggleSpeed: 0.030 + 0.060*o.genes.speed,
-        wigglePhase: rng()*TAU
+        wigglePhase: rng()*TAU,
+        speciesAppearance:appearance || null,
+        visualGenes:appearance?.canonicalVisualGenes || o.genes,
+        visualFlags:appearance ? {
+          glow:appearance.expressedRareTraits?.[0]==='g',
+          crown:appearance.expressedRareTraits?.[1]==='c',
+          colony:appearance.expressedRareTraits?.[2]==='k',
+          chl:appearance.expressedRareTraits?.[3]==='p'
+        } : o.flags
       };
+      if(appearance){
+        o.genes=originalGenes;
+        o.form=originalForm;
+        o.morphologyTopology=originalTopology;
+      }
     return { symbol: symbol, personalSpaceR: personalSpaceR };
   }
   function drawOrganism(o, c, bake, env){
@@ -287,7 +310,9 @@
       if(renderPerf.tiny && !bake){ o.drawTinySymbolic(); return; }
       const sym = o._symbol || (o.prepareSymbolDetails(), o._symbol);
       const nodes = sym.nodes || [];
-      const visualScale=bake?.visualScale ?? organismVisualScale(this);
+      const visualGenes=sym.visualGenes || o.genes || {};
+      const visualFlags=sym.visualFlags || o.flags || {};
+      const visualScale=bake?.visualScale ?? organismVisualScale(o);
       c.save();
       c.translate(bake?.x ?? o.x,bake?.y ?? o.y);
       if(!bake && ui.microView && visualScale>CONFIG.rendering.microView.baseScale+0.03){
@@ -295,8 +320,8 @@
         const rr=Math.max(4,(sym.visualR||o.size)*visualScale*1.22);
         c.beginPath();
         c.arc(0,0,rr,0,TAU);
-        c.strokeStyle=`hsla(${hue},94%,86%,${this===selectedOrganism?0.34:0.18})`;
-        c.lineWidth=this===selectedOrganism?1.3:1;
+        c.strokeStyle=`hsla(${hue},94%,86%,${o===selectedOrganism?0.34:0.18})`;
+        c.lineWidth=o===selectedOrganism?1.3:1;
         c.stroke();
       }
       c.scale(visualScale,visualScale);
@@ -334,7 +359,7 @@
       const night = clamp01(dayNight.night ?? (dayNight.isNight ? 1 : 0));
       const dayContrast = 1 - night;
       const motion = clamp(o.motionLevel||0,0,1.65);
-      const predatorBursting=isPredatorBursting(this);
+      const predatorBursting=isPredatorBursting(o);
       const behavior = clamp(
         motion + (o.fleeTimer>0?0.35:0) + (predatorBursting?0.34:((role==='ambusher' && o.burstTimer>0)?0.30:0)) + (o.mateSeekT>120?0.10:0),
         0, 1.9
@@ -386,9 +411,13 @@
         };
       }
 
-      const adaptationTags = adaptationProfilesFromGenes(o.genes, o.flags, topo, role);
+      const adaptationTags = sym.speciesAppearance
+        ? (sym.speciesAppearance.adaptations || []).slice()
+        : adaptationProfilesFromGenes(visualGenes, visualFlags, topo, role);
       if(adaptationTags.length && !renderPerf.tiny){
-        const form = o.form || formFromGenes(o.genes,o.speciesKey);
+        const form = sym.speciesAppearance
+          ? formFromGenes(visualGenes,o.speciesKey)
+          : (o.form || formFromGenes(visualGenes,o.speciesKey));
         const bodyR=Math.max(o.size*1.0,(sym.visualR||o.size)*0.48);
         if(adaptationTags.includes('adhesiveMat')){
           c.save();
@@ -402,7 +431,7 @@
         if(adaptationTags.includes('tentacle') || adaptationTags.includes('filterFan')){
           c.save();
           c.globalCompositeOperation='lighter';
-          const tentacleN = adaptationTags.includes('filterFan') ? 8 : (4 + Math.round(o.genes.sense*5));
+          const tentacleN = adaptationTags.includes('filterFan') ? 8 : (4 + Math.round((visualGenes.sense ?? 0.5)*5));
           const spread = adaptationTags.includes('filterFan') ? TAU : Math.PI*1.35;
           const startA = adaptationTags.includes('filterFan') ? sym.pulse : -spread*0.5;
           c.strokeStyle=`hsla(${outlineHue},92%,84%,${dayNight.isNight?0.30:0.20})`;
@@ -412,7 +441,7 @@
             const q=tentacleN===1?0.5:i/(tentacleN-1);
             const a=startA + q*spread + Math.sin(gait*0.09+i)*0.10;
             const rootR=bodyR*(0.72+0.08*Math.sin(i));
-            const len=o.size*(1.25 + o.genes.sense*1.65 + (adaptationTags.includes('filterFan')?0.55:0));
+            const len=o.size*(1.25 + (visualGenes.sense ?? 0.5)*1.65 + (adaptationTags.includes('filterFan')?0.55:0));
             const sx=Math.cos(a)*rootR, sy=Math.sin(a)*rootR;
             const ex=Math.cos(a)*(rootR+len), ey=Math.sin(a)*(rootR+len);
             const bend=Math.sin(gait*0.62 + i*1.7)*o.size*(0.28+form.detail*0.22);
@@ -431,10 +460,10 @@
           }
           c.restore();
         }
-        for(const d of adaptationTags.map(k=>ADAPTATION_BY_ID[k])) d?.draw?.(this,{ctx:c,bodyR,outlineHue,dayNight,form,sym});
+        for(const d of adaptationTags.map(k=>ADAPTATION_BY_ID[k])) d?.draw?.(o,{ctx:c,bodyR,outlineHue,dayNight,form,sym});
         if(adaptationTags.includes('colonyBuilder')){
           c.save();
-          const n=5 + Math.round(o.genes.fecundity*5);
+          const n=5 + Math.round((visualGenes.fecundity ?? 0.5)*5);
           for(let i=0;i<n;i++){
             const a=i/n*TAU + Math.sin(gait*0.18+i)*0.10;
             const rr=bodyR*(1.05+0.25*Math.sin(gait*0.22+i));
@@ -595,7 +624,7 @@
         c.restore();
       }
 
-      if(o.flags && o.flags.chl && !renderPerf.tiny){
+      if(visualFlags && visualFlags.chl && !renderPerf.tiny){
         c.save();
         c.globalCompositeOperation='lighter';
         const k=dayNight.isNight?0.38:0.78;
@@ -608,7 +637,7 @@
         }
         c.restore();
       }
-      if(o.flags && o.flags.glow && !renderPerf.tiny){
+      if(visualFlags && visualFlags.glow && !renderPerf.tiny){
         const k=(dayNight.isNight?0.58:0.18)*(0.75+0.25*Math.sin(gait+o.id));
         c.save(); c.globalCompositeOperation='lighter';
         const rr=Math.max(o.size*2.0,(sym.visualR||o.size)*1.04);
@@ -618,7 +647,7 @@
         c.fillStyle=g; c.beginPath(); c.arc(0,0,rr,0,TAU); c.fill();
         c.restore();
       }
-      if(o.flags && o.flags.crown && !renderPerf.tiny){
+      if(visualFlags && visualFlags.crown && !renderPerf.tiny){
         c.save(); c.globalCompositeOperation='lighter';
         const rr=Math.max(o.size*1.5,(sym.visualR||o.size)*0.62);
         const n=7;
@@ -630,7 +659,7 @@
         }
         c.restore();
       }
-      if(o.flags && o.flags.colony && !renderPerf.tiny){
+      if(visualFlags && visualFlags.colony && !renderPerf.tiny){
         c.save();
         const rr=Math.max(o.size*1.35,(sym.visualR||o.size)*0.56);
         for(let i=0;i<5;i++){
