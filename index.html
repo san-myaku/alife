@@ -336,7 +336,8 @@
     features: Object.freeze({
       evolvableLifeHistory: false,
       juvenileDevelopment: false,
-      predictiveHuntingReserve: false
+      predictiveHuntingReserve: false,
+      persistentPackIdentity: false
     }),
     population: Object.freeze({
       starter: 64,
@@ -448,6 +449,18 @@
           trackingTargetRetention: true
         })
       }),
+      packIdentity: Object.freeze({
+        updateIntervalSteps: 12,
+        formationRadiusMultiplier: 0.85,
+        joinRadiusMultiplier: 1.00,
+        leaveRadiusMultiplier: 1.80,
+        leaveGraceSteps: 72,
+        minimumFormationMembers: 2,
+        allowParentInheritance: true,
+        requireSameSpeciesForFormation: true,
+        requireSameSpeciesForJoining: true,
+        keepSingleMemberPack: true
+      }),
       plankton: Object.freeze({
         source: 'detritus-oxygen',
         initialSeed: 70,
@@ -488,7 +501,8 @@
   const featureFlags = {
     evolvableLifeHistory: CONFIG.features.evolvableLifeHistory,
     juvenileDevelopment: CONFIG.features.juvenileDevelopment,
-    predictiveHuntingReserve: CONFIG.features.predictiveHuntingReserve
+    predictiveHuntingReserve: CONFIG.features.predictiveHuntingReserve,
+    persistentPackIdentity: CONFIG.features.persistentPackIdentity
   };
   function evolvableLifeHistoryEnabled(){
     return !!featureFlags.evolvableLifeHistory;
@@ -498,6 +512,9 @@
   }
   function predictiveHuntingReserveEnabled(){
     return !!featureFlags.predictiveHuntingReserve;
+  }
+  function persistentPackIdentityEnabled(){
+    return !!featureFlags.persistentPackIdentity;
   }
 
   // ===== UI State =====
@@ -1880,6 +1897,18 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     packAttackBase:0.78,
     variant:'baseline'
   };
+  const packIdentityState = {
+    nextPackId:1,
+    packs:{},
+    telemetry:{
+      packsCreated:0,
+      packsDissolved:0,
+      packJoins:0,
+      packLeaves:0,
+      packInheritedBirths:0,
+      packDeaths:0
+    }
+  };
   function telemetryPush(event){
     telemetry.events.push({frame, ...event});
     if(telemetry.events.length>TELEMETRY_EVENT_LIMIT) telemetry.events.splice(0, telemetry.events.length-TELEMETRY_EVENT_LIMIT+1000);
@@ -1958,6 +1987,451 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(isAmbusherPredator(o)) return 'ambusher';
     if(isPursuitPredator(o)) return 'pursuit';
     return 'other';
+  }
+  function packIdentityTelemetry(){
+    return packIdentityState.telemetry;
+  }
+  function resetPackIdentityState(){
+    packIdentityState.nextPackId=1;
+    packIdentityState.packs={};
+    Object.assign(packIdentityState.telemetry,{
+      packsCreated:0,
+      packsDissolved:0,
+      packJoins:0,
+      packLeaves:0,
+      packInheritedBirths:0,
+      packDeaths:0
+    });
+  }
+  function packIdentityEligible(organism){
+    if(!organism || organism.dead) return false;
+    return organism.socialMode==='hunt-pack';
+  }
+  function packIdentitySpeciesKey(organism){
+    return String(organism?.speciesKey || speciesKey(organism?.genes || {}));
+  }
+  function packReferenceRange(organism){
+    return Math.max(24, Number(organism?.senseR || 0), Number(organism?.size || 0)*6);
+  }
+  function packIdentityIdNumber(packId){
+    const m=String(packId||'').match(/(\d+)$/);
+    return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER;
+  }
+  function activePackById(packId){
+    const pack=packIdentityState.packs?.[packId];
+    return pack && pack.dissolvedFrame==null ? pack : null;
+  }
+  function packIdentitySortedPacks(includeDissolved=false){
+    return Object.values(packIdentityState.packs || {})
+      .filter(p=>includeDissolved || p.dissolvedFrame==null)
+      .sort((a,b)=>Number(a.createdFrame||0)-Number(b.createdFrame||0) || packIdentityIdNumber(a.id)-packIdentityIdNumber(b.id) || String(a.id).localeCompare(String(b.id)));
+  }
+  function packIdentitySanitizeMemberIds(ids){
+    return [...new Set((ids || []).map(Number).filter(Number.isFinite))].sort((a,b)=>a-b);
+  }
+  function packIdentityLivingMembers(pack){
+    if(!pack) return [];
+    return packIdentitySanitizeMemberIds(pack.memberIds)
+      .map(id=>organismById(id))
+      .filter(o=>o && !o.dead && o.packId===pack.id)
+      .sort((a,b)=>a.id-b.id);
+  }
+  function packIdentityDissolveIfEmpty(pack){
+    if(!pack || pack.dissolvedFrame!=null) return false;
+    const living=packIdentityLivingMembers(pack);
+    if(living.length>0) return false;
+    pack.memberIds=[];
+    pack.currentLivingMembers=0;
+    pack.dissolvedFrame=frame;
+    pack.lastActiveFrame=frame;
+    packIdentityTelemetry().packsDissolved++;
+    return true;
+  }
+  function packIdentityRefreshPack(pack){
+    if(!pack) return null;
+    const ids=[];
+    for(const o of organisms){
+      if(!o || o.dead || o.packId!==pack.id) continue;
+      ids.push(o.id);
+    }
+    pack.memberIds=packIdentitySanitizeMemberIds(ids);
+    const living=pack.memberIds.length;
+    pack.currentLivingMembers=living;
+    if(living>0){
+      pack.lastActiveFrame=frame;
+      pack.maximumLivingMembers=Math.max(Number(pack.maximumLivingMembers||0),living);
+    } else {
+      packIdentityDissolveIfEmpty(pack);
+    }
+    return pack;
+  }
+  function packIdentityRefreshAllPacks(){
+    for(const pack of Object.values(packIdentityState.packs || {})){
+      packIdentityRefreshPack(pack);
+    }
+  }
+  function packIdentityRepairMemberships(){
+    for(const pack of Object.values(packIdentityState.packs || {})){
+      pack.memberIds=[];
+    }
+    for(const o of organisms){
+      if(!o || o.dead || !o.packId) continue;
+      const pack=activePackById(o.packId);
+      if(!pack || !packIdentityEligible(o) || pack.speciesKey!==packIdentitySpeciesKey(o)){
+        o._packMembershipPreviousId=o.packId;
+        o.packId=null;
+        o.packJoinFrame=null;
+        o.packFounderId=null;
+        o.packInheritedFromParent=false;
+        o.packLeaveCandidateSince=null;
+        o.packLastMemberContactFrame=null;
+        o._packNearestMemberDistance=null;
+        o._packNearestMemberId=null;
+        continue;
+      }
+      pack.memberIds.push(o.id);
+    }
+    packIdentityRefreshAllPacks();
+  }
+  function joinPackIdentity(organism,packId,options={}){
+    if(!persistentPackIdentityEnabled() || !packIdentityEligible(organism)) return false;
+    const pack=activePackById(packId);
+    if(!pack) return false;
+    if(pack.speciesKey!==packIdentitySpeciesKey(organism)) return false;
+    if(organism.packId===pack.id){
+      organism.packLeaveCandidateSince=null;
+      return true;
+    }
+    if(organism.packId) leavePackIdentity(organism,'switch');
+    organism._packMembershipPreviousId=organism.packId || null;
+    organism.packId=pack.id;
+    organism.packJoinFrame=frame;
+    organism.packFounderId=pack.founderId ?? options.founderId ?? null;
+    organism.packInheritedFromParent=!!options.inheritedFromParent;
+    organism.packLeaveCandidateSince=null;
+    organism.packLastMemberContactFrame=frame;
+    organism.packJoinCount=Number(organism.packJoinCount||0)+1;
+    pack.memberIds=packIdentitySanitizeMemberIds([...(pack.memberIds||[]),organism.id]);
+    pack.totalMembersEver=Number(pack.totalMembersEver||0)+1;
+    pack.joins=Number(pack.joins||0)+1;
+    pack.currentLivingMembers=Math.max(Number(pack.currentLivingMembers||0),pack.memberIds.length);
+    pack.maximumLivingMembers=Math.max(Number(pack.maximumLivingMembers||0),pack.memberIds.length);
+    pack.lastActiveFrame=frame;
+    packIdentityTelemetry().packJoins++;
+    if(options.reason==='parent-inheritance' || options.inheritedFromParent){
+      pack.birthsIntoPack=Number(pack.birthsIntoPack||0)+1;
+      packIdentityTelemetry().packInheritedBirths++;
+    }
+    return true;
+  }
+  function leavePackIdentity(organism,reason='leave'){
+    if(!organism || !organism.packId) return false;
+    const previous=organism.packId;
+    const pack=packIdentityState.packs?.[previous] || null;
+    organism._packMembershipPreviousId=previous;
+    organism.packId=null;
+    organism.packJoinFrame=null;
+    organism.packFounderId=null;
+    organism.packInheritedFromParent=false;
+    organism.packLeaveCandidateSince=null;
+    organism.packLastMemberContactFrame=null;
+    organism._packNearestMemberDistance=null;
+    organism._packNearestMemberId=null;
+    organism.packLeaveCount=Number(organism.packLeaveCount||0)+1;
+    if(pack && pack.dissolvedFrame==null){
+      pack.memberIds=packIdentitySanitizeMemberIds((pack.memberIds||[]).filter(id=>Number(id)!==organism.id));
+      pack.leaves=Number(pack.leaves||0)+1;
+      pack.lastActiveFrame=frame;
+      packIdentityTelemetry().packLeaves++;
+      packIdentityRefreshPack(pack);
+    }
+    return true;
+  }
+  function packIdentityHandleDeath(organism){
+    if(!persistentPackIdentityEnabled() || !organism || !organism.packId) return false;
+    const pack=packIdentityState.packs?.[organism.packId] || null;
+    organism.packAgeAtDeath=organism.packJoinFrame==null ? null : Math.max(0,frame-Number(organism.packJoinFrame));
+    organism.packMembershipDuration=organism.packAgeAtDeath;
+    if(!pack || pack.dissolvedFrame!=null) return false;
+    pack.memberIds=packIdentitySanitizeMemberIds((pack.memberIds||[]).filter(id=>Number(id)!==organism.id));
+    pack.deaths=Number(pack.deaths||0)+1;
+    pack.lastActiveFrame=frame;
+    packIdentityTelemetry().packDeaths++;
+    packIdentityRefreshPack(pack);
+    return true;
+  }
+  function createPackIdentity(candidates,options={}){
+    if(!persistentPackIdentityEnabled()) return null;
+    const members=packIdentitySanitizeMemberIds((candidates||[]).map(o=>o?.id))
+      .map(id=>organismById(id))
+      .filter(o=>o && !o.dead && packIdentityEligible(o));
+    if(members.length<CONFIG.ecology.packIdentity.minimumFormationMembers) return null;
+    members.sort((a,b)=>a.id-b.id);
+    const founder=members[0];
+    const species=packIdentitySpeciesKey(founder);
+    if(members.some(o=>packIdentitySpeciesKey(o)!==species)) return null;
+    const id='pack-'+packIdentityState.nextPackId++;
+    const pack={
+      id,
+      createdFrame:frame,
+      dissolvedFrame:null,
+      founderId:founder.id,
+      founderSpeciesKey:species,
+      speciesKey:species,
+      memberIds:[],
+      parentPackId:options.parentPackId ?? null,
+      totalMembersEver:0,
+      birthsIntoPack:0,
+      joins:0,
+      leaves:0,
+      deaths:0,
+      lastActiveFrame:frame,
+      currentLivingMembers:0,
+      maximumLivingMembers:0,
+      memberFramesTotal:0
+    };
+    packIdentityState.packs[id]=pack;
+    packIdentityTelemetry().packsCreated++;
+    for(const member of members){
+      joinPackIdentity(member,id,{reason:'formation',founderId:founder.id});
+    }
+    packIdentityRefreshPack(pack);
+    return pack;
+  }
+  function nearestLivingPackMember(organism,pack){
+    if(!organism || !pack) return null;
+    let best=null;
+    for(const id of packIdentitySanitizeMemberIds(pack.memberIds)){
+      if(id===organism.id) continue;
+      const other=organismById(id);
+      if(!other || other.dead || other.packId!==pack.id) continue;
+      const distance=Math.hypot(other.x-organism.x,other.y-organism.y);
+      if(!best || distance<best.distance || (distance===best.distance && other.id<best.member.id)){
+        best={member:other,distance};
+      }
+    }
+    organism._packNearestMemberId=best?.member?.id ?? null;
+    organism._packNearestMemberDistance=best?.distance ?? null;
+    return best;
+  }
+  function findJoinablePackForOrganism(organism){
+    if(!organism || organism.packId || !packIdentityEligible(organism)) return null;
+    const cfg=CONFIG.ecology.packIdentity;
+    const radius=packReferenceRange(organism)*cfg.joinRadiusMultiplier;
+    const species=packIdentitySpeciesKey(organism);
+    const byPack=new Map();
+    forEachOrgNeighbors(organism.x,organism.y,radius,(other,dx,dy,d2)=>{
+      if(!other || other===organism || other.dead || !other.packId) return;
+      const pack=activePackById(other.packId);
+      if(!pack) return;
+      if(cfg.requireSameSpeciesForJoining && pack.speciesKey!==species) return;
+      const d=Math.sqrt(d2);
+      const existing=byPack.get(pack.id);
+      if(!existing || d<existing.nearestDistance){
+        byPack.set(pack.id,{pack,nearestDistance:d});
+      }
+    });
+    return [...byPack.values()].sort((a,b)=>
+      a.nearestDistance-b.nearestDistance
+      || Number(a.pack.createdFrame||0)-Number(b.pack.createdFrame||0)
+      || packIdentityIdNumber(a.pack.id)-packIdentityIdNumber(b.pack.id)
+      || String(a.pack.id).localeCompare(String(b.pack.id))
+    )[0] || null;
+  }
+  function formationCandidatesForOrganism(organism,excludedIds){
+    if(!organism || organism.packId || !packIdentityEligible(organism)) return [];
+    const cfg=CONFIG.ecology.packIdentity;
+    const radius=packReferenceRange(organism)*cfg.formationRadiusMultiplier;
+    const species=packIdentitySpeciesKey(organism);
+    const rows=[organism];
+    forEachOrgNeighbors(organism.x,organism.y,radius,(other)=>{
+      if(!other || other===organism || other.dead || other.packId || excludedIds?.has(other.id)) return;
+      if(!packIdentityEligible(other)) return;
+      if(cfg.requireSameSpeciesForFormation && packIdentitySpeciesKey(other)!==species) return;
+      rows.push(other);
+    });
+    return rows.sort((a,b)=>a.id-b.id);
+  }
+  function updatePersistentPackIdentity(force=false){
+    if(!persistentPackIdentityEnabled()) return;
+    const cfg=CONFIG.ecology.packIdentity;
+    const interval=Math.max(1,Number(cfg.updateIntervalSteps)||1);
+    if(!force && frame%interval!==0) return;
+    packIdentityRepairMemberships();
+    const leftThisStep=new Set();
+    const living=organisms.filter(o=>o && !o.dead).sort((a,b)=>a.id-b.id);
+    for(const o of living){
+      if(!o.packId) continue;
+      if(!packIdentityEligible(o)){
+        leavePackIdentity(o,'ineligible');
+        leftThisStep.add(o.id);
+        continue;
+      }
+      const pack=activePackById(o.packId);
+      if(!pack || pack.speciesKey!==packIdentitySpeciesKey(o)){
+        leavePackIdentity(o,'invalid-pack');
+        leftThisStep.add(o.id);
+      }
+    }
+    packIdentityRefreshAllPacks();
+    const distanceLeaves=[];
+    for(const o of living){
+      if(!o.packId) continue;
+      const pack=activePackById(o.packId);
+      if(!pack) continue;
+      const nearest=nearestLivingPackMember(o,pack);
+      if(!nearest){
+        if(cfg.keepSingleMemberPack){
+          o.packLeaveCandidateSince=null;
+          continue;
+        }
+      }
+      const leaveRadius=packReferenceRange(o)*cfg.leaveRadiusMultiplier;
+      if(nearest && nearest.distance<=leaveRadius){
+        o.packLeaveCandidateSince=null;
+        o.packLastMemberContactFrame=frame;
+      } else {
+        if(o.packLeaveCandidateSince==null) o.packLeaveCandidateSince=frame;
+        if(frame-Number(o.packLeaveCandidateSince)>=cfg.leaveGraceSteps){
+          distanceLeaves.push(o);
+        }
+      }
+    }
+    for(const o of distanceLeaves){
+      if(!o || !o.packId) continue;
+      leavePackIdentity(o,'distance');
+      leftThisStep.add(o.id);
+    }
+    packIdentityRefreshAllPacks();
+    for(const o of living){
+      if(o.packId || leftThisStep.has(o.id) || !packIdentityEligible(o)) continue;
+      const join=findJoinablePackForOrganism(o);
+      if(join) joinPackIdentity(o,join.pack.id,{reason:'join'});
+    }
+    packIdentityRefreshAllPacks();
+    const processed=new Set();
+    for(const o of living){
+      if(o.packId || leftThisStep.has(o.id) || processed.has(o.id) || !packIdentityEligible(o)) continue;
+      const candidates=formationCandidatesForOrganism(o,processed).filter(x=>!x.packId && !leftThisStep.has(x.id));
+      if(candidates.length>=cfg.minimumFormationMembers){
+        const pack=createPackIdentity(candidates,{});
+        if(pack){
+          for(const member of candidates) processed.add(member.id);
+        }
+      }
+    }
+    for(const pack of packIdentitySortedPacks()){
+      packIdentityRefreshPack(pack);
+      if(pack.dissolvedFrame==null){
+        pack.memberFramesTotal=Number(pack.memberFramesTotal||0)+Number(pack.currentLivingMembers||0)*interval;
+      }
+    }
+  }
+  function inheritParentPackIdentity(child,parent){
+    if(!persistentPackIdentityEnabled()
+      || !CONFIG.ecology.packIdentity.allowParentInheritance
+      || !packIdentityEligible(child)
+      || !parent?.packId
+      || !activePackById(parent.packId)
+    ){
+      return false;
+    }
+    const pack=activePackById(parent.packId);
+    if(!pack || pack.speciesKey!==packIdentitySpeciesKey(child)) return false;
+    return joinPackIdentity(child,parent.packId,{reason:'parent-inheritance',inheritedFromParent:true});
+  }
+  function serializePackIdentityPack(pack){
+    return {
+      id:String(pack.id),
+      createdFrame:Number(pack.createdFrame||0),
+      dissolvedFrame:pack.dissolvedFrame==null ? null : Number(pack.dissolvedFrame),
+      founderId:pack.founderId ?? null,
+      founderSpeciesKey:pack.founderSpeciesKey ?? pack.speciesKey ?? null,
+      speciesKey:pack.speciesKey ?? pack.founderSpeciesKey ?? null,
+      memberIds:packIdentitySanitizeMemberIds(pack.memberIds),
+      parentPackId:pack.parentPackId ?? null,
+      totalMembersEver:Number(pack.totalMembersEver||0),
+      birthsIntoPack:Number(pack.birthsIntoPack||0),
+      joins:Number(pack.joins||0),
+      leaves:Number(pack.leaves||0),
+      deaths:Number(pack.deaths||0),
+      lastActiveFrame:Number(pack.lastActiveFrame ?? pack.createdFrame ?? 0),
+      currentLivingMembers:Number(pack.currentLivingMembers||0),
+      maximumLivingMembers:Number(pack.maximumLivingMembers||0),
+      memberFramesTotal:Number(pack.memberFramesTotal||0)
+    };
+  }
+  function capturePackIdentityState(){
+    const packs={};
+    for(const pack of packIdentitySortedPacks(true)){
+      packs[pack.id]=serializePackIdentityPack(pack);
+    }
+    return {
+      nextPackId:Number(packIdentityState.nextPackId||1),
+      packs,
+      telemetry:{...packIdentityState.telemetry}
+    };
+  }
+  function restorePackIdentityState(data=null){
+    resetPackIdentityState();
+    if(!data || typeof data!=='object') return;
+    const next=Number(data.nextPackId);
+    packIdentityState.nextPackId=Number.isFinite(next) && next>=1 ? Math.floor(next) : 1;
+    if(data.telemetry && typeof data.telemetry==='object'){
+      for(const key of Object.keys(packIdentityState.telemetry)){
+        const v=Number(data.telemetry[key]);
+        if(Number.isFinite(v)) packIdentityState.telemetry[key]=v;
+      }
+    }
+    const packs=data.packs || {};
+    const entries=Array.isArray(packs) ? packs.map(p=>[p?.id,p]) : Object.entries(packs);
+    for(const [key,raw] of entries){
+      if(!raw || typeof raw!=='object') continue;
+      const id=String(raw.id || key || '');
+      if(!id) continue;
+      packIdentityState.packs[id]={
+        id,
+        createdFrame:Number.isFinite(Number(raw.createdFrame)) ? Number(raw.createdFrame) : frame,
+        dissolvedFrame:raw.dissolvedFrame==null ? null : Number(raw.dissolvedFrame),
+        founderId:raw.founderId ?? null,
+        founderSpeciesKey:raw.founderSpeciesKey ?? raw.speciesKey ?? null,
+        speciesKey:raw.speciesKey ?? raw.founderSpeciesKey ?? null,
+        memberIds:[],
+        parentPackId:raw.parentPackId ?? null,
+        totalMembersEver:Number(raw.totalMembersEver||0),
+        birthsIntoPack:Number(raw.birthsIntoPack||0),
+        joins:Number(raw.joins||0),
+        leaves:Number(raw.leaves||0),
+        deaths:Number(raw.deaths||0),
+        lastActiveFrame:Number.isFinite(Number(raw.lastActiveFrame)) ? Number(raw.lastActiveFrame) : frame,
+        currentLivingMembers:0,
+        maximumLivingMembers:Number(raw.maximumLivingMembers||0),
+        memberFramesTotal:Number(raw.memberFramesTotal||0)
+      };
+    }
+    for(const o of organisms){
+      if(!o || !o.packId) continue;
+      const pack=packIdentityState.packs[o.packId];
+      if(!pack || pack.dissolvedFrame!=null || pack.speciesKey!==packIdentitySpeciesKey(o) || !packIdentityEligible(o)){
+        o._packMembershipPreviousId=o.packId;
+        o.packId=null;
+        o.packJoinFrame=null;
+        o.packFounderId=null;
+        o.packInheritedFromParent=false;
+        o.packLeaveCandidateSince=null;
+        o.packLastMemberContactFrame=null;
+      }
+    }
+    packIdentityRepairMemberships();
+  }
+  function packIdentityOrganismSaveFields(o){
+    return persistentPackIdentityEnabled() ? {
+      packId:o.packId ?? null,
+      packJoinFrame:o.packJoinFrame ?? null,
+      packFounderId:o.packFounderId ?? null,
+      packInheritedFromParent:!!o.packInheritedFromParent,
+      packLeaveCandidateSince:o.packLeaveCandidateSince ?? null
+    } : {};
   }
   const TELEMETRY_REPRO_GATES = ['evaluated','immature','energyBelowThreshold','cooldownBlocked','stateBlocked','physiologyBlocked','populationBlocked','otherBlocked','eligible','probabilityFailed','reproduced'];
   function telemetryBlankGateGroup(){
@@ -5280,6 +5754,13 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     child.role=normalizeRole(child.role);
     child.birthStrategyClass=carnivoreStrategyClass(child);
     child.currentStrategyClass=child.birthStrategyClass;
+    inheritParentPackIdentity(child,parent);
+    const packIdentityBirthFields=persistentPackIdentityEnabled() ? {
+      packId:child.packId ?? null,
+      packJoinFrame:child.packJoinFrame ?? null,
+      packFounderId:child.packFounderId ?? null,
+      packInheritedFromParent:!!child.packInheritedFromParent
+    } : null;
     const projectedChildGenes=meta?.projectedChildGenes || meta?.plan?.projectedChildGenes || null;
     const minimumViableBirthEnergy=Number.isFinite(Number(meta?.minimumViableBirthEnergy)) ? Number(meta.minimumViableBirthEnergy) : null;
     const acceptedChildEnergyEach=Number.isFinite(Number(meta?.acceptedChildEnergyEach)) ? Number(meta.acceptedChildEnergyEach) : childEnergyEach;
@@ -5348,6 +5829,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       parentFecundity,
       ...(lifeHistoryBirthFields || {}),
       ...(juvenileBirthFields || {}),
+      ...(packIdentityBirthFields || {}),
       parentSpeciesKey,
       mateRole,
       mateSocialMode,
@@ -5394,6 +5876,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       parentFecundity,
       ...(lifeHistoryBirthFields || {}),
       ...(juvenileBirthFields || {}),
+      ...(packIdentityBirthFields || {}),
       parentSpeciesKey,
       mateRole,
       mateSocialMode,
@@ -5434,6 +5917,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const birthEvent={kind:'birth', id:child.id, diet:rec.diet, birthDietClass:childDiet, birthExactDiet:childPostMutationDiet, currentDietClass:childDiet, currentExactDiet:childPostMutationDiet, birthStrategyClass:child.birthStrategyClass, currentStrategyClass:child.currentStrategyClass, birthRole:rec.birthRole, birthSocialMode:rec.birthSocialMode, speciesKey:child.speciesKey, parentId:rec.parentId, mateParentId, parentDiet, parentBirthDiet, parentExactDiet, parentBirthExactDiet, parentRole, parentSocialMode, parentRoleSocialGroup, parentSpeciesKey, mateRole, mateSocialMode, mateRoleSocialGroup, mateParentSpeciesKey, parentCarnivore:rec.parentCarnivore, birthEnergy:rec.birthEnergy, childPreMutationDiet, childPostMutationDiet, childPreMutationDietType, crossedDietClass:parentDiet!==childDiet, generationDepth, reproductionMode, clutch, index, clutchIndex:index};
     if(lifeHistoryBirthFields) Object.assign(birthEvent,lifeHistoryBirthFields);
     if(juvenileBirthFields) Object.assign(birthEvent,juvenileBirthFields);
+    if(packIdentityBirthFields) Object.assign(birthEvent,packIdentityBirthFields);
     telemetryPush(birthEvent);
     telemetryPruneBirths();
   }
@@ -5474,6 +5958,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const targetValid=!!(target && predationCandidateClassification(o,target,'target').valid);
     const ambushStats=telemetryRecentAmbushHoldStats(o,120);
     const predictiveDeath=telemetryRecordPredictiveHuntDeath(o,target);
+    const packMembershipDuration=o.packJoinFrame==null ? null : Math.max(0,frame-Number(o.packJoinFrame));
     telemetryRecordChaseCommitmentDeath(o,causeKey);
     clearChaseCommitment(o,causeKey==='starvation' ? 'starvation-death' : (causeKey==='predation' ? 'predation-death' : 'death'));
     const birth=telemetry.births.get(o.id);
@@ -5512,6 +5997,13 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       role:o.role || 'other',
       socialMode:o.socialMode || 'solitary',
       roleSocialGroup:packRoleSocialGroupKey(o.role,o.socialMode || 'solitary'),
+      packId:o.packId ?? null,
+      packJoinFrame:o.packJoinFrame ?? null,
+      packAgeAtDeath:packMembershipDuration,
+      packMembershipDuration,
+      packInheritedFromParent:!!o.packInheritedFromParent,
+      packLeaveCount:Number(o.packLeaveCount||0),
+      packJoinCount:Number(o.packJoinCount||0),
       ...(includeJuvenileDeathFields ? {
         developmentProgressAtDeath:deathDevelopmentProgress,
         developmentStageAtDeath:deathDevelopmentStage,
@@ -8237,6 +8729,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     o.deathCause=cause || o.deathCause || '不明';
     recordAction(o, `死亡：${o.deathCause}`);
     telemetryRecordDeath(o,o.deathCause);
+    packIdentityHandleDeath(o);
     telemetryRecordFeedingDeath(o,telemetryDeathCauseKey(o.deathCause));
     const s=speciesStats.get(o.speciesKey);
     if(s){ s.deathCauses[o.deathCause]=(s.deathCauses[o.deathCause]||0)+1; }
@@ -8488,6 +8981,17 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       `Commit: ${o._chaseCommitmentState || 'idle'} / ${o._chaseCommitmentReason || '-'} / need ${fmt(commitmentPlan?.energyNeedPressure)} / pred ${fmt(commitmentPlan?.predictivePressure)} / d ${fmt(targetDistance,1)}`
     ];
   }
+  function selectedPackIdentityLines(o){
+    if(!devMode || !persistentPackIdentityEnabled() || !o) return [];
+    const snap=organismPackSnapshot(o);
+    const fmt=(v)=>Number.isFinite(Number(v)) ? Number(v).toFixed(1) : 'n/a';
+    return [
+      `Pack: ${snap.packId || '-'} / eligible ${snap.eligible ? 'yes' : 'no'} / members ${snap.packLivingMemberCount}`,
+      `Pack age: join ${snap.packJoinFrame ?? '-'} / age ${snap.packMembershipAge ?? '-'} / founder ${snap.packFounderId ?? '-'}`,
+      `Pack nearest: ${snap.nearestPackMemberId ?? '-'} / d ${fmt(snap.nearestPackMemberDistance)} / leaveSince ${snap.packLeaveCandidateSince ?? '-'}`,
+      `Pack inherited: ${snap.packInheritedFromParent ? 'yes' : 'no'} / joins ${snap.packJoinCount} / leaves ${snap.packLeaveCount}`
+    ];
+  }
   function selectedCardLines(o){
     const rare=rareTraitNames(o.flags).join('、') || 'なし';
     const carrier=traitCarrierNames(o.traits,o.flags).join('、') || 'なし';
@@ -8507,6 +9011,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       ...geneSummaryLines(o.genes),
       ...selectedLifeHistoryLines(o),
       ...selectedPredictiveHuntLines(o),
+      ...selectedPackIdentityLines(o),
       `状態：${statusLabel(o)}`,
       `エネルギー：${Math.round(o.energy)} / 年齢：${ageLabel(o)} / 世代：${generation}`,
       reproductiveMaturityLine,
@@ -8674,6 +9179,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this._predictiveHuntPlan=null; this._predictiveHuntTargetId=null; this._basePredationIntent=0; this._huntPlanningPressure=0; this._huntSearchIntent=0; this._chaseIntent=0; this._attackIntent=0; this._predictiveHuntState='unplanned'; this._predictiveHuntIntent=null; this._predictiveHuntIntentBoost=0;
       this._chaseCommitmentState='idle'; this._chaseCommittedTargetId=null; this._chaseCommitmentEnteredFrame=null; this._chaseCommitmentSteps=0; this._chaseCommitmentReason=null; this._chaseCommitmentPlanSnapshot=null; this._chaseCommitmentBestDistance=null; this._chaseCommitmentNoProgressSteps=0;
       this.packConsensusTargetId=null; this.packConsensusHoldT=0; this.packConsensusSwitchCD=0; this._packConsensusTargetHistory=[];
+      this.packId=null; this.packJoinFrame=null; this.packFounderId=null; this.packInheritedFromParent=false; this.packLeaveCandidateSince=null; this.packLastMemberContactFrame=null; this.packLeaveCount=0; this.packJoinCount=0; this._packMembershipPreviousId=null; this._packNearestMemberDistance=null; this._packNearestMemberId=null;
       this.birthFrame=frame;
       this.grazingTimer=0;
       this.mateSeekT=0; this.callCD=0;
@@ -12245,6 +12751,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     resetFoodWebStats();
     lineage.nodes.clear();
     lineage.edges.length=0;
+    resetPackIdentityState();
     resetInjectionTracking({snapshots:true});
     // reset simple eco / day-night state
     eco.detritusMeter = 0;
@@ -12299,6 +12806,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         if(--calls[i].t<=0) calls.splice(i,1);
       }
       buildSpatialIndex();
+      updatePersistentPackIdentity();
       telemetryRecordPackWorldStep();
       for(const o of organisms){
         if(!o.dead){
@@ -18512,6 +19020,124 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     chaseCommitmentFinalizeTree(summary);
     return summary;
   }
+  function medianNumber(values){
+    const rows=(values||[]).map(Number).filter(Number.isFinite).sort((a,b)=>a-b);
+    if(!rows.length) return null;
+    const mid=Math.floor(rows.length/2);
+    return rows.length%2 ? rows[mid] : (rows[mid-1]+rows[mid])/2;
+  }
+  function packSnapshot(packId){
+    const pack=packIdentityState.packs?.[packId];
+    if(!pack) return null;
+    const living=packIdentityLivingMembers(pack);
+    const age=pack.dissolvedFrame==null ? Math.max(0,frame-Number(pack.createdFrame||frame)) : Math.max(0,Number(pack.dissolvedFrame)-Number(pack.createdFrame||0));
+    return {
+      id:pack.id,
+      createdFrame:pack.createdFrame,
+      dissolvedFrame:pack.dissolvedFrame ?? null,
+      founderId:pack.founderId ?? null,
+      founderSpeciesKey:pack.founderSpeciesKey ?? pack.speciesKey ?? null,
+      speciesKey:pack.speciesKey ?? pack.founderSpeciesKey ?? null,
+      parentPackId:pack.parentPackId ?? null,
+      memberIds:packIdentitySanitizeMemberIds(pack.memberIds),
+      livingMemberIds:living.map(o=>o.id),
+      currentLivingMembers:living.length,
+      maximumLivingMembers:Number(pack.maximumLivingMembers||0),
+      totalMembersEver:Number(pack.totalMembersEver||0),
+      birthsIntoPack:Number(pack.birthsIntoPack||0),
+      joins:Number(pack.joins||0),
+      leaves:Number(pack.leaves||0),
+      deaths:Number(pack.deaths||0),
+      lastActiveFrame:pack.lastActiveFrame ?? null,
+      memberFramesTotal:Number(pack.memberFramesTotal||0),
+      age
+    };
+  }
+  function activePackSnapshots(){
+    return packIdentitySortedPacks(false).map(pack=>packSnapshot(pack.id)).filter(Boolean);
+  }
+  function organismPackSnapshot(organismId){
+    const o=typeof organismId==='object' ? organismId : organismById(organismId);
+    if(!o) return null;
+    const pack=o.packId ? packIdentityState.packs?.[o.packId] : null;
+    const nearest=pack ? nearestLivingPackMember(o,pack) : null;
+    return {
+      organismId:o.id,
+      eligible:packIdentityEligible(o),
+      packId:o.packId ?? null,
+      packJoinFrame:o.packJoinFrame ?? null,
+      packMembershipAge:o.packJoinFrame==null ? null : Math.max(0,frame-Number(o.packJoinFrame)),
+      packFounderId:o.packFounderId ?? null,
+      packInheritedFromParent:!!o.packInheritedFromParent,
+      packLivingMemberCount:pack ? packIdentityLivingMembers(pack).length : 0,
+      nearestPackMemberId:nearest?.member?.id ?? o._packNearestMemberId ?? null,
+      nearestPackMemberDistance:nearest?.distance ?? o._packNearestMemberDistance ?? null,
+      packLeaveCandidateSince:o.packLeaveCandidateSince ?? null,
+      packLeaveCount:Number(o.packLeaveCount||0),
+      packJoinCount:Number(o.packJoinCount||0),
+      speciesKey:o.speciesKey ?? null,
+      role:normalizeRole(o.role),
+      socialMode:o.socialMode || 'solitary',
+      diet:telemetryDiet(o)
+    };
+  }
+  function packIdentityGroupBlank(){
+    return {living:0,eligible:0,assigned:0,unassigned:0};
+  }
+  function packIdentityGroupAdd(group,key,eligible,assigned){
+    const k=String(key ?? 'unknown');
+    const row=group[k] || (group[k]=packIdentityGroupBlank());
+    row.living++;
+    if(eligible) row.eligible++;
+    if(assigned) row.assigned++;
+    else if(eligible) row.unassigned++;
+  }
+  function packIdentitySummary(){
+    const active=activePackSnapshots();
+    const dissolved=packIdentitySortedPacks(true).filter(p=>p.dissolvedFrame!=null).map(p=>packSnapshot(p.id)).filter(Boolean);
+    const sizes=active.map(p=>p.currentLivingMembers);
+    const ages=active.map(p=>p.age);
+    const byRole={}, byDiet={}, bySocialMode={};
+    let eligibleAssigned=0, eligibleUnassigned=0, eligibleTotal=0;
+    for(const o of organisms){
+      if(!o || o.dead) continue;
+      const eligible=packIdentityEligible(o);
+      const assigned=!!o.packId && !!activePackById(o.packId);
+      if(eligible){
+        eligibleTotal++;
+        if(assigned) eligibleAssigned++;
+        else eligibleUnassigned++;
+      }
+      packIdentityGroupAdd(byRole,normalizeRole(o.role),eligible,assigned);
+      packIdentityGroupAdd(byDiet,telemetryDiet(o),eligible,assigned);
+      packIdentityGroupAdd(bySocialMode,o.socialMode || 'solitary',eligible,assigned);
+    }
+    const avg=(rows)=>rows.length ? rows.reduce((s,v)=>s+v,0)/rows.length : null;
+    return {
+      featureEnabled:persistentPackIdentityEnabled(),
+      activePackCount:active.length,
+      dissolvedPackCount:dissolved.length,
+      singleMemberPackCount:active.filter(p=>p.currentLivingMembers===1).length,
+      averagePackSize:avg(sizes),
+      medianPackSize:medianNumber(sizes),
+      maximumPackSize:sizes.length ? Math.max(...sizes) : 0,
+      averagePackAge:avg(ages),
+      maximumPackAge:ages.length ? Math.max(...ages) : 0,
+      packsCreated:Number(packIdentityTelemetry().packsCreated||0),
+      packsDissolved:Number(packIdentityTelemetry().packsDissolved||0),
+      joins:Number(packIdentityTelemetry().packJoins||0),
+      leaves:Number(packIdentityTelemetry().packLeaves||0),
+      parentInheritedBirths:Number(packIdentityTelemetry().packInheritedBirths||0),
+      packDeaths:Number(packIdentityTelemetry().packDeaths||0),
+      eligibleAssigned,
+      eligibleUnassigned,
+      eligibleTotal,
+      packMembershipRate:eligibleTotal ? eligibleAssigned/eligibleTotal : null,
+      byRole,
+      byDiet,
+      bySocialMode
+    };
+  }
   function stableJson(value){
     const seen=new Set();
     const sortValue=(v)=>{
@@ -18531,6 +19157,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       lifeHistory:lifeHistorySummary(),
       juvenile:juvenileDevelopmentEnabled() ? juvenileDevelopmentSummary() : null,
       predictive:predictiveHuntingReserveEnabled() ? predictiveHuntingSummary() : null,
+      packIdentity:persistentPackIdentityEnabled() ? packIdentitySummary() : null,
       safety:{
         nanOrInfinity:diagnosticNumberHealth().badCount,
         energyCreationEvents:telemetry.packHuntConservation.energyCreationEvents,
@@ -19280,6 +19907,272 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     return {ok:results.every(r=>r.ok),results};
   }
 
+  function packIdentityBehaviorStableJson(value){
+    const sortValue=(v)=>{
+      if(v==null || typeof v!=='object') return v;
+      if(Array.isArray(v)) return v.map(sortValue);
+      const out={};
+      for(const key of Object.keys(v).sort()){
+        if(key==='elapsedMs' || key==='performance' || key==='health' || key==='variant') continue;
+        out[key]=sortValue(v[key]);
+      }
+      return out;
+    };
+    return JSON.stringify(sortValue(value));
+  }
+  function packIdentityMembershipSnapshot(){
+    return organisms
+      .filter(o=>o && !o.dead)
+      .map(o=>({
+        id:o.id,
+        packId:o.packId ?? null,
+        packJoinFrame:o.packJoinFrame ?? null,
+        packFounderId:o.packFounderId ?? null,
+        packInheritedFromParent:!!o.packInheritedFromParent,
+        packLeaveCandidateSince:o.packLeaveCandidateSince ?? null
+      }))
+      .sort((a,b)=>a.id-b.id);
+  }
+  function runPersistentPackIdentityReproducibilityMicroTest(options={}){
+    const saved=capture();
+    const oldLife=evolvableLifeHistoryEnabled();
+    const oldJuvenile=juvenileDevelopmentEnabled();
+    const oldPredictive=predictiveHuntingReserveEnabled();
+    const oldPack=persistentPackIdentityEnabled();
+    const seed=Number(options.seed ?? 41001);
+    const steps=Math.max(1,Math.min(2000,Number(options.steps ?? 120)));
+    const run=()=>{
+      runSeededWorldDiagnostic({seed,steps,restoreAfterRun:false,targetConsensus:false,shareFraction:0,packAttackBase:0.78,variant:'packIdentityRepro'});
+      return {
+        summary:packIdentitySummary(),
+        registry:capturePackIdentityState(),
+        memberships:packIdentityMembershipSnapshot(),
+        world:lifeHistoryReproducibilitySnapshot()
+      };
+    };
+    try{
+      featureFlags.evolvableLifeHistory=true;
+      featureFlags.juvenileDevelopment=true;
+      featureFlags.predictiveHuntingReserve=true;
+      featureFlags.persistentPackIdentity=true;
+      const first=run();
+      const firstJson=stableJson(first);
+      const second=run();
+      const secondJson=stableJson(second);
+      return {ok:firstJson===secondJson,seed,steps,first,second};
+    } finally {
+      featureFlags.evolvableLifeHistory=oldLife;
+      featureFlags.juvenileDevelopment=oldJuvenile;
+      featureFlags.predictiveHuntingReserve=oldPredictive;
+      featureFlags.persistentPackIdentity=oldPack;
+      restore(saved);
+    }
+  }
+  function runPersistentPackIdentityMicroTests(){
+    const saved=capture();
+    const oldLife=evolvableLifeHistoryEnabled();
+    const oldJuvenile=juvenileDevelopmentEnabled();
+    const oldPredictive=predictiveHuntingReserveEnabled();
+    const oldPack=persistentPackIdentityEnabled();
+    const oldRandom=Math.random;
+    const results=[];
+    const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
+    const clear=()=>{
+      running=false;
+      frame=0;
+      generation=1;
+      NEXT_ID=1;
+      organisms.length=0; newborn.length=0; food.length=0; corpses.length=0; plankton.length=0; patches.length=0; calls.length=0;
+      sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0;
+      speciesCount.clear();
+      resetPackIdentityState();
+      resetTelemetry();
+    };
+    const genes=(diet=0.88)=>normalizeLifeHistoryGenes({speed:0.62,size:0.44,metabolism:0.42,fecundity:0.50,sense:0.65,diet,formSeed:0.31,energyCapacity:0.5,clutchPotential:0.45,parentalInvestment:0.5},true);
+    const make=(x,y,species='pack-species',eligible=true,diet=0.88)=>{
+      const o=new Organism(x,y,genes(diet),false);
+      o.protect=0;
+      o.age=999;
+      o.recalcPhenotype();
+      applyDevelopmentPhenotype(o);
+      o.role='pursuit';
+      o.socialMode=eligible ? 'hunt-pack' : 'solitary';
+      o.sociality=eligible ? 0.8 : 0.1;
+      o.speciesKey=species;
+      o.birthStrategyClass=carnivoreStrategyClass(o);
+      o.currentStrategyClass=o.birthStrategyClass;
+      return o;
+    };
+    const prepare=(list)=>{ organisms.push(...list); buildSpatialIndex(); };
+    const activePacks=()=>activePackSnapshots();
+    try{
+      featureFlags.evolvableLifeHistory=true;
+      featureFlags.juvenileDevelopment=true;
+      featureFlags.predictiveHuntingReserve=true;
+      featureFlags.persistentPackIdentity=true;
+
+      clear();
+      featureFlags.persistentPackIdentity=false;
+      const offA=make(80,80,'off',true), offB=make(84,80,'off',true);
+      prepare([offA,offB]);
+      const offBefore={ax:offA.x,ay:offA.y,avx:offA.vx,avy:offA.vy,energy:offA.energy,target:offA.preyTargetId,packId:offA.packId};
+      let randomCalls=0;
+      Math.random=()=>{ randomCalls++; return 0.5; };
+      updatePersistentPackIdentity(true);
+      Math.random=oldRandom;
+      add('A feature OFF compatibility',
+        randomCalls===0
+          && offA.packId===offBefore.packId
+          && offA.x===offBefore.ax && offA.y===offBefore.ay
+          && offA.vx===offBefore.avx && offA.vy===offBefore.avy
+          && offA.energy===offBefore.energy
+          && offA.preyTargetId===offBefore.target,
+        {randomCalls,before:offBefore,after:{packId:offA.packId,x:offA.x,y:offA.y,vx:offA.vx,vy:offA.vy,energy:offA.energy,target:offA.preyTargetId}}
+      );
+      featureFlags.persistentPackIdentity=true;
+
+      clear();
+      const b1=make(100,100,'det'), b2=make(106,100,'det'), b3=make(103,105,'det');
+      prepare([b3,b1,b2]);
+      updatePersistentPackIdentity(true);
+      const bPacks=activePacks();
+      add('B deterministic formation',
+        bPacks.length===1
+          && [b1,b2,b3].every(o=>o.packId===bPacks[0].id)
+          && bPacks[0].founderId===Math.min(b1.id,b2.id,b3.id),
+        {packs:bPacks,members:[b1,b2,b3].map(o=>({id:o.id,packId:o.packId}))}
+      );
+
+      clear();
+      const c1=make(100,100,'species-a'), c2=make(106,100,'species-b');
+      prepare([c1,c2]);
+      updatePersistentPackIdentity(true);
+      add('C species separation', activePacks().length===0 && !c1.packId && !c2.packId, {packs:activePacks(),c1:c1.packId,c2:c2.packId});
+
+      clear();
+      const d1=make(100,100,'noneligible',false), d2=make(106,100,'noneligible',true);
+      prepare([d1,d2]);
+      updatePersistentPackIdentity(true);
+      add('D noneligible excluded', activePacks().length===0 && !d1.packId && !d2.packId, {d1:d1.packId,d2:d2.packId,packs:activePacks()});
+
+      clear();
+      const e1=make(80,80,'e'), e2=make(86,80,'e'), e3=make(360,80,'e'), e4=make(366,80,'e');
+      prepare([e1,e2,e3,e4]);
+      updatePersistentPackIdentity(true);
+      const eOriginal=e1.packId;
+      e1.x=e3.x+2; e1.y=e3.y+2;
+      buildSpatialIndex();
+      frame=12;
+      updatePersistentPackIdentity(true);
+      add('E membership persists near other pack', e1.packId===eOriginal && activePacks().length===2, {original:eOriginal,current:e1.packId,packs:activePacks()});
+
+      clear();
+      const f1=make(100,100,'leave'), f2=make(106,100,'leave');
+      f1.senseR=24; f2.senseR=24;
+      prepare([f1,f2]);
+      updatePersistentPackIdentity(true);
+      const fPack=f1.packId;
+      f2.x=700; f2.y=100;
+      buildSpatialIndex();
+      frame=10;
+      updatePersistentPackIdentity(true);
+      const stillMember=f2.packId===fPack && f2.packLeaveCandidateSince===10;
+      f2.x=108; f2.y=100;
+      buildSpatialIndex();
+      frame=20;
+      updatePersistentPackIdentity(true);
+      const cleared=f2.packId===fPack && f2.packLeaveCandidateSince==null;
+      f2.x=700; f2.y=100;
+      buildSpatialIndex();
+      frame=30;
+      updatePersistentPackIdentity(true);
+      frame=30+CONFIG.ecology.packIdentity.leaveGraceSteps;
+      updatePersistentPackIdentity(true);
+      add('F leave hysteresis', stillMember && cleared && f2.packId==null && f2._packMembershipPreviousId===fPack, {stillMember,cleared,previous:f2._packMembershipPreviousId,current:f2.packId});
+
+      clear();
+      const gParent=make(100,100,'inherit'), gMate=make(106,100,'inherit');
+      prepare([gParent,gMate]);
+      updatePersistentPackIdentity(true);
+      const gChild=make(103,104,'inherit',true);
+      const inherited=inheritParentPackIdentity(gChild,gParent);
+      add('G parent inheritance', inherited && gChild.packId===gParent.packId && gChild.packInheritedFromParent===true, {parent:gParent.packId,child:gChild.packId,inherited:gChild.packInheritedFromParent});
+
+      const hChild=make(103,108,'inherit',false);
+      const hInherited=inheritParentPackIdentity(hChild,gParent);
+      add('H noneligible child not inherited', !hInherited && hChild.packId==null, {hInherited,packId:hChild.packId});
+
+      clear();
+      const i1=make(100,100,'death'), i2=make(106,100,'death');
+      prepare([i1,i2]);
+      updatePersistentPackIdentity(true);
+      const iPackId=i1.packId;
+      i2.dead=true;
+      packIdentityHandleDeath(i2);
+      const afterOne=packSnapshot(iPackId);
+      i1.dead=true;
+      packIdentityHandleDeath(i1);
+      const afterAll=packSnapshot(iPackId);
+      add('I death cleanup', afterOne.currentLivingMembers===1 && !afterOne.livingMemberIds.includes(i2.id) && afterAll.dissolvedFrame===frame, {afterOne,afterAll});
+
+      clear();
+      const j1=make(100,100,'single'), j2=make(106,100,'single');
+      prepare([j1,j2]);
+      updatePersistentPackIdentity(true);
+      const jPackId=j1.packId;
+      j2.dead=true;
+      packIdentityHandleDeath(j2);
+      const jPack=packSnapshot(jPackId);
+      add('J single member pack maintained', jPack.currentLivingMembers===1 && jPack.dissolvedFrame==null, {jPack});
+
+      clear();
+      const k1=make(100,100,'reuse'), k2=make(106,100,'reuse');
+      prepare([k1,k2]);
+      updatePersistentPackIdentity(true);
+      const oldPackId=k1.packId;
+      k1.dead=true; packIdentityHandleDeath(k1);
+      k2.dead=true; packIdentityHandleDeath(k2);
+      const k3=make(160,100,'reuse'), k4=make(166,100,'reuse');
+      prepare([k3,k4]);
+      buildSpatialIndex();
+      updatePersistentPackIdentity(true);
+      add('K ID not reused', oldPackId==='pack-1' && k3.packId==='pack-2', {oldPackId,newPackId:k3.packId,nextPackId:packIdentityState.nextPackId});
+
+      for(let i=organisms.length-1;i>=0;i--) if(organisms[i].dead) organisms.splice(i,1);
+      const beforeSave=stableJson(capturePackIdentityState());
+      const saveData=capture();
+      restore(saveData);
+      const afterSave=stableJson(capturePackIdentityState());
+      add('L save/load round trip', beforeSave===afterSave, {before:JSON.parse(beforeSave),after:JSON.parse(afterSave)});
+
+      featureFlags.evolvableLifeHistory=true;
+      featureFlags.juvenileDevelopment=true;
+      featureFlags.predictiveHuntingReserve=true;
+      featureFlags.persistentPackIdentity=false;
+      const off=runSeededWorldDiagnostic({seed:41001,steps:120,restoreAfterRun:false,targetConsensus:false,shareFraction:0,packAttackBase:0.78,variant:'packIdentityOff'});
+      featureFlags.persistentPackIdentity=true;
+      const on=runSeededWorldDiagnostic({seed:41001,steps:120,restoreAfterRun:false,targetConsensus:false,shareFraction:0,packAttackBase:0.78,variant:'packIdentityOn'});
+      add('M behavior non-interference',
+        packIdentityBehaviorStableJson(off)===packIdentityBehaviorStableJson(on),
+        {offConservation:off.conservation,onConservation:on.conservation}
+      );
+      add('N conservation',
+        on?.conservation?.energyCreationEvents===0
+          && on?.conservation?.nutrientCreationEvents===0
+          && on?.health?.badCount===0,
+        {conservation:on?.conservation,health:on?.health}
+      );
+    } finally {
+      Math.random=oldRandom;
+      featureFlags.evolvableLifeHistory=oldLife;
+      featureFlags.juvenileDevelopment=oldJuvenile;
+      featureFlags.predictiveHuntingReserve=oldPredictive;
+      featureFlags.persistentPackIdentity=oldPack;
+      restore(saved);
+    }
+    return {ok:results.every(r=>r.ok),results};
+  }
+
   window.__alifeDebug = {
     counts(){
       return { organisms:organisms.length, food:food.length, detritusParticles:countDetritusParticles(), plankton:plankton.length, sparks:sparks.length, rings:rings.length, predationBlooms:predationBlooms.length, membranes:membranes.length, corpses:corpses.length, species:new Set(organisms.map(o=>o.speciesKey)).size };
@@ -19353,6 +20246,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     setPredictiveHuntingReserve(enabled){
       return setPredictiveHuntingReserve(enabled);
     },
+    setPersistentPackIdentity(enabled){
+      featureFlags.persistentPackIdentity=!!enabled;
+      if(!enabled) resetPackIdentityState();
+      return {ok:true,persistentPackIdentity:persistentPackIdentityEnabled()};
+    },
     lifeHistorySummary(){
       return lifeHistorySummary();
     },
@@ -19401,6 +20299,18 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     chaseCommitmentSummary(){
       return chaseCommitmentSummary();
     },
+    packIdentitySummary(){
+      return packIdentitySummary();
+    },
+    activePackSnapshots(){
+      return activePackSnapshots();
+    },
+    packSnapshot(packId){
+      return packSnapshot(packId);
+    },
+    organismPackSnapshot(organismId){
+      return organismPackSnapshot(organismId);
+    },
     lifeHistoryStrategyForGenes(genes){
       return lifeHistoryStrategyForGenes(geneSet(genes || {}));
     },
@@ -19430,6 +20340,12 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     runChaseCommitmentReproducibilityMicroTest(options={}){
       return runChaseCommitmentReproducibilityMicroTest(options);
+    },
+    runPersistentPackIdentityMicroTests(){
+      return runPersistentPackIdentityMicroTests();
+    },
+    runPersistentPackIdentityReproducibilityMicroTest(options={}){
+      return runPersistentPackIdentityReproducibilityMicroTest(options);
     },
     roleSocialEcologySummary(){
       return roleSocialEcologySummary();
@@ -19749,12 +20665,13 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       patches: patches.map(p=>({type:p.type,x:p.x,y:p.y,r:p.r})),
       plankton: plankton.map(p=>({x:p.x,y:p.y,vx:p.vx,vy:p.vy,t:p.t,kind:p.kind,fade:p.fade})),
       membranes: membranes.map(m=>({x1:m.x1,y1:m.y1,x2:m.x2,y2:m.y2,type:m.type,t:m.t})),
-      organisms: organisms.map(o=>({id:o.id,x:o.x,y:o.y,vx:o.vx,vy:o.vy,energy:o.energy,age:o.age,birthFrame:o.birthFrame,lineageInitial:o.lineageInitial,parentId:o.parentId??null,mateParentId:o.mateParentId??null,generationDepth:o.generationDepth??0,birthExactDiet:o.birthExactDiet??null,birthDietClass:o.birthDietClass??null,protect:o.protect,storeN:o.storeN,storeO:o.storeO,storeD:o.storeD,mem:o.mem,attackCD:o.attackCD,fleeTimer:o.fleeTimer,chaseTimer:o.chaseTimer,preyTargetId:o.preyTargetId,preyTargetOutOfRangeSteps:o.preyTargetOutOfRangeSteps||0,predatorThreatId:o.predatorThreatId,grazingTimer:o.grazingTimer,genes:o.genes,role:normalizeRole(o.role),socialMode:o.socialMode,sociality:o.sociality,speciesKey:o.speciesKey,traits:o.traits||null,flags:o.flags||null,morphologyTopology:o.morphologyTopology||topologyFromGenes(o.genes),recentEvents:o.recentEvents||[],lastAction:o.lastAction||null,devInjected:!!o.devInjected,devInjectedLineage:!!o.devInjectedLineage,injectionBatchId:o.injectionBatchId||null,injectionStep:o.injectionStep??null,injectionGeneration:o.injectionGeneration??null,injectionAncestorId:o.injectionAncestorId??null,injectionParentId:o.injectionParentId??null})),
+      organisms: organisms.map(o=>({id:o.id,x:o.x,y:o.y,vx:o.vx,vy:o.vy,energy:o.energy,age:o.age,birthFrame:o.birthFrame,lineageInitial:o.lineageInitial,parentId:o.parentId??null,mateParentId:o.mateParentId??null,generationDepth:o.generationDepth??0,birthExactDiet:o.birthExactDiet??null,birthDietClass:o.birthDietClass??null,protect:o.protect,storeN:o.storeN,storeO:o.storeO,storeD:o.storeD,mem:o.mem,attackCD:o.attackCD,fleeTimer:o.fleeTimer,chaseTimer:o.chaseTimer,preyTargetId:o.preyTargetId,preyTargetOutOfRangeSteps:o.preyTargetOutOfRangeSteps||0,predatorThreatId:o.predatorThreatId,grazingTimer:o.grazingTimer,genes:o.genes,role:normalizeRole(o.role),socialMode:o.socialMode,sociality:o.sociality,speciesKey:o.speciesKey,traits:o.traits||null,flags:o.flags||null,morphologyTopology:o.morphologyTopology||topologyFromGenes(o.genes),recentEvents:o.recentEvents||[],lastAction:o.lastAction||null,...packIdentityOrganismSaveFields(o),devInjected:!!o.devInjected,devInjectedLineage:!!o.devInjectedLineage,injectionBatchId:o.injectionBatchId||null,injectionStep:o.injectionStep??null,injectionGeneration:o.injectionGeneration??null,injectionAncestorId:o.injectionAncestorId??null,injectionParentId:o.injectionParentId??null})),
       extinctRecords,
       speciesStats:Array.from(speciesStats.entries()),
       discoveredRareTraits:Array.from(discoveredRareTraits),
       evolutionMilestones:Array.from(evolutionMilestones),
       lineage: { nodes: Array.from(lineage.nodes.entries()), edges: lineage.edges },
+      ...(persistentPackIdentityEnabled() ? {packIdentity:capturePackIdentityState()} : {}),
       injectionBatches: serializeInjectionBatches()
     };
     return 'ALIFE2:'+ btoa(unescape(encodeURIComponent(JSON.stringify(state))));
@@ -19764,7 +20681,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       if(!s.startsWith('ALIFE2:')) throw new Error('ヘッダー不正');
       const body=s.split(':',2)[1]; const state=JSON.parse(decodeURIComponent(escape(atob(body))));
       running=false;
-      food.length=0; corpses.length=0; plankton.length=0; patches.length=0; organisms.length=0; newborn.length=0; sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0; calls.length=0; speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear(); selectedOrganism=null; selectedDeadAt=0;
+      food.length=0; corpses.length=0; plankton.length=0; patches.length=0; organisms.length=0; newborn.length=0; sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0; calls.length=0; speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear(); selectedOrganism=null; selectedDeadAt=0; resetPackIdentityState();
       resetFoodWebStats();
       (state.patches||[]).forEach(p=>patches.push(new Patch(p.type,p.x,p.y,p.r)));
       if(window.env && state.envState && window.env.restoreState){
@@ -19825,6 +20742,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         u.preyTargetOutOfRangeSteps=Number.isFinite(Number(o.preyTargetOutOfRangeSteps)) ? Number(o.preyTargetOutOfRangeSteps) : 0;
         if(o.predatorThreatId!=null) u.predatorThreatId=o.predatorThreatId;
         if(o.grazingTimer!=null) u.grazingTimer=o.grazingTimer;
+        if(o.packId!=null) u.packId=o.packId;
+        if(o.packJoinFrame!=null) u.packJoinFrame=o.packJoinFrame;
+        if(o.packFounderId!=null) u.packFounderId=o.packFounderId;
+        if(o.packInheritedFromParent!=null) u.packInheritedFromParent=!!o.packInheritedFromParent;
+        if(o.packLeaveCandidateSince!=null) u.packLeaveCandidateSince=o.packLeaveCandidateSince;
         u.devInjected=!!o.devInjected;
         u.devInjectedLineage=!!o.devInjectedLineage;
         u.injectionBatchId=o.injectionBatchId || null;
@@ -19840,6 +20762,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         u.lastAction = o.lastAction || u.lastAction || 'ロードされた';
         u.recalcPhenotype();
         applyDevelopmentPhenotype(u);
+        if(o.speciesKey!=null) u.speciesKey=o.speciesKey;
+        u.role=normalizeRole(o.role ?? u.role);
+        if(o.socialMode!=null) u.socialMode=o.socialMode;
+        if(o.sociality!=null){
+          const sociality=Number(o.sociality);
+          if(Number.isFinite(sociality)) u.sociality=sociality;
+        }
+        u.birthStrategyClass=carnivoreStrategyClass(u);
+        u.currentStrategyClass=u.birthStrategyClass;
         clearChaseCommitment(u,'load');
         u.energy=clamp(Number(u.energy||0),0,organismMaxEnergy(u));
         recordRareTraitDiscovery(u);
@@ -19847,7 +20778,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
 organisms.push(u);
       });
       if(maxRestoredId>0) NEXT_ID=Math.max(NEXT_ID,maxRestoredId+1);
-      frame=state.frame||0; generation=state.generation||1; if(state.dayNight?.phase!=null){ dayNight.phase=state.dayNight.phase; applyDayNightState(false); } Object.assign(worldEvent, state.worldEvent||{}); Object.assign(eco, state.eco||{});
+      frame=state.frame||0; generation=state.generation||1; if(state.dayNight?.phase!=null){ dayNight.phase=state.dayNight.phase; applyDayNightState(false); } Object.assign(worldEvent, state.worldEvent||{}); Object.assign(eco, state.eco||{}); restorePackIdentityState(state.packIdentity);
       speciesAnnounceMuteUntil=Math.max(prevAnnounceMute||0, frame+120);
       if(Array.isArray(state.extinctRecords)) extinctRecords.push(...state.extinctRecords.slice(0,14));
       if(Array.isArray(state.discoveredRareTraits)){ for(const x of state.discoveredRareTraits) discoveredRareTraits.add(x); }
