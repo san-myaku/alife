@@ -2003,6 +2003,19 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       packDeaths:0
     });
   }
+  function clearOrganismPackIdentity(organism,reason='cleared'){
+    if(!organism) return;
+    organism._packMembershipPreviousId=organism.packId || null;
+    organism.packId=null;
+    organism.packJoinFrame=null;
+    organism.packFounderId=null;
+    organism.packInheritedFromParent=false;
+    organism.packLeaveCandidateSince=null;
+    organism.packLastMemberContactFrame=null;
+    organism._packNearestMemberDistance=null;
+    organism._packNearestMemberId=null;
+    organism._packIdentityClearReason=reason;
+  }
   function packIdentityEligible(organism){
     if(!organism || organism.dead) return false;
     return organism.socialMode==='hunt-pack';
@@ -2078,15 +2091,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(!o || o.dead || !o.packId) continue;
       const pack=activePackById(o.packId);
       if(!pack || !packIdentityEligible(o) || pack.speciesKey!==packIdentitySpeciesKey(o)){
-        o._packMembershipPreviousId=o.packId;
-        o.packId=null;
-        o.packJoinFrame=null;
-        o.packFounderId=null;
-        o.packInheritedFromParent=false;
-        o.packLeaveCandidateSince=null;
-        o.packLastMemberContactFrame=null;
-        o._packNearestMemberDistance=null;
-        o._packNearestMemberId=null;
+        clearOrganismPackIdentity(o,'repair-invalid');
         continue;
       }
       pack.memberIds.push(o.id);
@@ -2413,13 +2418,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(!o || !o.packId) continue;
       const pack=packIdentityState.packs[o.packId];
       if(!pack || pack.dissolvedFrame!=null || pack.speciesKey!==packIdentitySpeciesKey(o) || !packIdentityEligible(o)){
-        o._packMembershipPreviousId=o.packId;
-        o.packId=null;
-        o.packJoinFrame=null;
-        o.packFounderId=null;
-        o.packInheritedFromParent=false;
-        o.packLeaveCandidateSince=null;
-        o.packLastMemberContactFrame=null;
+        clearOrganismPackIdentity(o,'load-invalid');
       }
     }
     packIdentityRepairMemberships();
@@ -18413,6 +18412,16 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       organisms:organisms.length
     };
   }
+  function setPersistentPackIdentity(enabled){
+    featureFlags.persistentPackIdentity=!!enabled;
+    if(!enabled){
+      for(const organism of organisms){
+        clearOrganismPackIdentity(organism,'feature-off');
+      }
+      resetPackIdentityState();
+    }
+    return {ok:true,persistentPackIdentity:persistentPackIdentityEnabled()};
+  }
   function juvenileDevelopmentMetricBlank(){
     return {
       births:0,
@@ -20042,6 +20051,45 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           && bPacks[0].founderId===Math.min(b1.id,b2.id,b3.id),
         {packs:bPacks,members:[b1,b2,b3].map(o=>({id:o.id,packId:o.packId}))}
       );
+      const bOriginalPackId=bPacks[0]?.id || null;
+      b1.packLeaveCandidateSince=7;
+      b1.packLastMemberContactFrame=8;
+      b1._packNearestMemberDistance=3.5;
+      b1._packNearestMemberId=b2.id;
+      setPersistentPackIdentity(false);
+      const bCleared=[b1,b2,b3].every(o=>
+        o.packId==null
+          && o.packJoinFrame==null
+          && o.packFounderId==null
+          && o.packInheritedFromParent===false
+          && o.packLeaveCandidateSince==null
+          && o.packLastMemberContactFrame==null
+          && o._packNearestMemberDistance==null
+          && o._packNearestMemberId==null
+          && o._packIdentityClearReason==='feature-off'
+      );
+      const bRegistryEmpty=Object.keys(packIdentityState.packs || {}).length===0;
+      const bClearSnapshot=[b1,b2,b3].map(o=>({id:o.id,packId:o.packId,previous:o._packMembershipPreviousId,reason:o._packIdentityClearReason}));
+      const bAfterOffTelemetry={...packIdentityTelemetry()};
+      const bNoLeaveDeathTelemetry=Number(bAfterOffTelemetry.packLeaves||0)===0 && Number(bAfterOffTelemetry.packDeaths||0)===0;
+      setPersistentPackIdentity(true);
+      frame=12;
+      updatePersistentPackIdentity(true);
+      const bReformed=activePacks().length===1 && [b1,b2,b3].every(o=>!!o.packId);
+      add('B2 feature OFF cleanup clears memberships',
+        bCleared
+          && bRegistryEmpty
+          && bNoLeaveDeathTelemetry
+          && bReformed,
+        {
+          originalPackId:bOriginalPackId,
+          registryEmpty:bRegistryEmpty,
+          noLeaveDeathTelemetry:bNoLeaveDeathTelemetry,
+          afterOffTelemetry:bAfterOffTelemetry,
+          cleared:bClearSnapshot,
+          reformedPacks:activePacks()
+        }
+      );
 
       clear();
       const c1=make(100,100,'species-a'), c2=make(106,100,'species-b');
@@ -20247,9 +20295,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       return setPredictiveHuntingReserve(enabled);
     },
     setPersistentPackIdentity(enabled){
-      featureFlags.persistentPackIdentity=!!enabled;
-      if(!enabled) resetPackIdentityState();
-      return {ok:true,persistentPackIdentity:persistentPackIdentityEnabled()};
+      return setPersistentPackIdentity(enabled);
     },
     lifeHistorySummary(){
       return lifeHistorySummary();
