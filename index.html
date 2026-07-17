@@ -434,7 +434,19 @@
         targetCostWeight: 0.28,
         targetMarginWeight: 0.20,
         proactiveIntentWeight: 0.58,
-        maximumIntentBoost: 0.38
+        maximumIntentBoost: 0.38,
+        chaseCommitment: Object.freeze({
+          minimumCommitSteps: 24,
+          cooldownSteps: 8,
+          proactiveEnterPressure: 0.18,
+          desperateEnterPressure: 0.05,
+          baseNeedEnter: 0.52,
+          baseNeedExit: 0.26,
+          energyRecoveryExitMultiplier: 1.12,
+          maximumNoProgressSteps: 160,
+          progressDistanceEpsilon: 1.5,
+          trackingTargetRetention: true
+        })
       }),
       plankton: Object.freeze({
         source: 'detritus-oxygen',
@@ -2758,6 +2770,44 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       rec.planningAssistedPredationSuccesses=0;
       rec.planningAssistedFirstPredationSuccesses=0;
       rec.planningAssistedStarvationDeaths=0;
+      rec.trackingSteps=0;
+      rec.trackingEntries=0;
+      rec.committedSteps=0;
+      rec.commitmentEntries=0;
+      rec.commitmentExits=0;
+      rec.predictiveCommitmentEntries=0;
+      rec.energyNeedCommitmentEntries=0;
+      rec.desperateCommitmentEntries=0;
+      rec.commitmentTargetChanges=0;
+      rec.commitmentSuccesses=0;
+      rec.commitmentStarvationDeaths=0;
+      rec.commitmentPredationDeaths=0;
+      rec.commitmentNoProgressReleases=0;
+      rec.energyAtCommitmentEntrySum=0;
+      rec.distanceAtCommitmentEntrySum=0;
+      rec.requiredEnergyAtCommitmentEntrySum=0;
+      rec.startEnergyAtCommitmentEntrySum=0;
+      rec.energyMarginAtCommitmentEntrySum=0;
+      rec.stepsFromTargetAcquisitionToCommitmentSum=0;
+      rec.stepsFromTargetAcquisitionToCommitmentSamples=0;
+      rec.stepsFromCommitmentToContactSum=0;
+      rec.stepsFromCommitmentToContactSamples=0;
+      rec.stepsFromCommitmentToPredationSuccessSum=0;
+      rec.stepsFromCommitmentToPredationSuccessSamples=0;
+      rec.targetAcquisitionFrame=null;
+      rec.commitmentEntryFrame=null;
+      rec.commitmentEntryReason=null;
+      rec.energyAtCommitmentEntry=null;
+      rec.distanceAtCommitmentEntry=null;
+      rec.requiredEnergyAtCommitmentEntry=null;
+      rec.startEnergyAtCommitmentEntry=null;
+      rec.energyMarginAtCommitmentEntry=null;
+      rec.commitmentStateAtContact=null;
+      rec.stepsSinceCommitmentAtContact=null;
+      rec.energySpentSinceCommitment=null;
+      rec.commitmentStateAtSuccess=null;
+      rec.commitmentReasonAtSuccess=null;
+      rec.stepsSinceCommitmentAtSuccess=null;
       rec.energyAtTargetAcquisition=null;
       rec.predictedRequiredEnergyAtAcquisition=null;
       rec.predictedStartEnergyAtAcquisition=null;
@@ -2810,6 +2860,96 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const state=predictiveHuntState(plan);
     const stepKey=`${state}ChaseSteps`;
     if(rec[stepKey]!=null) rec[stepKey]++;
+  }
+  function telemetryRecordChaseCommitmentTrackingEntry(o,prey,commitment=null){
+    if(!predictiveHuntingReserveEnabled() || !o || !prey) return;
+    const rec=telemetryEnsurePredictiveHuntRecord(telemetryPredationIndividualRecord(o));
+    if(!rec) return;
+    rec.trackingEntries=Number(rec.trackingEntries||0)+1;
+    if(rec.targetAcquisitionFrame==null) rec.targetAcquisitionFrame=frame;
+  }
+  function telemetryRecordChaseCommitmentStep(o,prey,commitment=null,active=false){
+    if(!predictiveHuntingReserveEnabled() || !o || !prey) return;
+    const rec=telemetryEnsurePredictiveHuntRecord(telemetryPredationIndividualRecord(o));
+    if(!rec) return;
+    if(active) rec.committedSteps=Number(rec.committedSteps||0)+1;
+    else rec.trackingSteps=Number(rec.trackingSteps||0)+1;
+  }
+  function telemetryRecordChaseCommitmentEntry(o,prey,commitment){
+    if(!predictiveHuntingReserveEnabled() || !o || !prey || !commitment) return;
+    const rec=telemetryEnsurePredictiveHuntRecord(telemetryPredationIndividualRecord(o));
+    if(!rec) return;
+    const plan=commitment.plan || {};
+    const reason=commitment.enterReason || 'unknown';
+    rec.commitmentEntries=Number(rec.commitmentEntries||0)+1;
+    if(reason==='predictive') rec.predictiveCommitmentEntries=Number(rec.predictiveCommitmentEntries||0)+1;
+    else if(reason==='energy-need') rec.energyNeedCommitmentEntries=Number(rec.energyNeedCommitmentEntries||0)+1;
+    else if(reason==='desperate') rec.desperateCommitmentEntries=Number(rec.desperateCommitmentEntries||0)+1;
+    rec.commitmentEntryFrame=frame;
+    rec.commitmentEntryReason=reason;
+    rec.energyAtCommitmentEntry=Number(o.energy || 0);
+    rec.distanceAtCommitmentEntry=Number(plan.distance || 0);
+    rec.requiredEnergyAtCommitmentEntry=Number(plan.requiredEnergy || 0);
+    rec.startEnergyAtCommitmentEntry=Number(plan.startEnergy || 0);
+    rec.energyMarginAtCommitmentEntry=Number(plan.energyMargin || 0);
+    rec.energyAtCommitmentEntrySum+=rec.energyAtCommitmentEntry;
+    rec.distanceAtCommitmentEntrySum+=rec.distanceAtCommitmentEntry;
+    rec.requiredEnergyAtCommitmentEntrySum+=rec.requiredEnergyAtCommitmentEntry;
+    rec.startEnergyAtCommitmentEntrySum+=rec.startEnergyAtCommitmentEntry;
+    rec.energyMarginAtCommitmentEntrySum+=rec.energyMarginAtCommitmentEntry;
+    const targetFrame=Number(rec.targetAcquisitionFrame ?? rec.firstTargetFrame);
+    if(Number.isFinite(targetFrame)){
+      rec.stepsFromTargetAcquisitionToCommitmentSum+=Math.max(0,frame-targetFrame);
+      rec.stepsFromTargetAcquisitionToCommitmentSamples=Number(rec.stepsFromTargetAcquisitionToCommitmentSamples||0)+1;
+    }
+  }
+  function telemetryRecordChaseCommitmentExit(o,reason='cleared'){
+    if(!predictiveHuntingReserveEnabled() || !o) return;
+    const rec=telemetryEnsurePredictiveHuntRecord(telemetryPredationIndividualRecord(o));
+    if(!rec) return;
+    rec.commitmentExits=Number(rec.commitmentExits||0)+1;
+    if(reason==='target-changed') rec.commitmentTargetChanges=Number(rec.commitmentTargetChanges||0)+1;
+    else if(reason==='predation-success') rec.commitmentSuccesses=Number(rec.commitmentSuccesses||0)+1;
+    else if(reason==='no-progress') rec.commitmentNoProgressReleases=Number(rec.commitmentNoProgressReleases||0)+1;
+  }
+  function telemetryRecordChaseCommitmentContact(o,prey,distance=null){
+    if(!predictiveHuntingReserveEnabled() || !o || !prey) return;
+    const rec=telemetryEnsurePredictiveHuntRecord(telemetryPredationIndividualRecord(o));
+    if(!rec) return;
+    rec.commitmentStateAtContact=o._chaseCommitmentState || 'idle';
+    const entered=Number(o._chaseCommitmentEnteredFrame);
+    if(Number.isFinite(entered)){
+      const steps=Math.max(0,frame-entered);
+      rec.stepsSinceCommitmentAtContact=steps;
+      rec.stepsFromCommitmentToContactSum+=steps;
+      rec.stepsFromCommitmentToContactSamples=Number(rec.stepsFromCommitmentToContactSamples||0)+1;
+    }
+    if(Number.isFinite(Number(rec.energyAtCommitmentEntry))){
+      rec.energySpentSinceCommitment=Number(rec.energyAtCommitmentEntry)-Number(o.energy || 0);
+    }
+  }
+  function telemetryRecordChaseCommitmentSuccess(o,prey){
+    if(!predictiveHuntingReserveEnabled() || !o || !prey) return;
+    const rec=telemetryEnsurePredictiveHuntRecord(telemetryPredationIndividualRecord(o));
+    if(!rec) return;
+    rec.commitmentStateAtSuccess=o._chaseCommitmentState || 'idle';
+    rec.commitmentReasonAtSuccess=o._chaseCommitmentReason || null;
+    const entered=Number(o._chaseCommitmentEnteredFrame);
+    if(Number.isFinite(entered)){
+      const steps=Math.max(0,frame-entered);
+      rec.stepsSinceCommitmentAtSuccess=steps;
+      rec.stepsFromCommitmentToPredationSuccessSum+=steps;
+      rec.stepsFromCommitmentToPredationSuccessSamples=Number(rec.stepsFromCommitmentToPredationSuccessSamples||0)+1;
+    }
+  }
+  function telemetryRecordChaseCommitmentDeath(o,causeKey){
+    if(!predictiveHuntingReserveEnabled() || !o) return;
+    const rec=telemetryEnsurePredictiveHuntRecord(telemetryPredationIndividualRecord(o));
+    if(!rec) return;
+    if(o._chaseCommitmentState==='committed'){
+      if(causeKey==='starvation') rec.commitmentStarvationDeaths=Number(rec.commitmentStarvationDeaths||0)+1;
+      if(causeKey==='predation') rec.commitmentPredationDeaths=Number(rec.commitmentPredationDeaths||0)+1;
+    }
   }
   function telemetryRecordPredictiveIntentSample(o,data={}){
     if(!predictiveHuntingReserveEnabled() || !o) return;
@@ -2873,6 +3013,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       rec.predictedChaseStepsAtAcquisition=Number(plan.estimatedSteps || 0);
       rec.predictedChaseCostAtAcquisition=Number(plan.chaseCost || 0);
       rec.predictiveHuntStateAtAcquisition=state;
+      rec.targetAcquisitionFrame=frame;
       rec.basePredationIntentAtTargetAcquisition=snap.basePredationIntent;
       rec.huntPlanningPressureAtTargetAcquisition=snap.huntPlanningPressure;
       rec.searchIntentAtTargetAcquisition=snap.searchIntent;
@@ -3207,6 +3348,153 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       predator._predictiveHuntIntentBoost=planning.huntPlanningPressure;
     }
     return planning;
+  }
+  function huntEnergyNeedPressure(predator){
+    if(!predator) return 0;
+    const energy=Math.max(0,Number(predator.energy || 0));
+    const maxEnergy=Math.max(1,organismMaxEnergy(predator));
+    const threshold=Math.max(1,Number(predator.reproThreshold || 0));
+    const needStart=Math.min(maxEnergy*0.92,threshold*0.95);
+    const emergency=Math.max(1,maxEnergy*0.12);
+    return 1 - smoothstepRange(emergency,needStart,energy);
+  }
+  function predictiveChaseCommitmentPressure(predator,prey,plan=null){
+    if(!predictiveHuntingReserveEnabled() || !predator || !prey) return 0;
+    const resolvedPlan=plan || predictiveHuntPlan(predator,prey);
+    if(!resolvedPlan) return 0;
+    const carnivory=clamp(finiteGeneValue(predator?.genes?.diet,0),0,1);
+    const carnivoryWeight=smoothstepRange(0.35,0.80,carnivory);
+    return clamp(carnivoryWeight*resolvedPlan.proactivePressure,0,1);
+  }
+  function predictiveChaseCommitmentPlan(predator,prey,basePlan=null){
+    if(!predator || !prey) return null;
+    const plan=basePlan || predictiveHuntPlan(predator,prey);
+    if(!plan) return null;
+    const energyNeedPressure=huntEnergyNeedPressure(predator);
+    const predictivePressure=predictiveChaseCommitmentPressure(predator,prey,plan);
+    const cfg=CONFIG.ecology.predictiveHunting.chaseCommitment;
+    const currentlyCommitted=predator._chaseCommitmentState==='committed'
+      && predator._chaseCommittedTargetId===prey.id;
+    const entered=Number(predator._chaseCommitmentEnteredFrame);
+    const commitmentAge=currentlyCommitted && Number.isFinite(entered) ? frame-entered : 0;
+    const minimumCommitSatisfied=currentlyCommitted && commitmentAge>=cfg.minimumCommitSteps;
+    const proactiveEnter=plan.affordable && predictivePressure>=cfg.proactiveEnterPressure;
+    const desperateEnter=!plan.affordable && predictivePressure>=cfg.desperateEnterPressure;
+    const baseNeedEnter=energyNeedPressure>=cfg.baseNeedEnter;
+    const energyRecovered=plan.currentEnergy>=plan.startEnergy*cfg.energyRecoveryExitMultiplier;
+    const baseNeedResolved=energyNeedPressure<=cfg.baseNeedExit;
+    let shouldCommit=currentlyCommitted;
+    let enterReason=currentlyCommitted ? predator._chaseCommitmentReason : null;
+    let exitReason=null;
+    if(!currentlyCommitted){
+      if(proactiveEnter){
+        shouldCommit=true;
+        enterReason='predictive';
+      } else if(baseNeedEnter){
+        shouldCommit=true;
+        enterReason='energy-need';
+      } else if(desperateEnter){
+        shouldCommit=true;
+        enterReason='desperate';
+      }
+    } else if(minimumCommitSatisfied && energyRecovered && baseNeedResolved){
+      shouldCommit=false;
+      exitReason='energy-recovered';
+    }
+    return {
+      plan,
+      energyNeedPressure,
+      predictivePressure,
+      proactiveEnter,
+      desperateEnter,
+      baseNeedEnter,
+      currentlyCommitted,
+      minimumCommitSatisfied,
+      energyRecovered,
+      baseNeedResolved,
+      shouldCommit,
+      enterReason,
+      exitReason
+    };
+  }
+  function clearChaseCommitment(predator,reason='cleared'){
+    if(!predator) return;
+    const wasCommitted=predator._chaseCommitmentState==='committed';
+    if(predictiveHuntingReserveEnabled() && wasCommitted){
+      telemetryRecordChaseCommitmentExit(predator,reason);
+    }
+    predator._chaseCommitmentState='idle';
+    predator._chaseCommittedTargetId=null;
+    predator._chaseCommitmentEnteredFrame=null;
+    predator._chaseCommitmentSteps=0;
+    predator._chaseCommitmentReason=reason;
+    predator._chaseCommitmentPlanSnapshot=null;
+    predator._chaseCommitmentBestDistance=null;
+    predator._chaseCommitmentNoProgressSteps=0;
+  }
+  function enterTrackingState(predator,prey,commitment=null){
+    if(!predator || !prey) return;
+    const wasCommitted=predator._chaseCommitmentState==='committed';
+    const previousReason=commitment?.exitReason || 'tracking';
+    if(predictiveHuntingReserveEnabled() && wasCommitted){
+      telemetryRecordChaseCommitmentExit(predator,previousReason);
+    }
+    const isNewTracking=predator._chaseCommitmentState!=='tracking'
+      || predator._chaseCommittedTargetId!==prey.id;
+    predator._chaseCommitmentState='tracking';
+    predator._chaseCommittedTargetId=prey.id;
+    predator._chaseCommitmentReason=null;
+    predator._chaseCommitmentPlanSnapshot=commitment || null;
+    if(isNewTracking) telemetryRecordChaseCommitmentTrackingEntry(predator,prey,commitment);
+  }
+  function enterOrMaintainChaseCommitment(predator,prey,commitment){
+    if(!predator || !prey || !commitment) return;
+    const sameCommitment=predator._chaseCommitmentState==='committed'
+      && predator._chaseCommittedTargetId===prey.id;
+    if(!sameCommitment){
+      predator._chaseCommitmentState='committed';
+      predator._chaseCommittedTargetId=prey.id;
+      predator._chaseCommitmentEnteredFrame=frame;
+      predator._chaseCommitmentSteps=0;
+      predator._chaseCommitmentReason=commitment.enterReason;
+      predator._chaseCommitmentBestDistance=commitment.plan.distance;
+      predator._chaseCommitmentNoProgressSteps=0;
+      telemetryRecordChaseCommitmentEntry(predator,prey,commitment);
+    }
+    predator._chaseCommitmentPlanSnapshot=commitment;
+  }
+  function updateChaseCommitment(predator,prey,planning=null){
+    if(!predator || !predictiveHuntingReserveEnabled()) return null;
+    if(!prey || prey.dead || !predationCandidateClassification(predator,prey,'target').valid){
+      clearChaseCommitment(predator,'invalid-target');
+      return null;
+    }
+    if(predator._chaseCommittedTargetId!=null && predator._chaseCommittedTargetId!==prey.id){
+      clearChaseCommitment(predator,'target-changed');
+    }
+    const plan=planning?.plan || predictiveHuntPlan(predator,prey);
+    const commitment=predictiveChaseCommitmentPlan(predator,prey,plan);
+    if(!commitment) return null;
+    if(commitment.shouldCommit) enterOrMaintainChaseCommitment(predator,prey,commitment);
+    else enterTrackingState(predator,prey,commitment);
+    return commitment;
+  }
+  function updateChaseCommitmentProgress(predator,prey,distance){
+    if(!predator || !prey || predator._chaseCommitmentState!=='committed') return;
+    const cfg=CONFIG.ecology.predictiveHunting.chaseCommitment;
+    predator._chaseCommitmentSteps=Number(predator._chaseCommitmentSteps || 0)+1;
+    const previousBest=Number(predator._chaseCommitmentBestDistance);
+    if(!Number.isFinite(previousBest) || distance<previousBest-cfg.progressDistanceEpsilon){
+      predator._chaseCommitmentBestDistance=distance;
+      predator._chaseCommitmentNoProgressSteps=0;
+    } else {
+      predator._chaseCommitmentNoProgressSteps=Number(predator._chaseCommitmentNoProgressSteps || 0)+1;
+    }
+    if(Number(predator._chaseCommitmentNoProgressSteps || 0)>cfg.maximumNoProgressSteps){
+      const commitment=predator._chaseCommitmentPlanSnapshot || predictiveChaseCommitmentPlan(predator,prey);
+      if(commitment) commitment.exitReason='no-progress';
+      enterTrackingState(predator,prey,commitment);
+    }
   }
   function clearPredictiveHuntPlan(o){
     if(!o) return;
@@ -5186,6 +5474,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const targetValid=!!(target && predationCandidateClassification(o,target,'target').valid);
     const ambushStats=telemetryRecentAmbushHoldStats(o,120);
     const predictiveDeath=telemetryRecordPredictiveHuntDeath(o,target);
+    telemetryRecordChaseCommitmentDeath(o,causeKey);
+    clearChaseCommitment(o,causeKey==='starvation' ? 'starvation-death' : (causeKey==='predation' ? 'predation-death' : 'death'));
     const birth=telemetry.births.get(o.id);
     const includeJuvenileDeathFields=juvenileDevelopmentEnabled();
     const deathDevelopmentProgress=includeJuvenileDeathFields ? juvenileDevelopmentProgress(o) : null;
@@ -8188,10 +8478,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function selectedPredictiveHuntLines(o){
     if(!devMode || !predictiveHuntingReserveEnabled() || !o) return [];
     const plan=o._predictiveHuntPlan || null;
+    const target=o.preyTargetId==null ? null : organismById(o.preyTargetId);
+    const targetDistance=target ? Math.hypot(target.x-o.x,target.y-o.y) : null;
+    const commitmentPlan=target ? predictiveChaseCommitmentPlan(o,target,plan) : null;
     const fmt=(v,d=2)=>Number.isFinite(Number(v)) ? Number(v).toFixed(d) : 'n/a';
     return [
       `Hunt intent: base ${fmt(o._basePredationIntent)} / search ${fmt(o._huntSearchIntent)} / chase ${fmt(o._chaseIntent)} / attack ${fmt(o._attackIntent)}`,
-      `Hunt plan: ${o._predictiveHuntState || 'unplanned'} / req ${fmt(plan?.requiredEnergy,1)} / start ${fmt(plan?.startEnergy,1)} / margin ${fmt(plan?.energyMargin,1)} / steps ${fmt(plan?.estimatedSteps,1)}`
+      `Hunt plan: ${o._predictiveHuntState || 'unplanned'} / req ${fmt(plan?.requiredEnergy,1)} / start ${fmt(plan?.startEnergy,1)} / margin ${fmt(plan?.energyMargin,1)} / steps ${fmt(plan?.estimatedSteps,1)}`,
+      `Commit: ${o._chaseCommitmentState || 'idle'} / ${o._chaseCommitmentReason || '-'} / need ${fmt(commitmentPlan?.energyNeedPressure)} / pred ${fmt(commitmentPlan?.predictivePressure)} / d ${fmt(targetDistance,1)}`
     ];
   }
   function selectedCardLines(o){
@@ -8297,6 +8591,13 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       chaseIntent:o._chaseIntent ?? null,
       attackIntent:o._attackIntent ?? null,
       predictiveHuntState:o._predictiveHuntState ?? 'unplanned',
+      chaseCommitmentState:o._chaseCommitmentState ?? 'idle',
+      chaseCommitmentReason:o._chaseCommitmentReason ?? null,
+      chaseCommitmentSteps:o._chaseCommitmentSteps ?? 0,
+      chaseCommittedTargetId:o._chaseCommittedTargetId ?? null,
+      huntEnergyNeedPressure:huntEnergyNeedPressure(o),
+      predictiveCommitmentPressure:target ? predictiveChaseCommitmentPressure(o,target,o._predictiveHuntPlan || null) : null,
+      targetDistance:target ? Math.hypot(target.x-o.x,target.y-o.y) : null,
       predictedRequiredEnergy:o._predictiveHuntPlan?.requiredEnergy ?? null,
       predictedStartEnergy:o._predictiveHuntPlan?.startEnergy ?? null,
       predictedEnergyMargin:o._predictiveHuntPlan?.energyMargin ?? null,
@@ -8371,6 +8672,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this.id=NEXT_ID++; this.x=x; this.y=y; this.vx=0; this.vy=0; this.energy=100; this.storeN=0; this.storeO=0.75; this.storeD=0; this.mem=1.0; this.age=0; this.fitness=0; this.moveCostSum=0; this.trail=[]; this.phase=Math.random()*TAU; this.attackCD=0; this.fleeTimer=0; this.protect=90; this.mutagenBoost=0; this.burstTimer=0; this.role='other';
       this.preyTargetId=null; this.preyTargetOutOfRangeSteps=0; this.chaseTimer=0; this.nextPreyScan=Math.floor(rnd(0,12)); this.predatorThreatId=null; this.recentEvents=[]; this.lastAction='誕生'; this.lastActionFrame=frame; this.deathCause=null;
       this._predictiveHuntPlan=null; this._predictiveHuntTargetId=null; this._basePredationIntent=0; this._huntPlanningPressure=0; this._huntSearchIntent=0; this._chaseIntent=0; this._attackIntent=0; this._predictiveHuntState='unplanned'; this._predictiveHuntIntent=null; this._predictiveHuntIntentBoost=0;
+      this._chaseCommitmentState='idle'; this._chaseCommittedTargetId=null; this._chaseCommitmentEnteredFrame=null; this._chaseCommitmentSteps=0; this._chaseCommitmentReason=null; this._chaseCommitmentPlanSnapshot=null; this._chaseCommitmentBestDistance=null; this._chaseCommitmentNoProgressSteps=0;
       this.packConsensusTargetId=null; this.packConsensusHoldT=0; this.packConsensusSwitchCD=0; this._packConsensusTargetHistory=[];
       this.birthFrame=frame;
       this.grazingTimer=0;
@@ -8662,6 +8964,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           if(this.preyTargetId!=null) telemetryEndChaseEpisode(this,'trackingStateEnded');
           this.preyTargetId=null;
           this.preyTargetOutOfRangeSteps=0;
+          clearChaseCommitment(this,'tracking-state-ended');
         }
         return;
       }
@@ -8671,6 +8974,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(!validPrey(prey)){
         if(prey) telemetryEndChaseEpisode(this,prey.dead?'preyDiedElsewhere':'targetInvalid',prey);
         else if(this.preyTargetId!=null) telemetryEndChaseEpisode(this,'targetLost');
+        clearChaseCommitment(this,prey?.dead ? 'target-dead' : 'target-invalid');
         prey=null; this.preyTargetId=null; this.preyTargetOutOfRangeSteps=0;
       }
       if(prey){
@@ -8684,6 +8988,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         if(stalePreyTargetReleaseFixEnabled && (this.preyTargetOutOfRangeSteps||0)>=PREDATION_TARGET_OUT_OF_RANGE_GRACE){
           telemetryEndChaseEpisode(this,'distanceExceeded',prey);
           telemetryRecordTargetDistanceRelease(this,prey);
+          clearChaseCommitment(this,'distance-exceeded');
           prey=null;
           this.preyTargetId=null;
           this.chaseTimer=0;
@@ -8747,6 +9052,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         if(muchCloser || clearlyBetter){
           telemetryEndChaseEpisode(this,'targetChanged',prey);
           telemetryRecordTargetReassessment(this,true);
+          clearChaseCommitment(this,'target-changed');
           prey=reassessmentBest;
           this.preyTargetId=reassessmentBest.id;
           this.preyTargetOutOfRangeSteps=0;
@@ -8768,19 +9074,30 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           });
         }
       }
-      if(!prey) return;
+      if(!prey){
+        clearChaseCommitment(this,'no-target');
+        return;
+      }
       const dx=prey.x-this.x, dy=prey.y-this.y;
       const d=Math.hypot(dx,dy)||1;
       const planning=applyPredictiveHuntPlanningForTarget(this,prey,basePredationIntent,d);
       const chaseIntent=basePredationIntent;
+      const commitment=updateChaseCommitment(this,prey,planning);
+      if(predictiveHuntingReserveEnabled() && this._chaseCommitmentState==='committed'){
+        updateChaseCommitmentProgress(this,prey,d);
+      }
+      const activeChase=!predictiveHuntingReserveEnabled()
+        || this._chaseCommitmentState==='committed';
+      telemetryRecordChaseCommitmentStep(this,prey,commitment,activeChase);
       telemetryRecordPredictiveIntentSample(this,{
         basePredationIntent,
         huntPlanningPressure:planning.huntPlanningPressure,
         searchIntent:planning.searchIntent,
         chaseIntent
       });
-      telemetryRecordPredationChaseStep(this,prey);
       telemetryPushPackContext('tracking',this,prey);
+      if(!activeChase) return;
+      telemetryRecordPredationChaseStep(this,prey);
       const ambush=isAmbusherPredator(this);
       const burstCfg=CONFIG.ecology.predatorBurst;
       const ambushHunger=ambush ? clamp(
@@ -9512,6 +9829,7 @@ if(Z>0.08){
       const contactPredictiveExtra=predictiveHuntTelemetryExtra(contactPredictivePlanning);
       telemetryRecordPredictiveHuntStage(this,'contact',contactPredictivePlan,contactPredictivePlanning);
       telemetryRecordPredictiveIntentSample(this,{attackIntent});
+      telemetryRecordChaseCommitmentContact(this,prey,contactDistance);
       const sizeInfo=getEffectivePredationSizeRatio(this,prey,'attack');
       const sizeSuccessMul=getPredationSizeSuccessMul(sizeInfo.effectiveSizeRatio);
       telemetryRecordPredationStage('contact',this,prey,{
@@ -9666,6 +9984,7 @@ if(Z>0.08){
           energyAfter:predationEnergyAfter,
           storeNAfter:predationStoreNAfter
         });
+        telemetryRecordChaseCommitmentSuccess(this,prey);
         telemetryRecordPredictiveHuntStage(this,'success',contactPredictivePlan,contactPredictivePlanning);
         telemetryRecordPredationStage('success',this,prey,{
           gain:Number(gain.toFixed(3)),
@@ -9698,6 +10017,7 @@ if(Z>0.08){
         this.chaseTimer=0;
         this.preyTargetId=null;
         this.preyTargetOutOfRangeSteps=0;
+        clearChaseCommitment(this,'predation-success');
         predEvents++;
         peaceCounter=0;
       }
@@ -17578,7 +17898,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   }
   function setPredictiveHuntingReserve(enabled){
     featureFlags.predictiveHuntingReserve = !!enabled;
-    for(const o of organisms) clearPredictiveHuntPlan(o);
+    for(const o of organisms){
+      clearPredictiveHuntPlan(o);
+      clearChaseCommitment(o,predictiveHuntingReserveEnabled() ? 'feature-toggle' : 'feature-off');
+    }
     return {
       enabled:predictiveHuntingReserveEnabled(),
       organisms:organisms.length
@@ -18003,6 +18326,194 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     summary.separation='planning-search-only';
     return summary;
   }
+  function chaseCommitmentMetricBlank(){
+    return {
+      targetOrganisms:0,
+      targetAcquisitions:0,
+      trackingEntries:0,
+      commitmentEntries:0,
+      contacts:0,
+      predationSuccesses:0,
+      predictiveCommitmentEntries:0,
+      energyNeedCommitmentEntries:0,
+      desperateCommitmentEntries:0,
+      averageEnergyAtTargetAcquisition:null,
+      averageEnergyAtCommitmentEntry:null,
+      averageEnergyAtContact:null,
+      averageEnergyBeforePredationSuccess:null,
+      averageStepsFromTargetAcquisitionToCommitment:null,
+      averageStepsFromCommitmentToContact:null,
+      averageStepsFromCommitmentToPredationSuccess:null,
+      commitmentStarvationDeaths:0,
+      commitmentPredationDeaths:0,
+      starvationBeforeFirstPredation:0,
+      matureStarvationBeforeFirstPredation:0,
+      noProgressReleases:0,
+      targetChangeReleases:0,
+      predationSuccessReleases:0,
+      carnivoreBirths:0,
+      matured:0,
+      firstPredation:0,
+      reproduced:0,
+      maxGenerationDepth:0,
+      endingPopulation:0,
+      _sums:{targetEnergy:0,commitmentEnergy:0,contactEnergy:0,successEnergy:0,targetToCommitment:0,commitmentToContact:0,commitmentToSuccess:0},
+      _samples:{targetEnergy:0,commitmentEnergy:0,contactEnergy:0,successEnergy:0,targetToCommitment:0,commitmentToContact:0,commitmentToSuccess:0}
+    };
+  }
+  function chaseCommitmentBlankByDiet(){
+    return Object.fromEntries(ROLE_SOCIAL_DIETS.map(k=>[k,chaseCommitmentMetricBlank()]));
+  }
+  function chaseCommitmentBlankByRole(){
+    return Object.fromEntries(ROLE_SOCIAL_ROLES.map(k=>[k,chaseCommitmentMetricBlank()]));
+  }
+  function chaseCommitmentBlankBySocialMode(){
+    return Object.fromEntries(ROLE_SOCIAL_MODES.map(k=>[k,chaseCommitmentMetricBlank()]));
+  }
+  function chaseCommitmentBlankRoleSocialFocus(){
+    return {
+      pursuit_hunt_pack:chaseCommitmentMetricBlank(),
+      pursuit_solitary:chaseCommitmentMetricBlank(),
+      ambusher:chaseCommitmentMetricBlank(),
+      scav:chaseCommitmentMetricBlank(),
+      filter:chaseCommitmentMetricBlank()
+    };
+  }
+  function chaseCommitmentTargets(summary,diet,role,socialMode){
+    const d=roleSocialDietName(diet);
+    const r=roleSocialRoleKey(role);
+    const s=roleSocialModeKey(socialMode);
+    const f=predictiveRoleSocialFocusKey(r,s);
+    const targets=[summary.totals,summary.byDiet[d],summary.byRole[r],summary.bySocialMode[s]].filter(Boolean);
+    if(f && summary.byRoleSocialFocus[f]) targets.push(summary.byRoleSocialFocus[f]);
+    return targets;
+  }
+  function chaseCommitmentAddNumber(metric,sumKey,sampleKey,value){
+    const n=Number(value);
+    if(!Number.isFinite(n)) return;
+    metric._sums[sumKey]+=n;
+    metric._samples[sampleKey]++;
+  }
+  function chaseCommitmentAddRecord(metric,rec){
+    if(!metric || !rec) return;
+    metric.targetOrganisms++;
+    metric.targetAcquisitions+=Number(rec.targetAcquiredOpportunistic||0)+Number(rec.targetAcquiredProactive||0)+Number(rec.targetAcquiredDesperate||0)+Number(rec.targetAcquiredUnplanned||0);
+    metric.trackingEntries+=Number(rec.trackingEntries||0);
+    metric.commitmentEntries+=Number(rec.commitmentEntries||0);
+    metric.contacts+=Number(rec.contactOpportunistic||0)+Number(rec.contactProactive||0)+Number(rec.contactDesperate||0)+Number(rec.contactUnplanned||0);
+    metric.predationSuccesses+=Number(rec.predationSuccessOpportunistic||0)+Number(rec.predationSuccessProactive||0)+Number(rec.predationSuccessDesperate||0)+Number(rec.predationSuccessUnplanned||0);
+    metric.predictiveCommitmentEntries+=Number(rec.predictiveCommitmentEntries||0);
+    metric.energyNeedCommitmentEntries+=Number(rec.energyNeedCommitmentEntries||0);
+    metric.desperateCommitmentEntries+=Number(rec.desperateCommitmentEntries||0);
+    metric.commitmentStarvationDeaths+=Number(rec.commitmentStarvationDeaths||0);
+    metric.commitmentPredationDeaths+=Number(rec.commitmentPredationDeaths||0);
+    metric.noProgressReleases+=Number(rec.commitmentNoProgressReleases||0);
+    metric.targetChangeReleases+=Number(rec.commitmentTargetChanges||0);
+    metric.predationSuccessReleases+=Number(rec.commitmentSuccesses||0);
+    chaseCommitmentAddNumber(metric,'targetEnergy','targetEnergy',rec.energyAtTargetAcquisition ?? rec.firstTargetEnergy);
+    if(Number(rec.commitmentEntries||0)>0){
+      metric._sums.commitmentEnergy+=Number(rec.energyAtCommitmentEntrySum||0);
+      metric._samples.commitmentEnergy+=Number(rec.commitmentEntries||0);
+    }
+    chaseCommitmentAddNumber(metric,'contactEnergy','contactEnergy',rec.energyAtContact ?? rec.firstContactEnergy);
+    chaseCommitmentAddNumber(metric,'successEnergy','successEnergy',rec.firstSuccessEnergyBefore);
+    const tcSamples=Number(rec.stepsFromTargetAcquisitionToCommitmentSamples||0);
+    if(tcSamples>0){
+      metric._sums.targetToCommitment+=Number(rec.stepsFromTargetAcquisitionToCommitmentSum||0);
+      metric._samples.targetToCommitment+=tcSamples;
+    }
+    const ccSamples=Number(rec.stepsFromCommitmentToContactSamples||0);
+    if(ccSamples>0){
+      metric._sums.commitmentToContact+=Number(rec.stepsFromCommitmentToContactSum||0);
+      metric._samples.commitmentToContact+=ccSamples;
+    }
+    const csSamples=Number(rec.stepsFromCommitmentToPredationSuccessSamples||0);
+    if(csSamples>0){
+      metric._sums.commitmentToSuccess+=Number(rec.stepsFromCommitmentToPredationSuccessSum||0);
+      metric._samples.commitmentToSuccess+=csSamples;
+    }
+    if(rec.deathCause==='starvation' && !rec.succeededPredation){
+      metric.starvationBeforeFirstPredation++;
+      const mature=Number(rec.deathAge ?? 0)>=Number(rec.maturityAge ?? 0);
+      if(mature) metric.matureStarvationBeforeFirstPredation++;
+    }
+    metric.maxGenerationDepth=Math.max(metric.maxGenerationDepth,Number(rec.generationDepth||0));
+  }
+  function chaseCommitmentAddBirth(metric,birth){
+    if(!metric || !birth) return;
+    const diet=roleSocialDietName(birth.birthExactDiet ?? birth.diet);
+    if(diet!=='carnivore') return;
+    metric.carnivoreBirths++;
+    if(birth.reachedMaturity) metric.matured++;
+    if(birth.firstPredationFrame!=null) metric.firstPredation++;
+    if(birth.reproducedFrame!=null) metric.reproduced++;
+    metric.maxGenerationDepth=Math.max(metric.maxGenerationDepth,Number(birth.generationDepth||0));
+  }
+  function chaseCommitmentAddLiving(metric,o){
+    if(!metric || !o || o.dead) return;
+    metric.endingPopulation++;
+    metric.maxGenerationDepth=Math.max(metric.maxGenerationDepth,telemetryLineageDepth(o,telemetry.births.get(o?.id) || null));
+  }
+  function chaseCommitmentFinalizeMetric(metric){
+    const s=metric._samples;
+    metric.averageEnergyAtTargetAcquisition=s.targetEnergy ? metric._sums.targetEnergy/s.targetEnergy : null;
+    metric.averageEnergyAtCommitmentEntry=s.commitmentEnergy ? metric._sums.commitmentEnergy/s.commitmentEnergy : null;
+    metric.averageEnergyAtContact=s.contactEnergy ? metric._sums.contactEnergy/s.contactEnergy : null;
+    metric.averageEnergyBeforePredationSuccess=s.successEnergy ? metric._sums.successEnergy/s.successEnergy : null;
+    metric.averageStepsFromTargetAcquisitionToCommitment=s.targetToCommitment ? metric._sums.targetToCommitment/s.targetToCommitment : null;
+    metric.averageStepsFromCommitmentToContact=s.commitmentToContact ? metric._sums.commitmentToContact/s.commitmentToContact : null;
+    metric.averageStepsFromCommitmentToPredationSuccess=s.commitmentToSuccess ? metric._sums.commitmentToSuccess/s.commitmentToSuccess : null;
+    delete metric._sums;
+    delete metric._samples;
+    return metric;
+  }
+  function chaseCommitmentFinalizeTree(node){
+    if(!node || typeof node!=='object') return;
+    if(Object.prototype.hasOwnProperty.call(node,'_sums')){
+      chaseCommitmentFinalizeMetric(node);
+      return;
+    }
+    for(const value of Object.values(node)) chaseCommitmentFinalizeTree(value);
+  }
+  function chaseCommitmentSummary(){
+    telemetryMarkNewbornSurvival();
+    telemetryMarkCarnivoreMilestones();
+    const summary={
+      frame,
+      enabled:predictiveHuntingReserveEnabled(),
+      config:CONFIG.ecology.predictiveHunting.chaseCommitment,
+      totals:chaseCommitmentMetricBlank(),
+      byDiet:chaseCommitmentBlankByDiet(),
+      byRole:chaseCommitmentBlankByRole(),
+      bySocialMode:chaseCommitmentBlankBySocialMode(),
+      byRoleSocialFocus:chaseCommitmentBlankRoleSocialFocus()
+    };
+    const seen=new Set();
+    for(const rec of telemetry.predationIndividuals.values()){
+      seen.add(rec.id);
+      for(const metric of chaseCommitmentTargets(summary,rec.currentExactDiet ?? rec.birthExactDiet,rec.currentRole ?? rec.role,rec.currentSocialMode ?? rec.birthSocialMode)){
+        chaseCommitmentAddRecord(metric,rec);
+      }
+    }
+    for(const birth of telemetry.births.values()){
+      for(const metric of chaseCommitmentTargets(summary,birth.birthExactDiet ?? birth.diet,birth.birthRole,birth.birthSocialMode)){
+        chaseCommitmentAddBirth(metric,birth);
+      }
+    }
+    for(const o of organisms){
+      if(!o || o.dead) continue;
+      if(!seen.has(o.id) && telemetryDiet(o)==='c'){
+        for(const metric of chaseCommitmentTargets(summary,o?.genes?.diet,o?.role,o?.socialMode)){
+          chaseCommitmentAddRecord(metric,telemetryPredationIndividualRecord(o));
+        }
+      }
+      for(const metric of chaseCommitmentTargets(summary,o?.genes?.diet,o?.role,o?.socialMode)){
+        chaseCommitmentAddLiving(metric,o);
+      }
+    }
+    chaseCommitmentFinalizeTree(summary);
+    return summary;
+  }
   function stableJson(value){
     const seen=new Set();
     const sortValue=(v)=>{
@@ -18017,7 +18528,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     return JSON.stringify(sortValue(value));
   }
   function lifeHistoryReproducibilitySnapshot(){
-    return {
+    const snapshot={
       counts:{organisms:organisms.length,food:food.length,corpses:corpses.length,plankton:plankton.length},
       lifeHistory:lifeHistorySummary(),
       juvenile:juvenileDevelopmentEnabled() ? juvenileDevelopmentSummary() : null,
@@ -18028,6 +18539,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         nutrientCreationEvents:telemetry.packHuntConservation.nutrientCreationEvents
       }
     };
+    if(predictiveHuntingReserveEnabled()) snapshot.chaseCommitment=chaseCommitmentSummary();
+    return snapshot;
   }
   function runLifeHistoryReproducibilityMicroTest(options={}){
     const saved=capture();
@@ -18283,6 +18796,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       counts:{organisms:organisms.length,food:food.length,corpses:corpses.length,plankton:plankton.length},
       predictive,
       separation:predictiveHuntingSeparationSummary(predictive),
+      chaseCommitment:chaseCommitmentSummary(),
       safety:{
         nanOrInfinity:diagnosticNumberHealth().badCount,
         energyCreationEvents:telemetry.packHuntConservation.energyCreationEvents,
@@ -18531,6 +19045,244 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     }
     return {ok:results.every(r=>r.ok),results};
   }
+  function runChaseCommitmentReproducibilityMicroTest(options={}){
+    const saved=capture();
+    const oldLife=evolvableLifeHistoryEnabled();
+    const oldJuvenile=juvenileDevelopmentEnabled();
+    const oldPredictive=predictiveHuntingReserveEnabled();
+    const seed=Number(options.seed ?? 41001);
+    const steps=Math.max(1,Math.min(2000,Number(options.steps ?? 120)));
+    const life=options.evolvableLifeHistory==null ? true : !!options.evolvableLifeHistory;
+    const juvenile=options.juvenileDevelopment==null ? true : !!options.juvenileDevelopment;
+    const predictive=options.predictiveHuntingReserve==null ? true : !!options.predictiveHuntingReserve;
+    try{
+      featureFlags.evolvableLifeHistory=life;
+      featureFlags.juvenileDevelopment=juvenile;
+      featureFlags.predictiveHuntingReserve=predictive;
+      runSeededWorldDiagnostic({seed,steps,restoreAfterRun:false,targetConsensus:false,shareFraction:0,packAttackBase:0.78,variant:'commitmentReproA'});
+      const first={counts:{organisms:organisms.length,food:food.length,corpses:corpses.length,plankton:plankton.length},summary:chaseCommitmentSummary()};
+      const firstJson=stableJson(first);
+      runSeededWorldDiagnostic({seed,steps,restoreAfterRun:false,targetConsensus:false,shareFraction:0,packAttackBase:0.78,variant:'commitmentReproB'});
+      const second={counts:{organisms:organisms.length,food:food.length,corpses:corpses.length,plankton:plankton.length},summary:chaseCommitmentSummary()};
+      const secondJson=stableJson(second);
+      return {ok:firstJson===secondJson,seed,steps,evolvableLifeHistory:life,juvenileDevelopment:juvenile,predictiveHuntingReserve:predictive,first,second};
+    } finally {
+      featureFlags.evolvableLifeHistory=oldLife;
+      featureFlags.juvenileDevelopment=oldJuvenile;
+      featureFlags.predictiveHuntingReserve=oldPredictive;
+      restore(saved);
+    }
+  }
+  function runChaseCommitmentMicroTests(){
+    const saved=capture();
+    const oldLife=evolvableLifeHistoryEnabled();
+    const oldJuvenile=juvenileDevelopmentEnabled();
+    const oldPredictive=predictiveHuntingReserveEnabled();
+    const oldRandom=Math.random;
+    const results=[];
+    const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
+    const clear=()=>{
+      running=false;
+      frame=0;
+      generation=1;
+      organisms.length=0; newborn.length=0; food.length=0; corpses.length=0; plankton.length=0; patches.length=0; calls.length=0;
+      sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0;
+      speciesCount.clear();
+      resetTelemetry();
+    };
+    const predatorGenes=()=>normalizeLifeHistoryGenes({speed:0.86,size:0.72,metabolism:0.52,fecundity:0.55,sense:0.74,diet:0.92,formSeed:0.34,energyCapacity:1,clutchPotential:0.45,parentalInvestment:0.5},true);
+    const preyGenes=()=>normalizeLifeHistoryGenes({speed:0.36,size:0.25,metabolism:0.45,fecundity:0.45,sense:0.35,diet:0.20,formSeed:0.61,energyCapacity:0.25,clutchPotential:0.35,parentalInvestment:0.5},true);
+    const makeOrg=(genes,x,y,energy=100)=>{
+      const o=new Organism(x,y,genes,false);
+      o.energy=energy;
+      o.protect=0;
+      o.age=999;
+      o.recalcPhenotype();
+      applyDevelopmentPhenotype(o);
+      return o;
+    };
+    const forceFor=(carn,intent,packBonus)=> (0.070 + 0.105*carn + 0.065*intent)*packBonus;
+    try{
+      featureFlags.evolvableLifeHistory=true;
+      featureFlags.juvenileDevelopment=true;
+      featureFlags.predictiveHuntingReserve=true;
+      clear();
+      const pred=makeOrg(predatorGenes(),100,100,180);
+      const prey=makeOrg(preyGenes(),150,100,70);
+      const prey2=makeOrg(preyGenes(),135,100,70);
+      pred.speciesKey='micro-predator';
+      prey.speciesKey='micro-prey-a';
+      prey2.speciesKey='micro-prey-b';
+      pred.protect=0;
+      prey.protect=0;
+      prey2.protect=0;
+      pred.maxEnergy=1000;
+      organisms.push(pred,prey,prey2);
+      resetTelemetry();
+
+      featureFlags.predictiveHuntingReserve=false;
+      pred.preyTargetId=prey.id;
+      pred.nextPreyScan=Number.MAX_SAFE_INTEGER;
+      pred.vx=0; pred.vy=0;
+      let randomCalls=0;
+      Math.random=()=>{ randomCalls++; return 0.33; };
+      const offBefore={vx:pred.vx,vy:pred.vy,state:pred._chaseCommitmentState};
+      pred.updatePredationIntent();
+      Math.random=oldRandom;
+      add('Micro A feature OFF compatibility',
+        randomCalls===0
+          && pred._chaseCommitmentState===offBefore.state
+          && (pred.vx!==offBefore.vx || pred.vy!==offBefore.vy),
+        {randomCalls,offBefore,after:{vx:pred.vx,vy:pred.vy,state:pred._chaseCommitmentState}}
+      );
+
+      featureFlags.predictiveHuntingReserve=true;
+      clearChaseCommitment(pred,'test-reset');
+      pred.energy=1000;
+      pred.vx=0; pred.vy=0;
+      pred.preyTargetId=prey.id;
+      pred.nextPreyScan=Number.MAX_SAFE_INTEGER;
+      pred.updatePredationIntent();
+      add('Micro B tracking keeps target without chase force',
+        pred._chaseCommitmentState==='tracking'
+          && pred.preyTargetId===prey.id
+          && Math.abs(pred.vx)<1e-12
+          && Math.abs(pred.vy)<1e-12,
+        {state:pred._chaseCommitmentState,target:pred.preyTargetId,vx:pred.vx,vy:pred.vy}
+      );
+
+      clearChaseCommitment(pred,'test-reset');
+      pred.reproThreshold=20;
+      const predictiveRef=predictiveHuntPlan(pred,prey,60);
+      pred.energy=(predictiveRef.requiredEnergy+predictiveRef.startEnergy)/2;
+      const predictiveCommit=updateChaseCommitment(pred,prey,{plan:predictiveHuntPlan(pred,prey,60)});
+      add('Micro C predictive commitment',
+        pred._chaseCommitmentState==='committed'
+          && pred._chaseCommitmentReason==='predictive'
+          && predictiveCommit.predictivePressure>=CONFIG.ecology.predictiveHunting.chaseCommitment.proactiveEnterPressure,
+        {state:pred._chaseCommitmentState,reason:pred._chaseCommitmentReason,predictiveCommit}
+      );
+
+      clearChaseCommitment(pred,'test-reset');
+      pred.reproThreshold=500;
+      pred.energy=130;
+      const energyNeedCommit=updateChaseCommitment(pred,prey,{plan:predictiveHuntPlan(pred,prey,12)});
+      add('Micro D energy-need commitment',
+        pred._chaseCommitmentState==='committed'
+          && pred._chaseCommitmentReason==='energy-need'
+          && energyNeedCommit.energyNeedPressure>=CONFIG.ecology.predictiveHunting.chaseCommitment.baseNeedEnter,
+        {state:pred._chaseCommitmentState,reason:pred._chaseCommitmentReason,energyNeedCommit}
+      );
+
+      clearChaseCommitment(pred,'test-reset');
+      pred.reproThreshold=1;
+      pred.energy=5;
+      const desperateCommit=updateChaseCommitment(pred,prey,{plan:predictiveHuntPlan(pred,prey,90)});
+      add('Micro E desperate commitment',
+        pred._chaseCommitmentState==='committed'
+          && pred._chaseCommitmentReason==='desperate'
+          && desperateCommit.plan.affordable===false,
+        {state:pred._chaseCommitmentState,reason:pred._chaseCommitmentReason,desperateCommit}
+      );
+
+      const carn=0.92, chaseIntent=0.17, packBonus=1.18;
+      const baseForce=forceFor(carn,chaseIntent,packBonus);
+      const highPressureForce=forceFor(carn,chaseIntent,packBonus);
+      add('Micro F committed chase force unchanged',
+        Math.abs(baseForce-highPressureForce)<1e-12,
+        {baseForce,highPressureForce}
+      );
+
+      clearChaseCommitment(pred,'test-reset');
+      pred.energy=1000;
+      pred.reproThreshold=20;
+      pred.vx=0; pred.vy=0;
+      pred.preyTargetId=prey.id;
+      pred.nextPreyScan=Number.MAX_SAFE_INTEGER;
+      pred.updatePredationIntent();
+      add('Micro G tracking has no target acceleration',
+        pred._chaseCommitmentState==='tracking'
+          && Math.abs(pred.vx)<1e-12
+          && Math.abs(pred.vy)<1e-12,
+        {state:pred._chaseCommitmentState,vx:pred.vx,vy:pred.vy}
+      );
+
+      const attackDeficit=Math.max(0,pred.reproThreshold*1.04-pred.energy);
+      const attackA=dietIntent(pred.genes.diet,attackDeficit);
+      pred._chaseCommitmentReason='predictive';
+      const attackB=dietIntent(pred.genes.diet,attackDeficit);
+      pred._chaseCommitmentReason='energy-need';
+      const attackC=dietIntent(pred.genes.diet,attackDeficit);
+      add('Micro H attack unchanged by commitment reason',
+        attackA===attackB && attackB===attackC,
+        {attackA,attackB,attackC}
+      );
+
+      clearChaseCommitment(pred,'test-reset');
+      pred.reproThreshold=20;
+      pred.energy=(predictiveRef.requiredEnergy+predictiveRef.startEnergy)/2;
+      updateChaseCommitment(pred,prey,{plan:predictiveHuntPlan(pred,prey,60)});
+      const entryFrame=frame;
+      pred.energy=1000;
+      const beforeMin=predictiveChaseCommitmentPlan(pred,prey,predictiveHuntPlan(pred,prey,60));
+      add('Micro I minimum commitment holds',
+        pred._chaseCommitmentState==='committed'
+          && beforeMin.shouldCommit===true
+          && frame-entryFrame<CONFIG.ecology.predictiveHunting.chaseCommitment.minimumCommitSteps,
+        {beforeMin,entryFrame,frame}
+      );
+
+      pred._chaseCommitmentEnteredFrame=frame-CONFIG.ecology.predictiveHunting.chaseCommitment.minimumCommitSteps-1;
+      const hysteresis=predictiveChaseCommitmentPlan(pred,prey,predictiveHuntPlan(pred,prey,60));
+      add('Micro J hysteresis exits only after recovery and resolved need',
+        hysteresis.shouldCommit===false
+          && hysteresis.energyRecovered===true
+          && hysteresis.baseNeedResolved===true,
+        {hysteresis}
+      );
+
+      clearChaseCommitment(pred,'test-reset');
+      pred.reproThreshold=20;
+      pred.energy=(predictiveRef.requiredEnergy+predictiveRef.startEnergy)/2;
+      updateChaseCommitment(pred,prey,{plan:predictiveHuntPlan(pred,prey,60)});
+      updateChaseCommitment(pred,prey2,{plan:predictiveHuntPlan(pred,prey2,35)});
+      const rec=telemetry.predationIndividuals.get(pred.id);
+      add('Micro K target change resets old commitment',
+        pred._chaseCommittedTargetId===prey2.id
+          && Number(rec?.commitmentTargetChanges||0)>=1,
+        {targetId:pred._chaseCommittedTargetId,expected:prey2.id,commitmentTargetChanges:rec?.commitmentTargetChanges}
+      );
+
+      randomCalls=0;
+      Math.random=()=>{ randomCalls++; return 0.72; };
+      const planA=predictiveChaseCommitmentPlan(pred,prey,predictiveHuntPlan(pred,prey,45));
+      const planB=predictiveChaseCommitmentPlan(pred,prey,predictiveHuntPlan(pred,prey,45));
+      const summaryA=chaseCommitmentSummary();
+      const summaryB=chaseCommitmentSummary();
+      Math.random=oldRandom;
+      add('Micro L deterministic commitment and summary',
+        stableJson(planA)===stableJson(planB)
+          && stableJson(summaryA)===stableJson(summaryB)
+          && randomCalls===0,
+        {randomCalls,planA,planB}
+      );
+
+      const smoke=runSeededWorldDiagnostic({seed:41001,steps:120,restoreAfterRun:false,targetConsensus:false,shareFraction:0,packAttackBase:0.78,variant:'commitmentMicroConservation'});
+      add('Micro M chase commitment conservation',
+        smoke?.conservation?.energyCreationEvents===0
+          && smoke?.conservation?.nutrientCreationEvents===0
+          && smoke?.health?.badCount===0,
+        {conservation:smoke?.conservation,health:smoke?.health}
+      );
+    } finally {
+      Math.random=oldRandom;
+      featureFlags.evolvableLifeHistory=oldLife;
+      featureFlags.juvenileDevelopment=oldJuvenile;
+      featureFlags.predictiveHuntingReserve=oldPredictive;
+      restore(saved);
+    }
+    return {ok:results.every(r=>r.ok),results};
+  }
 
   window.__alifeDebug = {
     counts(){
@@ -18641,6 +19393,18 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     predictiveHuntingSeparationSummary(){
       return predictiveHuntingSeparationSummary();
     },
+    huntEnergyNeedPressure(organism){
+      return huntEnergyNeedPressure(organism);
+    },
+    predictiveChaseCommitmentPressure(predator,prey,plan=null){
+      return predictiveChaseCommitmentPressure(predator,prey,plan);
+    },
+    predictiveChaseCommitmentPlan(predator,prey,basePlan=null){
+      return predictiveChaseCommitmentPlan(predator,prey,basePlan);
+    },
+    chaseCommitmentSummary(){
+      return chaseCommitmentSummary();
+    },
     lifeHistoryStrategyForGenes(genes){
       return lifeHistoryStrategyForGenes(geneSet(genes || {}));
     },
@@ -18664,6 +19428,12 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     runPredictiveHuntingReproducibilityMicroTest(options={}){
       return runPredictiveHuntingReproducibilityMicroTest(options);
+    },
+    runChaseCommitmentMicroTests(){
+      return runChaseCommitmentMicroTests();
+    },
+    runChaseCommitmentReproducibilityMicroTest(options={}){
+      return runChaseCommitmentReproducibilityMicroTest(options);
     },
     roleSocialEcologySummary(){
       return roleSocialEcologySummary();
@@ -19074,6 +19844,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         u.lastAction = o.lastAction || u.lastAction || 'ロードされた';
         u.recalcPhenotype();
         applyDevelopmentPhenotype(u);
+        clearChaseCommitment(u,'load');
         u.energy=clamp(Number(u.energy||0),0,organismMaxEnergy(u));
         recordRareTraitDiscovery(u);
         registerSpeciesStats(u);
