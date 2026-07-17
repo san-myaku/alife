@@ -2741,6 +2741,23 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       rec.predictedRequiredEnergySum=0;
       rec.predictedStartEnergySum=0;
       rec.predictedEnergyMarginSum=0;
+      rec.basePredationIntentSamples=0;
+      rec.basePredationIntentSum=0;
+      rec.huntPlanningPressureSamples=0;
+      rec.huntPlanningPressureSum=0;
+      rec.searchIntentSamples=0;
+      rec.searchIntentSum=0;
+      rec.chaseIntentSamples=0;
+      rec.chaseIntentSum=0;
+      rec.attackIntentSamples=0;
+      rec.attackIntentSum=0;
+      rec.searchIntentAboveBaseSteps=0;
+      rec.searchIntentAboveChaseSteps=0;
+      rec.planningAssistedTargetAcquisitions=0;
+      rec.planningAssistedContacts=0;
+      rec.planningAssistedPredationSuccesses=0;
+      rec.planningAssistedFirstPredationSuccesses=0;
+      rec.planningAssistedStarvationDeaths=0;
       rec.energyAtTargetAcquisition=null;
       rec.predictedRequiredEnergyAtAcquisition=null;
       rec.predictedStartEnergyAtAcquisition=null;
@@ -2748,7 +2765,19 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       rec.predictedChaseStepsAtAcquisition=null;
       rec.predictedChaseCostAtAcquisition=null;
       rec.predictiveHuntStateAtAcquisition=null;
+      rec.basePredationIntentAtTargetAcquisition=null;
+      rec.huntPlanningPressureAtTargetAcquisition=null;
+      rec.searchIntentAtTargetAcquisition=null;
+      rec.chaseIntentAtTargetAcquisition=null;
+      rec.planningExecutionDifferenceAtAcquisition=null;
+      rec.predictivePlanningChangedSearchDecision=false;
       rec.energyAtContact=null;
+      rec.basePredationIntentAtContact=null;
+      rec.huntPlanningPressureAtContact=null;
+      rec.chaseIntentAtContact=null;
+      rec.planningExecutionDifferenceAtContact=null;
+      rec.attackIntentAtPredationAttempt=null;
+      rec.attackIntentAtPredationSuccess=null;
       rec.grossEnergyDeltaSinceAcquisition=null;
       rec.predictionErrorGrossEnergyDelta=null;
       rec.predictiveHuntStateAtDeath=null;
@@ -2782,12 +2811,58 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const stepKey=`${state}ChaseSteps`;
     if(rec[stepKey]!=null) rec[stepKey]++;
   }
-  function telemetryRecordPredictiveHuntStage(o,stage,plan){
+  function telemetryRecordPredictiveIntentSample(o,data={}){
+    if(!predictiveHuntingReserveEnabled() || !o) return;
+    const rec=telemetryEnsurePredictiveHuntRecord(telemetryPredationIndividualRecord(o));
+    if(!rec) return;
+    const add=(prefix,value)=>{
+      const n=Number(value);
+      if(!Number.isFinite(n)) return;
+      if(rec[`${prefix}Samples`]==null) rec[`${prefix}Samples`]=0;
+      if(rec[`${prefix}Sum`]==null) rec[`${prefix}Sum`]=0;
+      rec[`${prefix}Samples`]++;
+      rec[`${prefix}Sum`]+=n;
+    };
+    add('basePredationIntent',data.basePredationIntent);
+    add('huntPlanningPressure',data.huntPlanningPressure);
+    add('searchIntent',data.searchIntent);
+    add('chaseIntent',data.chaseIntent);
+    add('attackIntent',data.attackIntent);
+    const search=Number(data.searchIntent);
+    const base=Number(data.basePredationIntent);
+    const chase=Number(data.chaseIntent);
+    if(Number.isFinite(search) && Number.isFinite(base) && search>base+1e-9) rec.searchIntentAboveBaseSteps++;
+    if(Number.isFinite(search) && Number.isFinite(chase) && search>chase+1e-9) rec.searchIntentAboveChaseSteps++;
+  }
+  function predictivePlanningSnapshot(o,planning=null,plan=null){
+    const p=planning || {};
+    const base=Number.isFinite(Number(p.basePredationIntent)) ? Number(p.basePredationIntent) : Number(o?._basePredationIntent ?? 0);
+    const pressure=Number.isFinite(Number(p.huntPlanningPressure)) ? Number(p.huntPlanningPressure) : Number(o?._huntPlanningPressure ?? 0);
+    const search=Number.isFinite(Number(p.searchIntent)) ? Number(p.searchIntent) : Number(o?._huntSearchIntent ?? base);
+    const chase=Number.isFinite(Number(p.chaseIntent)) ? Number(p.chaseIntent) : Number(o?._chaseIntent ?? base);
+    const attack=Number.isFinite(Number(p.attackIntent)) ? Number(p.attackIntent) : Number(o?._attackIntent ?? 0);
+    const predictivePlan=plan || p.plan || o?._predictiveHuntPlan || null;
+    return {
+      basePredationIntent:base,
+      huntPlanningPressure:pressure,
+      searchIntent:search,
+      chaseIntent:chase,
+      attackIntent:attack,
+      plan:predictivePlan,
+      state:p.state || predictiveHuntState(predictivePlan)
+    };
+  }
+  function predictivePlanningAssisted(snapshot){
+    return Number(snapshot?.searchIntent) > Number(snapshot?.basePredationIntent) + 1e-9;
+  }
+  function telemetryRecordPredictiveHuntStage(o,stage,plan,planning=null){
     if(!predictiveHuntingReserveEnabled() || !plan) return;
     const rec=telemetryEnsurePredictiveHuntRecord(telemetryPredationIndividualRecord(o));
     if(!rec) return;
     const state=predictiveHuntState(plan);
     const suffix=predictiveStateSuffix(state);
+    const snap=predictivePlanningSnapshot(o,planning,plan);
+    const assisted=predictivePlanningAssisted(snap);
     if(stage==='targetAcquired'){
       const key=`targetAcquired${suffix}`;
       if(rec[key]!=null) rec[key]++;
@@ -2798,10 +2873,22 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       rec.predictedChaseStepsAtAcquisition=Number(plan.estimatedSteps || 0);
       rec.predictedChaseCostAtAcquisition=Number(plan.chaseCost || 0);
       rec.predictiveHuntStateAtAcquisition=state;
+      rec.basePredationIntentAtTargetAcquisition=snap.basePredationIntent;
+      rec.huntPlanningPressureAtTargetAcquisition=snap.huntPlanningPressure;
+      rec.searchIntentAtTargetAcquisition=snap.searchIntent;
+      rec.chaseIntentAtTargetAcquisition=snap.chaseIntent;
+      rec.planningExecutionDifferenceAtAcquisition=snap.searchIntent-snap.chaseIntent;
+      rec.predictivePlanningChangedSearchDecision=assisted;
+      if(assisted) rec.planningAssistedTargetAcquisitions++;
     } else if(stage==='contact'){
       const key=`contact${suffix}`;
       if(rec[key]!=null) rec[key]++;
       rec.energyAtContact=Number(o?.energy || 0);
+      rec.basePredationIntentAtContact=snap.basePredationIntent;
+      rec.huntPlanningPressureAtContact=snap.huntPlanningPressure;
+      rec.chaseIntentAtContact=snap.chaseIntent;
+      rec.planningExecutionDifferenceAtContact=snap.searchIntent-snap.chaseIntent;
+      if(assisted) rec.planningAssistedContacts++;
       if(Number.isFinite(Number(rec.energyAtTargetAcquisition))){
         rec.grossEnergyDeltaSinceAcquisition=Number(rec.energyAtTargetAcquisition)-rec.energyAtContact;
         if(Number.isFinite(Number(rec.predictedChaseCostAtAcquisition))){
@@ -2810,8 +2897,21 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       }
     } else if(stage==='success'){
       const key=`predationSuccess${suffix}`;
+      const firstSuccess=!rec.succeededPredation;
       if(rec[key]!=null) rec[key]++;
+      rec.attackIntentAtPredationSuccess=snap.attackIntent;
+      if(assisted){
+        rec.planningAssistedPredationSuccesses++;
+        if(firstSuccess) rec.planningAssistedFirstPredationSuccesses++;
+      }
     }
+  }
+  function telemetryRecordPredictiveAttackAttempt(o,plan=null,planning=null){
+    if(!predictiveHuntingReserveEnabled() || !o) return;
+    const rec=telemetryEnsurePredictiveHuntRecord(telemetryPredationIndividualRecord(o));
+    if(!rec) return;
+    const snap=predictivePlanningSnapshot(o,planning,plan);
+    rec.attackIntentAtPredationAttempt=snap.attackIntent;
   }
   function telemetryRecordPredictiveHuntDeath(o,target=null){
     if(!predictiveHuntingReserveEnabled() || !o) return null;
@@ -2825,6 +2925,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       rec.predictedRequiredEnergyAtDeath=Number(plan.requiredEnergy || 0);
       rec.predictedEnergyMarginAtDeath=Number(plan.energyMargin || 0);
       rec.targetDistanceAtDeath=distance;
+      if(telemetryDeathCauseKey(o.deathCause)==='starvation'
+        && (Number(rec.planningAssistedTargetAcquisitions||0)>0 || Number(rec.planningAssistedContacts||0)>0)){
+        rec.planningAssistedStarvationDeaths++;
+      }
     }
     return plan ? {
       predictiveHuntStateAtDeath:predictiveHuntState(plan),
@@ -3024,29 +3128,64 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(plan.affordable) return 'proactive';
     return 'desperate';
   }
-  function predictiveHuntIntent(predator,prey,baseIntent,distance=null){
+  function predictiveHuntPlanning(predator,prey,basePredationIntent,distance=null){
     if(!predictiveHuntingReserveEnabled() || !predator || !prey){
-      return {intent:baseIntent,plan:null,boost:0};
+      return {
+        basePredationIntent,
+        huntPlanningPressure:0,
+        searchIntent:basePredationIntent,
+        chaseIntent:basePredationIntent,
+        attackIntent:basePredationIntent,
+        plan:null,
+        state:'unplanned'
+      };
     }
     const cfg=CONFIG.ecology.predictiveHunting;
     const plan=predictiveHuntPlan(predator,prey,distance);
-    if(!plan) return {intent:baseIntent,plan:null,boost:0};
+    if(!plan){
+      return {
+        basePredationIntent,
+        huntPlanningPressure:0,
+        searchIntent:basePredationIntent,
+        chaseIntent:basePredationIntent,
+        attackIntent:basePredationIntent,
+        plan:null,
+        state:'unplanned'
+      };
+    }
     const carnivory=clamp(finiteGeneValue(predator?.genes?.diet,0),0,1);
-    const requestedBoost=carnivory*plan.proactivePressure*cfg.proactiveIntentWeight;
-    const boost=Math.min(cfg.maximumIntentBoost,requestedBoost);
+    const huntPlanningPressure=Math.min(
+      cfg.maximumIntentBoost,
+      carnivory*plan.proactivePressure*cfg.proactiveIntentWeight
+    );
+    const searchIntent=clamp(Math.max(basePredationIntent,huntPlanningPressure),0,1);
     return {
-      intent:clamp(Math.max(baseIntent,baseIntent+boost),0,1),
+      basePredationIntent,
+      huntPlanningPressure,
+      searchIntent,
+      chaseIntent:basePredationIntent,
+      attackIntent:basePredationIntent,
       plan,
-      boost
+      state:predictiveHuntState(plan)
     };
   }
-  function predictiveHuntTelemetryExtra(predictive){
-    if(!predictiveHuntingReserveEnabled() || !predictive?.plan) return {};
-    const p=predictive.plan;
+  function predictiveHuntIntent(predator,prey,baseIntent,distance=null){
+    const planning=predictiveHuntPlanning(predator,prey,baseIntent,distance);
+    return {intent:planning.searchIntent,plan:planning.plan,boost:planning.huntPlanningPressure};
+  }
+  function predictiveHuntTelemetryExtra(planning){
+    if(!predictiveHuntingReserveEnabled() || !planning?.plan) return {};
+    const snap=predictivePlanningSnapshot(null,planning,planning.plan);
+    const p=planning.plan;
     return {
       predictiveHuntingReserveEnabled:true,
-      predictiveHuntState:predictiveHuntState(p),
-      predictiveIntentBoost:predictive.boost,
+      predictiveHuntState:snap.state,
+      predictiveIntentBoost:snap.huntPlanningPressure,
+      huntPlanningPressure:snap.huntPlanningPressure,
+      basePredationIntent:snap.basePredationIntent,
+      searchIntent:snap.searchIntent,
+      chaseIntent:snap.chaseIntent,
+      planningExecutionDifference:snap.searchIntent-snap.chaseIntent,
       predictedRequiredEnergy:p.requiredEnergy,
       predictedStartEnergy:p.startEnergy,
       predictedEnergyMargin:p.energyMargin,
@@ -3054,20 +3193,31 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       predictedChaseCost:p.chaseCost
     };
   }
-  function applyPredictiveHuntIntentForTarget(predator,prey,baseIntent,distance=null){
-    const predictive=predictiveHuntIntent(predator,prey,baseIntent,distance);
+  function applyPredictiveHuntPlanningForTarget(predator,prey,basePredationIntent,distance=null){
+    const planning=predictiveHuntPlanning(predator,prey,basePredationIntent,distance);
     if(predator){
-      predator._predictiveHuntPlan=predictive.plan;
+      predator._predictiveHuntPlan=planning.plan;
       predator._predictiveHuntTargetId=prey?.id ?? null;
-      predator._predictiveHuntIntent=predictive.intent;
-      predator._predictiveHuntIntentBoost=predictive.boost;
+      predator._basePredationIntent=basePredationIntent;
+      predator._huntPlanningPressure=planning.huntPlanningPressure;
+      predator._huntSearchIntent=planning.searchIntent;
+      predator._chaseIntent=basePredationIntent;
+      predator._predictiveHuntState=planning.state;
+      predator._predictiveHuntIntent=planning.searchIntent;
+      predator._predictiveHuntIntentBoost=planning.huntPlanningPressure;
     }
-    return predictive;
+    return planning;
   }
   function clearPredictiveHuntPlan(o){
     if(!o) return;
     o._predictiveHuntPlan=null;
     o._predictiveHuntTargetId=null;
+    o._basePredationIntent=0;
+    o._huntPlanningPressure=0;
+    o._huntSearchIntent=0;
+    o._chaseIntent=0;
+    o._attackIntent=0;
+    o._predictiveHuntState='unplanned';
     o._predictiveHuntIntent=null;
     o._predictiveHuntIntentBoost=0;
   }
@@ -8035,6 +8185,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       `親投資率：${Math.round(parentalInvestmentRate(o.genes)*100)}% / 最大energy：${Math.round(organismMaxEnergy(o))}`
     ];
   }
+  function selectedPredictiveHuntLines(o){
+    if(!devMode || !predictiveHuntingReserveEnabled() || !o) return [];
+    const plan=o._predictiveHuntPlan || null;
+    const fmt=(v,d=2)=>Number.isFinite(Number(v)) ? Number(v).toFixed(d) : 'n/a';
+    return [
+      `Hunt intent: base ${fmt(o._basePredationIntent)} / search ${fmt(o._huntSearchIntent)} / chase ${fmt(o._chaseIntent)} / attack ${fmt(o._attackIntent)}`,
+      `Hunt plan: ${o._predictiveHuntState || 'unplanned'} / req ${fmt(plan?.requiredEnergy,1)} / start ${fmt(plan?.startEnergy,1)} / margin ${fmt(plan?.energyMargin,1)} / steps ${fmt(plan?.estimatedSteps,1)}`
+    ];
+  }
   function selectedCardLines(o){
     const rare=rareTraitNames(o.flags).join('、') || 'なし';
     const carrier=traitCarrierNames(o.traits,o.flags).join('、') || 'なし';
@@ -8053,6 +8212,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       `食性：${dietLabelFromGenes(o.genes)}`,
       ...geneSummaryLines(o.genes),
       ...selectedLifeHistoryLines(o),
+      ...selectedPredictiveHuntLines(o),
       `状態：${statusLabel(o)}`,
       `エネルギー：${Math.round(o.energy)} / 年齢：${ageLabel(o)} / 世代：${generation}`,
       reproductiveMaturityLine,
@@ -8131,6 +8291,16 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       minPreySize:predationMinPreySize(o,'target'),
       energy:o.energy,
       targetId:o.preyTargetId ?? null,
+      basePredationIntent:o._basePredationIntent ?? null,
+      huntPlanningPressure:o._huntPlanningPressure ?? null,
+      searchIntent:o._huntSearchIntent ?? null,
+      chaseIntent:o._chaseIntent ?? null,
+      attackIntent:o._attackIntent ?? null,
+      predictiveHuntState:o._predictiveHuntState ?? 'unplanned',
+      predictedRequiredEnergy:o._predictiveHuntPlan?.requiredEnergy ?? null,
+      predictedStartEnergy:o._predictiveHuntPlan?.startEnergy ?? null,
+      predictedEnergyMargin:o._predictiveHuntPlan?.energyMargin ?? null,
+      predictedChaseSteps:o._predictiveHuntPlan?.estimatedSteps ?? null,
       targetSizeRatio:targetCls?.sizeRatio ?? null,
       nearestDietDistance:scan.nearestDiet?.distance ?? null,
       nearestValidDistance:scan.nearestValid?.distance ?? null,
@@ -8200,7 +8370,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     constructor(x,y,genes=null,bornByRepro=false,parentA=null,parentB=null){
       this.id=NEXT_ID++; this.x=x; this.y=y; this.vx=0; this.vy=0; this.energy=100; this.storeN=0; this.storeO=0.75; this.storeD=0; this.mem=1.0; this.age=0; this.fitness=0; this.moveCostSum=0; this.trail=[]; this.phase=Math.random()*TAU; this.attackCD=0; this.fleeTimer=0; this.protect=90; this.mutagenBoost=0; this.burstTimer=0; this.role='other';
       this.preyTargetId=null; this.preyTargetOutOfRangeSteps=0; this.chaseTimer=0; this.nextPreyScan=Math.floor(rnd(0,12)); this.predatorThreatId=null; this.recentEvents=[]; this.lastAction='誕生'; this.lastActionFrame=frame; this.deathCause=null;
-      this._predictiveHuntPlan=null; this._predictiveHuntTargetId=null; this._predictiveHuntIntent=null; this._predictiveHuntIntentBoost=0;
+      this._predictiveHuntPlan=null; this._predictiveHuntTargetId=null; this._basePredationIntent=0; this._huntPlanningPressure=0; this._huntSearchIntent=0; this._chaseIntent=0; this._attackIntent=0; this._predictiveHuntState='unplanned'; this._predictiveHuntIntent=null; this._predictiveHuntIntentBoost=0;
       this.packConsensusTargetId=null; this.packConsensusHoldT=0; this.packConsensusSwitchCD=0; this._packConsensusTargetHistory=[];
       this.birthFrame=frame;
       this.grazingTimer=0;
@@ -8479,8 +8649,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(this.predatorThreatId && this.fleeTimer<=0) this.predatorThreatId=null;
       const carn=this.genes.diet;
       const deficit=Math.max(0,this.reproThreshold*0.95-this.energy);
-      let intent=dietIntent(carn,deficit);
-      if(carn<0.42 || (carn<0.66 && intent<0.10) || this.attackCD>30){
+      const basePredationIntent=dietIntent(carn,deficit);
+      this._basePredationIntent=basePredationIntent;
+      this._huntSearchIntent=basePredationIntent;
+      this._chaseIntent=basePredationIntent;
+      const baseSearchBlocked=carn<0.42 || (carn<0.66 && basePredationIntent<0.10) || this.attackCD>30;
+      const predictiveCanSearch=predictiveHuntingReserveEnabled()
+        && carn>=0.42
+        && this.attackCD<=30;
+      if(baseSearchBlocked && !predictiveCanSearch){
         if(this.chaseTimer<=0){
           if(this.preyTargetId!=null) telemetryEndChaseEpisode(this,'trackingStateEnded');
           this.preyTargetId=null;
@@ -8527,6 +8704,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           const o=organismById(row.preyId);
           if(!o) continue;
           const d=row.distance||1;
+          const planning=predictiveHuntingReserveEnabled()
+            ? predictiveHuntPlanning(this,o,basePredationIntent,d)
+            : null;
+          const candidateSearchIntent=planning ? planning.searchIntent : basePredationIntent;
+          if(carn<0.66 && candidateSearchIntent<0.10) continue;
           const finalScore=predationTargetScore(this,o,d,scanR);
           if(finalScore>bestScore){ bestScore=finalScore; best=o; }
         }
@@ -8545,12 +8727,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           this.preyTargetId=best.id;
           this.preyTargetOutOfRangeSteps=0;
           const bestDistance=Math.hypot(best.x-this.x,best.y-this.y)||1;
-          const predictive=applyPredictiveHuntIntentForTarget(this,best,intent,bestDistance);
-          intent=predictive.intent;
-          const predictiveExtra=predictiveHuntTelemetryExtra(predictive);
-          telemetryRecordPredictiveHuntStage(this,'targetAcquired',predictive.plan);
+          const planning=applyPredictiveHuntPlanningForTarget(this,best,basePredationIntent,bestDistance);
+          const predictiveExtra=predictiveHuntTelemetryExtra(planning);
+          telemetryRecordPredictiveHuntStage(this,'targetAcquired',planning.plan,planning);
           telemetryRecordPredationStage('candidate',this,best,{score:Number(bestScore.toFixed(3)),...predictiveExtra});
-          this.chaseTimer=130 + Math.round(80*intent);
+          this.chaseTimer=130 + Math.round(80*basePredationIntent);
           telemetryRecordPackTargetEvent('targetAcquired',this,null,best,{source:'scan',score:Number(bestScore.toFixed(3)),...predictiveExtra});
           telemetryRecordPredationStage('tracking',this,best,predictiveExtra);
           recordAction(this,'小型生命を追跡した');
@@ -8569,11 +8750,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           prey=reassessmentBest;
           this.preyTargetId=reassessmentBest.id;
           this.preyTargetOutOfRangeSteps=0;
-          const predictive=applyPredictiveHuntIntentForTarget(this,reassessmentBest,intent,bestDistance);
-          intent=predictive.intent;
-          const predictiveExtra=predictiveHuntTelemetryExtra(predictive);
-          telemetryRecordPredictiveHuntStage(this,'targetAcquired',predictive.plan);
-          this.chaseTimer=130 + Math.round(80*intent);
+          const planning=applyPredictiveHuntPlanningForTarget(this,reassessmentBest,basePredationIntent,bestDistance);
+          const predictiveExtra=predictiveHuntTelemetryExtra(planning);
+          telemetryRecordPredictiveHuntStage(this,'targetAcquired',planning.plan,planning);
+          this.chaseTimer=130 + Math.round(80*basePredationIntent);
           telemetryRecordPackTargetEvent('targetSwitch',this,null,reassessmentBest,{source:'reassessment',previousTargetId:previousPreyId,score:Number(reassessmentBestScore.toFixed(3)),...predictiveExtra});
           telemetryRecordPredationStage('candidate',this,reassessmentBest,{
             score:Number(reassessmentBestScore.toFixed(3)),
@@ -8591,8 +8771,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(!prey) return;
       const dx=prey.x-this.x, dy=prey.y-this.y;
       const d=Math.hypot(dx,dy)||1;
-      const predictive=applyPredictiveHuntIntentForTarget(this,prey,intent,d);
-      intent=predictive.intent;
+      const planning=applyPredictiveHuntPlanningForTarget(this,prey,basePredationIntent,d);
+      const chaseIntent=basePredationIntent;
+      telemetryRecordPredictiveIntentSample(this,{
+        basePredationIntent,
+        huntPlanningPressure:planning.huntPlanningPressure,
+        searchIntent:planning.searchIntent,
+        chaseIntent
+      });
       telemetryRecordPredationChaseStep(this,prey);
       telemetryPushPackContext('tracking',this,prey);
       const ambush=isAmbusherPredator(this);
@@ -8617,11 +8803,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         packBonus += Math.min(0.28, mates*0.06);
       }
       if(ambush && d<this.senseR*0.50) this.burstTimer=Math.max(this.burstTimer,20);
-      if(ambush && carn>=burstCfg.dietMin && d<this.senseR*burstCfg.triggerSenseScale && intent>0.12 && this.energy>this.reproThreshold*0.30){
+      if(ambush && carn>=burstCfg.dietMin && d<this.senseR*burstCfg.triggerSenseScale && chaseIntent>0.12 && this.energy>this.reproThreshold*0.30){
         this.burstTimer=Math.max(this.burstTimer,burstCfg.frames);
         if(frame-(this._lastBurstAction||0)>150){ recordAction(this,'捕食バースト'); this._lastBurstAction=frame; }
       }
-      let chaseForce=(0.070 + 0.105*carn + 0.065*intent)*packBonus;
+      let chaseForce=(0.070 + 0.105*carn + 0.065*chaseIntent)*packBonus;
       if(this.morphologyTopology==='radial') chaseForce*=1.05;
       if(this.morphologyTopology==='chain') chaseForce*=0.98;
       if(duelExperimentActive && this._kinematicsStep){
@@ -9295,16 +9481,10 @@ if(Z>0.08){
         if(dx*dx+dy*dy < e.r*e.r){ repelHere=true; break; }
       }
       const deficit=Math.max(0, this.reproThreshold*1.04 - this.energy);
-      let intent=dietIntent(carnIntent, deficit);
+      const attackIntent=dietIntent(carnIntent, deficit);
+      this._attackIntent=attackIntent;
+      let intent=attackIntent;
       let prey=organismById(this.preyTargetId);
-      if(
-        predictiveHuntingReserveEnabled()
-        && prey
-        && this._predictiveHuntTargetId===prey.id
-        && Number.isFinite(Number(this._predictiveHuntIntent))
-      ){
-        intent=Math.max(intent,Number(this._predictiveHuntIntent || 0));
-      }
       if(repelHere) intent*=0.2;
       if(intent<0.05) return;
       let bestD2=Infinity;
@@ -9328,8 +9508,10 @@ if(Z>0.08){
       const contactPredictivePlan=predictiveHuntingReserveEnabled()
         ? ((this._predictiveHuntTargetId===prey.id && this._predictiveHuntPlan) ? this._predictiveHuntPlan : predictiveHuntPlan(this,prey,contactDistance))
         : null;
-      const contactPredictiveExtra=predictiveHuntTelemetryExtra({plan:contactPredictivePlan,boost:Number(this._predictiveHuntIntentBoost || 0)});
-      telemetryRecordPredictiveHuntStage(this,'contact',contactPredictivePlan);
+      const contactPredictivePlanning=contactPredictivePlan ? predictivePlanningSnapshot(this,{attackIntent},contactPredictivePlan) : null;
+      const contactPredictiveExtra=predictiveHuntTelemetryExtra(contactPredictivePlanning);
+      telemetryRecordPredictiveHuntStage(this,'contact',contactPredictivePlan,contactPredictivePlanning);
+      telemetryRecordPredictiveIntentSample(this,{attackIntent});
       const sizeInfo=getEffectivePredationSizeRatio(this,prey,'attack');
       const sizeSuccessMul=getPredationSizeSuccessMul(sizeInfo.effectiveSizeRatio);
       telemetryRecordPredationStage('contact',this,prey,{
@@ -9407,8 +9589,10 @@ if(Z>0.08){
           prey.herdThreat=Math.max(prey.herdThreat||0,42);
         }
       }
+      telemetryRecordPredictiveAttackAttempt(this,contactPredictivePlan,contactPredictivePlanning);
       telemetryRecordPredationStage('attempt',this,prey,{
         probability:Number(p.toFixed(3)),
+        attackIntent:Number(attackIntent.toFixed(3)),
         sizeMul:Number(sizeSuccessMul.toFixed(3)),
         sizeSuccessMul:Number(sizeSuccessMul.toFixed(3)),
         largePreySuccessMul:Number(sizeSuccessMul.toFixed(3)),
@@ -9482,11 +9666,12 @@ if(Z>0.08){
           energyAfter:predationEnergyAfter,
           storeNAfter:predationStoreNAfter
         });
-        telemetryRecordPredictiveHuntStage(this,'success',contactPredictivePlan);
+        telemetryRecordPredictiveHuntStage(this,'success',contactPredictivePlan,contactPredictivePlanning);
         telemetryRecordPredationStage('success',this,prey,{
           gain:Number(gain.toFixed(3)),
           energyBefore:predationEnergyBefore,
           energyAfter:predationEnergyAfter,
+          attackIntent:Number(attackIntent.toFixed(3)),
           sizeSuccessMul:Number(sizeSuccessMul.toFixed(3)),
           largePreySuccessMul:Number(sizeSuccessMul.toFixed(3)),
           rawSizeRatio:Number(sizeInfo.rawSizeRatio.toFixed(3)),
@@ -17602,6 +17787,19 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       averagePredictedRequiredEnergy:null,
       averagePredictedStartEnergy:null,
       averagePredictedEnergyMargin:null,
+      averageBasePredationIntent:null,
+      averageHuntPlanningPressure:null,
+      averageSearchIntent:null,
+      averageChaseIntent:null,
+      averageAttackIntent:null,
+      searchIntentAboveBaseSteps:0,
+      searchIntentAboveChaseSteps:0,
+      planningAssistedTargetAcquisitions:0,
+      planningAssistedContacts:0,
+      planningAssistedPredationSuccesses:0,
+      planningAssistedFirstPredationSuccesses:0,
+      planningAssistedStarvationDeaths:0,
+      averageFirstPredationGrossEnergyDelta:null,
       opportunisticCount:0,
       proactiveCount:0,
       desperateCount:0,
@@ -17611,8 +17809,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       matureStarvationBeforeFirstPredation:0,
       maxGenerationDepth:0,
       endingPopulation:0,
-      _sums:{targetEnergy:0,contactEnergy:0,successEnergy:0,chaseSteps:0,stepCost:0,chaseCost:0,burstCost:0,survivalReserve:0,requiredEnergy:0,startEnergy:0,energyMargin:0},
-      _samples:{targetEnergy:0,contactEnergy:0,successEnergy:0,plan:0}
+      _sums:{targetEnergy:0,contactEnergy:0,successEnergy:0,chaseSteps:0,stepCost:0,chaseCost:0,burstCost:0,survivalReserve:0,requiredEnergy:0,startEnergy:0,energyMargin:0,baseIntent:0,planningPressure:0,searchIntent:0,chaseIntent:0,attackIntent:0,firstPredationGrossEnergyDelta:0},
+      _samples:{targetEnergy:0,contactEnergy:0,successEnergy:0,plan:0,baseIntent:0,planningPressure:0,searchIntent:0,chaseIntent:0,attackIntent:0,firstPredationGrossEnergyDelta:0}
     };
   }
   function predictiveBlankByDiet(){
@@ -17667,6 +17865,13 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     metric.opportunisticCount+=Number(rec.opportunisticChaseSteps||0);
     metric.proactiveCount+=Number(rec.proactiveChaseSteps||0);
     metric.desperateCount+=Number(rec.desperateChaseSteps||0);
+    metric.searchIntentAboveBaseSteps+=Number(rec.searchIntentAboveBaseSteps||0);
+    metric.searchIntentAboveChaseSteps+=Number(rec.searchIntentAboveChaseSteps||0);
+    metric.planningAssistedTargetAcquisitions+=Number(rec.planningAssistedTargetAcquisitions||0);
+    metric.planningAssistedContacts+=Number(rec.planningAssistedContacts||0);
+    metric.planningAssistedPredationSuccesses+=Number(rec.planningAssistedPredationSuccesses||0);
+    metric.planningAssistedFirstPredationSuccesses+=Number(rec.planningAssistedFirstPredationSuccesses||0);
+    metric.planningAssistedStarvationDeaths+=Number(rec.planningAssistedStarvationDeaths||0);
     for(const state of PREDICTIVE_HUNT_STATES){
       const suffix=predictiveStateSuffix(state);
       const dst=metric.states[state];
@@ -17688,6 +17893,23 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       metric._sums.startEnergy+=Number(rec.predictedStartEnergySum||0);
       metric._sums.energyMargin+=Number(rec.predictedEnergyMarginSum||0);
       metric._samples.plan+=planSamples;
+    }
+    const addIntent=(sumKey,sampleKey,sumValue,sampleValue)=>{
+      const samples=Number(sampleValue||0);
+      if(samples<=0) return;
+      metric._sums[sumKey]+=Number(sumValue||0);
+      metric._samples[sampleKey]+=samples;
+    };
+    addIntent('baseIntent','baseIntent',rec.basePredationIntentSum,rec.basePredationIntentSamples);
+    addIntent('planningPressure','planningPressure',rec.huntPlanningPressureSum,rec.huntPlanningPressureSamples);
+    addIntent('searchIntent','searchIntent',rec.searchIntentSum,rec.searchIntentSamples);
+    addIntent('chaseIntent','chaseIntent',rec.chaseIntentSum,rec.chaseIntentSamples);
+    addIntent('attackIntent','attackIntent',rec.attackIntentSum,rec.attackIntentSamples);
+    const firstTargetEnergy=Number(rec.firstTargetEnergy);
+    const firstSuccessEnergy=Number(rec.firstSuccessEnergyBefore);
+    if(Number.isFinite(firstTargetEnergy) && Number.isFinite(firstSuccessEnergy)){
+      metric._sums.firstPredationGrossEnergyDelta+=firstTargetEnergy-firstSuccessEnergy;
+      metric._samples.firstPredationGrossEnergyDelta++;
     }
     const starved=rec.deathCause==='starvation';
     if(starved){
@@ -17723,6 +17945,12 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     metric.averagePredictedRequiredEnergy=s.plan ? metric._sums.requiredEnergy/s.plan : null;
     metric.averagePredictedStartEnergy=s.plan ? metric._sums.startEnergy/s.plan : null;
     metric.averagePredictedEnergyMargin=s.plan ? metric._sums.energyMargin/s.plan : null;
+    metric.averageBasePredationIntent=s.baseIntent ? metric._sums.baseIntent/s.baseIntent : null;
+    metric.averageHuntPlanningPressure=s.planningPressure ? metric._sums.planningPressure/s.planningPressure : null;
+    metric.averageSearchIntent=s.searchIntent ? metric._sums.searchIntent/s.searchIntent : null;
+    metric.averageChaseIntent=s.chaseIntent ? metric._sums.chaseIntent/s.chaseIntent : null;
+    metric.averageAttackIntent=s.attackIntent ? metric._sums.attackIntent/s.attackIntent : null;
+    metric.averageFirstPredationGrossEnergyDelta=s.firstPredationGrossEnergyDelta ? metric._sums.firstPredationGrossEnergyDelta/s.firstPredationGrossEnergyDelta : null;
     delete metric._sums;
     delete metric._samples;
     return metric;
@@ -17768,6 +17996,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       }
     }
     predictiveHuntingFinalizeTree(summary);
+    return summary;
+  }
+  function predictiveHuntingSeparationSummary(source=null){
+    const summary=source ? JSON.parse(JSON.stringify(source)) : predictiveHuntingSummary();
+    summary.separation='planning-search-only';
     return summary;
   }
   function stableJson(value){
@@ -18045,9 +18278,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     return {ok:results.every(r=>r.ok),results};
   }
   function predictiveHuntingReproducibilitySnapshot(){
+    const predictive=predictiveHuntingSummary();
     return {
       counts:{organisms:organisms.length,food:food.length,corpses:corpses.length,plankton:plankton.length},
-      predictive:predictiveHuntingSummary(),
+      predictive,
+      separation:predictiveHuntingSeparationSummary(predictive),
       safety:{
         nanOrInfinity:diagnosticNumberHealth().badCount,
         energyCreationEvents:telemetry.packHuntConservation.energyCreationEvents,
@@ -18207,20 +18442,78 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         {opportunistic,proactive,desperate,stateRef}
       );
 
+      const pressureRef=predictiveHuntPlan(pred,prey,30);
+      pred.energy=pressureRef.startEnergy+20;
+      const lowPressurePlanning=predictiveHuntPlanning(pred,prey,0.03,30);
+      pred.energy=(pressureRef.requiredEnergy+pressureRef.startEnergy)/2;
+      const highPressurePlanning=predictiveHuntPlanning(pred,prey,0.03,30);
+      add('Micro G planning pressure rises in proactive range',
+        highPressurePlanning.huntPlanningPressure>lowPressurePlanning.huntPlanningPressure,
+        {lowPressurePlanning,highPressurePlanning}
+      );
+
+      const baseIntent=0.04;
+      const separatedPlanning=predictiveHuntPlanning(pred,prey,baseIntent,30);
+      add('Micro H predictive search only separation',
+        separatedPlanning.searchIntent>=baseIntent
+          && separatedPlanning.chaseIntent===baseIntent
+          && separatedPlanning.attackIntent===baseIntent,
+        {separatedPlanning}
+      );
+
+      const carnForForce=0.88;
+      const packBonusForForce=1.16;
+      const forceOff=(0.070 + 0.105*carnForForce + 0.065*baseIntent)*packBonusForForce;
+      const forceOn=(0.070 + 0.105*carnForForce + 0.065*separatedPlanning.chaseIntent)*packBonusForForce;
+      add('Micro I chase force ignores planning pressure',
+        Math.abs(forceOff-forceOn)<1e-12
+          && separatedPlanning.searchIntent>=separatedPlanning.chaseIntent,
+        {forceOff,forceOn,searchIntent:separatedPlanning.searchIntent,chaseIntent:separatedPlanning.chaseIntent}
+      );
+
+      const attackDeficit=Math.max(0,pred.reproThreshold*1.04-pred.energy);
+      featureFlags.predictiveHuntingReserve=false;
+      const attackOff=dietIntent(pred.genes.diet,attackDeficit);
+      featureFlags.predictiveHuntingReserve=true;
+      const attackOn=dietIntent(pred.genes.diet,attackDeficit);
+      add('Micro J attack intent ignores planning pressure',
+        attackOn===attackOff,
+        {attackOff,attackOn,planningPressure:separatedPlanning.huntPlanningPressure}
+      );
+
+      const nearSlow=makeOrg(preyGenes(),130,100,70);
+      const farFast=makeOrg(preyGenes(),240,100,70);
+      nearSlow.maxSpeed=0.18;
+      farFast.maxSpeed=1.25;
+      const scoreScanR=220;
+      featureFlags.predictiveHuntingReserve=false;
+      const offNearScore=predationTargetScore(pred,nearSlow,30,scoreScanR);
+      const offFarScore=predationTargetScore(pred,farFast,140,scoreScanR);
+      featureFlags.predictiveHuntingReserve=true;
+      const onNearScore=predationTargetScore(pred,nearSlow,30,scoreScanR);
+      const onFarScore=predationTargetScore(pred,farFast,140,scoreScanR);
+      const offGap=offNearScore-offFarScore;
+      const onGap=onNearScore-onFarScore;
+      add('Micro K target score favors cheaper chase without force change',
+        onGap>=offGap-1e-9
+          && Math.abs(forceOff-forceOn)<1e-12,
+        {offNearScore,offFarScore,onNearScore,onFarScore,offGap,onGap}
+      );
+
       pred.energy=95;
       randomCalls=0;
       Math.random=()=>{ randomCalls++; return 0.77; };
-      const deterministicA=predictiveHuntPlan(pred,prey,60);
-      const deterministicB=predictiveHuntPlan(pred,prey,60);
+      const deterministicA=predictiveHuntPlanning(pred,prey,0.08,60);
+      const deterministicB=predictiveHuntPlanning(pred,prey,0.08,60);
       Math.random=oldRandom;
-      add('Micro G deterministic plan and no random consumption',
+      add('Micro L deterministic planning and no random consumption',
         stableJson(deterministicA)===stableJson(deterministicB)
           && randomCalls===0,
         {randomCalls,deterministicA,deterministicB}
       );
 
       const smoke=runSeededWorldDiagnostic({seed:41001,steps:120,restoreAfterRun:false,targetConsensus:false,shareFraction:0,packAttackBase:0.78,variant:'predictiveMicroConservation'});
-      add('Micro H predictive conservation',
+      add('Micro M predictive conservation',
         smoke?.conservation?.energyCreationEvents===0
           && smoke?.conservation?.nutrientCreationEvents===0
           && smoke?.health?.badCount===0,
@@ -18228,7 +18521,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       );
 
       const repro=runPredictiveHuntingReproducibilityMicroTest({seed:41001,steps:120,evolvableLifeHistory:true,juvenileDevelopment:true,predictiveHuntingReserve:true});
-      add('Micro I predictive reproducibility', repro.ok, {seed:repro.seed,steps:repro.steps});
+      add('Micro N predictive reproducibility', repro.ok, {seed:repro.seed,steps:repro.steps});
     } finally {
       Math.random=oldRandom;
       featureFlags.evolvableLifeHistory=oldLife;
@@ -18336,8 +18629,17 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     predictiveHuntPlan(predator,prey,distance=null){
       return predictiveHuntPlan(predator,prey,distance);
     },
+    predictiveHuntPlanning(predator,prey,distance=null,basePredationIntent=null){
+      const base=basePredationIntent==null
+        ? dietIntent(finiteGeneValue(predator?.genes?.diet,0),Math.max(0,Number(predator?.reproThreshold || 0)*0.95-Number(predator?.energy || 0)))
+        : Number(basePredationIntent);
+      return predictiveHuntPlanning(predator,prey,base,distance);
+    },
     predictiveHuntingSummary(){
       return predictiveHuntingSummary();
+    },
+    predictiveHuntingSeparationSummary(){
+      return predictiveHuntingSeparationSummary();
     },
     lifeHistoryStrategyForGenes(genes){
       return lifeHistoryStrategyForGenes(geneSet(genes || {}));
