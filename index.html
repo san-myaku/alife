@@ -337,7 +337,8 @@
       evolvableLifeHistory: false,
       juvenileDevelopment: false,
       predictiveHuntingReserve: false,
-      persistentPackIdentity: false
+      persistentPackIdentity: false,
+      speciesIdentityV2: false
     }),
     population: Object.freeze({
       starter: 64,
@@ -502,7 +503,8 @@
     evolvableLifeHistory: CONFIG.features.evolvableLifeHistory,
     juvenileDevelopment: CONFIG.features.juvenileDevelopment,
     predictiveHuntingReserve: CONFIG.features.predictiveHuntingReserve,
-    persistentPackIdentity: CONFIG.features.persistentPackIdentity
+    persistentPackIdentity: CONFIG.features.persistentPackIdentity,
+    speciesIdentityV2: CONFIG.features.speciesIdentityV2
   };
   function evolvableLifeHistoryEnabled(){
     return !!featureFlags.evolvableLifeHistory;
@@ -515,6 +517,9 @@
   }
   function persistentPackIdentityEnabled(){
     return !!featureFlags.persistentPackIdentity;
+  }
+  function speciesIdentityV2Enabled(){
+    return !!featureFlags.speciesIdentityV2;
   }
 
   // ===== UI State =====
@@ -1172,9 +1177,84 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   }
 
   function legacySpeciesKey(g){ const base=`${q4(g.speed)}${q4(g.size)}${q4(g.sense)}${q4(g.diet)}`; const m=formFromGenes(g,base); const p=q3(m.pointiness); const a=m.aspect<1.33?0:(m.aspect<1.66?1:2); const pts=Math.max(1,Math.min(8,Math.round(m.points))); return `${base}${p}${a}${pts}`; }
-  function speciesKey(g){
-    const legacy=legacySpeciesKey(g);
-    return evolvableLifeHistoryEnabled() ? `${legacy}${lifeHistorySpeciesSuffix(g)}` : legacy;
+  function speciesDietClassFromGenes(genes){
+    const diet=finiteGeneValue(genes?.diet,0.5);
+    if(diet<0.33) return 'herbivore';
+    if(diet<0.66) return 'omnivore';
+    return 'carnivore';
+  }
+  function speciesRoleFromGenes(genes){
+    return normalizeRole(computeRole(genes || {}));
+  }
+  function speciesSocialModeFromGenes(genes){
+    return socialStrategyFromGenes(genes || {}).mode;
+  }
+  function expressedRareTraitSignature(flags){
+    const f=flags || {};
+    return [
+      f.glow ? 'g' : '-',
+      f.crown ? 'c' : '-',
+      f.colony ? 'k' : '-',
+      f.chl ? 'p' : '-'
+    ].join('');
+  }
+  function speciesMorphologySignature(genes,flags=null){
+    const g=genes || {};
+    const role=speciesRoleFromGenes(g);
+    const topology=topologyFromGenes(g);
+    const form=formFromGenes(g,legacySpeciesKey(g));
+    const adaptations=adaptationProfilesFromGenes(g,flags,topology,role).slice().sort();
+    return {
+      topology,
+      formSeedClass:q4(finiteGeneValue(g?.formSeed,0.5)),
+      shapeClass:q4(form.shape),
+      layoutClass:q4(form.layout),
+      detailClass:q4(form.detail),
+      adaptations
+    };
+  }
+  function speciesIdentityV2Components(genes,flags=null){
+    const morphology=speciesMorphologySignature(genes,flags);
+    return {
+      version:2,
+      legacyKey:legacySpeciesKey(genes || {}),
+      lifeHistorySuffix:evolvableLifeHistoryEnabled() ? lifeHistorySpeciesSuffix(genes || {}) : '',
+      dietClass:speciesDietClassFromGenes(genes || {}),
+      role:speciesRoleFromGenes(genes || {}),
+      socialMode:speciesSocialModeFromGenes(genes || {}),
+      topology:morphology.topology,
+      formSeedClass:morphology.formSeedClass,
+      shapeClass:morphology.shapeClass,
+      layoutClass:morphology.layoutClass,
+      detailClass:morphology.detailClass,
+      adaptations:morphology.adaptations,
+      expressedRareTraits:expressedRareTraitSignature(flags)
+    };
+  }
+  function speciesKeyV2(genes,flags=null){
+    const c=speciesIdentityV2Components(genes,flags);
+    const adaptationKey=c.adaptations.length ? c.adaptations.join('+') : 'none';
+    return [
+      'S2',
+      `G${c.legacyKey}${c.lifeHistorySuffix}`,
+      `D${c.dietClass}`,
+      `R${c.role}`,
+      `S${c.socialMode}`,
+      `T${c.topology}`,
+      `M${c.formSeedClass}${c.shapeClass}${c.layoutClass}${c.detailClass}`,
+      `A${adaptationKey}`,
+      `X${c.expressedRareTraits}`
+    ].join('|');
+  }
+  function speciesKey(g,flags=null){
+    if(!speciesIdentityV2Enabled()){
+      const legacy=legacySpeciesKey(g || {});
+      return evolvableLifeHistoryEnabled() ? `${legacy}${lifeHistorySpeciesSuffix(g || {})}` : legacy;
+    }
+    return speciesKeyV2(g || {},flags);
+  }
+  function speciesKeyForOrganism(organism){
+    return speciesKey(organism?.genes || {},organism?.flags || {});
   }
   const BASE_GENE_KEYS=Object.freeze(['speed','size','metabolism','fecundity','sense','diet','formSeed']);
   const LEGACY_LIFE_HISTORY_GENE_KEYS=Object.freeze(['energyCapacity','parentalInvestment']);
@@ -1566,8 +1646,12 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   }
   function speciesPalette(key){
     const s=String(key||'0000000');
-    const speedQ=Number(s[0]||1)/3;
-    const carnQ=Number(s[3]||1)/3;
+    const legacyPart=s.startsWith('S2|') ? (s.match(/\|G([^|]+)/)?.[1] || '') : s;
+    const dietPart=s.startsWith('S2|') ? (s.match(/\|D([^|]+)/)?.[1] || '') : '';
+    const speedDigit=Number(legacyPart[0]);
+    const dietDigit=Number(legacyPart[3]);
+    const speedQ=Number.isFinite(speedDigit) ? speedDigit/3 : hash01('speciesSpeed:'+s);
+    const carnQ=dietPart==='herbivore' ? 0 : (dietPart==='omnivore' ? 0.5 : (dietPart==='carnivore' ? 1 : (Number.isFinite(dietDigit) ? dietDigit/3 : hash01('speciesDiet:'+s))));
     const dietHue=lerp(195,6,clamp(carnQ,0,1));
     const speedTint=lerp(-18,18,clamp(speedQ,0,1));
     const hue=(dietHue + speedTint*0.25 + (hash01('speciesHue:'+s)-0.5)*96 + 360) % 360;
@@ -1593,6 +1677,37 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   }
 
   const speciesCount=new Map();
+
+  function finalizeOrganismSpeciesIdentity(organism,options={}){
+    if(!organism) return null;
+    const oldKey=organism.speciesKey || null;
+    const newKey=speciesKeyForOrganism(organism);
+    organism.speciesKey=newKey;
+    organism.speciesIdentityVersion=speciesIdentityV2Enabled() ? 2 : 1;
+    organism.speciesIdentityComponents=speciesIdentityV2Enabled()
+      ? speciesIdentityV2Components(organism.genes,organism.flags)
+      : null;
+    organism._symbol=null;
+    organism.updateColor?.();
+    return {oldKey,newKey,changed:oldKey!==newKey,reason:options.reason || null};
+  }
+  function registerFinalizedSpeciesIdentity(organism,options={}){
+    if(!organism) return {oldCount:0,newCount:0,newSpecies:false};
+    if(!organism.speciesKey || speciesKeyForOrganism(organism)!==organism.speciesKey){
+      finalizeOrganismSpeciesIdentity(organism,options);
+    }
+    const key=organism.speciesKey;
+    const c0=speciesCount.get(key)||0;
+    speciesCount.set(key,c0+1);
+    noteSpeciesSeen(key);
+    organism._wasNewSpecies=!!options.bornByRepro && c0===0;
+    if(options.bornByRepro){
+      if(options.parentSpeciesKey) addLineageEdge(options.parentSpeciesKey,key);
+      if(options.mateSpeciesKey) addLineageEdge(options.mateSpeciesKey,key);
+    }
+    registerSpeciesStats(organism);
+    return {oldCount:c0,newCount:c0+1,newSpecies:organism._wasNewSpecies};
+  }
 
   
   // ===== Species-level fecundity parameters (clutch: species difference) =====
@@ -2021,7 +2136,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     return organism.socialMode==='hunt-pack';
   }
   function packIdentitySpeciesKey(organism){
-    return String(organism?.speciesKey || speciesKey(organism?.genes || {}));
+    return String(organism?.speciesKey || speciesKeyForOrganism(organism));
   }
   function packReferenceRange(organism){
     return Math.max(24, Number(organism?.senseR || 0), Number(organism?.size || 0)*6);
@@ -9172,7 +9287,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   }
 
   class Organism{
-    constructor(x,y,genes=null,bornByRepro=false,parentA=null,parentB=null){
+    constructor(x,y,genes=null,bornByRepro=false,parentA=null,parentB=null,options=null){
       this.id=NEXT_ID++; this.x=x; this.y=y; this.vx=0; this.vy=0; this.energy=100; this.storeN=0; this.storeO=0.75; this.storeD=0; this.mem=1.0; this.age=0; this.fitness=0; this.moveCostSum=0; this.trail=[]; this.phase=Math.random()*TAU; this.attackCD=0; this.fleeTimer=0; this.protect=90; this.mutagenBoost=0; this.burstTimer=0; this.role='other';
       this.preyTargetId=null; this.preyTargetOutOfRangeSteps=0; this.chaseTimer=0; this.nextPreyScan=Math.floor(rnd(0,12)); this.predatorThreatId=null; this.recentEvents=[]; this.lastAction='誕生'; this.lastActionFrame=frame; this.deathCause=null;
       this._predictiveHuntPlan=null; this._predictiveHuntTargetId=null; this._basePredationIntent=0; this._huntPlanningPressure=0; this._huntSearchIntent=0; this._chaseIntent=0; this._attackIntent=0; this._predictiveHuntState='unplanned'; this._predictiveHuntIntent=null; this._predictiveHuntIntentBoost=0;
@@ -9186,40 +9301,52 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this.heading=Math.random()*TAU; this.gait=Math.random()*TAU; this.motionLevel=0; this.socialCount=0; this.herdThreat=0; this.newSpeciesFlash=0;
       this.genes = geneSet(genes);
       this.speciesKey = speciesKey(this.genes);
+      this.speciesIdentityVersion=speciesIdentityV2Enabled() ? 2 : 1;
+      this.speciesIdentityComponents=null;
       this.lineageInitial=!bornByRepro;
       this.parentId=null;
       this.mateParentId=null;
       this.generationDepth=0;
       this.birthExactDiet=Number(this.genes.diet ?? 0.5);
       this.birthDietClass=dietTypeFromCarn(this.birthExactDiet);
+      const deferSpeciesRegistration=!!options?.deferSpeciesRegistration && speciesIdentityV2Enabled();
+      if(speciesIdentityV2Enabled()){
+        this.traits = randomInitialRareTraits();
+        this.flags = __flagsFromTraits(this.traits, this.genes);
+        finalizeOrganismSpeciesIdentity(this,{reason:bornByRepro?'birth-constructor':'initial-constructor'});
+      }
       this.recalcPhenotype(); applyDevelopmentPhenotype(this); this.updateColor();
       this.birthStrategyClass=carnivoreStrategyClass(this);
       this.currentStrategyClass=this.birthStrategyClass;
       this.aff = { aN: clamp(0.3 + 0.7*(1-this.genes.diet), -1, 1), aC: clamp(-0.2 - 0.8*this.genes.speed, -1, 1), aT: clamp(-0.3 - 0.5*this.genes.sense, -1, 1), aZ: (function(g){ let a=-0.7; if(g.diet>0.6) a+=0.4*(g.diet-0.6); if(g.speed<0.5) a+=0.2*(0.5-g.speed); return clamp(a,-1,1); })(this.genes) };;
-      const c0 = speciesCount.get(this.speciesKey)||0; speciesCount.set(this.speciesKey, c0+1);
-      noteSpeciesSeen(this.speciesKey);
-      this._wasNewSpecies = bornByRepro && c0===0;
-      if(bornByRepro){
-        if(parentA){ addLineageEdge(parentA, this.speciesKey); }
-        if(parentB){ addLineageEdge(parentB, this.speciesKey); }
-      }
-      // 表現型フラグ（劣性） + レア形質（葉緑体）
-      this.traits = {
-        glowA1: Math.random()<0.06?'g':'G',
-        glowA2: Math.random()<0.06?'g':'G',
-        crownA1: Math.random()<0.04?'c':'C',
-        crownA2: Math.random()<0.04?'c':'C',
-        colonyA1: Math.random()<0.05?'k':'K',
-        colonyA2: Math.random()<0.05?'k':'K',
-        // chloroplast (rare, recessive). Expressed only in herbivores.
-        chlA1: Math.random()<0.025?'p':'P',
-        chlA2: Math.random()<0.025?'p':'P',
-      };
-      this.flags = __flagsFromTraits(this.traits, this.genes);
+      if(speciesIdentityV2Enabled()){
+        if(!deferSpeciesRegistration){
+          if(!bornByRepro) recordRareTraitDiscovery(this);
+          registerFinalizedSpeciesIdentity(this,{
+            bornByRepro,
+            parentSpeciesKey:parentA,
+            mateSpeciesKey:parentB,
+            reason:bornByRepro?'birth-constructor':'initial'
+          });
+        } else {
+          this._wasNewSpecies=false;
+        }
+      } else {
+        const c0 = speciesCount.get(this.speciesKey)||0; speciesCount.set(this.speciesKey, c0+1);
+        noteSpeciesSeen(this.speciesKey);
+        this._wasNewSpecies = bornByRepro && c0===0;
+        if(bornByRepro){
+          if(parentA){ addLineageEdge(parentA, this.speciesKey); }
+          if(parentB){ addLineageEdge(parentB, this.speciesKey); }
+        }
+        // 表現型フラグ（劣性） + レア形質（葉緑体）
+        this.traits = randomInitialRareTraits();
+        this.flags = __flagsFromTraits(this.traits, this.genes);
 
-      if(!bornByRepro){
-        recordRareTraitDiscovery(this);
-        registerSpeciesStats(this);
+        if(!bornByRepro){
+          recordRareTraitDiscovery(this);
+          registerSpeciesStats(this);
+        }
       }
     }
     updateColor(){
@@ -10590,7 +10717,15 @@ if(Z>0.08){
         }
         if(evolvableLifeHistoryEnabled()) normalizeLifeHistoryGenes(g,true);
         const childSpread = adaptationProfilesFromGenes(this.genes, this.flags, this.morphologyTopology, this.role).includes('colonyBuilder') ? 8 : 20;
-        const c=new Organism(clamp(this.x+rnd(-childSpread,childSpread),10,W-10), clamp(this.y+rnd(-childSpread,childSpread),10,H-10), g, true, this.speciesKey, mate?.speciesKey||null);
+        const c=new Organism(
+          clamp(this.x+rnd(-childSpread,childSpread),10,W-10),
+          clamp(this.y+rnd(-childSpread,childSpread),10,H-10),
+          g,
+          true,
+          this.speciesKey,
+          mate?.speciesKey||null,
+          speciesIdentityV2Enabled() ? {deferSpeciesRegistration:true} : null
+        );
         c.vx=this.vx*0.2; c.vy=this.vy*0.2;
         inheritInjectionLineage(this,mate,c);
         const childEnergyEach=evolvableLifeHistoryEnabled() ? Math.min(organismMaxEnergy(c),lifePlan.plannedChildEnergyEach) : energyPlan.childEnergy;
@@ -10602,8 +10737,23 @@ if(Z>0.08){
           const mutRate = 0.005 + (this.mutagenBoost>0?0.004:0);
           c.traits = __inheritTraits(this.traits, mate?.traits, mutRate);
           c.flags = __flagsFromTraits(c.traits, c.genes);
+          if(speciesIdentityV2Enabled()){
+            finalizeOrganismSpeciesIdentity(c,{
+              reason:'birth',
+              parentSpeciesKey:this.speciesKey,
+              mateSpeciesKey:mate?.speciesKey || null
+            });
+            c.recalcPhenotype();
+            applyDevelopmentPhenotype(c);
+            registerFinalizedSpeciesIdentity(c,{
+              bornByRepro:true,
+              parentSpeciesKey:this.speciesKey,
+              mateSpeciesKey:mate?.speciesKey || null,
+              reason:'birth'
+            });
+          }
           recordRareTraitDiscovery(c);
-          registerSpeciesStats(c);
+          if(!speciesIdentityV2Enabled()) registerSpeciesStats(c);
 }catch(_){ /* ignore */ }
         if(c._wasNewSpecies) announceNewSpecies(c);
 
@@ -10865,6 +11015,19 @@ if(Z>0.08){
     return clamp(carnIntent * (0.38 + 0.62*sigmoid(deficit/12)) + clamp((carnIntent-0.62)*0.42,0,0.18),0,1);
   }
   // ===== Simple Mendelian traits (glow/crown/colony/chloroplast) =====
+  function randomInitialRareTraits(){
+    return {
+      glowA1: Math.random()<0.06?'g':'G',
+      glowA2: Math.random()<0.06?'g':'G',
+      crownA1: Math.random()<0.04?'c':'C',
+      crownA2: Math.random()<0.04?'c':'C',
+      colonyA1: Math.random()<0.05?'k':'K',
+      colonyA2: Math.random()<0.05?'k':'K',
+      // chloroplast (rare, recessive). Expressed only in herbivores.
+      chlA1: Math.random()<0.025?'p':'P',
+      chlA2: Math.random()<0.025?'p':'P',
+    };
+  }
   function __flagsFromTraits(t, g){
     const tt = t || {};
     const carn = (g && g.diet!=null) ? g.diet : 0.5;
@@ -16819,10 +16982,16 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     diagnosticPackSharing.packAttackBase=Number.isFinite(Number(opts.packAttackBase)) ? clamp(Number(opts.packAttackBase),0.1,2.0) : 0.78;
     diagnosticPackSharing.variant=String(opts.variant || (diagnosticPackSharing.shareFraction>0 ? `share${Math.round(diagnosticPackSharing.shareFraction*100)}` : 'baseline'));
     const saved=restoreAfterRun ? capture() : null;
+    const oldFeatureFlags={...featureFlags};
     const oldRandom=Math.random;
     const oldNextId=NEXT_ID;
     const startedAt=performance.now();
     try{
+      if(opts.evolvableLifeHistory!=null) featureFlags.evolvableLifeHistory=!!opts.evolvableLifeHistory;
+      if(opts.juvenileDevelopment!=null) featureFlags.juvenileDevelopment=!!opts.juvenileDevelopment;
+      if(opts.predictiveHuntingReserve!=null) featureFlags.predictiveHuntingReserve=!!opts.predictiveHuntingReserve;
+      if(opts.persistentPackIdentity!=null) featureFlags.persistentPackIdentity=!!opts.persistentPackIdentity;
+      if(opts.speciesIdentityV2!=null) featureFlags.speciesIdentityV2=!!opts.speciesIdentityV2;
       Math.random=duelSeededRandom(seed);
       NEXT_ID=1;
       reset();
@@ -16885,6 +17054,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       Object.assign(diagnosticPackSharing,oldPackSharing);
       if(restoreAfterRun && saved) restore(saved);
       else if(NEXT_ID<oldNextId) NEXT_ID=oldNextId;
+      Object.assign(featureFlags,oldFeatureFlags);
     }
   }
   function runCarnivoreLineageMicroTests(){
@@ -18376,7 +18546,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     for(const o of organisms){
       if(!o) continue;
       o.genes=geneSet(o.genes);
-      o.speciesKey=speciesKey(o.genes);
+      finalizeOrganismSpeciesIdentity(o,{reason:'phenotype-recalc'});
       o.recalcPhenotype();
       applyDevelopmentPhenotype(o);
       if(Number(o.energy||0)>organismMaxEnergy(o)) o.energy=organismMaxEnergy(o);
@@ -18421,6 +18591,29 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       resetPackIdentityState();
     }
     return {ok:true,persistentPackIdentity:persistentPackIdentityEnabled()};
+  }
+  function setSpeciesIdentityV2(enabled){
+    featureFlags.speciesIdentityV2=!!enabled;
+    speciesCount.clear();
+    speciesStats.clear();
+    for(const organism of organisms){
+      finalizeOrganismSpeciesIdentity(organism,{
+        reason:enabled ? 'feature-on' : 'feature-off'
+      });
+      organism.recalcPhenotype();
+      applyDevelopmentPhenotype(organism);
+      speciesCount.set(
+        organism.speciesKey,
+        (speciesCount.get(organism.speciesKey)||0)+1
+      );
+      registerSpeciesStats(organism);
+    }
+    clearSymbolSpriteCache();
+    for(const organism of organisms){
+      clearOrganismPackIdentity(organism,'species-identity-toggle');
+    }
+    resetPackIdentityState();
+    return speciesIdentityV2Summary();
   }
   function juvenileDevelopmentMetricBlank(){
     return {
@@ -19159,6 +19352,142 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       return out;
     };
     return JSON.stringify(sortValue(value));
+  }
+  function speciesIdentityComponentSignature(components){
+    const c=components || {};
+    return stableJson({
+      dietClass:c.dietClass,
+      role:c.role,
+      socialMode:c.socialMode,
+      topology:c.topology,
+      adaptations:(c.adaptations || []).slice().sort(),
+      expressedRareTraits:c.expressedRareTraits
+    });
+  }
+  function speciesIdentityComponentsForOrganism(o){
+    return speciesIdentityV2Components(o?.genes || {},o?.flags || {});
+  }
+  function speciesIdentityV2Summary(){
+    const living=organisms.filter(o=>o && !o.dead);
+    const legacyGroups=new Map();
+    const v2Keys=new Set();
+    const splitBy={diet:0,role:0,socialMode:0,topology:0,adaptation:0,rareTrait:0};
+    for(const o of living){
+      const legacy=legacySpeciesKey(o.genes || {});
+      const key=speciesKeyForOrganism(o);
+      v2Keys.add(key);
+      if(!legacyGroups.has(legacy)) legacyGroups.set(legacy,[]);
+      legacyGroups.get(legacy).push({key,components:speciesIdentityComponentsForOrganism(o)});
+    }
+    let splitLegacySpeciesCount=0;
+    let splitV2SpeciesCount=0;
+    for(const rows of legacyGroups.values()){
+      const keys=new Set(rows.map(r=>r.key));
+      if(keys.size>1){
+        splitLegacySpeciesCount++;
+        splitV2SpeciesCount+=keys.size;
+      }
+      const sets={
+        diet:new Set(rows.map(r=>r.components.dietClass)),
+        role:new Set(rows.map(r=>r.components.role)),
+        socialMode:new Set(rows.map(r=>r.components.socialMode)),
+        topology:new Set(rows.map(r=>r.components.topology)),
+        adaptation:new Set(rows.map(r=>(r.components.adaptations||[]).join('+') || 'none')),
+        rareTrait:new Set(rows.map(r=>r.components.expressedRareTraits))
+      };
+      for(const key of Object.keys(splitBy)){
+        if(sets[key].size>1) splitBy[key]++;
+      }
+    }
+    const bySpecies=new Map();
+    for(const o of living){
+      const key=o.speciesKey || speciesKeyForOrganism(o);
+      if(!bySpecies.has(key)) bySpecies.set(key,[]);
+      bySpecies.get(key).push(o);
+    }
+    let singleMemberSpeciesCount=0;
+    let maxWithinSpeciesGeneVariance=0;
+    for(const rows of bySpecies.values()){
+      if(rows.length===1) singleMemberSpeciesCount++;
+      for(const gene of GENE_KEYS){
+        let min=Infinity,max=-Infinity;
+        for(const o of rows){
+          const v=finiteGeneValue(o.genes?.[gene],0.5);
+          min=Math.min(min,v); max=Math.max(max,v);
+        }
+        if(Number.isFinite(min) && Number.isFinite(max)) maxWithinSpeciesGeneVariance=Math.max(maxWithinSpeciesGeneVariance,max-min);
+      }
+    }
+    let parentChildSpeciesChangeCount=0;
+    let parentChildSpeciesCompared=0;
+    let extinctWithin60Steps=0;
+    for(const birth of telemetry.births.values()){
+      if(birth?.parentSpeciesKey && birth?.speciesKey){
+        parentChildSpeciesCompared++;
+        if(birth.parentSpeciesKey!==birth.speciesKey) parentChildSpeciesChangeCount++;
+      }
+      if(birth?.deathFrame!=null && birth?.frame!=null && birth.deathFrame-birth.frame<=60) extinctWithin60Steps++;
+    }
+    return {
+      enabled:speciesIdentityV2Enabled(),
+      livingSpeciesCount:bySpecies.size,
+      legacySpeciesCount:legacyGroups.size,
+      v2SpeciesCount:v2Keys.size,
+      splitLegacySpeciesCount,
+      splitV2SpeciesCount,
+      dietBoundarySplitCount:splitBy.diet,
+      roleSplitCount:splitBy.role,
+      socialModeSplitCount:splitBy.socialMode,
+      topologySplitCount:splitBy.topology,
+      adaptationSplitCount:splitBy.adaptation,
+      rareTraitSplitCount:splitBy.rareTrait,
+      singleMemberSpeciesCount,
+      extinctWithin60Steps,
+      parentChildSpeciesChangeCount,
+      parentChildSpeciesChangeRate:parentChildSpeciesCompared ? parentChildSpeciesChangeCount/parentChildSpeciesCompared : 0,
+      maxWithinSpeciesGeneVariance
+    };
+  }
+  function speciesInvariantViolations(){
+    const groups=new Map();
+    for(const o of organisms){
+      if(!o || o.dead) continue;
+      const key=o.speciesKey || speciesKeyForOrganism(o);
+      if(!groups.has(key)) groups.set(key,[]);
+      groups.get(key).push(o);
+    }
+    const violations=[];
+    for(const [speciesKey,rows] of groups){
+      const sets={dietClass:new Set(),role:new Set(),socialMode:new Set(),topology:new Set(),adaptationSignature:new Set(),rareTraitSignature:new Set()};
+      for(const o of rows){
+        const c=speciesIdentityComponentsForOrganism(o);
+        sets.dietClass.add(c.dietClass);
+        sets.role.add(c.role);
+        sets.socialMode.add(c.socialMode);
+        sets.topology.add(c.topology);
+        sets.adaptationSignature.add((c.adaptations||[]).join('+') || 'none');
+        sets.rareTraitSignature.add(c.expressedRareTraits);
+      }
+      const broken=Object.fromEntries(Object.entries(sets).filter(([,set])=>set.size>1).map(([k,set])=>[k,[...set].sort()]));
+      if(Object.keys(broken).length){
+        violations.push({speciesKey,count:rows.length,...broken});
+      }
+    }
+    return {ok:violations.length===0,violations};
+  }
+  function speciesIdentitySnapshot(organismId){
+    const id=Number(organismId);
+    const o=organisms.find(x=>x && x.id===id) || null;
+    if(!o) return null;
+    return {
+      id:o.id,
+      speciesKey:o.speciesKey,
+      computedSpeciesKey:speciesKeyForOrganism(o),
+      speciesIdentityVersion:o.speciesIdentityVersion ?? (speciesIdentityV2Enabled()?2:1),
+      components:speciesIdentityV2Enabled() ? speciesIdentityComponentsForOrganism(o) : null,
+      flags:o.flags || {},
+      genes:{...o.genes}
+    };
   }
   function lifeHistoryReproducibilitySnapshot(){
     const snapshot={
@@ -19916,6 +20245,252 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     return {ok:results.every(r=>r.ok),results};
   }
 
+  function speciesIdentityTestGenes(overrides={}){
+    return normalizeLifeHistoryGenes({
+      speed:0.56,size:0.46,metabolism:0.50,fecundity:0.50,sense:0.58,diet:0.58,formSeed:0.42,
+      energyCapacity:0.50,clutchPotential:0.50,parentalInvestment:0.50,
+      ...overrides
+    },true);
+  }
+  function speciesIdentitySampleGenes(i){
+    const v=k=>hash01(`species-identity-sample:${i}:${k}`);
+    return speciesIdentityTestGenes({
+      speed:v('speed'),
+      size:v('size'),
+      metabolism:v('metabolism'),
+      fecundity:v('fecundity'),
+      sense:v('sense'),
+      diet:v('diet'),
+      formSeed:v('formSeed'),
+      energyCapacity:v('energyCapacity'),
+      clutchPotential:v('clutchPotential'),
+      parentalInvestment:v('parentalInvestment')
+    });
+  }
+  function speciesIdentityFindPair(predicate,samples=520){
+    const rows=[];
+    for(let i=0;i<samples;i++) rows.push({genes:speciesIdentitySampleGenes(i),flags:{}});
+    for(let i=0;i<rows.length;i++){
+      for(let j=i+1;j<rows.length;j++){
+        if(predicate(rows[i],rows[j])) return [rows[i],rows[j]];
+      }
+    }
+    return null;
+  }
+  function runSpeciesIdentityV2MicroTests(){
+    const saved=capture();
+    const oldRandom=Math.random;
+    const results=[];
+    const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
+    const keyOn=(genes,flags={})=>{
+      featureFlags.speciesIdentityV2=true;
+      return speciesKey(genes,flags);
+    };
+    const comp=(genes,flags={})=>speciesIdentityV2Components(genes,flags);
+    try{
+      featureFlags.evolvableLifeHistory=false;
+      featureFlags.juvenileDevelopment=false;
+      featureFlags.predictiveHuntingReserve=false;
+      featureFlags.persistentPackIdentity=false;
+      featureFlags.speciesIdentityV2=false;
+      let randomCalls=0;
+      Math.random=()=>{ randomCalls++; return 0.5; };
+      const offGenes=speciesIdentityTestGenes({diet:0.64});
+      const offKey=speciesKey(offGenes);
+      Math.random=oldRandom;
+      add('Identity A feature OFF legacy compatibility',
+        offKey===legacySpeciesKey(offGenes) && randomCalls===0,
+        {offKey,legacy:legacySpeciesKey(offGenes),randomCalls}
+      );
+
+      featureFlags.speciesIdentityV2=true;
+      const dietA=speciesIdentityTestGenes({diet:0.64});
+      const dietB=speciesIdentityTestGenes({diet:0.68});
+      add('Identity B diet boundary',
+        legacySpeciesKey(dietA)===legacySpeciesKey(dietB)
+          && keyOn(dietA)!==keyOn(dietB)
+          && comp(dietA).dietClass==='omnivore'
+          && comp(dietB).dietClass==='carnivore',
+        {legacyA:legacySpeciesKey(dietA),legacyB:legacySpeciesKey(dietB),keyA:keyOn(dietA),keyB:keyOn(dietB),dietA:comp(dietA).dietClass,dietB:comp(dietB).dietClass}
+      );
+
+      const roleA=speciesIdentityTestGenes({speed:0.54,sense:0.70,diet:0.70});
+      const roleB=speciesIdentityTestGenes({speed:0.56,sense:0.70,diet:0.70});
+      add('Identity C role boundary',
+        legacySpeciesKey(roleA)===legacySpeciesKey(roleB)
+          && comp(roleA).role==='ambusher'
+          && comp(roleB).role==='pursuit'
+          && keyOn(roleA)!==keyOn(roleB),
+        {legacyA:legacySpeciesKey(roleA),legacyB:legacySpeciesKey(roleB),roleA:comp(roleA).role,roleB:comp(roleB).role}
+      );
+
+      const socialPair=speciesIdentityFindPair((a,b)=>
+        legacySpeciesKey(a.genes)===legacySpeciesKey(b.genes)
+          && comp(a.genes).socialMode!==comp(b.genes).socialMode
+      );
+      add('Identity D social mode split',
+        !!socialPair && keyOn(socialPair[0].genes)!==keyOn(socialPair[1].genes),
+        socialPair ? {legacy:legacySpeciesKey(socialPair[0].genes),socialA:comp(socialPair[0].genes).socialMode,socialB:comp(socialPair[1].genes).socialMode} : {}
+      );
+
+      const topologyPair=speciesIdentityFindPair((a,b)=>
+        legacySpeciesKey(a.genes)===legacySpeciesKey(b.genes)
+          && comp(a.genes).topology!==comp(b.genes).topology
+      );
+      add('Identity E topology split',
+        !!topologyPair && keyOn(topologyPair[0].genes)!==keyOn(topologyPair[1].genes),
+        topologyPair ? {legacy:legacySpeciesKey(topologyPair[0].genes),topologyA:comp(topologyPair[0].genes).topology,topologyB:comp(topologyPair[1].genes).topology} : {}
+      );
+
+      const adaptationPair=speciesIdentityFindPair((a,b)=>{
+        const ca=comp(a.genes), cb=comp(b.genes);
+        return ca.legacyKey===cb.legacyKey
+          && ca.dietClass===cb.dietClass
+          && ca.role===cb.role
+          && ca.socialMode===cb.socialMode
+          && ca.topology===cb.topology
+          && ca.formSeedClass===cb.formSeedClass
+          && ca.shapeClass===cb.shapeClass
+          && ca.layoutClass===cb.layoutClass
+          && ca.detailClass===cb.detailClass
+          && (ca.adaptations||[]).join('+')!==(cb.adaptations||[]).join('+');
+      },760);
+      add('Identity F adaptation split',
+        !!adaptationPair && keyOn(adaptationPair[0].genes)!==keyOn(adaptationPair[1].genes),
+        adaptationPair ? {adaptA:comp(adaptationPair[0].genes).adaptations,adaptB:comp(adaptationPair[1].genes).adaptations} : {}
+      );
+
+      const rareGenes=speciesIdentityTestGenes({diet:0.22});
+      const carrierTraits={glowA1:'g',glowA2:'G',crownA1:'C',crownA2:'C',colonyA1:'K',colonyA2:'K',chlA1:'P',chlA2:'P'};
+      const carrierFlags=__flagsFromTraits(carrierTraits,rareGenes);
+      const glowFlags={...carrierFlags,glow:true};
+      add('Identity G rare expression split',
+        keyOn(rareGenes,carrierFlags)===keyOn(rareGenes,{})
+          && keyOn(rareGenes,carrierFlags)!==keyOn(rareGenes,glowFlags),
+        {carrier:expressedRareTraitSignature(carrierFlags),glow:expressedRareTraitSignature(glowFlags)}
+      );
+
+      const samePair=speciesIdentityFindPair((a,b)=>{
+        return keyOn(a.genes,a.flags)===keyOn(b.genes,b.flags)
+          && BASE_GENE_KEYS.some(k=>finiteGeneValue(a.genes?.[k],0.5)!==finiteGeneValue(b.genes?.[k],0.5));
+      },900);
+      add('Identity H same species allows exact gene differences',
+        !!samePair && keyOn(samePair[0].genes)===keyOn(samePair[1].genes),
+        samePair ? {keyA:keyOn(samePair[0].genes),keyB:keyOn(samePair[1].genes),componentA:comp(samePair[0].genes),componentB:comp(samePair[1].genes)} : {}
+      );
+
+      randomCalls=0;
+      Math.random=()=>{ randomCalls++; return 0.25; };
+      const groups=new Map();
+      for(let i=0;i<420;i++){
+        const genes=speciesIdentitySampleGenes(i);
+        const flags={glow:hash01(`flags:${i}:g`)>0.96,crown:hash01(`flags:${i}:c`)>0.97,colony:hash01(`flags:${i}:k`)>0.96,chl:hash01(`flags:${i}:p`)>0.985};
+        const key=speciesKey(genes,flags);
+        const row=comp(genes,flags);
+        if(!groups.has(key)) groups.set(key,[]);
+        groups.get(key).push(row);
+      }
+      Math.random=oldRandom;
+      let propertyOk=randomCalls===0;
+      for(const rows of groups.values()){
+        const first=speciesIdentityComponentSignature(rows[0]);
+        if(rows.some(r=>speciesIdentityComponentSignature(r)!==first)){ propertyOk=false; break; }
+      }
+      add('Identity I property grouping has one component signature',
+        propertyOk,
+        {groups:groups.size,randomCalls}
+      );
+
+      running=false; frame=0; generation=1; NEXT_ID=1; organisms.length=0; newborn.length=0; speciesCount.clear(); speciesStats.clear(); resetPackIdentityState();
+      featureFlags.evolvableLifeHistory=true;
+      featureFlags.juvenileDevelopment=true;
+      featureFlags.predictiveHuntingReserve=true;
+      featureFlags.persistentPackIdentity=true;
+      featureFlags.speciesIdentityV2=true;
+      const parent=new Organism(100,100,speciesIdentityTestGenes({diet:0.72,speed:0.58,sense:0.72,size:0.45}),false);
+      parent.age=999; parent.protect=0; parent.socialMode='hunt-pack'; parent.role='pursuit'; parent.speciesKey=speciesKeyForOrganism(parent);
+      const sibling=new Organism(106,100,parent.genes,false);
+      sibling.age=999; sibling.protect=0; sibling.socialMode='hunt-pack'; sibling.role='pursuit'; sibling.speciesKey=speciesKeyForOrganism(sibling);
+      organisms.push(parent,sibling);
+      buildSpatialIndex();
+      updatePersistentPackIdentity(true);
+      const child=new Organism(104,104,{...parent.genes},true,parent.speciesKey,null,{deferSpeciesRegistration:true});
+      const totalSpeciesCountBeforeChildRegistration=[...speciesCount.values()].reduce((s,n)=>s+Number(n||0),0);
+      child.traits=__inheritTraits(parent.traits,null,0);
+      child.flags=__flagsFromTraits(child.traits,child.genes);
+      finalizeOrganismSpeciesIdentity(child,{reason:'birth',parentSpeciesKey:parent.speciesKey});
+      registerFinalizedSpeciesIdentity(child,{bornByRepro:true,parentSpeciesKey:parent.speciesKey,reason:'birth'});
+      const totalSpeciesCountAfterChildRegistration=[...speciesCount.values()].reduce((s,n)=>s+Number(n||0),0);
+      const inherited=inheritParentPackIdentity(child,parent);
+      telemetryRecordBirth(parent,child,0,1,{preMutationDiet:child.genes.diet});
+      const birth=telemetry.births.get(child.id);
+      add('Identity J birth finalization uses final key once',
+        child.speciesKey===speciesKeyForOrganism(child)
+          && (speciesCount.get(child.speciesKey)||0)>=1
+          && birth?.speciesKey===child.speciesKey
+          && totalSpeciesCountAfterChildRegistration===totalSpeciesCountBeforeChildRegistration+1,
+        {childKey:child.speciesKey,birthKey:birth?.speciesKey,totalBefore:totalSpeciesCountBeforeChildRegistration,totalAfter:totalSpeciesCountAfterChildRegistration,lineage:lineage.edges.slice(-2)}
+      );
+      add('Identity K pack inheritance respects final species',
+        inherited===true && child.packId===parent.packId,
+        {parentPack:parent.packId,childPack:child.packId,childKey:child.speciesKey,packKey:activePackById(parent.packId)?.speciesKey}
+      );
+      const mutant=new Organism(112,100,{...parent.genes,diet:0.45},true,parent.speciesKey,null,{deferSpeciesRegistration:true});
+      mutant.traits=__inheritTraits(parent.traits,null,0);
+      mutant.flags=__flagsFromTraits(mutant.traits,mutant.genes);
+      finalizeOrganismSpeciesIdentity(mutant,{reason:'birth'});
+      registerFinalizedSpeciesIdentity(mutant,{bornByRepro:true,parentSpeciesKey:parent.speciesKey,reason:'birth'});
+      const mutantInherited=inheritParentPackIdentity(mutant,parent);
+      add('Identity K2 changed species does not inherit pack',
+        mutant.speciesKey!==parent.speciesKey && mutantInherited===false && mutant.packId==null,
+        {parentKey:parent.speciesKey,mutantKey:mutant.speciesKey,mutantPack:mutant.packId}
+      );
+
+      const beforeSave=organisms.map(o=>({id:o.id,key:o.speciesKey,components:o.speciesIdentityComponents})).sort((a,b)=>a.id-b.id);
+      const beforeSummary=speciesIdentityV2Summary();
+      const savedState=capture();
+      restore(savedState);
+      const afterSave=organisms.map(o=>({id:o.id,key:o.speciesKey,components:o.speciesIdentityComponents})).sort((a,b)=>a.id-b.id);
+      add('Identity L save/load round trip preserves V2 identity',
+        stableJson(beforeSave)===stableJson(afterSave)
+          && speciesIdentityV2Summary().v2SpeciesCount===beforeSummary.v2SpeciesCount,
+        {before:beforeSave,after:afterSave,beforeSummary,afterSummary:speciesIdentityV2Summary()}
+      );
+    }catch(err){
+      add('Identity micro exception',false,{message:String(err?.message || err),stack:String(err?.stack || '')});
+    }finally{
+      Math.random=oldRandom;
+      restore(saved);
+    }
+    return {ok:results.every(r=>r.ok),results};
+  }
+
+  function runSpeciesIdentityV2ReproducibilityMicroTest(options={}){
+    const saved=capture();
+    const seed=Number(options.seed ?? 41001);
+    const steps=Math.max(1,Math.min(1000,Number(options.steps ?? 120)));
+    const run=()=>{
+      runSeededWorldDiagnostic({
+        seed,steps,restoreAfterRun:false,targetConsensus:false,shareFraction:0,packAttackBase:0.78,
+        evolvableLifeHistory:true,juvenileDevelopment:true,predictiveHuntingReserve:true,persistentPackIdentity:true,speciesIdentityV2:true,
+        variant:'speciesIdentityV2Repro'
+      });
+      return stableJson({
+        summary:speciesIdentityV2Summary(),
+        invariants:speciesInvariantViolations(),
+        species:[...new Set(organisms.map(o=>o.speciesKey))].sort(),
+        world:lifeHistoryReproducibilitySnapshot()
+      });
+    };
+    try{
+      const a=run();
+      const b=run();
+      return {ok:a===b,seed,steps};
+    }finally{
+      restore(saved);
+    }
+  }
+
   function packIdentityBehaviorStableJson(value){
     const sortValue=(v)=>{
       if(v==null || typeof v!=='object') return v;
@@ -20296,6 +20871,24 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     setPersistentPackIdentity(enabled){
       return setPersistentPackIdentity(enabled);
+    },
+    setSpeciesIdentityV2(enabled){
+      return setSpeciesIdentityV2(enabled);
+    },
+    speciesIdentityV2Summary(){
+      return speciesIdentityV2Summary();
+    },
+    speciesInvariantViolations(){
+      return speciesInvariantViolations();
+    },
+    speciesIdentitySnapshot(organismId){
+      return speciesIdentitySnapshot(organismId);
+    },
+    runSpeciesIdentityV2MicroTests(){
+      return runSpeciesIdentityV2MicroTests();
+    },
+    runSpeciesIdentityV2ReproducibilityMicroTest(options={}){
+      return runSpeciesIdentityV2ReproducibilityMicroTest(options);
     },
     lifeHistorySummary(){
       return lifeHistorySummary();
@@ -20705,13 +21298,21 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   // ===== Save / Load =====
   function capture(){
     const state={v:5,frame,generation,dayNight:{phase:dayNight.phase},worldEvent,eco,
+      features:{
+        evolvableLifeHistory:evolvableLifeHistoryEnabled(),
+        juvenileDevelopment:juvenileDevelopmentEnabled(),
+        predictiveHuntingReserve:predictiveHuntingReserveEnabled(),
+        persistentPackIdentity:persistentPackIdentityEnabled(),
+        speciesIdentityV2:speciesIdentityV2Enabled()
+      },
+      speciesIdentityVersion:speciesIdentityV2Enabled() ? 2 : 1,
       envState: window.env?.captureState ? window.env.captureState() : null,
       food: food.map(f=>({x:f.x,y:f.y,type:f.type,r:f.r,gain:f.gain,t:f.t,vx:f.vx,vy:f.vy,seed:f.seed})),
       corpses: corpses.map(c=>({x:c.x,y:c.y,energy:c.energy,t:c.t})),
       patches: patches.map(p=>({type:p.type,x:p.x,y:p.y,r:p.r})),
       plankton: plankton.map(p=>({x:p.x,y:p.y,vx:p.vx,vy:p.vy,t:p.t,kind:p.kind,fade:p.fade})),
       membranes: membranes.map(m=>({x1:m.x1,y1:m.y1,x2:m.x2,y2:m.y2,type:m.type,t:m.t})),
-      organisms: organisms.map(o=>({id:o.id,x:o.x,y:o.y,vx:o.vx,vy:o.vy,energy:o.energy,age:o.age,birthFrame:o.birthFrame,lineageInitial:o.lineageInitial,parentId:o.parentId??null,mateParentId:o.mateParentId??null,generationDepth:o.generationDepth??0,birthExactDiet:o.birthExactDiet??null,birthDietClass:o.birthDietClass??null,protect:o.protect,storeN:o.storeN,storeO:o.storeO,storeD:o.storeD,mem:o.mem,attackCD:o.attackCD,fleeTimer:o.fleeTimer,chaseTimer:o.chaseTimer,preyTargetId:o.preyTargetId,preyTargetOutOfRangeSteps:o.preyTargetOutOfRangeSteps||0,predatorThreatId:o.predatorThreatId,grazingTimer:o.grazingTimer,genes:o.genes,role:normalizeRole(o.role),socialMode:o.socialMode,sociality:o.sociality,speciesKey:o.speciesKey,traits:o.traits||null,flags:o.flags||null,morphologyTopology:o.morphologyTopology||topologyFromGenes(o.genes),recentEvents:o.recentEvents||[],lastAction:o.lastAction||null,...packIdentityOrganismSaveFields(o),devInjected:!!o.devInjected,devInjectedLineage:!!o.devInjectedLineage,injectionBatchId:o.injectionBatchId||null,injectionStep:o.injectionStep??null,injectionGeneration:o.injectionGeneration??null,injectionAncestorId:o.injectionAncestorId??null,injectionParentId:o.injectionParentId??null})),
+      organisms: organisms.map(o=>({id:o.id,x:o.x,y:o.y,vx:o.vx,vy:o.vy,energy:o.energy,age:o.age,birthFrame:o.birthFrame,lineageInitial:o.lineageInitial,parentId:o.parentId??null,mateParentId:o.mateParentId??null,generationDepth:o.generationDepth??0,birthExactDiet:o.birthExactDiet??null,birthDietClass:o.birthDietClass??null,protect:o.protect,storeN:o.storeN,storeO:o.storeO,storeD:o.storeD,mem:o.mem,attackCD:o.attackCD,fleeTimer:o.fleeTimer,chaseTimer:o.chaseTimer,preyTargetId:o.preyTargetId,preyTargetOutOfRangeSteps:o.preyTargetOutOfRangeSteps||0,predatorThreatId:o.predatorThreatId,grazingTimer:o.grazingTimer,genes:o.genes,role:normalizeRole(o.role),socialMode:o.socialMode,sociality:o.sociality,speciesKey:o.speciesKey,speciesIdentityVersion:o.speciesIdentityVersion??(speciesIdentityV2Enabled()?2:1),speciesIdentityComponents:o.speciesIdentityComponents||null,traits:o.traits||null,flags:o.flags||null,morphologyTopology:o.morphologyTopology||topologyFromGenes(o.genes),recentEvents:o.recentEvents||[],lastAction:o.lastAction||null,...packIdentityOrganismSaveFields(o),devInjected:!!o.devInjected,devInjectedLineage:!!o.devInjectedLineage,injectionBatchId:o.injectionBatchId||null,injectionStep:o.injectionStep??null,injectionGeneration:o.injectionGeneration??null,injectionAncestorId:o.injectionAncestorId??null,injectionParentId:o.injectionParentId??null})),
       extinctRecords,
       speciesStats:Array.from(speciesStats.entries()),
       discoveredRareTraits:Array.from(discoveredRareTraits),
@@ -20726,6 +21327,13 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     try{
       if(!s.startsWith('ALIFE2:')) throw new Error('ヘッダー不正');
       const body=s.split(':',2)[1]; const state=JSON.parse(decodeURIComponent(escape(atob(body))));
+      if(state.features && typeof state.features==='object'){
+        if(state.features.evolvableLifeHistory!=null) featureFlags.evolvableLifeHistory=!!state.features.evolvableLifeHistory;
+        if(state.features.juvenileDevelopment!=null) featureFlags.juvenileDevelopment=!!state.features.juvenileDevelopment;
+        if(state.features.predictiveHuntingReserve!=null) featureFlags.predictiveHuntingReserve=!!state.features.predictiveHuntingReserve;
+        if(state.features.persistentPackIdentity!=null) featureFlags.persistentPackIdentity=!!state.features.persistentPackIdentity;
+        if(state.features.speciesIdentityV2!=null) featureFlags.speciesIdentityV2=!!state.features.speciesIdentityV2;
+      }
       running=false;
       food.length=0; corpses.length=0; plankton.length=0; patches.length=0; organisms.length=0; newborn.length=0; sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0; calls.length=0; speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear(); selectedOrganism=null; selectedDeadAt=0; resetPackIdentityState();
       resetFoodWebStats();
@@ -20753,8 +21361,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       const prevAnnounceMute=speciesAnnounceMuteUntil;
       speciesAnnounceMuteUntil=Number.MAX_SAFE_INTEGER;
       let maxRestoredId=0;
+      const restoreSpeciesIdentityV2=speciesIdentityV2Enabled();
       (state.organisms||[]).forEach(o=>{
-        const u=new Organism(o.x,o.y,o.genes,false);
+        const u=new Organism(o.x,o.y,o.genes,false,null,null,restoreSpeciesIdentityV2 ? {deferSpeciesRegistration:true} : null);
         if(Number.isFinite(Number(o.id))){
           u.id=Number(o.id);
           maxRestoredId=Math.max(maxRestoredId,u.id);
@@ -20803,12 +21412,16 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         if(o.traits) u.traits=o.traits;
         // recompute flags to include any new trait logic (backward compatible)
         u.flags = __flagsFromTraits(u.traits||{}, u.genes);
+        if(restoreSpeciesIdentityV2){
+          finalizeOrganismSpeciesIdentity(u,{reason:'load'});
+        } else if(o.speciesKey!=null) {
+          u.speciesKey=o.speciesKey;
+        }
         u.morphologyTopology = o.morphologyTopology || topologyFromGenes(u.genes);
         u.recentEvents = Array.isArray(o.recentEvents) ? o.recentEvents.slice(-5) : [];
         u.lastAction = o.lastAction || u.lastAction || 'ロードされた';
         u.recalcPhenotype();
         applyDevelopmentPhenotype(u);
-        if(o.speciesKey!=null) u.speciesKey=o.speciesKey;
         u.role=normalizeRole(o.role ?? u.role);
         if(o.socialMode!=null) u.socialMode=o.socialMode;
         if(o.sociality!=null){
@@ -20820,16 +21433,26 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         clearChaseCommitment(u,'load');
         u.energy=clamp(Number(u.energy||0),0,organismMaxEnergy(u));
         recordRareTraitDiscovery(u);
-        registerSpeciesStats(u);
+        if(restoreSpeciesIdentityV2){
+          registerFinalizedSpeciesIdentity(u,{bornByRepro:false,reason:'load'});
+        } else {
+          registerSpeciesStats(u);
+        }
 organisms.push(u);
       });
       if(maxRestoredId>0) NEXT_ID=Math.max(NEXT_ID,maxRestoredId+1);
-      frame=state.frame||0; generation=state.generation||1; if(state.dayNight?.phase!=null){ dayNight.phase=state.dayNight.phase; applyDayNightState(false); } Object.assign(worldEvent, state.worldEvent||{}); Object.assign(eco, state.eco||{}); restorePackIdentityState(state.packIdentity);
+      frame=state.frame||0; generation=state.generation||1; if(state.dayNight?.phase!=null){ dayNight.phase=state.dayNight.phase; applyDayNightState(false); } Object.assign(worldEvent, state.worldEvent||{}); Object.assign(eco, state.eco||{});
+      if(restoreSpeciesIdentityV2){
+        for(const organism of organisms) clearOrganismPackIdentity(organism,'species-identity-load');
+        resetPackIdentityState();
+      } else {
+        restorePackIdentityState(state.packIdentity);
+      }
       speciesAnnounceMuteUntil=Math.max(prevAnnounceMute||0, frame+120);
       if(Array.isArray(state.extinctRecords)) extinctRecords.push(...state.extinctRecords.slice(0,14));
       if(Array.isArray(state.discoveredRareTraits)){ for(const x of state.discoveredRareTraits) discoveredRareTraits.add(x); }
       if(Array.isArray(state.evolutionMilestones)){ for(const x of state.evolutionMilestones) evolutionMilestones.add(x); }
-      if(Array.isArray(state.speciesStats)){ for(const [k,v] of state.speciesStats) speciesStats.set(k,v); }
+      if(!restoreSpeciesIdentityV2 && Array.isArray(state.speciesStats)){ for(const [k,v] of state.speciesStats) speciesStats.set(k,v); }
       // lineage
       lineage.nodes.clear(); lineage.edges.length=0;
       if(state.lineage){ for(const [k,v] of (state.lineage.nodes||[])){ lineage.nodes.set(k,v); } lineage.edges.push(...(state.lineage.edges||[])); }
