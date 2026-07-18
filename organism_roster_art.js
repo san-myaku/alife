@@ -702,7 +702,11 @@
       [{x:0,y:L},{x:-wid*0.7,y:L*0.5},{x:-wid,y:L*0.05},{x:-wid,y:0}],
       [{x:-wid,y:0},{x:-wid,y:-L*0.05},{x:-wid*0.7,y:-L*0.5},{x:0,y:-L}]
     ], 14);
-    appendageBehind(ctx, o, r, pal, rng, pts); // selectable appendage, behind the body
+    // fringe only on the two long flanks (skip the pointed tips), along the true
+    // outward normal, so appendages hug the needle instead of bursting from the ends.
+    const nAll = _outlineNormals(pts), fPts = [], fNorm = [];
+    for (let i = 0; i < pts.length; i++) if (Math.abs(pts[i].y) < L * 0.80) { fPts.push(pts[i]); fNorm.push(nAll[i]); }
+    appendageBehind(ctx, o, r, pal, rng, fPts, { normals: fNorm, slim: true });
     ctx.beginPath();
     ctx.moveTo(0, -L);
     ctx.bezierCurveTo(wid * 0.7, -L * 0.5, wid, -L * 0.05, wid, 0);
@@ -1186,6 +1190,9 @@
     }
     // point appendages (antennae/flagella) don't read on ring/mesh/cluster bodies -> use a fringe.
     if (opts && opts.perimeter && PERIM.indexOf(kind) < 0) kind = PERIM[Math.floor(h * 4) % 4];
+    // slim bodies (a needle): long radiating thorns/arms look like a starburst, so keep
+    // to a fringe that hugs the two long edges.
+    if (opts && opts.slim) kind = (kind === "spikes" || diet > 0.66) ? "spikes" : "cilia";
     ctx.save();
     ctx.lineCap = "round"; ctx.lineJoin = "round";
     if (kind === "cilia") {
