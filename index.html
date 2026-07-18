@@ -2141,6 +2141,24 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     lineageRegistryLastRestoreIssues.duplicateLineageIds=[];
     resetProvisionalLineageTelemetry();
   }
+  function hasNonRootLineages(){
+    for(const record of lineageRegistry.values()){
+      if(!String(record?.lineageId || '').startsWith('root:')) return true;
+    }
+    return false;
+  }
+  function canChangeSpeciesIdentityV2WithoutReset(enabled){
+    const requested=!!enabled;
+    const current=speciesIdentityV2Enabled();
+    const nonRootLineages=hasNonRootLineages();
+    if(requested===current){
+      return {ok:true,changed:false,reason:'same-value',current,requested,nonRootLineages};
+    }
+    if(nonRootLineages){
+      return {ok:false,changed:false,reason:'world-reset-required',current,requested,nonRootLineages};
+    }
+    return {ok:true,changed:true,reason:lineageRegistry.size ? 'root-only' : 'empty-registry',current,requested,nonRootLineages};
+  }
   function restoreLineageRegistryState(rawState){
     resetLineageRegistry();
     const records=Array.isArray(rawState?.records) ? rawState.records : [];
@@ -2378,6 +2396,76 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     const counts=Object.fromEntries(Object.entries(details).map(([key,value])=>[key,Array.isArray(value)?value.length:0]));
     const violationCount=Object.values(counts).reduce((sum,n)=>sum+n,0);
     return {ok:violationCount===0,violationCount,counts,details};
+  }
+  function ecotypeTopologyFromSignature(signature){
+    try{
+      const parsed=JSON.parse(String(signature || '{}'));
+      return parsed?.topology || null;
+    }catch(_){
+      return null;
+    }
+  }
+  function initialSeedGenesMatch(genes,seedGenes){
+    return BASE_GENE_KEYS.every(key=>Math.abs(finiteGeneValue(genes?.[key],0.5)-finiteGeneValue(seedGenes?.[key],0.5))<1e-12);
+  }
+  function baseGeneSnapshot(genes){
+    const out={};
+    for(const key of BASE_GENE_KEYS) out[key]=finiteGeneValue(genes?.[key],0.5);
+    return out;
+  }
+  function initialTopologySeedConsistencyReport(){
+    const rows=INITIAL_TOPOLOGY_SEEDS.map(seed=>{
+      const seedGenes=initialGenesForTopology(seed.topology);
+      const organism=organisms.find(o=>o && !o.dead && o.lineageInitial!==false && initialSeedGenesMatch(o.genes,seedGenes)) || null;
+      const genes=organism?.genes || seedGenes;
+      const components=organism ? speciesIdentityComponentsForOrganism(organism) : speciesIdentityV2Components(genes,{});
+      const symbol=organism?._symbol || null;
+      const record=organism?.lineageId ? lineageRecordById(organism.lineageId) : null;
+      const computedEcotypeSignature=organism ? lineageEcotypeSignatureFor(organism) : lineageEcotypeSignatureFor({genes,flags:{}});
+      const lineageEcotypeTopology=ecotypeTopologyFromSignature(record?.ecotypeSignature || computedEcotypeSignature);
+      const values={
+        intendedTopology:seed.topology,
+        topologyFromGenes:topologyFromGenes(genes),
+        speciesIdentityTopology:components?.topology || null,
+        morphologyTopology:organism?.morphologyTopology || null,
+        symbolBodyPlan:symbol?.bodyPlan || null,
+        lineageEcotypeTopology
+      };
+      const ok=!!organism
+        && Object.values(values).every(value=>value===seed.topology);
+      return {
+        topology:seed.topology,
+        ok,
+        organismId:organism?.id ?? null,
+        lineageId:organism?.lineageId ?? null,
+        canonicalAppearanceKey:organism?.canonicalAppearanceKey ?? null,
+        genes:baseGeneSnapshot(genes),
+        values,
+        recordEcotypeTopology:ecotypeTopologyFromSignature(record?.ecotypeSignature),
+        computedEcotypeTopology:ecotypeTopologyFromSignature(computedEcotypeSignature)
+      };
+    });
+    const required=['single','radial','ring','cluster','amoeba','mesh','branch'];
+    return {
+      ok:required.every(topology=>rows.some(row=>row.topology===topology && row.ok)),
+      required,
+      rows,
+      mismatches:rows.filter(row=>!row.ok)
+    };
+  }
+  function morphologyTopologyGeneMismatchReport(){
+    const rows=organisms
+      .filter(o=>o && !o.dead)
+      .map(o=>({
+        id:o.id,
+        lineageInitial:!!o.lineageInitial,
+        speciesKey:o.speciesKey || null,
+        lineageId:o.lineageId || null,
+        morphologyTopology:o.morphologyTopology || null,
+        topologyFromGenes:topologyFromGenes(o.genes)
+      }))
+      .filter(row=>row.morphologyTopology!==row.topologyFromGenes);
+    return {ok:rows.length===0,count:rows.length,rows};
   }
   function lineageRegistrySummary(){
     const derived=rebuildLineageRegistryDerivedSummary();
@@ -9014,6 +9102,20 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function topologyLabel(t){
     return ({single:'単核型',chain:'数珠型',radial:'放射型',ring:'環状型',branch:'分岐型',cluster:'房型',amoeba:'アメーバ型',mesh:'網目型'})[t] || '単核型';
   }
+  const INITIAL_TOPOLOGY_SEEDS = Object.freeze([
+    {topology:'single', genes:Object.freeze({speed:0.32,size:0.42,metabolism:0.72,fecundity:0.34,sense:0.36,diet:0.29,formSeed:0.08})},
+    {topology:'chain', genes:Object.freeze({speed:0.72,size:0.36,metabolism:0.44,fecundity:0.46,sense:0.56,diet:0.36,formSeed:0.22})},
+    {topology:'radial', genes:Object.freeze({speed:0.48,size:0.46,metabolism:0.48,fecundity:0.44,sense:0.66,diet:0.72,formSeed:0.78})},
+    {topology:'ring', genes:Object.freeze({speed:0.38,size:0.48,metabolism:0.76,fecundity:0.44,sense:0.50,diet:0.34,formSeed:0.52})},
+    {topology:'branch', genes:Object.freeze({speed:0.52,size:0.36,metabolism:0.50,fecundity:0.44,sense:0.82,diet:0.46,formSeed:0.66})},
+    {topology:'cluster', genes:Object.freeze({speed:0.34,size:0.34,metabolism:0.56,fecundity:0.84,sense:0.52,diet:0.22,formSeed:0.92})},
+    {topology:'amoeba', genes:Object.freeze({speed:0.42,size:0.46,metabolism:0.54,fecundity:0.50,sense:0.52,diet:0.28,formSeed:0.88})},
+    {topology:'mesh', genes:Object.freeze({speed:0.40,size:0.62,metabolism:0.82,fecundity:0.42,sense:0.66,diet:0.42,formSeed:0.58})}
+  ]);
+  function initialGenesForTopology(topology,baseGenes=null){
+    const seed=INITIAL_TOPOLOGY_SEEDS.find(row=>row.topology===topology);
+    return Object.assign({}, baseGenes || {}, seed?.genes || {});
+  }
   function topologyNameCore(t){
     return ({single:'単核',chain:'数珠',radial:'放射',ring:'環状',branch:'分岐',cluster:'群体',amoeba:'アメーバ',mesh:'網目'})[t] || '単核';
   }
@@ -13620,17 +13722,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   }
   function initPopulation(n=CONFIG.population.starter){
   organisms.length=0;
-  const topologySeeds = [
-    {t:'single', g:{speed:0.32,size:0.42,metabolism:0.72,fecundity:0.34,sense:0.36,diet:0.28,formSeed:0.08}},
-    {t:'chain', g:{speed:0.72,size:0.36,metabolism:0.44,fecundity:0.46,sense:0.56,diet:0.36,formSeed:0.22}},
-    {t:'radial', g:{speed:0.48,size:0.46,metabolism:0.48,fecundity:0.44,sense:0.62,diet:0.72,formSeed:0.78}},
-    {t:'ring', g:{speed:0.38,size:0.48,metabolism:0.76,fecundity:0.44,sense:0.52,diet:0.34,formSeed:0.52}},
-    {t:'branch', g:{speed:0.52,size:0.36,metabolism:0.50,fecundity:0.44,sense:0.82,diet:0.46,formSeed:0.66}},
-    {t:'cluster', g:{speed:0.34,size:0.34,metabolism:0.56,fecundity:0.84,sense:0.52,diet:0.22,formSeed:0.92}},
-    {t:'amoeba', g:{speed:0.42,size:0.46,metabolism:0.54,fecundity:0.50,sense:0.52,diet:0.28,formSeed:0.86}},
-    {t:'mesh', g:{speed:0.40,size:0.62,metabolism:0.82,fecundity:0.42,sense:0.66,diet:0.42,formSeed:0.58}}
-  ];
-  const baseline = Math.max(0, (n|0) - 10 - topologySeeds.length);
+  const baseline = Math.max(0, (n|0) - 10 - INITIAL_TOPOLOGY_SEEDS.length);
   for(let i=0;i<baseline;i++){
     const o = new Organism(rnd(20,W-20), rnd(20,H-20));
     settleStarter(o);
@@ -13644,10 +13736,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     settleStarter(o);
     organisms.push(o);
   }
-  for(const seed of topologySeeds){
-    const o = new Organism(rnd(20,W-20), rnd(20,H-20), Object.assign({}, seed.g));
-    o.morphologyTopology = seed.t;
-    o.prepareSymbolDetails();
+  for(const seed of INITIAL_TOPOLOGY_SEEDS){
+    const o = new Organism(rnd(20,W-20), rnd(20,H-20), initialGenesForTopology(seed.topology));
     settleStarter(o);
     organisms.push(o);
   }
@@ -19494,6 +19584,14 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     };
   }
   function setSpeciesIdentityV2(enabled){
+    const guard=canChangeSpeciesIdentityV2WithoutReset(enabled);
+    if(!guard.changed){
+      if(!guard.ok && !setSpeciesIdentityV2._warnedWorldResetRequired){
+        console.warn('Species Identity V2 cannot be toggled while non-root lineage records exist; reset the world first.');
+        setSpeciesIdentityV2._warnedWorldResetRequired=true;
+      }
+      return {...speciesIdentityV2Summary(),changed:false,reason:guard.reason,requested:guard.requested};
+    }
     featureFlags.speciesIdentityV2=!!enabled;
     speciesCount.clear();
     speciesStats.clear();
@@ -19517,7 +19615,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     }
     resetPackIdentityState();
     if(persistentLineageRegistryEnabled()) rebuildRootLineagesFromOrganisms(organisms,{createdFrame:frame,createdGeneration:generation});
-    return speciesIdentityV2Summary();
+    return {...speciesIdentityV2Summary(),changed:true,reason:guard.reason,requested:guard.requested};
   }
   function setCanonicalSpeciesAppearance(enabled){
     featureFlags.canonicalSpeciesAppearance=!!enabled;
@@ -23114,6 +23212,320 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     return {ok:results.every(r=>r.ok),results};
   }
 
+  function runInitialTopologyLineageSafetyMicroTests(){
+    const saved=capture();
+    const oldRandom=Math.random;
+    const oldFlags={...featureFlags};
+    const results=[];
+    const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
+    const same=(a,b)=>stableJson(a)===stableJson(b);
+    const testTraits=()=>({glowA1:'G',glowA2:'G',crownA1:'C',crownA2:'C',colonyA1:'K',colonyA2:'K',chlA1:'P',chlA2:'P'});
+    const testFlags=(flags={})=>({glow:false,crown:false,colony:false,chl:false,...flags});
+    const enableFullLineageFeatures=()=>{
+      Object.assign(featureFlags,{
+        evolvableLifeHistory:true,
+        juvenileDevelopment:true,
+        predictiveHuntingReserve:true,
+        persistentPackIdentity:true,
+        speciesIdentityV2:true,
+        canonicalSpeciesAppearance:true,
+        eventKeyedVisualRng:true,
+        persistentLineageRegistry:true,
+        provisionalLineageClassification:true
+      });
+    };
+    const clear=()=>{
+      running=false;
+      frame=0;
+      generation=1;
+      NEXT_ID=1;
+      organisms.length=0; newborn.length=0; food.length=0; corpses.length=0; plankton.length=0; patches.length=0; calls.length=0;
+      sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0;
+      speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear();
+      lineage.nodes.clear(); lineage.edges.length=0;
+      clearSpeciesAppearanceProfileCache(); OrganismRender.clearCanonicalSymbolCache?.(); clearSymbolSpriteCache();
+      resetLineageRegistry(); resetPackIdentityState(); resetTelemetry(); resetFoodWebStats();
+    };
+    const make=(genes,options={})=>{
+      const born=!!options.born;
+      const o=new Organism(
+        Number(options.x ?? 100),
+        Number(options.y ?? 100),
+        {...genes},
+        born,
+        options.parentSpeciesKey || null,
+        options.mateSpeciesKey || null,
+        speciesIdentityV2Enabled() ? {deferSpeciesRegistration:true} : null
+      );
+      o.traits=options.traits || testTraits();
+      o.flags=testFlags(options.flags || {});
+      finalizeOrganismSpeciesIdentity(o,{reason:options.reason || 'topology-lineage-micro'});
+      o.recalcPhenotype();
+      applyDevelopmentPhenotype(o);
+      o.updateColor();
+      registerFinalizedSpeciesIdentity(o,{
+        bornByRepro:born,
+        parentSpeciesKey:options.parentSpeciesKey || null,
+        mateSpeciesKey:options.mateSpeciesKey || null,
+        reason:options.reason || 'topology-lineage-micro'
+      });
+      if(options.push!==false) organisms.push(o);
+      return o;
+    };
+    const genesA=speciesIdentityTestGenes({diet:0.20,speed:0.42,size:0.44,sense:0.48,metabolism:0.50,fecundity:0.52,formSeed:0.45});
+    const genesB=speciesIdentityTestGenes({diet:0.88,speed:0.70,size:0.58,sense:0.76,metabolism:0.36,fecundity:0.44,formSeed:0.82});
+    const genesC=speciesIdentityTestGenes({diet:0.52,speed:0.32,size:0.36,sense:0.62,metabolism:0.48,fecundity:0.66,formSeed:0.16});
+    const genesD=speciesIdentityTestGenes({diet:0.76,speed:0.24,size:0.78,sense:0.28,metabolism:0.58,fecundity:0.34,formSeed:0.63});
+    const organismLineageMapping=()=>organisms
+      .filter(o=>o && !o.dead)
+      .map(o=>({
+        id:o.id,
+        speciesKey:o.speciesKey ?? null,
+        lineageId:o.lineageId ?? null,
+        lineageGeneration:o.lineageGeneration ?? null,
+        parentLineageId:o.lineageId ? (lineageRecordById(o.lineageId)?.parentLineageId ?? null) : null,
+        canonicalAppearanceKey:o.canonicalAppearanceKey ?? null,
+        founderId:o.lineageId ? (lineageRecordById(o.lineageId)?.founderId ?? null) : null,
+        speciesStatus:o.lineageId ? (lineageRecordById(o.lineageId)?.speciesStatus ?? null) : null,
+        morphologyTopology:o.morphologyTopology ?? null,
+        ecotypeSignature:lineageEcotypeSignatureFor(o)
+      }))
+      .sort((a,b)=>a.id-b.id);
+    const organismModelSnapshot=()=>organisms
+      .filter(o=>o && !o.dead)
+      .map(o=>({
+        id:o.id,
+        x:o.x,y:o.y,vx:o.vx,vy:o.vy,
+        energy:o.energy,age:o.age,birthFrame:o.birthFrame,
+        genes:baseGeneSnapshot(o.genes),
+        role:o.role,socialMode:o.socialMode,sociality:o.sociality,
+        packId:o.packId ?? null,
+        packJoinFrame:o.packJoinFrame ?? null,
+        packFounderId:o.packFounderId ?? null,
+        packInheritedFromParent:!!o.packInheritedFromParent,
+        packLeaveCandidateSince:o.packLeaveCandidateSince ?? null,
+        packLastMemberContactFrame:o.packLastMemberContactFrame ?? null
+      }))
+      .sort((a,b)=>a.id-b.id);
+    const sortedMapEntries=(map)=>Array.from(map.entries()).sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
+    const setterSafetySnapshot=()=>({
+      frame,
+      generation,
+      nextId:NEXT_ID,
+      features:{...featureFlags},
+      lineageRegistry:captureLineageRegistryState(),
+      organismLineageMapping:organismLineageMapping(),
+      packState:capturePackIdentityState(),
+      speciesCount:sortedMapEntries(speciesCount),
+      speciesStats:sortedMapEntries(speciesStats),
+      modelState:organismModelSnapshot()
+    });
+    const lineageHistorySnapshot=()=>({
+      lineageRegistry:captureLineageRegistryState(),
+      organismLineageMapping:organismLineageMapping()
+    });
+    const attachPackState=(organism)=>{
+      if(!organism) return;
+      const packId='pack-safety';
+      organism.packId=packId;
+      organism.packJoinFrame=17;
+      organism.packFounderId=organism.id;
+      organism.packInheritedFromParent=true;
+      organism.packLeaveCandidateSince=91;
+      organism.packLastMemberContactFrame=93;
+      organism.packJoinCount=2;
+      organism.packLeaveCount=1;
+      packIdentityState.nextPackId=5;
+      packIdentityState.packs[packId]={
+        id:packId,
+        createdFrame:11,
+        dissolvedFrame:null,
+        founderId:organism.id,
+        founderSpeciesKey:organism.speciesKey,
+        speciesKey:organism.speciesKey,
+        memberIds:[organism.id],
+        parentPackId:null,
+        totalMembersEver:3,
+        birthsIntoPack:1,
+        joins:2,
+        leaves:1,
+        deaths:0,
+        lastActiveFrame:93,
+        currentLivingMembers:1,
+        maximumLivingMembers:2,
+        memberFramesTotal:44
+      };
+      packIdentityState.telemetry.packsCreated=1;
+      packIdentityState.telemetry.packJoins=2;
+      packIdentityState.telemetry.packLeaves=1;
+      packIdentityState.telemetry.packInheritedBirths=1;
+    };
+    const buildProvisionalWorld=()=>{
+      clear();
+      enableFullLineageFeatures();
+      const root=make(genesA,{x:80,y:80});
+      const provisional=make(genesC,{x:100,y:80,born:true,parentSpeciesKey:root.speciesKey});
+      const provisionalRecord=classifyChildLineageAtBirth(provisional,root,null);
+      const nested=make(genesD,{x:120,y:80,born:true,parentSpeciesKey:provisional.speciesKey});
+      const nestedRecord=classifyChildLineageAtBirth(nested,provisional,null);
+      return {root,provisional,nested,provisionalRecord,nestedRecord};
+    };
+    try{
+      Math.random=duelSeededRandom(93217);
+
+      enableFullLineageFeatures();
+      NEXT_ID=1;
+      reset();
+      const topologyReport=initialTopologySeedConsistencyReport();
+      const requiredTopologyOk=topologyReport.required.every(topology=>topologyReport.rows.some(row=>row.topology===topology && row.ok));
+      add('Initial topology A seed topology is consistent across genes identity phenotype symbol lineage',
+        topologyReport.ok && requiredTopologyOk,
+        topologyReport
+      );
+      const mismatchReport=morphologyTopologyGeneMismatchReport();
+      add('Initial topology B no organism morphologyTopology differs from genes',
+        mismatchReport.ok,
+        mismatchReport
+      );
+
+      clear();
+      enableFullLineageFeatures();
+      const childRows=[];
+      for(const seed of INITIAL_TOPOLOGY_SEEDS){
+        const parent=make(initialGenesForTopology(seed.topology),{x:80+childRows.length*10,y:110});
+        parent.lineageGeneration=2;
+        const child=make(initialGenesForTopology(seed.topology),{x:84+childRows.length*10,y:114,born:true,parentSpeciesKey:parent.speciesKey});
+        const beforeValidation=validateLineageRegistry();
+        const beforeRecords=lineageRegistry.size;
+        const record=classifyChildLineageAtBirth(child,parent,null);
+        const afterValidation=validateLineageRegistry();
+        const checks={
+          sameLineage:child.lineageId===parent.lineageId,
+          lineageGeneration:child.lineageGeneration===parent.lineageGeneration+1,
+          sameEcotype:lineageEcotypeSignatureFor(child)===lineageEcotypeSignatureFor(parent),
+          sameMorphologyTopology:child.morphologyTopology===parent.morphologyTopology,
+          intendedTopology:child.morphologyTopology===seed.topology,
+          inheritedRecord:record?.lineageId===parent.lineageId,
+          registrySizeStable:lineageRegistry.size===beforeRecords,
+          validationOk:afterValidation.ok,
+          topologyMismatchZero:afterValidation.counts.topologyMismatchLineageIds===0
+        };
+        childRows.push({
+          topology:seed.topology,
+          ok:Object.values(checks).every(Boolean),
+          checks,
+          parent:{id:parent.id,lineageId:parent.lineageId,lineageGeneration:parent.lineageGeneration,topology:parent.morphologyTopology,ecotype:lineageEcotypeSignatureFor(parent)},
+          child:{id:child.id,lineageId:child.lineageId,lineageGeneration:child.lineageGeneration,topology:child.morphologyTopology,ecotype:lineageEcotypeSignatureFor(child)},
+          beforeValidation,
+          validation:afterValidation
+        });
+      }
+      add('Initial topology C parent-child same ecotype inherits lineage and topology',
+        childRows.every(row=>row.ok) && childRows.some(row=>row.topology==='mesh' && row.ok),
+        {rows:childRows,mesh:childRows.find(row=>row.topology==='mesh') || null}
+      );
+
+      const dWorld=buildProvisionalWorld();
+      attachPackState(dWorld.root);
+      const dBefore=setterSafetySnapshot();
+      const dResult=setSpeciesIdentityV2(true);
+      const dAfter=setterSafetySnapshot();
+      add('Species Identity setter D same-value true is no-op with provisional history',
+        dResult?.changed===false
+          && dResult?.reason==='same-value'
+          && same(dBefore,dAfter)
+          && dBefore.lineageRegistry.records.some(r=>r.speciesStatus==='provisional')
+          && dBefore.lineageRegistry.records.some(r=>lineageRecordById(r.parentLineageId)?.speciesStatus==='provisional'),
+        {result:dResult,before:dBefore,after:dAfter}
+      );
+
+      const eWorld=buildProvisionalWorld();
+      const eBefore=setterSafetySnapshot();
+      const eResult=setSpeciesIdentityV2(false);
+      const eAfter=setterSafetySnapshot();
+      add('Species Identity setter E true-to-false is rejected with non-root lineage',
+        eResult?.changed===false
+          && eResult?.reason==='world-reset-required'
+          && speciesIdentityV2Enabled()===true
+          && same(eBefore,eAfter),
+        {result:eResult,before:eBefore,after:eAfter,world:eWorld}
+      );
+
+      buildProvisionalWorld();
+      featureFlags.speciesIdentityV2=false;
+      const e2Before=setterSafetySnapshot();
+      const e2Result=setSpeciesIdentityV2(true);
+      const e2After=setterSafetySnapshot();
+      add('Species Identity setter E false-to-true is rejected with artificial non-root lineage',
+        e2Result?.changed===false
+          && e2Result?.reason==='world-reset-required'
+          && speciesIdentityV2Enabled()===false
+          && same(e2Before,e2After),
+        {result:e2Result,before:e2Before,after:e2After}
+      );
+
+      clear();
+      enableFullLineageFeatures();
+      featureFlags.speciesIdentityV2=false;
+      resetLineageRegistry();
+      const fEmpty=setSpeciesIdentityV2(true);
+      const fEmptyValidation=validateLineageRegistry();
+      clear();
+      enableFullLineageFeatures();
+      const fRoot=make(genesB,{x:100,y:100});
+      const fRootBefore=validateLineageRegistry();
+      const fRootResult=setSpeciesIdentityV2(false);
+      const fRootAfter=validateLineageRegistry();
+      add('Species Identity setter F safe toggle works for empty and root-only registry',
+        fEmpty?.changed===true
+          && fEmptyValidation.ok
+          && fRootBefore.ok
+          && fRootResult?.changed===true
+          && fRootAfter.ok
+          && fRootAfter.violationCount===0,
+        {empty:{result:fEmpty,validation:fEmptyValidation},rootOnly:{before:fRootBefore,result:fRootResult,after:fRootAfter,root:{id:fRoot.id,lineageId:fRoot.lineageId}}}
+      );
+
+      buildProvisionalWorld();
+      const gBefore=lineageHistorySnapshot();
+      setPersistentLineageRegistry(true);
+      const gAfterFirst=lineageHistorySnapshot();
+      setPersistentLineageRegistry(true);
+      const gAfterSecond=lineageHistorySnapshot();
+      setPersistentLineageRegistry(false);
+      const gAfterOff=lineageHistorySnapshot();
+      setPersistentLineageRegistry(true);
+      const gAfterReOn=lineageHistorySnapshot();
+      add('Persistent lineage registry G setter remains non-destructive for provisional history',
+        same(gBefore,gAfterFirst)
+          && same(gBefore,gAfterSecond)
+          && same(gBefore,gAfterOff)
+          && same(gBefore,gAfterReOn),
+        {before:gBefore,afterFirst:gAfterFirst,afterSecond:gAfterSecond,afterOff:gAfterOff,afterReOn:gAfterReOn}
+      );
+
+      buildProvisionalWorld();
+      const hBefore=lineageHistorySnapshot();
+      const hSave=capture();
+      clear();
+      restore(hSave);
+      const hAfter=lineageHistorySnapshot();
+      const hValidation=validateLineageRegistry();
+      add('Current save/load H preserves provisional and nested lineage registry',
+        same(hBefore,hAfter) && hValidation.ok,
+        {before:hBefore,after:hAfter,validation:hValidation}
+      );
+    }catch(err){
+      add('Initial topology lineage safety micro exception',false,{message:String(err?.message || err),stack:String(err?.stack || '')});
+    }finally{
+      Math.random=oldRandom;
+      Object.assign(featureFlags,oldFlags);
+      restore(saved);
+      Object.assign(featureFlags,oldFlags);
+    }
+    return {ok:results.every(r=>r.ok),results};
+  }
+
   function packIdentityBehaviorStableJson(value){
     const sortValue=(v)=>{
       if(v==null || typeof v!=='object') return v;
@@ -23519,11 +23931,20 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     validateLineageRegistry(){
       return validateLineageRegistry();
     },
+    initialTopologySeedConsistencyReport(){
+      return initialTopologySeedConsistencyReport();
+    },
+    morphologyTopologyGeneMismatchReport(){
+      return morphologyTopologyGeneMismatchReport();
+    },
     captureLineageRegistryState(){
       return captureLineageRegistryState();
     },
     allocateLineageId(){
       return allocateLineageId();
+    },
+    canChangeSpeciesIdentityV2WithoutReset(enabled){
+      return canChangeSpeciesIdentityV2WithoutReset(enabled);
     },
     setSpeciesIdentityV2(enabled){
       return setSpeciesIdentityV2(enabled);
@@ -23601,6 +24022,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     runProvisionalLineageClassificationMicroTests(){
       return runProvisionalLineageClassificationMicroTests();
+    },
+    runInitialTopologyLineageSafetyMicroTests(){
+      return runInitialTopologyLineageSafetyMicroTests();
     },
     runCanonicalSpeciesAppearanceReproducibilityMicroTest(options={}){
       return runCanonicalSpeciesAppearanceReproducibilityMicroTest(options);
