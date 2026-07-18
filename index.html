@@ -17416,10 +17416,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     } finally {
       Math.random=oldRandom;
       Object.assign(diagnosticPackSharing,oldPackSharing);
-      if(restoreAfterRun && saved) restore(saved);
+      currentWorldSeedForVisuals=oldWorldSeedForVisuals;
+      if(restoreAfterRun && saved){ restore(saved); NEXT_ID=oldNextId; }
       else if(NEXT_ID<oldNextId) NEXT_ID=oldNextId;
       Object.assign(featureFlags,oldFeatureFlags);
-      currentWorldSeedForVisuals=oldWorldSeedForVisuals;
     }
   }
   function runCarnivoreLineageMicroTests(){
@@ -20213,6 +20213,123 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     }
     return {ok:results.every(r=>r.ok),results};
   }
+  function runVisualSeedRestoreOrderingMicroTests(){
+    const saved=capture();
+    const oldRandom=Math.random;
+    const oldFeatureFlags={...featureFlags};
+    const oldWorldSeedForVisuals=currentWorldSeedForVisuals;
+    const oldNextId=NEXT_ID;
+    const results=[];
+    const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
+    const same=(a,b)=>stableJson(a)===stableJson(b);
+    const genes=()=>Object.assign({}, DEV_VIABLE_GENES.herbivore);
+    const clearWorld=()=>{
+      running=false;
+      frame=0;
+      generation=1;
+      organisms.length=0; newborn.length=0; food.length=0; corpses.length=0; plankton.length=0; patches.length=0; calls.length=0;
+      sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0;
+      speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear();
+      selectedOrganism=null; selectedDeadAt=0;
+      resetPackIdentityState();
+      resetFoodWebStats();
+      resetTelemetry();
+    };
+    const setupWorld=()=>{
+      clearWorld();
+      featureFlags.eventKeyedVisualRng=true;
+      currentWorldSeedForVisuals=0;
+      NEXT_ID=1;
+      const prevRandom=Math.random;
+      Math.random=duelSeededRandom(90210);
+      try{
+        const a=new Organism(90,100,genes(),false,null,null,{visualIdentityKey:'organism:1'});
+        const b=new Organism(130,100,genes(),false,null,null,{visualIdentityKey:'organism:2'});
+        a.energy=88; b.energy=92;
+        organisms.push(a,b);
+      }finally{
+        Math.random=prevRandom;
+      }
+      telemetrySampleFrame(true);
+    };
+    const phaseGaitSnapshot=()=>({
+      visualSeed:currentWorldSeedForVisuals,
+      NEXT_ID,
+      frame,
+      organisms:organisms.map(o=>({
+        id:o.id,
+        phase:o.phase,
+        gait:o.gait,
+        expected:organismVisualPhaseGait(o.id)
+      })).sort((a,b)=>a.id-b.id)
+    });
+    const diagnosticOptions=(seed,restoreAfterRun,extra={})=>({
+      seed,
+      steps:120,
+      restoreAfterRun,
+      eventKeyedVisualRng:true,
+      targetConsensus:false,
+      shareFraction:0,
+      packAttackBase:0.78,
+      variant:`visualSeedRestoreOrdering:${seed}:${restoreAfterRun?'restore':'keep'}`,
+      ...extra
+    });
+    try{
+      setupWorld();
+      const before=phaseGaitSnapshot();
+      runSeededWorldDiagnostic(diagnosticOptions(41001,true));
+      const after=phaseGaitSnapshot();
+      const phaseGaitOk=same(before,after) && after.organisms.every(o=>o.phase===o.expected.phase && o.gait===o.expected.gait);
+      add('Visual seed restore A restoreAfterRun keeps phase/gait, visual seed, and NEXT_ID', phaseGaitOk && after.visualSeed===0 && after.NEXT_ID===before.NEXT_ID, {before,after});
+
+      const seedResults=[];
+      for(const seed of [41001,45001]){
+        setupWorld();
+        const seedBefore=phaseGaitSnapshot();
+        runSeededWorldDiagnostic(diagnosticOptions(seed,true));
+        const seedAfter=phaseGaitSnapshot();
+        seedResults.push({seed,ok:same(seedBefore,seedAfter),before:seedBefore,after:seedAfter});
+      }
+      add('Visual seed restore B different diagnostic seeds do not perturb restored phase/gait', seedResults.every(r=>r.ok), {seedResults});
+
+      setupWorld();
+      const keepBefore=phaseGaitSnapshot();
+      const keepRun=runSeededWorldDiagnostic(diagnosticOptions(41001,false,{includeModelState:true}));
+      const keepState=visualRngComparableModelState();
+      const keepAfter=phaseGaitSnapshot();
+      add('Visual seed restore C restoreAfterRun=false leaves diagnostic world and restores visual seed', currentWorldSeedForVisuals===0 && keepRun.frame===frame && same(keepRun.modelState,keepState) && !same(keepBefore,keepAfter), {runFrame:keepRun.frame,frame,visualSeed:currentWorldSeedForVisuals,before:keepBefore,after:keepAfter});
+
+      setupWorld();
+      const exceptionBefore=phaseGaitSnapshot();
+      const originalTick=window.env?.tickFields;
+      let threw=false;
+      if(typeof originalTick==='function'){
+        try{
+          window.env.tickFields=()=>{ throw new Error('visual-seed-restore-ordering-micro'); };
+          runSeededWorldDiagnostic(diagnosticOptions(41001,true,{steps:20}));
+        }catch(err){
+          threw=String(err?.message || err).includes('visual-seed-restore-ordering-micro');
+        }finally{
+          window.env.tickFields=originalTick;
+          inModelUpdate=false;
+        }
+        const exceptionAfter=phaseGaitSnapshot();
+        add('Visual seed restore D exception path restores seed and world before rethrow reaches caller', threw && currentWorldSeedForVisuals===0 && same(exceptionBefore,exceptionAfter), {threw,before:exceptionBefore,after:exceptionAfter});
+      }else{
+        add('Visual seed restore D exception path restores seed and world before rethrow reaches caller', false, {reason:'env.tickFields unavailable'});
+      }
+    }catch(err){
+      add('Visual seed restore micro exception',false,{message:String(err?.message || err),stack:String(err?.stack || '')});
+    }finally{
+      Math.random=oldRandom;
+      currentWorldSeedForVisuals=oldWorldSeedForVisuals;
+      Object.assign(featureFlags,oldFeatureFlags);
+      if(NEXT_ID<oldNextId) NEXT_ID=oldNextId;
+      restore(saved);
+      NEXT_ID=oldNextId;
+    }
+    return {ok:results.every(r=>r.ok),results};
+  }
   function runEventKeyedVisualRngMicroTests(){
     const saved=capture();
     const oldRandom=Math.random;
@@ -22065,6 +22182,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     runVisualRngFinishSeparationMicroTests(){
       return runVisualRngFinishSeparationMicroTests();
+    },
+    runVisualSeedRestoreOrderingMicroTests(){
+      return runVisualSeedRestoreOrderingMicroTests();
     },
     runVisualRngCanonicalAppearanceComparison(options={}){
       return runVisualRngCanonicalAppearanceComparison(options);
