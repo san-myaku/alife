@@ -874,7 +874,7 @@
 
   // Interior and surface are their own per-species slots, independent of the body
   // shape, so two same-form species differ inside as well as in outline.
-  const INTERIORS = ["granules", "vacuoles", "striations", "organelles"];
+  const INTERIORS = ["granules", "vacuoles"];
   const SURFACES = ["clean", "speckles", "spots", "ridged"];
   function interiorOf(o) { return svPick(o, "interior", INTERIORS); }
   function surfaceOf(o) { return svPick(o, "surface", SURFACES); }
@@ -888,20 +888,11 @@
     const interior = opts.interior || interiorOf(o);
     const surface = opts.surface || surfaceOf(o);
     const chl = !!(o.flags && o.flags.chl);
-    if (interior === "granules") {
-      drawGranules(ctx, r, pal, rng, Math.round((7 + detail * 10) * scale), chl);
-    } else if (interior === "vacuoles") {
+    if (interior === "vacuoles") {
       drawVacuoles(ctx, r, pal, rng, Math.max(2, Math.round((3 + detail * 3) * scale)));
       if (chl) drawGranules(ctx, r, pal, rng, Math.round(4 * scale), true);
-    } else if (interior === "striations") {
-      drawSegmentationLines(ctx, r * 1.3, pal, 4 + Math.round(detail * 4 * scale), shapeVar(o, "striAng") * 3.14);
-      drawGranules(ctx, r, pal, rng, Math.round(4 * scale), chl);
-    } else { // organelles: a scatter of small satellite nuclei around the main one
-      const n = Math.max(2, Math.round((3 + detail * 3) * scale));
-      for (let i = 0; i < n; i++) {
-        const a = rng() * TAU, d = r * (0.24 + rng() * 0.42);
-        drawNucleus(ctx, Math.cos(a) * d, Math.sin(a) * d * 0.9, r * (0.07 + rng() * 0.05), pal, rng, 0.7);
-      }
+    } else { // granules
+      drawGranules(ctx, r, pal, rng, Math.round((7 + detail * 10) * scale), chl);
     }
     if (surface === "speckles") drawSurfaceSpeckles(ctx, r, pal, rng, Math.round(18 * scale), 0.24);
     else if (surface === "spots") drawSpots(ctx, r, pal, rng, Math.round(9 * scale));
