@@ -341,6 +341,7 @@
       speciesIdentityV2: false,
       canonicalSpeciesAppearance: false,
       persistentLineageRegistry: false,
+      provisionalLineageClassification: false,
       eventKeyedVisualRng: false
     }),
     population: Object.freeze({
@@ -510,6 +511,7 @@
     speciesIdentityV2: CONFIG.features.speciesIdentityV2,
     canonicalSpeciesAppearance: CONFIG.features.canonicalSpeciesAppearance,
     persistentLineageRegistry: CONFIG.features.persistentLineageRegistry,
+    provisionalLineageClassification: CONFIG.features.provisionalLineageClassification,
     eventKeyedVisualRng: CONFIG.features.eventKeyedVisualRng
   };
   function evolvableLifeHistoryEnabled(){
@@ -532,6 +534,9 @@
   }
   function persistentLineageRegistryEnabled(){
     return !!featureFlags.persistentLineageRegistry;
+  }
+  function provisionalLineageClassificationEnabled(){
+    return persistentLineageRegistryEnabled() && !!featureFlags.provisionalLineageClassification;
   }
   function eventKeyedVisualRngEnabled(){
     return !!featureFlags.eventKeyedVisualRng;
@@ -1481,9 +1486,13 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
       ? organismOrKey
       : canonicalAppearanceIdentityKey(organismOrKey);
     if(speciesAppearanceProfileCache.has(key)) return speciesAppearanceProfileCache.get(key);
+    const keyComponents=speciesIdentityComponentsFromKey(key);
+    const objectSpeciesKey=typeof organismOrKey==='string' ? '' : String(organismOrKey?.speciesKey || '');
+    const shouldUseKeyComponents=typeof organismOrKey==='string'
+      || (keyComponents && objectSpeciesKey && key!==objectSpeciesKey);
     const c=components
-      || (typeof organismOrKey==='string'
-        ? speciesIdentityComponentsFromKey(organismOrKey)
+      || (shouldUseKeyComponents
+        ? keyComponents
         : speciesIdentityV2Components(organismOrKey.genes,organismOrKey.flags));
     const rng=rngFromKey(`species-appearance:${key}`);
     const profile={
@@ -1936,12 +1945,29 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   let nextLineageSerial = 1;
   let lineageRegistryRestoreInProgress = false;
   const lineageRegistryLastRestoreIssues = { duplicateLineageIds:[] };
+  const provisionalLineageTelemetryState = {
+    inheritedPrimary:0,
+    inheritedMate:0,
+    provisionalCreated:0,
+    nestedProvisionalCreated:0,
+    rootFallback:0
+  };
+  function resetProvisionalLineageTelemetry(){
+    for(const key of Object.keys(provisionalLineageTelemetryState)) provisionalLineageTelemetryState[key]=0;
+  }
+  function provisionalLineageTelemetry(){
+    return {...provisionalLineageTelemetryState};
+  }
   function rootLineageIdForSpeciesKey(speciesKeyValue){
     return `root:${String(speciesKeyValue || 'unknown')}`;
   }
   function finiteNonNegativeInteger(value,fallback=0){
     const n=Number(value);
     return Number.isFinite(n) && n>=0 ? Math.floor(n) : fallback;
+  }
+  function refreshSymbolIfCanonicalIdentityChanged(organism,previousCanonicalIdentity){
+    if(!organism || !canonicalSpeciesAppearanceEnabled()) return;
+    if(previousCanonicalIdentity!==canonicalAppearanceIdentityKey(organism)) organism._symbol=null;
   }
   function lineageEcotypeSignatureFor(organism){
     const c=speciesIdentityV2Components(organism?.genes || {},organism?.flags || {});
@@ -1998,7 +2024,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     organism.lineageId=lineageId;
     organism.canonicalAppearanceKey=speciesKeyValue;
     organism.lineageGeneration=finiteNonNegativeInteger(options.lineageGeneration,0);
-    if(canonicalSpeciesAppearanceEnabled() && previousCanonicalIdentity!==canonicalAppearanceIdentityKey(organism)) organism._symbol=null;
+    refreshSymbolIfCanonicalIdentityChanged(organism,previousCanonicalIdentity);
     return lineageRegistry.get(lineageId);
   }
   function validLineageSourceOrganism(organism){
@@ -2006,19 +2032,83 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     const record=lineageRecordById(organism.lineageId);
     return record ? {organism,record} : null;
   }
-  function assignInheritedLineageFoundation(child,parent,mate){
-    if(!persistentLineageRegistryEnabled() || lineageRegistryRestoreInProgress || !child) return null;
-    const source=validLineageSourceOrganism(parent) || validLineageSourceOrganism(mate);
-    const speciesKeyValue=String(child.speciesKey || speciesKeyForOrganism(child));
+  function validLineageClassificationCandidate(organism){
+    const source=validLineageSourceOrganism(organism);
+    if(!source?.record?.ecotypeSignature) return null;
+    return source;
+  }
+  function inheritChildLineageFromCandidate(child,candidate,telemetryKey){
+    if(!child || !candidate?.record) return null;
     const previousCanonicalIdentity=canonicalAppearanceIdentityKey(child);
-    child.canonicalAppearanceKey=speciesKeyValue;
-    if(source){
-      child.lineageId=source.record.lineageId;
-      child.lineageGeneration=finiteNonNegativeInteger(source.organism.lineageGeneration,0)+1;
-      if(canonicalSpeciesAppearanceEnabled() && previousCanonicalIdentity!==canonicalAppearanceIdentityKey(child)) child._symbol=null;
-      return source.record;
+    child.lineageId=String(candidate.record.lineageId);
+    child.lineageGeneration=finiteNonNegativeInteger(candidate.organism.lineageGeneration,0)+1;
+    child.canonicalAppearanceKey=String(candidate.record.canonicalAppearanceKey || candidate.record.founderSpeciesKey || child.speciesKey || speciesKeyForOrganism(child));
+    refreshSymbolIfCanonicalIdentityChanged(child,previousCanonicalIdentity);
+    if(telemetryKey && provisionalLineageTelemetryState[telemetryKey]!=null) provisionalLineageTelemetryState[telemetryKey]++;
+    return candidate.record;
+  }
+  function makeProvisionalLineageRecordForChild(child,parentLineageId,ecotypeSignature){
+    const childSpeciesKey=String(child?.speciesKey || speciesKeyForOrganism(child));
+    return {
+      lineageId:allocateLineageId(),
+      parentLineageId:parentLineageId==null ? null : String(parentLineageId),
+      founderId:Number(child?.id ?? 0),
+      createdFrame:frame,
+      createdGeneration:generation,
+      founderSpeciesKey:childSpeciesKey,
+      ecotypeSignature:String(ecotypeSignature || lineageEcotypeSignatureFor(child)),
+      canonicalAppearanceKey:childSpeciesKey,
+      speciesStatus:'provisional'
+    };
+  }
+  function createProvisionalLineageForChild(child,parentCandidate,childEcotypeSignature){
+    if(!child || !parentCandidate?.record) return null;
+    const previousCanonicalIdentity=canonicalAppearanceIdentityKey(child);
+    const record=makeProvisionalLineageRecordForChild(child,parentCandidate.record.lineageId,childEcotypeSignature);
+    lineageRegistry.set(record.lineageId,record);
+    child.lineageId=record.lineageId;
+    child.lineageGeneration=0;
+    child.canonicalAppearanceKey=record.canonicalAppearanceKey;
+    refreshSymbolIfCanonicalIdentityChanged(child,previousCanonicalIdentity);
+    provisionalLineageTelemetryState.provisionalCreated++;
+    if(lineageRecordById(record.parentLineageId)?.speciesStatus==='provisional') provisionalLineageTelemetryState.nestedProvisionalCreated++;
+    normalizeNextLineageSerial();
+    return record;
+  }
+  function classifyChildLineageAtBirth(child,parent,mate){
+    if(!persistentLineageRegistryEnabled() || lineageRegistryRestoreInProgress || !child) return null;
+    if(!provisionalLineageClassificationEnabled()){
+      const source=validLineageSourceOrganism(parent) || validLineageSourceOrganism(mate);
+      const speciesKeyValue=String(child.speciesKey || speciesKeyForOrganism(child));
+      const previousCanonicalIdentity=canonicalAppearanceIdentityKey(child);
+      child.canonicalAppearanceKey=speciesKeyValue;
+      if(source){
+        child.lineageId=source.record.lineageId;
+        child.lineageGeneration=finiteNonNegativeInteger(source.organism.lineageGeneration,0)+1;
+        refreshSymbolIfCanonicalIdentityChanged(child,previousCanonicalIdentity);
+        return source.record;
+      }
+      return ensureRootLineageForOrganism(child,{lineageGeneration:finiteNonNegativeInteger(child.generationDepth,0),reason:'inherit-fallback'});
     }
-    return ensureRootLineageForOrganism(child,{lineageGeneration:finiteNonNegativeInteger(child.generationDepth,0),reason:'inherit-fallback'});
+    const childEcotypeSignature=lineageEcotypeSignatureFor(child);
+    const primary=validLineageClassificationCandidate(parent);
+    let mateCandidate=validLineageClassificationCandidate(mate);
+    if(primary && mateCandidate && primary.record.lineageId===mateCandidate.record.lineageId) mateCandidate=null;
+    if(primary?.record?.ecotypeSignature===childEcotypeSignature){
+      return inheritChildLineageFromCandidate(child,primary,'inheritedPrimary');
+    }
+    if(mateCandidate?.record?.ecotypeSignature===childEcotypeSignature){
+      return inheritChildLineageFromCandidate(child,mateCandidate,'inheritedMate');
+    }
+    const parentCandidate=primary || mateCandidate;
+    if(parentCandidate){
+      return createProvisionalLineageForChild(child,parentCandidate,childEcotypeSignature);
+    }
+    provisionalLineageTelemetryState.rootFallback++;
+    return ensureRootLineageForOrganism(child,{lineageGeneration:finiteNonNegativeInteger(child.generationDepth,0),reason:'classification-root-fallback'});
+  }
+  function assignInheritedLineageFoundation(child,parent,mate){
+    return classifyChildLineageAtBirth(child,parent,mate);
   }
   function normalizeNextLineageSerial(){
     let maxSerial=0;
@@ -2049,6 +2139,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     lineageRegistry.clear();
     nextLineageSerial=1;
     lineageRegistryLastRestoreIssues.duplicateLineageIds=[];
+    resetProvisionalLineageTelemetry();
   }
   function restoreLineageRegistryState(rawState){
     resetLineageRegistry();
@@ -2091,7 +2182,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
         organism.lineageId=lineageId;
         organism.canonicalAppearanceKey=group.speciesKey;
         organism.lineageGeneration=finiteNonNegativeInteger(organism.generationDepth,0);
-        if(canonicalSpeciesAppearanceEnabled() && previousCanonicalIdentity!==canonicalAppearanceIdentityKey(organism)) organism._symbol=null;
+        refreshSymbolIfCanonicalIdentityChanged(organism,previousCanonicalIdentity);
       }
     }
     normalizeNextLineageSerial();
@@ -2118,14 +2209,18 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     if(!hasSavedRegistry) return rebuildRootLineagesFromOrganisms(organisms,{createdFrame:frame,createdGeneration:generation});
     for(const organism of organisms){
       if(!organism) continue;
-      if(!organism.canonicalAppearanceKey) organism.canonicalAppearanceKey=String(organism.speciesKey || speciesKeyForOrganism(organism));
+      const previousCanonicalIdentity=canonicalAppearanceIdentityKey(organism);
+      if(!organism.canonicalAppearanceKey){
+        const record=organism.lineageId ? lineageRecordById(organism.lineageId) : null;
+        organism.canonicalAppearanceKey=String(record?.canonicalAppearanceKey || organism.speciesKey || speciesKeyForOrganism(organism));
+      }
       if(!Number.isFinite(Number(organism.lineageGeneration)) || Number(organism.lineageGeneration)<0){
         organism.lineageGeneration=finiteNonNegativeInteger(organism.generationDepth,0);
       }
       if(!organism.lineageId){
         ensureRootLineageForOrganism(organism,{lineageGeneration:organism.lineageGeneration,reason:'load-missing-lineage'});
       }
-      organism._symbol=null;
+      refreshSymbolIfCanonicalIdentityChanged(organism,previousCanonicalIdentity);
     }
     repairMissingRootLineageRecords(organisms);
     normalizeNextLineageSerial();
@@ -2163,6 +2258,36 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
       currentCanonicalAppearanceKeys:Array.from(new Set(row.currentCanonicalAppearanceKeys)).sort()
     })).sort((a,b)=>String(a.lineageId).localeCompare(String(b.lineageId)));
   }
+  function lineageRegistryRecordDepth(lineageId){
+    let depth=0;
+    let current=lineageRecordById(lineageId);
+    const seen=new Set();
+    while(current?.parentLineageId!=null && !seen.has(current.lineageId)){
+      seen.add(current.lineageId);
+      const parent=lineageRecordById(current.parentLineageId);
+      if(!parent) break;
+      depth++;
+      current=parent;
+    }
+    return depth;
+  }
+  function lineageRegistryClassificationSummary(derived=null){
+    const rows=derived || rebuildLineageRegistryDerivedSummary();
+    const derivedById=new Map(rows.map(row=>[String(row.lineageId),row]));
+    const records=Array.from(lineageRegistry.values());
+    const provisionalRecords=records.filter(record=>record.speciesStatus==='provisional');
+    return {
+      rootRecordCount:records.filter(record=>String(record.lineageId).startsWith('root:')).length,
+      provisionalRecordCount:provisionalRecords.length,
+      failedRecordCount:records.filter(record=>record.speciesStatus==='failed').length,
+      livingProvisionalLineageCount:provisionalRecords.filter(record=>Number(derivedById.get(String(record.lineageId))?.livingCount || 0)>0).length,
+      provisionalFounderCount:new Set(provisionalRecords.map(record=>record.founderId).filter(id=>id!=null)).size,
+      nestedProvisionalCount:provisionalRecords.filter(record=>lineageRecordById(record.parentLineageId)?.speciesStatus==='provisional').length,
+      maxLineageDepth:records.reduce((max,record)=>Math.max(max,lineageRegistryRecordDepth(record.lineageId)),0),
+      maxLineageGeneration:rows.reduce((max,row)=>Math.max(max,finiteNonNegativeInteger(row.maxLineageGeneration,0)),0),
+      singletonProvisionalLineageCount:provisionalRecords.filter(record=>Number(derivedById.get(String(record.lineageId))?.livingCount || 0)===1).length
+    };
+  }
   function validateLineageRegistry(){
     const living=organisms.filter(o=>o && !o.dead);
     const duplicateLineageIds=(lineageRegistryLastRestoreIssues.duplicateLineageIds || []).slice().sort();
@@ -2172,20 +2297,66 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     const nanLineageGenerationOrganismIds=[];
     const negativeLineageGenerationOrganismIds=[];
     for(const organism of living){
-      if(!organism.lineageId) missingLineageIdOrganismIds.push(organism.id);
-      else if(!lineageRegistry.has(String(organism.lineageId))) missingRecordLineageIds.add(String(organism.lineageId));
-      if(!organism.canonicalAppearanceKey) emptyCanonicalAppearanceKeyOrganismIds.push(organism.id);
-      const gen=Number(organism.lineageGeneration);
-      if(!Number.isFinite(gen)) nanLineageGenerationOrganismIds.push(organism.id);
-      else if(gen<0) negativeLineageGenerationOrganismIds.push(organism.id);
+      if(persistentLineageRegistryEnabled()){
+        if(!organism.lineageId) missingLineageIdOrganismIds.push(organism.id);
+        else if(!lineageRegistry.has(String(organism.lineageId))) missingRecordLineageIds.add(String(organism.lineageId));
+        if(!organism.canonicalAppearanceKey) emptyCanonicalAppearanceKeyOrganismIds.push(organism.id);
+        const gen=Number(organism.lineageGeneration);
+        if(!Number.isFinite(gen)) nanLineageGenerationOrganismIds.push(organism.id);
+        else if(gen<0) negativeLineageGenerationOrganismIds.push(organism.id);
+      }
     }
     const danglingParentLineageIds=[];
     const emptyRecordCanonicalAppearanceKeyIds=[];
     const invalidSpeciesStatusRecordIds=[];
+    const provisionalFounderInvariantIds=[];
     for(const record of lineageRegistry.values()){
       if(record.parentLineageId!=null && !lineageRegistry.has(String(record.parentLineageId))) danglingParentLineageIds.push(record.lineageId);
       if(!record.canonicalAppearanceKey) emptyRecordCanonicalAppearanceKeyIds.push(record.lineageId);
       if(!LINEAGE_SPECIES_STATUS.has(record.speciesStatus)) invalidSpeciesStatusRecordIds.push(record.lineageId);
+      if(record.speciesStatus==='provisional'){
+        const founderOk=Number.isFinite(Number(record.founderId));
+        const parentOk=record.parentLineageId!=null && lineageRegistry.has(String(record.parentLineageId));
+        if(!founderOk || !parentOk) provisionalFounderInvariantIds.push(record.lineageId);
+      }
+    }
+    const ecotypeMismatchOrganismIds=[];
+    const canonicalAppearanceKeyMismatchLineageIds=[];
+    const basicAppearanceMismatchLineageIds=[];
+    const normalizedGeometryMismatchLineageIds=[];
+    const topologyMismatchLineageIds=[];
+    if(provisionalLineageClassificationEnabled()){
+      const byLineage=new Map();
+      for(const organism of living){
+        if(!organism?.lineageId) continue;
+        const lineageId=String(organism.lineageId);
+        const record=lineageRecordById(lineageId);
+        if(!record) continue;
+        if(lineageEcotypeSignatureFor(organism)!==record.ecotypeSignature) ecotypeMismatchOrganismIds.push(organism.id);
+        if(!byLineage.has(lineageId)) byLineage.set(lineageId,{canonical:new Set(),basic:new Set(),geometry:new Set(),topology:new Set()});
+        const group=byLineage.get(lineageId);
+        group.canonical.add(String(organism.canonicalAppearanceKey || ''));
+        group.topology.add(String(organism.morphologyTopology || topologyFromGenes(organism.genes)));
+        if(canonicalSpeciesAppearanceEnabled()){
+          const previousSymbol=organism._symbol;
+          const previousPersonalSpaceR=organism.personalSpaceR;
+          try{
+            group.basic.add(normalizedLineageBasicAppearanceSignature(organism));
+            group.geometry.add(normalizedSpeciesGeometrySignature(organism));
+          }finally{
+            organism._symbol=previousSymbol || null;
+            organism.personalSpaceR=previousPersonalSpaceR;
+          }
+        }
+      }
+      for(const [lineageId,group] of byLineage){
+        if(group.canonical.size>1) canonicalAppearanceKeyMismatchLineageIds.push(lineageId);
+        if(group.topology.size>1) topologyMismatchLineageIds.push(lineageId);
+        if(canonicalSpeciesAppearanceEnabled()){
+          if(group.basic.size>1) basicAppearanceMismatchLineageIds.push(lineageId);
+          if(group.geometry.size>1) normalizedGeometryMismatchLineageIds.push(lineageId);
+        }
+      }
     }
     const details={
       missingLineageIdOrganismIds,
@@ -2196,20 +2367,30 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
       duplicateLineageIds,
       nanLineageGenerationOrganismIds,
       negativeLineageGenerationOrganismIds,
-      emptyRecordCanonicalAppearanceKeyIds:emptyRecordCanonicalAppearanceKeyIds.sort()
+      emptyRecordCanonicalAppearanceKeyIds:emptyRecordCanonicalAppearanceKeyIds.sort(),
+      ecotypeMismatchOrganismIds:ecotypeMismatchOrganismIds.sort((a,b)=>a-b),
+      canonicalAppearanceKeyMismatchLineageIds:canonicalAppearanceKeyMismatchLineageIds.sort(),
+      basicAppearanceMismatchLineageIds:basicAppearanceMismatchLineageIds.sort(),
+      normalizedGeometryMismatchLineageIds:normalizedGeometryMismatchLineageIds.sort(),
+      topologyMismatchLineageIds:topologyMismatchLineageIds.sort(),
+      provisionalFounderInvariantIds:provisionalFounderInvariantIds.sort()
     };
     const counts=Object.fromEntries(Object.entries(details).map(([key,value])=>[key,Array.isArray(value)?value.length:0]));
     const violationCount=Object.values(counts).reduce((sum,n)=>sum+n,0);
     return {ok:violationCount===0,violationCount,counts,details};
   }
   function lineageRegistrySummary(){
+    const derived=rebuildLineageRegistryDerivedSummary();
     return {
       enabled:persistentLineageRegistryEnabled(),
+      provisionalLineageClassification:provisionalLineageClassificationEnabled(),
       version:LINEAGE_REGISTRY_VERSION,
       nextLineageSerial:normalizeNextLineageSerial(),
       recordCount:lineageRegistry.size,
       records:captureLineageRegistryState().records,
-      derived:rebuildLineageRegistryDerivedSummary(),
+      derived,
+      classification:lineageRegistryClassificationSummary(derived),
+      telemetry:provisionalLineageTelemetry(),
       validation:validateLineageRegistry()
     };
   }
@@ -8995,7 +9176,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function speciesDescriptorSource(organismOrKey){
     if(!speciesIdentityV2Enabled()) return null;
     const isKey=typeof organismOrKey==='string';
-    const key=isKey ? organismOrKey : canonicalAppearanceIdentityKey(organismOrKey);
+    const key=isKey ? organismOrKey : String(organismOrKey?.speciesKey || canonicalAppearanceIdentityKey(organismOrKey));
     const components=isKey
       ? speciesIdentityComponentsFromKey(key)
       : speciesIdentityV2Components(organismOrKey.genes,organismOrKey.flags);
@@ -17680,6 +17861,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       if(opts.speciesIdentityV2!=null) featureFlags.speciesIdentityV2=!!opts.speciesIdentityV2;
       if(opts.canonicalSpeciesAppearance!=null) featureFlags.canonicalSpeciesAppearance=!!opts.canonicalSpeciesAppearance;
       if(opts.persistentLineageRegistry!=null) featureFlags.persistentLineageRegistry=!!opts.persistentLineageRegistry;
+      if(opts.provisionalLineageClassification!=null) featureFlags.provisionalLineageClassification=!!opts.provisionalLineageClassification;
       if(opts.eventKeyedVisualRng!=null) featureFlags.eventKeyedVisualRng=!!opts.eventKeyedVisualRng;
       Math.random=duelSeededRandom(seed);
       NEXT_ID=1;
@@ -17694,13 +17876,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       const feeding=feedingBehaviorSummary(steps+60);
       const perfDiagnostic=performanceSummaryForDiagnostic(startedAt,steps);
       const health=diagnosticNumberHealth({lineage});
+      const modelStateDiagnostic=opts.includeModelState ? visualRngComparableModelState() : null;
       const appearanceDiagnostic=opts.includeAppearanceState ? {
         summary:speciesAppearanceSummary(),
         invariants:speciesInvariantViolations()
       } : null;
       const lineageRegistryDiagnostic=opts.includeLineageRegistryState ? {
         summary:lineageRegistrySummary(),
-        validation:validateLineageRegistry()
+        validation:validateLineageRegistry(),
+        telemetry:provisionalLineageTelemetry()
       } : null;
       return {
         seed,
@@ -17746,7 +17930,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           packTargetEvents:telemetry.packFormation.targetEvents.length
         },
         health,
-        ...(opts.includeModelState ? {modelState:visualRngComparableModelState()} : {}),
+        ...(opts.includeModelState ? {modelState:modelStateDiagnostic} : {}),
         ...(opts.includeAppearanceState ? {appearanceState:appearanceDiagnostic} : {}),
         ...(opts.includeLineageRegistryState ? {lineageRegistryState:lineageRegistryDiagnostic} : {})
       };
@@ -19297,18 +19481,17 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   function setPersistentLineageRegistry(enabled){
     featureFlags.persistentLineageRegistry=!!enabled;
     if(persistentLineageRegistryEnabled()){
-      rebuildRootLineagesFromOrganisms(organisms,{createdFrame:frame,createdGeneration:generation});
-    } else {
-      for(const organism of organisms){
-        if(!organism) continue;
-        delete organism.lineageId;
-        delete organism.canonicalAppearanceKey;
-        delete organism.lineageGeneration;
-        organism._symbol=null;
-      }
-      resetLineageRegistry();
+      repairLineageRegistryAfterLoad(true);
     }
     return {ok:true,persistentLineageRegistry:persistentLineageRegistryEnabled(),summary:lineageRegistrySummary()};
+  }
+  function setProvisionalLineageClassification(enabled){
+    featureFlags.provisionalLineageClassification=!!enabled;
+    return {
+      ok:true,
+      provisionalLineageClassification:provisionalLineageClassificationEnabled(),
+      persistentLineageRegistry:persistentLineageRegistryEnabled()
+    };
   }
   function setSpeciesIdentityV2(enabled){
     featureFlags.speciesIdentityV2=!!enabled;
@@ -20954,6 +21137,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   function normalizedSpeciesBasicAppearanceSignature(organism){
     return stableJson(normalizedSpeciesBasicAppearanceSnapshot(organism));
   }
+  function normalizedLineageBasicAppearanceSnapshot(organism){
+    const snapshot=normalizedSpeciesBasicAppearanceSnapshot(organism);
+    if(!snapshot) return snapshot;
+    const {speciesKey:_speciesKey,...rest}=snapshot;
+    return rest;
+  }
+  function normalizedLineageBasicAppearanceSignature(organism){
+    return stableJson(normalizedLineageBasicAppearanceSnapshot(organism));
+  }
   function normalizedSpeciesAppearanceSignature(organism){
     if(!organism) return null;
     return stableJson({
@@ -20972,10 +21164,18 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     return [...bySpecies.entries()].map(([speciesKey,rows])=>{
       const representative=rows[0];
       const components=speciesIdentityComponentsForOrganism(representative);
-      const profile=speciesAppearanceProfile(representative);
-      const signature=normalizedSpeciesAppearanceSignature(representative);
-      const basicSignature=normalizedSpeciesBasicAppearanceSignature(representative);
-      const geometrySignature=normalizedSpeciesGeometrySignature(representative);
+      const previousSymbol=representative._symbol;
+      const previousPersonalSpaceR=representative.personalSpaceR;
+      let profile,signature,basicSignature,geometrySignature;
+      try{
+        profile=speciesAppearanceProfile(representative);
+        signature=normalizedSpeciesAppearanceSignature(representative);
+        basicSignature=normalizedSpeciesBasicAppearanceSignature(representative);
+        geometrySignature=normalizedSpeciesGeometrySignature(representative);
+      }finally{
+        representative._symbol=previousSymbol || null;
+        representative.personalSpaceR=previousPersonalSpaceR;
+      }
       return {
         speciesKey,
         livingCount:rows.length,
@@ -22607,6 +22807,313 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     return {ok:results.every(r=>r.ok),results};
   }
 
+  function runProvisionalLineageClassificationMicroTests(){
+    const saved=capture();
+    const oldRandom=Math.random;
+    const oldFlags={...featureFlags};
+    const results=[];
+    const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
+    const decodeSave=(saveData)=>JSON.parse(decodeURIComponent(escape(atob(saveData.split(':',2)[1]))));
+    const same=(a,b)=>stableJson(a)===stableJson(b);
+    const lineageSubset=()=>({
+      registry:captureLineageRegistryState(),
+      organisms:organisms
+        .map(o=>({
+          id:o.id,
+          lineageId:o.lineageId ?? null,
+          canonicalAppearanceKey:o.canonicalAppearanceKey ?? null,
+          lineageGeneration:o.lineageGeneration ?? null,
+          speciesKey:o.speciesKey ?? null
+        }))
+        .sort((a,b)=>a.id-b.id)
+    });
+    const statusCount=(status)=>captureLineageRegistryState().records.filter(r=>r.speciesStatus===status).length;
+    const clear=()=>{
+      running=false;
+      frame=0;
+      generation=1;
+      NEXT_ID=1;
+      organisms.length=0; newborn.length=0; food.length=0; corpses.length=0; plankton.length=0; patches.length=0; calls.length=0;
+      sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0;
+      speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear();
+      lineage.nodes.clear(); lineage.edges.length=0;
+      clearSpeciesAppearanceProfileCache(); OrganismRender.clearCanonicalSymbolCache?.(); clearSymbolSpriteCache();
+      resetLineageRegistry(); resetPackIdentityState(); resetTelemetry();
+    };
+    const testTraits=()=>({glowA1:'G',glowA2:'G',crownA1:'C',crownA2:'C',colonyA1:'K',colonyA2:'K',chlA1:'P',chlA2:'P'});
+    const testFlags=(flags={})=>({glow:false,crown:false,colony:false,chl:false,...flags});
+    const make=(genes,options={})=>{
+      const born=!!options.born;
+      const o=new Organism(
+        Number(options.x ?? 100),
+        Number(options.y ?? 100),
+        {...genes},
+        born,
+        options.parentSpeciesKey || null,
+        options.mateSpeciesKey || null,
+        speciesIdentityV2Enabled() ? {deferSpeciesRegistration:true} : null
+      );
+      o.traits=options.traits || testTraits();
+      o.flags=testFlags(options.flags || {});
+      finalizeOrganismSpeciesIdentity(o,{reason:options.reason || 'provisional-lineage-micro'});
+      o.recalcPhenotype();
+      applyDevelopmentPhenotype(o);
+      o.updateColor();
+      registerFinalizedSpeciesIdentity(o,{
+        bornByRepro:born,
+        parentSpeciesKey:options.parentSpeciesKey || null,
+        mateSpeciesKey:options.mateSpeciesKey || null,
+        reason:options.reason || 'provisional-lineage-micro'
+      });
+      if(options.push!==false) organisms.push(o);
+      return o;
+    };
+    const packFields=(o)=>({
+      packId:o.packId ?? null,
+      packJoinFrame:o.packJoinFrame ?? null,
+      packFounderId:o.packFounderId ?? null,
+      packInheritedFromParent:!!o.packInheritedFromParent,
+      packLeaveCandidateSince:o.packLeaveCandidateSince ?? null,
+      packLastMemberContactFrame:o.packLastMemberContactFrame ?? null,
+      packLeaveCount:o.packLeaveCount ?? 0,
+      packJoinCount:o.packJoinCount ?? 0,
+      previous:o._packMembershipPreviousId ?? null,
+      nearestDistance:o._packNearestMemberDistance ?? null,
+      nearestId:o._packNearestMemberId ?? null
+    });
+    const findSameEcotypeDifferentSpeciesGenes=(baseGenes)=>{
+      const baseFlags=testFlags();
+      const baseKey=speciesKey(baseGenes,baseFlags);
+      const baseSignature=lineageEcotypeSignatureFor({genes:baseGenes,flags:baseFlags});
+      for(let i=1;i<100;i++){
+        const formSeed=(i+0.5)/100;
+        const candidate=normalizeLifeHistoryGenes({...baseGenes,formSeed},true);
+        const key=speciesKey(candidate,baseFlags);
+        const signature=lineageEcotypeSignatureFor({genes:candidate,flags:baseFlags});
+        if(key!==baseKey && signature===baseSignature) return candidate;
+      }
+      return null;
+    };
+    const genesA=speciesIdentityTestGenes({diet:0.20,speed:0.42,size:0.44,sense:0.48,metabolism:0.50,fecundity:0.52,formSeed:0.45});
+    const genesB=speciesIdentityTestGenes({diet:0.88,speed:0.70,size:0.58,sense:0.76,metabolism:0.36,fecundity:0.44,formSeed:0.82});
+    const genesC=speciesIdentityTestGenes({diet:0.52,speed:0.32,size:0.36,sense:0.62,metabolism:0.48,fecundity:0.66,formSeed:0.16});
+    const genesD=speciesIdentityTestGenes({diet:0.76,speed:0.24,size:0.78,sense:0.28,metabolism:0.58,fecundity:0.34,formSeed:0.63});
+    try{
+      Math.random=duelSeededRandom(81233);
+      Object.assign(featureFlags,{
+        evolvableLifeHistory:true,
+        juvenileDevelopment:true,
+        predictiveHuntingReserve:true,
+        persistentPackIdentity:true,
+        speciesIdentityV2:true,
+        canonicalSpeciesAppearance:true,
+        eventKeyedVisualRng:true,
+        persistentLineageRegistry:true,
+        provisionalLineageClassification:true
+      });
+
+      clear();
+      const aParent=make(genesA,{x:80,y:80});
+      aParent.lineageGeneration=4;
+      const aChild=make(genesA,{x:90,y:80,born:true,parentSpeciesKey:aParent.speciesKey});
+      const aRecordCount=lineageRegistry.size;
+      const aTelemetryBefore=provisionalLineageTelemetry();
+      const aRecord=classifyChildLineageAtBirth(aChild,aParent,null);
+      const aTelemetryAfter=provisionalLineageTelemetry();
+      add('Provisional A primary ecotype inherits primary lineage',
+        aChild.lineageId===aParent.lineageId
+          && aChild.lineageGeneration===aParent.lineageGeneration+1
+          && aChild.canonicalAppearanceKey===aRecord?.canonicalAppearanceKey
+          && lineageRegistry.size===aRecordCount
+          && aTelemetryAfter.inheritedPrimary===aTelemetryBefore.inheritedPrimary+1,
+        {parent:{lineageId:aParent.lineageId,generation:aParent.lineageGeneration},child:{lineageId:aChild.lineageId,generation:aChild.lineageGeneration,canonicalAppearanceKey:aChild.canonicalAppearanceKey},telemetry:{before:aTelemetryBefore,after:aTelemetryAfter}}
+      );
+
+      clear();
+      const bParent=make(genesA,{x:80,y:90});
+      const bMate=make(genesB,{x:100,y:90});
+      bMate.lineageGeneration=7;
+      const bChild=make(genesB,{x:110,y:90,born:true,parentSpeciesKey:bParent.speciesKey,mateSpeciesKey:bMate.speciesKey});
+      const bRecordCount=lineageRegistry.size;
+      const bTelemetryBefore=provisionalLineageTelemetry();
+      const bRecord=classifyChildLineageAtBirth(bChild,bParent,bMate);
+      const bTelemetryAfter=provisionalLineageTelemetry();
+      add('Provisional B mate ecotype inherits mate lineage',
+        bChild.lineageId===bMate.lineageId
+          && bChild.lineageGeneration===bMate.lineageGeneration+1
+          && bChild.canonicalAppearanceKey===bRecord?.canonicalAppearanceKey
+          && lineageRegistry.size===bRecordCount
+          && bTelemetryAfter.inheritedMate===bTelemetryBefore.inheritedMate+1,
+        {parent:{lineageId:bParent.lineageId},mate:{lineageId:bMate.lineageId,generation:bMate.lineageGeneration},child:{lineageId:bChild.lineageId,generation:bChild.lineageGeneration,canonicalAppearanceKey:bChild.canonicalAppearanceKey},telemetry:{before:bTelemetryBefore,after:bTelemetryAfter}}
+      );
+
+      clear();
+      const cParent=make(genesA,{x:80,y:100});
+      const cMate=make(genesB,{x:100,y:100});
+      const cChild=make(genesC,{x:110,y:100,born:true,parentSpeciesKey:cParent.speciesKey,mateSpeciesKey:cMate.speciesKey});
+      const cBefore=lineageRegistry.size;
+      const cRecord=classifyChildLineageAtBirth(cChild,cParent,cMate);
+      add('Provisional C different ecotype creates provisional lineage',
+        cRecord?.lineageId?.startsWith('lineage:')
+          && cRecord?.speciesStatus==='provisional'
+          && cRecord?.parentLineageId===cParent.lineageId
+          && cRecord?.founderId===cChild.id
+          && cChild.lineageId===cRecord.lineageId
+          && cChild.lineageGeneration===0
+          && cRecord.ecotypeSignature===lineageEcotypeSignatureFor(cChild)
+          && cRecord.canonicalAppearanceKey===cChild.speciesKey
+          && cChild.canonicalAppearanceKey===cChild.speciesKey
+          && lineageRegistry.size===cBefore+1,
+        {record:cRecord,child:{id:cChild.id,lineageId:cChild.lineageId,lineageGeneration:cChild.lineageGeneration,speciesKey:cChild.speciesKey}}
+      );
+
+      clear();
+      const dParent=make(genesA,{x:80,y:110});
+      const dChild1=make(genesC,{x:100,y:110,born:true,parentSpeciesKey:dParent.speciesKey});
+      const dChild2=make(genesC,{x:120,y:110,born:true,parentSpeciesKey:dParent.speciesKey});
+      const dRecord1=classifyChildLineageAtBirth(dChild1,dParent,null);
+      const dRecord2=classifyChildLineageAtBirth(dChild2,dParent,null);
+      add('Provisional D independent same ecotype births stay separate',
+        dRecord1?.speciesStatus==='provisional'
+          && dRecord2?.speciesStatus==='provisional'
+          && dRecord1.lineageId!==dRecord2.lineageId
+          && dRecord1.ecotypeSignature===dRecord2.ecotypeSignature
+          && dRecord1.parentLineageId===dRecord2.parentLineageId
+          && dRecord1.parentLineageId===dParent.lineageId,
+        {record1:dRecord1,record2:dRecord2}
+      );
+
+      clear();
+      const eRoot=make(genesA,{x:80,y:120});
+      const eParent=make(genesC,{x:100,y:120,born:true,parentSpeciesKey:eRoot.speciesKey});
+      const eParentRecord=classifyChildLineageAtBirth(eParent,eRoot,null);
+      const eChild=make(genesD,{x:120,y:120,born:true,parentSpeciesKey:eParent.speciesKey});
+      const eTelemetryBefore=provisionalLineageTelemetry();
+      const eRecord=classifyChildLineageAtBirth(eChild,eParent,null);
+      const eTelemetryAfter=provisionalLineageTelemetry();
+      add('Provisional E nested provisional can branch again',
+        eParentRecord?.speciesStatus==='provisional'
+          && eRecord?.speciesStatus==='provisional'
+          && eRecord.parentLineageId===eParent.lineageId
+          && eTelemetryAfter.nestedProvisionalCreated===eTelemetryBefore.nestedProvisionalCreated+1,
+        {parentRecord:eParentRecord,childRecord:eRecord,telemetry:{before:eTelemetryBefore,after:eTelemetryAfter}}
+      );
+
+      clear();
+      const driftGenes=findSameEcotypeDifferentSpeciesGenes(genesA);
+      const fParent=make(genesA,{x:80,y:130});
+      fParent.lineageGeneration=2;
+      const fChild=driftGenes ? make(driftGenes,{x:100,y:130,born:true,parentSpeciesKey:fParent.speciesKey}) : null;
+      const fBeforeRecords=lineageRegistry.size;
+      const fRecord=fChild ? classifyChildLineageAtBirth(fChild,fParent,null) : null;
+      if(fChild){ fParent._symbol=null; fChild._symbol=null; clearSpeciesAppearanceProfileCache(); OrganismRender.clearCanonicalSymbolCache?.(); }
+      const fBasicParent=fChild ? normalizedLineageBasicAppearanceSignature(fParent) : null;
+      const fBasicChild=fChild ? normalizedLineageBasicAppearanceSignature(fChild) : null;
+      const fGeomParent=fChild ? normalizedSpeciesGeometrySignature(fParent) : null;
+      const fGeomChild=fChild ? normalizedSpeciesGeometrySignature(fChild) : null;
+      add('Provisional F inherited lineage keeps canonical appearance stable',
+        !!fChild
+          && fChild.speciesKey!==fParent.speciesKey
+          && lineageEcotypeSignatureFor(fChild)===lineageEcotypeSignatureFor(fParent)
+          && fChild.lineageId===fParent.lineageId
+          && fChild.lineageGeneration===fParent.lineageGeneration+1
+          && fChild.canonicalAppearanceKey===lineageRecordById(fParent.lineageId)?.canonicalAppearanceKey
+          && lineageRegistry.size===fBeforeRecords
+          && fRecord?.lineageId===fParent.lineageId
+          && fBasicParent===fBasicChild
+          && fGeomParent===fGeomChild,
+        {foundDrift:!!driftGenes,parent:{speciesKey:fParent.speciesKey,lineageId:fParent.lineageId,canonicalAppearanceKey:fParent.canonicalAppearanceKey},child:fChild ? {speciesKey:fChild.speciesKey,lineageId:fChild.lineageId,canonicalAppearanceKey:fChild.canonicalAppearanceKey} : null,basicEqual:fBasicParent===fBasicChild,geometryEqual:fGeomParent===fGeomChild}
+      );
+
+      clear();
+      const gRoot=make(genesA,{x:80,y:140});
+      const gParent=make(genesC,{x:100,y:140,born:true,parentSpeciesKey:gRoot.speciesKey});
+      classifyChildLineageAtBirth(gParent,gRoot,null);
+      const gChild=make(genesD,{x:120,y:140,born:true,parentSpeciesKey:gParent.speciesKey});
+      classifyChildLineageAtBirth(gChild,gParent,null);
+      const gBefore=lineageSubset();
+      setPersistentLineageRegistry(true);
+      setPersistentLineageRegistry(true);
+      const gAfterOn=lineageSubset();
+      setPersistentLineageRegistry(false);
+      setPersistentLineageRegistry(true);
+      const gAfterOffOn=lineageSubset();
+      add('Provisional G persistent registry setter is idempotent and non-destructive',
+        same(gBefore,gAfterOn) && same(gBefore,gAfterOffOn),
+        {before:gBefore,afterOn:gAfterOn,afterOffOn:gAfterOffOn}
+      );
+
+      clear();
+      const hParent=make(genesA,{x:80,y:150});
+      const hChild=make(genesC,{x:100,y:150,born:true,parentSpeciesKey:hParent.speciesKey});
+      hChild.packId='pack-test';
+      hChild.packJoinFrame=12;
+      hChild.packFounderId=44;
+      hChild.packInheritedFromParent=true;
+      hChild.packLeaveCandidateSince=88;
+      hChild.packLastMemberContactFrame=90;
+      hChild.packLeaveCount=2;
+      hChild.packJoinCount=3;
+      hChild._packMembershipPreviousId='pack-old';
+      hChild._packNearestMemberDistance=5.25;
+      hChild._packNearestMemberId=77;
+      const hBefore=packFields(hChild);
+      classifyChildLineageAtBirth(hChild,hParent,null);
+      const hAfter=packFields(hChild);
+      add('Provisional H classification does not touch pack state',
+        same(hBefore,hAfter) && lineageRecordById(hChild.lineageId)?.speciesStatus==='provisional',
+        {before:hBefore,after:hAfter,lineageRecord:lineageRecordById(hChild.lineageId)}
+      );
+
+      clear();
+      const iRoot=make(genesA,{x:80,y:160});
+      const iProvisional=make(genesC,{x:100,y:160,born:true,parentSpeciesKey:iRoot.speciesKey});
+      classifyChildLineageAtBirth(iProvisional,iRoot,null);
+      const iNested=make(genesD,{x:120,y:160,born:true,parentSpeciesKey:iProvisional.speciesKey});
+      classifyChildLineageAtBirth(iNested,iProvisional,null);
+      const iBefore=lineageSubset();
+      const iSave=capture();
+      const iSaveState=decodeSave(iSave);
+      clear();
+      restore(iSave);
+      const iAfter=lineageSubset();
+      const iNext=allocateLineageId();
+      add('Provisional I current save/load preserves provisional registry',
+        iSaveState.v===7
+          && iSaveState.features?.persistentLineageRegistry===true
+          && iSaveState.features?.provisionalLineageClassification===true
+          && same(iBefore,iAfter)
+          && !new Set(iAfter.registry.records.map(r=>r.lineageId)).has(iNext),
+        {saveVersion:iSaveState.v,before:iBefore,after:iAfter,nextAllocatedId:iNext}
+      );
+
+      clear();
+      featureFlags.provisionalLineageClassification=false;
+      const jParent=make(genesA,{x:80,y:170});
+      jParent.lineageGeneration=5;
+      const jChild=make(genesC,{x:100,y:170,born:true,parentSpeciesKey:jParent.speciesKey});
+      const jBeforeRecords=lineageRegistry.size;
+      classifyChildLineageAtBirth(jChild,jParent,null);
+      add('Provisional J feature OFF keeps Commit 4 temporary inheritance',
+        jChild.lineageId===jParent.lineageId
+          && jChild.lineageGeneration===jParent.lineageGeneration+1
+          && jChild.canonicalAppearanceKey===jChild.speciesKey
+          && lineageRegistry.size===jBeforeRecords
+          && statusCount('provisional')===0
+          && statusCount('failed')===0,
+        {parent:{lineageId:jParent.lineageId,generation:jParent.lineageGeneration},child:{lineageId:jChild.lineageId,generation:jChild.lineageGeneration,canonicalAppearanceKey:jChild.canonicalAppearanceKey,speciesKey:jChild.speciesKey},records:captureLineageRegistryState().records}
+      );
+    }catch(err){
+      add('Provisional micro exception',false,{message:String(err?.message || err),stack:String(err?.stack || '')});
+    }finally{
+      Math.random=oldRandom;
+      Object.assign(featureFlags,oldFlags);
+      restore(saved);
+      Object.assign(featureFlags,oldFlags);
+    }
+    return {ok:results.every(r=>r.ok),results};
+  }
+
   function packIdentityBehaviorStableJson(value){
     const sortValue=(v)=>{
       if(v==null || typeof v!=='object') return v;
@@ -22994,6 +23501,18 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     persistentLineageRegistryEnabled(){
       return persistentLineageRegistryEnabled();
     },
+    setProvisionalLineageClassification(enabled){
+      return setProvisionalLineageClassification(enabled);
+    },
+    provisionalLineageClassificationEnabled(){
+      return provisionalLineageClassificationEnabled();
+    },
+    classifyChildLineageAtBirth(child,parent,mate){
+      return classifyChildLineageAtBirth(child,parent,mate);
+    },
+    provisionalLineageTelemetry(){
+      return provisionalLineageTelemetry();
+    },
     lineageRegistrySummary(){
       return lineageRegistrySummary();
     },
@@ -23079,6 +23598,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     runPersistentLineageRegistryMicroTests(){
       return runPersistentLineageRegistryMicroTests();
+    },
+    runProvisionalLineageClassificationMicroTests(){
+      return runProvisionalLineageClassificationMicroTests();
     },
     runCanonicalSpeciesAppearanceReproducibilityMicroTest(options={}){
       return runCanonicalSpeciesAppearanceReproducibilityMicroTest(options);
@@ -23520,7 +24042,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   // ===== Save / Load =====
   function capture(){
     const saveLineageRegistry=persistentLineageRegistryEnabled();
-    const state={v:saveLineageRegistry ? 6 : 5,frame,generation,dayNight:{phase:dayNight.phase},worldEvent,eco,
+    const saveProvisionalLineageClassification=provisionalLineageClassificationEnabled();
+    const state={v:saveProvisionalLineageClassification ? 7 : (saveLineageRegistry ? 6 : 5),frame,generation,dayNight:{phase:dayNight.phase},worldEvent,eco,
       features:{
         evolvableLifeHistory:evolvableLifeHistoryEnabled(),
         juvenileDevelopment:juvenileDevelopmentEnabled(),
@@ -23529,7 +24052,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         speciesIdentityV2:speciesIdentityV2Enabled(),
         canonicalSpeciesAppearance:!!featureFlags.canonicalSpeciesAppearance,
         eventKeyedVisualRng:eventKeyedVisualRngEnabled(),
-        ...(saveLineageRegistry ? {persistentLineageRegistry:true} : {})
+        ...(saveLineageRegistry ? {
+          persistentLineageRegistry:true,
+          provisionalLineageClassification:!!featureFlags.provisionalLineageClassification
+        } : {})
       },
       speciesIdentityVersion:speciesIdentityV2Enabled() ? 2 : 1,
       envState: window.env?.captureState ? window.env.captureState() : null,
@@ -23562,6 +24088,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         if(state.features.speciesIdentityV2!=null) featureFlags.speciesIdentityV2=!!state.features.speciesIdentityV2;
         if(state.features.canonicalSpeciesAppearance!=null) featureFlags.canonicalSpeciesAppearance=!!state.features.canonicalSpeciesAppearance;
         if(state.features.persistentLineageRegistry!=null) featureFlags.persistentLineageRegistry=!!state.features.persistentLineageRegistry;
+        if(state.features.provisionalLineageClassification!=null) featureFlags.provisionalLineageClassification=!!state.features.provisionalLineageClassification;
         if(state.features.eventKeyedVisualRng!=null) featureFlags.eventKeyedVisualRng=!!state.features.eventKeyedVisualRng;
       }
       clearSpeciesAppearanceProfileCache();
