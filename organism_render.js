@@ -7,6 +7,88 @@
 (function (global) {
   'use strict';
   var TAU = Math.PI * 2;
+  var CANONICAL_SYMBOL_REFERENCE_SIZE = 1;
+  var CANONICAL_SYMBOL_APPEARANCE_VERSION = 'canonical-symbol-v2-size-independent';
+  var canonicalSymbolCache = new Map();
+  function finiteNumber(value, fallback){
+    var n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  }
+  function canonicalReferenceSizeFromEnv(env){
+    var n = finiteNumber(env && env.CANONICAL_SYMBOL_REFERENCE_SIZE, CANONICAL_SYMBOL_REFERENCE_SIZE);
+    return n > 0 ? n : CANONICAL_SYMBOL_REFERENCE_SIZE;
+  }
+  function defaultCanonicalAppearanceIdentityKey(o, speciesKeyFn){
+    if(o && o.canonicalAppearanceKey) return String(o.canonicalAppearanceKey);
+    if(o && o.lineageId) return String(o.lineageId);
+    if(o && o.speciesKey) return String(o.speciesKey);
+    if(o && o.genes && speciesKeyFn){
+      try{ return String(speciesKeyFn(o.genes,o.flags)); }catch(_){}
+    }
+    if(o && o.id!=null) return 'organism:' + String(o.id);
+    return 'canonical:unknown';
+  }
+  function resolveCanonicalAppearanceIdentityKey(o, env, appearance, speciesKeyFn){
+    if(env && env.canonicalAppearanceIdentityKey){
+      try{
+        var key = env.canonicalAppearanceIdentityKey(o);
+        if(key!=null && String(key)) return String(key);
+      }catch(_){}
+    }
+    if(appearance && appearance.speciesKey) return String(appearance.speciesKey);
+    return defaultCanonicalAppearanceIdentityKey(o, speciesKeyFn);
+  }
+  function canonicalGenesSignature(genes){
+    var g = genes || {};
+    var keys = ['speed','size','metabolism','fecundity','sense','diet','formSeed','energyCapacity','clutchPotential','parentalInvestment'];
+    return keys.map(function(k){
+      var n = finiteNumber(g[k], 0.5);
+      return k + '=' + Math.round(n * 1000000);
+    }).join(',');
+  }
+  function canonicalSymbolCacheKey(identityKey, appearance, referenceSize){
+    var adaptations = (appearance && appearance.adaptations || []).slice().sort().join('+') || 'none';
+    return [
+      CANONICAL_SYMBOL_APPEARANCE_VERSION,
+      'identity=' + String(identityKey),
+      'ref=' + String(referenceSize),
+      'topology=' + String(appearance && appearance.topology || ''),
+      'adapt=' + adaptations,
+      'rare=' + String(appearance && appearance.expressedRareTraits || '----'),
+      'genes=' + canonicalGenesSignature(appearance && appearance.canonicalVisualGenes)
+    ].join('|');
+  }
+  function freezeCanonicalSymbol(symbol){
+    if(!symbol || typeof Object.freeze !== 'function') return symbol;
+    try{
+      for(var i=0;i<(symbol.nodes||[]).length;i++) Object.freeze(symbol.nodes[i]);
+      for(var j=0;j<(symbol.extraLinks||[]).length;j++) Object.freeze(symbol.extraLinks[j]);
+      Object.freeze(symbol.nodes);
+      Object.freeze(symbol.extraLinks);
+      Object.freeze(symbol);
+    }catch(_){}
+    return symbol;
+  }
+  function clearCanonicalSymbolCache(){
+    canonicalSymbolCache.clear();
+  }
+  function canonicalSymbolCacheSummary(){
+    return {size:canonicalSymbolCache.size, keys:Array.from(canonicalSymbolCache.keys()).sort()};
+  }
+  function symbolReferenceSize(symbol){
+    var n = finiteNumber(symbol && symbol.canonicalReferenceSize, NaN);
+    return n > 0 ? n : null;
+  }
+  function symbolRenderScaleFor(o, symbol){
+    var ref = symbolReferenceSize(symbol);
+    if(!ref) return 1;
+    return Math.max(1e-9, finiteNumber(o && o.size, ref)) / ref;
+  }
+  function symbolRenderedVisualR(o, symbol){
+    var ref = symbolReferenceSize(symbol);
+    if(!ref) return finiteNumber(symbol && symbol.visualR, finiteNumber(o && o.size, 1));
+    return finiteNumber(symbol && symbol.visualR, ref) * symbolRenderScaleFor(o, symbol);
+  }
   function symbolShapePath(c, shape, r){
       c.beginPath();
       if(shape==='circle'){
@@ -68,13 +150,22 @@
     var SYMBOL_SHAPES=env.SYMBOL_SHAPES, clamp=env.clamp, formFromGenes=env.formFromGenes, rngFromKey=env.rngFromKey, speciesKey=env.speciesKey, speciesPalette=env.speciesPalette, topologyFromGenes=env.topologyFromGenes, canonicalSpeciesAppearanceEnabled=env.canonicalSpeciesAppearanceEnabled, speciesAppearanceProfile=env.speciesAppearanceProfile;
       const canonical=!!(canonicalSpeciesAppearanceEnabled && canonicalSpeciesAppearanceEnabled());
       const appearance=canonical && speciesAppearanceProfile ? speciesAppearanceProfile(o) : null;
-      const originalGenes=o.genes;
-      const originalForm=o.form;
-      const originalTopology=o.morphologyTopology;
       if(appearance){
-        o.genes=appearance.canonicalVisualGenes || o.genes;
-        o.form=formFromGenes(o.genes,o.speciesKey);
-        o.morphologyTopology=appearance.topology || o.morphologyTopology;
+        const identityKey=resolveCanonicalAppearanceIdentityKey(o,env,appearance,speciesKey);
+        const referenceSize=canonicalReferenceSizeFromEnv(env);
+        const cacheKey=canonicalSymbolCacheKey(identityKey,appearance,referenceSize);
+        const cached=canonicalSymbolCache.get(cacheKey);
+        if(cached) return { symbol:cached, personalSpaceR:cached.personalSpaceR };
+        const renderOrganism=Object.create(o || null);
+        renderOrganism.genes=appearance.canonicalVisualGenes || o.genes;
+        renderOrganism.speciesKey=identityKey;
+        renderOrganism.form=formFromGenes(renderOrganism.genes,identityKey);
+        renderOrganism.morphologyTopology=appearance.topology || o.morphologyTopology;
+        renderOrganism.size=referenceSize;
+        o=renderOrganism;
+        appearance.identityKey=identityKey;
+        appearance.cacheKey=cacheKey;
+        appearance.referenceSize=referenceSize;
       }
       const geneKey = Object.values(o.genes).map(v=>Math.round(v*101)).join('.');
       const seedKey = appearance ? `species-symbol:${o.speciesKey}` : 'symbol:'+o.id+':'+geneKey;
@@ -299,9 +390,12 @@
         } : o.flags
       };
       if(appearance){
-        o.genes=originalGenes;
-        o.form=originalForm;
-        o.morphologyTopology=originalTopology;
+        symbol.canonicalReferenceSize=appearance.referenceSize;
+        symbol.canonicalAppearanceIdentityKey=appearance.identityKey;
+        symbol.canonicalAppearanceVersion=CANONICAL_SYMBOL_APPEARANCE_VERSION;
+        symbol.canonicalCacheKey=appearance.cacheKey;
+        freezeCanonicalSymbol(symbol);
+        canonicalSymbolCache.set(appearance.cacheKey,symbol);
       }
     return { symbol: symbol, personalSpaceR: personalSpaceR };
   }
@@ -313,11 +407,16 @@
       const visualGenes=sym.visualGenes || o.genes || {};
       const visualFlags=sym.visualFlags || o.flags || {};
       const visualScale=bake?.visualScale ?? organismVisualScale(o);
+      const sourceOrganism=o;
+      const geometryScale=symbolRenderScaleFor(sourceOrganism,sym);
+      const geometryReferenceSize=symbolReferenceSize(sym);
+      const geometryLocalSize=geometryReferenceSize || finiteNumber(sourceOrganism && sourceOrganism.size,1);
+      const renderedVisualR=symbolRenderedVisualR(sourceOrganism,sym);
       c.save();
       c.translate(bake?.x ?? o.x,bake?.y ?? o.y);
       if(!bake && ui.microView && visualScale>CONFIG.rendering.microView.baseScale+0.03){
         const hue=(sym.outlineHue ?? o.hue ?? 190);
-        const rr=Math.max(4,(sym.visualR||o.size)*visualScale*1.22);
+        const rr=Math.max(4,renderedVisualR*visualScale*1.22);
         c.beginPath();
         c.arc(0,0,rr,0,TAU);
         c.strokeStyle=`hsla(${hue},94%,86%,${o===selectedOrganism?0.34:0.18})`;
@@ -352,6 +451,13 @@
         c.restore();
       }
 
+      if(geometryReferenceSize){
+        const drawOrganism=Object.create(sourceOrganism || null);
+        drawOrganism.size=geometryLocalSize;
+        drawOrganism.speciesKey=sym.speciesAppearance?.speciesKey || sym.canonicalAppearanceIdentityKey || sourceOrganism?.speciesKey;
+        o=drawOrganism;
+        c.scale(geometryScale,geometryScale);
+      }
       const role = o.role==='pack' ? 'pursuit' : o.role;
       const roleHue = ROLE_HUE[role] ?? sym.outlineHue;
       const outlineHue = ui.roleViz ? roleHue : sym.outlineHue;
@@ -701,4 +807,10 @@
   global.OrganismRender.symbolShapePath = symbolShapePath;
   global.OrganismRender.buildSymbol = buildSymbol;
   global.OrganismRender.drawOrganism = drawOrganism;
+  global.OrganismRender.CANONICAL_SYMBOL_REFERENCE_SIZE = CANONICAL_SYMBOL_REFERENCE_SIZE;
+  global.OrganismRender.CANONICAL_SYMBOL_APPEARANCE_VERSION = CANONICAL_SYMBOL_APPEARANCE_VERSION;
+  global.OrganismRender.clearCanonicalSymbolCache = clearCanonicalSymbolCache;
+  global.OrganismRender.canonicalSymbolCacheSummary = canonicalSymbolCacheSummary;
+  global.OrganismRender.symbolRenderScaleFor = symbolRenderScaleFor;
+  global.OrganismRender.symbolRenderedVisualR = symbolRenderedVisualR;
 })(typeof window !== 'undefined' ? window : this);

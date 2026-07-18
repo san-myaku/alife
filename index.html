@@ -313,7 +313,7 @@
   </aside>
 </div>
 
-<script src="organism_render.js?v=20260717-canonical-species"></script>
+<script src="organism_render.js?v=20260718-canonical-reference-geometry"></script>
 <script>
 (function(){
   'use strict';
@@ -1398,6 +1398,14 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   function speciesKeyForOrganism(organism){
     return speciesKey(organism?.genes || {},organism?.flags || {});
   }
+  function canonicalAppearanceIdentityKey(organism){
+    if(organism?.canonicalAppearanceKey) return String(organism.canonicalAppearanceKey);
+    if(organism?.lineageId) return String(organism.lineageId);
+    if(organism?.speciesKey) return String(organism.speciesKey);
+    if(organism?.genes) return speciesKeyForOrganism(organism);
+    if(organism?.id!=null) return `organism:${organism.id}`;
+    return 'canonical:unknown';
+  }
   const speciesAppearanceProfileCache = new Map();
   function canonicalClassCenter(classIndex,classCount=4){
     return (Number(classIndex) + 0.5) / classCount;
@@ -1466,7 +1474,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   function speciesAppearanceProfile(organismOrKey,components=null){
     const key=typeof organismOrKey==='string'
       ? organismOrKey
-      : speciesKeyForOrganism(organismOrKey);
+      : canonicalAppearanceIdentityKey(organismOrKey);
     if(speciesAppearanceProfileCache.has(key)) return speciesAppearanceProfileCache.get(key);
     const c=components
       || (typeof organismOrKey==='string'
@@ -8697,7 +8705,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function speciesDescriptorSource(organismOrKey){
     if(!speciesIdentityV2Enabled()) return null;
     const isKey=typeof organismOrKey==='string';
-    const key=isKey ? organismOrKey : speciesKeyForOrganism(organismOrKey);
+    const key=isKey ? organismOrKey : canonicalAppearanceIdentityKey(organismOrKey);
     const components=isKey
       ? speciesIdentityComponentsFromKey(key)
       : speciesIdentityV2Components(organismOrKey.genes,organismOrKey.flags);
@@ -8837,11 +8845,35 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   }
   const symbolSpriteCache = new Map();
   const symbolSpriteStats = { hits:0, misses:0, bakes:0, evictions:0 };
+  const canonicalSymbolSpriteSignatureCache = new WeakMap();
   function clearSymbolSpriteCache(){
     symbolSpriteCache.clear();
+    canonicalSymbolSpriteSignatureCache.clear?.();
     symbolSpriteStats.hits=0; symbolSpriteStats.misses=0; symbolSpriteStats.bakes=0; symbolSpriteStats.evictions=0;
   }
+  function symbolRenderedVisualR(o,sym){
+    if(OrganismRender.symbolRenderedVisualR) return OrganismRender.symbolRenderedVisualR(o,sym);
+    return Number(sym?.visualR || o?.size || 1);
+  }
+  function symbolRenderScaleFor(o,sym){
+    if(OrganismRender.symbolRenderScaleFor) return OrganismRender.symbolRenderScaleFor(o,sym);
+    return 1;
+  }
   function symbolSpriteGeometrySignature(o,sym){
+    if(sym.canonicalAppearanceIdentityKey){
+      const cached=canonicalSymbolSpriteSignatureCache.get(sym);
+      if(cached) return cached;
+      const nodes = sym.nodes || [];
+      const links = sym.extraLinks || [];
+      let s = `${sym.canonicalAppearanceVersion||'canonical'}:${sym.canonicalAppearanceIdentityKey}:${sym.bodyPlan||'single'}:${nodes.length}:${links.length}`;
+      for(const n of nodes){
+        s += `|${Math.round(n.x*2000)},${Math.round(n.y*2000)},${Math.round(n.r*2000)},${n.shape},${n.parent},${n.kind||''}`;
+      }
+      for(const l of links) s += `>${l.a},${l.b},${l.kind||''}`;
+      const signature = `${sym.canonicalAppearanceIdentityKey}:canonical:${Math.round(hash01(s)*0xffffffff).toString(36)}`;
+      canonicalSymbolSpriteSignatureCache.set(sym,signature);
+      return signature;
+    }
     if(sym._spriteSignature) return sym._spriteSignature;
     const nodes = sym.nodes || [];
     const links = sym.extraLinks || [];
@@ -8897,7 +8929,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       return cached;
     }
     symbolSpriteStats.misses++;
-    const visualR = Math.max(o.size||1, sym.visualR||o.size||1);
+    const visualR = Math.max(o.size||1, symbolRenderedVisualR(o,sym));
     const side = Math.max(28, Math.min(CONFIG.rendering.symbolSpriteMaxSide, Math.ceil(visualR*visualScale*2.85 + (o.size||1)*visualScale*3.2 + 24)));
     const canvas = document.createElement('canvas');
     canvas.width = side;
@@ -9729,7 +9761,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       };
     }
     prepareSymbolDetails(){
-      const renderEnv={SYMBOL_SHAPES, clamp, formFromGenes, rngFromKey, speciesKey, speciesPalette, topologyFromGenes, canonicalSpeciesAppearanceEnabled, speciesAppearanceProfile};
+      const renderEnv={SYMBOL_SHAPES, clamp, formFromGenes, rngFromKey, speciesKey, speciesPalette, topologyFromGenes, canonicalSpeciesAppearanceEnabled, speciesAppearanceProfile, canonicalAppearanceIdentityKey, CANONICAL_SYMBOL_REFERENCE_SIZE:OrganismRender.CANONICAL_SYMBOL_REFERENCE_SIZE};
       const __r = OrganismRender.buildSymbol(this, renderEnv);
       const legacyPersonalSpaceR = canonicalSpeciesAppearanceEnabled()
         ? OrganismRender.buildSymbol(this, {...renderEnv, canonicalSpeciesAppearanceEnabled:()=>false, speciesAppearanceProfile:null}).personalSpaceR
@@ -11239,7 +11271,7 @@ if(Z>0.08){
       ctx.translate(this.x,this.y);
       if(ui.microView && visualScale>CONFIG.rendering.microView.baseScale+0.03){
         const hue=(sym.outlineHue ?? this.hue ?? 190);
-        const rr=Math.max(4,(sym.visualR||this.size)*visualScale*1.22);
+        const rr=Math.max(4,symbolRenderedVisualR(this,sym)*visualScale*1.22);
         ctx.beginPath();
         ctx.arc(0,0,rr,0,TAU);
         ctx.strokeStyle=`hsla(${hue},94%,86%,${this===selectedOrganism?0.34:0.18})`;
@@ -11285,7 +11317,7 @@ if(Z>0.08){
       ctx.rotate(Number.isFinite(this.heading) ? this.heading : 0);
       if(this.chaseTimer>0 || this.preyTargetId){
         ctx.beginPath();
-        ctx.arc(0,0,Math.max(this.size*1.75,(sym.visualR||this.size)*0.80),0,TAU);
+        ctx.arc(0,0,Math.max(this.size*1.75,symbolRenderedVisualR(this,sym)*0.80),0,TAU);
         ctx.strokeStyle=predatorBursting?'rgba(255,170,90,0.52)':'rgba(255,118,126,0.34)';
         ctx.lineWidth=predatorBursting?1.8:1.4;
         ctx.stroke();
@@ -11293,7 +11325,7 @@ if(Z>0.08){
       if(this.fleeTimer>0){
         const fk=clamp(this.fleeTimer/42,0,1);
         ctx.beginPath();
-        ctx.arc(0,0,Math.max(this.size*1.65,(sym.visualR||this.size)*0.72)*(1.0+0.18*Math.sin(gait*0.8)),0,TAU);
+        ctx.arc(0,0,Math.max(this.size*1.65,symbolRenderedVisualR(this,sym)*0.72)*(1.0+0.18*Math.sin(gait*0.8)),0,TAU);
         ctx.strokeStyle=`rgba(126,220,170,${0.12+0.16*fk})`;
         ctx.lineWidth=1.2;
         ctx.stroke();
@@ -18974,6 +19006,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       registerSpeciesStats(organism);
     }
     clearSpeciesAppearanceProfileCache();
+    OrganismRender.clearCanonicalSymbolCache?.();
     clearSymbolSpriteCache();
     for(const organism of organisms){
       clearOrganismPackIdentity(organism,'species-identity-toggle');
@@ -18984,6 +19017,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   function setCanonicalSpeciesAppearance(enabled){
     featureFlags.canonicalSpeciesAppearance=!!enabled;
     clearSpeciesAppearanceProfileCache();
+    OrganismRender.clearCanonicalSymbolCache?.();
     clearSymbolSpriteCache();
     for(const organism of organisms){
       if(!organism) continue;
@@ -19751,6 +19785,13 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       eco:visualRngCloneJson(eco),
       organisms:organisms.map(o=>({
         id:o.id,x:o.x,y:o.y,vx:o.vx,vy:o.vy,energy:o.energy,age:o.age,birthFrame:o.birthFrame,
+        size:o.size,maxSpeed:o.maxSpeed,baseMetabolic:o.baseMetabolic,senseR:o.senseR,senseCost:o.senseCost,
+        reproThreshold:o.reproThreshold,maxEnergy:o.maxEnergy,personalSpaceR:o.personalSpaceR,
+        developmentProgress:o.developmentProgress??null,developmentBodyScale:o.developmentBodyScale??null,
+        developmentSpeedScale:o.developmentSpeedScale??null,developmentMaxSpeedScale:o.developmentMaxSpeedScale??null,
+        developmentMetabolicScale:o.developmentMetabolicScale??null,developmentSenseCostScale:o.developmentSenseCostScale??null,
+        developmentMovementCostScale:o.developmentMovementCostScale??null,developmentDensityCostScale:o.developmentDensityCostScale??null,
+        developmentBurstCostScale:o.developmentBurstCostScale??null,developmentSenseRangeScale:o.developmentSenseRangeScale??null,
         lineageInitial:o.lineageInitial,parentId:o.parentId??null,mateParentId:o.mateParentId??null,
         generationDepth:o.generationDepth??0,birthExactDiet:o.birthExactDiet??null,birthDietClass:o.birthDietClass??null,
         protect:o.protect,storeN:o.storeN,storeO:o.storeO,storeD:o.storeD,mem:o.mem,attackCD:o.attackCD,
@@ -20502,7 +20543,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     }
     const violations=[];
     for(const [speciesKey,rows] of groups){
-      const sets={dietClass:new Set(),role:new Set(),socialMode:new Set(),topology:new Set(),adaptationSignature:new Set(),rareTraitSignature:new Set(),appearanceSignature:new Set()};
+      const sets={dietClass:new Set(),role:new Set(),socialMode:new Set(),topology:new Set(),adaptationSignature:new Set(),rareTraitSignature:new Set(),basicAppearanceSignature:new Set(),normalizedGeometrySignature:new Set(),appearanceSignature:new Set()};
       for(const o of rows){
         const c=speciesIdentityComponentsForOrganism(o);
         sets.dietClass.add(c.dietClass);
@@ -20511,9 +20552,17 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         sets.topology.add(c.topology);
         sets.adaptationSignature.add((c.adaptations||[]).join('+') || 'none');
         sets.rareTraitSignature.add(c.expressedRareTraits);
-        if(canonicalSpeciesAppearanceEnabled()) sets.appearanceSignature.add(normalizedSpeciesAppearanceSignature(o));
+        if(canonicalSpeciesAppearanceEnabled()){
+          sets.basicAppearanceSignature.add(normalizedSpeciesBasicAppearanceSignature(o));
+          sets.normalizedGeometrySignature.add(normalizedSpeciesGeometrySignature(o));
+          sets.appearanceSignature.add(normalizedSpeciesAppearanceSignature(o));
+        }
       }
-      if(!canonicalSpeciesAppearanceEnabled()) sets.appearanceSignature.add('disabled');
+      if(!canonicalSpeciesAppearanceEnabled()){
+        sets.basicAppearanceSignature.add('disabled');
+        sets.normalizedGeometrySignature.add('disabled');
+        sets.appearanceSignature.add('disabled');
+      }
       const broken=Object.fromEntries(Object.entries(sets).filter(([,set])=>set.size>1).map(([k,set])=>[k,[...set].sort()]));
       if(Object.keys(broken).length){
         violations.push({speciesKey,count:rows.length,...broken});
@@ -20525,17 +20574,22 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const n=Number(value);
     return Number.isFinite(n) ? Math.round(n*1000000)/1000000 : 0;
   }
-  function normalizedSpeciesAppearanceSignature(organism){
+  function symbolGeometryReferenceDivisor(organism,symbol){
+    const ref=Number(symbol?.canonicalReferenceSize);
+    if(Number.isFinite(ref) && ref>0) return ref;
+    return Math.max(Number(organism?.size)||0,1e-9);
+  }
+  function normalizedSpeciesGeometrySnapshot(organism){
     if(!organism) return null;
     const symbol=organism._symbol || (organism.prepareSymbolDetails(), organism._symbol);
     if(!symbol) return null;
-    const divisor=Math.max(Number(organism.size)||0,1e-9);
-    const profile=speciesAppearanceProfile(organism);
-    return stableJson({
-      speciesKey:organism.speciesKey,
+    const divisor=symbolGeometryReferenceDivisor(organism,symbol);
+    return {
       topology:symbol.bodyPlan,
       primaryIndex:symbol.primaryIndex,
       secondaryIndex:symbol.secondaryIndex,
+      visualR:roundNormalized((symbol.visualR||0)/divisor),
+      personalSpaceR:roundNormalized((symbol.personalSpaceR||0)/divisor),
       nodes:(symbol.nodes||[]).map(node=>({
         x:roundNormalized(node.x/divisor),
         y:roundNormalized(node.y/divisor),
@@ -20544,10 +20598,45 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         parent:node.parent,
         kind:node.kind || ''
       })),
-      links:(symbol.extraLinks||[]).map(link=>({a:link.a,b:link.b,kind:link.kind||''})),
+      links:(symbol.extraLinks||[]).map(link=>({a:link.a,b:link.b,kind:link.kind||''}))
+    };
+  }
+  function normalizedSpeciesBasicAppearanceSnapshot(organism){
+    if(!organism) return null;
+    const symbol=organism._symbol || (organism.prepareSymbolDetails(), organism._symbol);
+    if(!symbol) return null;
+    const profile=speciesAppearanceProfile(organism);
+    return {
+      speciesKey:organism.speciesKey,
+      canonicalIdentity:canonicalAppearanceIdentityKey(organism),
+      canonicalVersion:symbol.canonicalAppearanceVersion || null,
+      referenceSize:symbol.canonicalReferenceSize || null,
+      cacheKey:symbol.canonicalCacheKey || null,
       adaptations:profile.adaptations,
       rareTraits:profile.expressedRareTraits,
-      palette:speciesPalette(organism.speciesKey)
+      palette:speciesPalette(canonicalAppearanceIdentityKey(organism)),
+      lineAlpha:roundNormalized(symbol.lineAlpha),
+      nucleusHue:roundNormalized(symbol.nucleusHue),
+      gradientShift:roundNormalized(symbol.gradientShift),
+      transparency:roundNormalized(symbol.transparency),
+      coreScale:roundNormalized(symbol.coreScale),
+      shapeRot:roundNormalized(symbol.shapeRot),
+      wiggleAmp:roundNormalized(symbol.wiggleAmp),
+      wiggleSpeed:roundNormalized(symbol.wiggleSpeed),
+      visualFlags:{...(symbol.visualFlags || {})}
+    };
+  }
+  function normalizedSpeciesGeometrySignature(organism){
+    return stableJson(normalizedSpeciesGeometrySnapshot(organism));
+  }
+  function normalizedSpeciesBasicAppearanceSignature(organism){
+    return stableJson(normalizedSpeciesBasicAppearanceSnapshot(organism));
+  }
+  function normalizedSpeciesAppearanceSignature(organism){
+    if(!organism) return null;
+    return stableJson({
+      basic:normalizedSpeciesBasicAppearanceSnapshot(organism),
+      geometry:normalizedSpeciesGeometrySnapshot(organism)
     });
   }
   function speciesAppearanceSummary(){
@@ -20563,11 +20652,14 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       const components=speciesIdentityComponentsForOrganism(representative);
       const profile=speciesAppearanceProfile(representative);
       const signature=normalizedSpeciesAppearanceSignature(representative);
+      const basicSignature=normalizedSpeciesBasicAppearanceSignature(representative);
+      const geometrySignature=normalizedSpeciesGeometrySignature(representative);
       return {
         speciesKey,
         livingCount:rows.length,
         appearanceSignature:signature,
-        normalizedGeometryHash:signature ? Math.round(hash01(signature)*0xffffffff).toString(36) : null,
+        basicAppearanceHash:basicSignature ? Math.round(hash01(basicSignature)*0xffffffff).toString(36) : null,
+        normalizedGeometryHash:geometrySignature ? Math.round(hash01(geometrySignature)*0xffffffff).toString(36) : null,
         dietClass:components.dietClass,
         role:components.role,
         socialMode:components.socialMode,
@@ -21618,7 +21710,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       running=false; frame=0; generation=1; NEXT_ID=1;
       organisms.length=0; newborn.length=0; food.length=0; corpses.length=0; plankton.length=0; patches.length=0; calls.length=0;
       sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0;
-      speciesCount.clear(); speciesStats.clear(); resetPackIdentityState(); clearSpeciesAppearanceProfileCache(); clearSymbolSpriteCache(); resetTelemetry();
+      speciesCount.clear(); speciesStats.clear(); resetPackIdentityState(); clearSpeciesAppearanceProfileCache(); OrganismRender.clearCanonicalSymbolCache?.(); clearSymbolSpriteCache(); resetTelemetry();
     };
     try{
       featureFlags.evolvableLifeHistory=true;
@@ -21635,6 +21727,159 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       ,1200);
       const genesA=samePair?.[0]?.genes || speciesIdentityTestGenes({diet:0.64,speed:0.42,size:0.44,sense:0.48,metabolism:0.50,fecundity:0.52,formSeed:0.45});
       const genesB=samePair?.[1]?.genes || {...genesA,speed:genesA.speed+0.01};
+      const close=(a,b,eps=1e-9)=>Math.abs(Number(a)-Number(b))<=eps;
+      const clearCanonicalOnly=()=>{
+        OrganismRender.clearCanonicalSymbolCache?.();
+        clearSymbolSpriteCache();
+      };
+      const prepareSized=(organism,size)=>{
+        organism.size=size;
+        organism._symbol=null;
+        organism.prepareSymbolDetails();
+        return organism;
+      };
+      const geometryJson=o=>stableJson(normalizedSpeciesGeometrySnapshot(o));
+      const appearanceJson=o=>stableJson({
+        basic:normalizedSpeciesBasicAppearanceSnapshot(o),
+        geometry:normalizedSpeciesGeometrySnapshot(o)
+      });
+      const cacheSummary=()=>OrganismRender.canonicalSymbolCacheSummary?.() || {size:0,keys:[]};
+      const makeOrderTrial=(order)=>{
+        clear();
+        const small=makeCanonicalAppearanceTestOrganism(genesA,{},100,100);
+        const large=makeCanonicalAppearanceTestOrganism(genesA,{},130,100);
+        prepareSized(small,4.25);
+        prepareSized(large,13.75);
+        clearCanonicalOnly();
+        for(const label of order){
+          const target=label==='small' ? small : large;
+          target._symbol=null;
+          target.prepareSymbolDetails();
+        }
+        return {
+          smallGeometry:geometryJson(small),
+          largeGeometry:geometryJson(large),
+          cache:cacheSummary()
+        };
+      };
+
+      clear();
+      const sizeSmall=makeCanonicalAppearanceTestOrganism(genesA,{},100,100);
+      const sizeLarge=makeCanonicalAppearanceTestOrganism(genesA,{},130,100);
+      prepareSized(sizeSmall,4.25);
+      prepareSized(sizeLarge,13.75);
+      clearCanonicalOnly();
+      sizeSmall._symbol=null; sizeSmall.prepareSymbolDetails();
+      sizeLarge._symbol=null; sizeLarge.prepareSymbolDetails();
+      add('Geometry A canonical normalized geometry is size-independent',
+        sizeSmall.size!==sizeLarge.size
+          && geometryJson(sizeSmall)===geometryJson(sizeLarge)
+          && appearanceJson(sizeSmall)===appearanceJson(sizeLarge),
+        {smallSize:sizeSmall.size,largeSize:sizeLarge.size,cache:cacheSummary()}
+      );
+
+      const smallThenLarge=makeOrderTrial(['small','large']);
+      const largeThenSmall=makeOrderTrial(['large','small']);
+      add('Geometry B canonical cache is generation-order independent',
+        smallThenLarge.smallGeometry===smallThenLarge.largeGeometry
+          && largeThenSmall.smallGeometry===largeThenSmall.largeGeometry
+          && smallThenLarge.smallGeometry===largeThenSmall.smallGeometry
+          && stableJson(smallThenLarge.cache.keys)===stableJson(largeThenSmall.cache.keys),
+        {smallThenLarge:smallThenLarge.cache,largeThenSmall:largeThenSmall.cache}
+      );
+
+      const makeDevelopmentTrial=(order)=>{
+        clear();
+        const juvenile=makeCanonicalAppearanceTestOrganism(genesA,{},100,100);
+        const adult=makeCanonicalAppearanceTestOrganism(genesA,{},130,100);
+        juvenile.lineageInitial=false;
+        juvenile.age=0;
+        juvenile.recalcPhenotype();
+        applyDevelopmentPhenotype(juvenile);
+        adult.lineageInitial=false;
+        adult.age=Math.max(adult.maturityAge||0,CONFIG.lifeHistory.juvenileDevelopment.maturitySteps||0)+20;
+        adult.recalcPhenotype();
+        applyDevelopmentPhenotype(adult);
+        clearCanonicalOnly();
+        for(const label of order){
+          const target=label==='juvenile' ? juvenile : adult;
+          target._symbol=null;
+          target.prepareSymbolDetails();
+        }
+        return {
+          juvenileSize:juvenile.size,
+          adultSize:adult.size,
+          juvenileGeometry:geometryJson(juvenile),
+          adultGeometry:geometryJson(adult),
+          cache:cacheSummary()
+        };
+      };
+      const juvenileFirst=makeDevelopmentTrial(['juvenile','adult']);
+      const adultFirst=makeDevelopmentTrial(['adult','juvenile']);
+      add('Geometry C juvenile/adult first generation share normalized geometry',
+        juvenileFirst.juvenileSize!==juvenileFirst.adultSize
+          && juvenileFirst.juvenileGeometry===juvenileFirst.adultGeometry
+          && adultFirst.juvenileGeometry===adultFirst.adultGeometry
+          && juvenileFirst.juvenileGeometry===adultFirst.juvenileGeometry,
+        {juvenileFirst,adultFirst}
+      );
+
+      clear();
+      const scaleSmall=makeCanonicalAppearanceTestOrganism(genesA,{},100,100);
+      const scaleLarge=makeCanonicalAppearanceTestOrganism(genesA,{},130,100);
+      prepareSized(scaleSmall,4.5);
+      prepareSized(scaleLarge,12.0);
+      clearCanonicalOnly();
+      scaleSmall._symbol=null; scaleSmall.prepareSymbolDetails();
+      scaleLarge._symbol=null; scaleLarge.prepareSymbolDetails();
+      const ref=Number(scaleSmall._symbol?.canonicalReferenceSize || 1);
+      const smallRenderScale=symbolRenderScaleFor(scaleSmall,scaleSmall._symbol);
+      const largeRenderScale=symbolRenderScaleFor(scaleLarge,scaleLarge._symbol);
+      const smallRenderedR=symbolRenderedVisualR(scaleSmall,scaleSmall._symbol);
+      const largeRenderedR=symbolRenderedVisualR(scaleLarge,scaleLarge._symbol);
+      add('Geometry D render scale carries individual size',
+        geometryJson(scaleSmall)===geometryJson(scaleLarge)
+          && smallRenderScale!==largeRenderScale
+          && close(smallRenderScale,scaleSmall.size/ref,1e-9)
+          && close(largeRenderScale,scaleLarge.size/ref,1e-9)
+          && close(largeRenderedR/smallRenderedR,scaleLarge.size/scaleSmall.size,1e-9),
+        {referenceSize:ref,smallSize:scaleSmall.size,largeSize:scaleLarge.size,smallRenderScale,largeRenderScale,smallRenderedR,largeRenderedR}
+      );
+
+      clear();
+      const identityA=makeCanonicalAppearanceTestOrganism(speciesIdentityTestGenes({diet:0.64,speed:0.42,size:0.44,sense:0.48,metabolism:0.50,fecundity:0.52,formSeed:0.45}),{},100,100);
+      const identityB=makeCanonicalAppearanceTestOrganism(speciesIdentityTestGenes({diet:0.68,speed:0.42,size:0.44,sense:0.48,metabolism:0.50,fecundity:0.52,formSeed:0.45}),{},130,100);
+      clearCanonicalOnly();
+      identityA._symbol=null; identityA.prepareSymbolDetails();
+      identityB._symbol=null; identityB.prepareSymbolDetails();
+      const identityCache=cacheSummary();
+      add('Geometry E canonical identity separates cache entries',
+        canonicalAppearanceIdentityKey(identityA)!==canonicalAppearanceIdentityKey(identityB)
+          && identityA._symbol?.canonicalCacheKey!==identityB._symbol?.canonicalCacheKey
+          && identityCache.size>=2
+          && identityCache.keys.includes(identityA._symbol?.canonicalCacheKey)
+          && identityCache.keys.includes(identityB._symbol?.canonicalCacheKey),
+        {identityA:canonicalAppearanceIdentityKey(identityA),identityB:canonicalAppearanceIdentityKey(identityB),cache:identityCache}
+      );
+
+      clear();
+      const saveOrg=makeCanonicalAppearanceTestOrganism(genesA,{},100,100);
+      prepareSized(saveOrg,9.5);
+      clearCanonicalOnly();
+      saveOrg._symbol=null; saveOrg.prepareSymbolDetails();
+      const beforeSaveGeometry=appearanceJson(saveOrg);
+      const savedWorld=capture();
+      clearCanonicalOnly();
+      restore(savedWorld);
+      const loadedOrg=organisms.find(o=>o && o.id===saveOrg.id) || null;
+      if(loadedOrg){ loadedOrg._symbol=null; loadedOrg.prepareSymbolDetails(); }
+      const afterSaveGeometry=loadedOrg ? appearanceJson(loadedOrg) : null;
+      add('Geometry F save/load regenerates identical canonical geometry',
+        !!loadedOrg && beforeSaveGeometry===afterSaveGeometry,
+        {before:beforeSaveGeometry,after:afterSaveGeometry,cache:cacheSummary()}
+      );
+
+      clear();
       const a=makeCanonicalAppearanceTestOrganism(genesA,{},100,100);
       const b=makeCanonicalAppearanceTestOrganism(genesB,{},130,100);
       const sigA=normalizedSpeciesAppearanceSignature(a);
@@ -22145,6 +22390,12 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     visualWorldSeed(){
       return worldSeedForVisualRng();
     },
+    canonicalAppearanceIdentityKey(organismId=null){
+      if(organismId==null) return null;
+      const id=Number(organismId);
+      const o=organisms.find(x=>x && x.id===id) || null;
+      return canonicalAppearanceIdentityKey(o);
+    },
     speciesIdentityV2Summary(){
       return speciesIdentityV2Summary();
     },
@@ -22158,6 +22409,24 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       const id=Number(organismId);
       const o=organisms.find(x=>x && x.id===id) || null;
       return normalizedSpeciesAppearanceSignature(o);
+    },
+    normalizedSpeciesGeometrySignature(organismId){
+      const id=Number(organismId);
+      const o=organisms.find(x=>x && x.id===id) || null;
+      return normalizedSpeciesGeometrySignature(o);
+    },
+    canonicalGeometrySnapshot(organismId){
+      const id=Number(organismId);
+      const o=organisms.find(x=>x && x.id===id) || null;
+      if(!o) return null;
+      const sym=o._symbol || (o.prepareSymbolDetails(), o._symbol);
+      return {
+        identity:canonicalAppearanceIdentityKey(o),
+        renderScale:symbolRenderScaleFor(o,sym),
+        renderedVisualR:symbolRenderedVisualR(o,sym),
+        basic:normalizedSpeciesBasicAppearanceSnapshot(o),
+        geometry:normalizedSpeciesGeometrySnapshot(o)
+      };
     },
     speciesIdentitySnapshot(organismId){
       return speciesIdentitySnapshot(organismId);
@@ -22309,6 +22578,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     captureTestSnapshot(name='snapshot'){
       return captureTestSnapshot(name);
     },
+    captureSaveData(){
+      return capture();
+    },
     restoreTestSnapshot(name='snapshot'){
       return restoreTestSnapshot(name);
     },
@@ -22316,6 +22588,14 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       return CONFIG;
     },
     clearSymbolSpriteCache,
+    clearCanonicalSymbolCache(){
+      OrganismRender.clearCanonicalSymbolCache?.();
+      clearSymbolSpriteCache();
+      return OrganismRender.canonicalSymbolCacheSummary?.() || null;
+    },
+    canonicalSymbolCacheSummary(){
+      return OrganismRender.canonicalSymbolCacheSummary?.() || null;
+    },
     symbolSpriteCacheSummary(){
       return {size:symbolSpriteCache.size, ...symbolSpriteStats};
     },
@@ -22640,6 +22920,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         if(state.features.canonicalSpeciesAppearance!=null) featureFlags.canonicalSpeciesAppearance=!!state.features.canonicalSpeciesAppearance;
         if(state.features.eventKeyedVisualRng!=null) featureFlags.eventKeyedVisualRng=!!state.features.eventKeyedVisualRng;
       }
+      clearSpeciesAppearanceProfileCache();
+      OrganismRender.clearCanonicalSymbolCache?.();
+      clearSymbolSpriteCache();
       running=false;
       food.length=0; corpses.length=0; plankton.length=0; patches.length=0; organisms.length=0; newborn.length=0; sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0; calls.length=0; speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear(); selectedOrganism=null; selectedDeadAt=0; resetPackIdentityState();
       resetFoodWebStats();
