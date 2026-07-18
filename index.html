@@ -531,6 +531,11 @@
   function eventKeyedVisualRngEnabled(){
     return !!featureFlags.eventKeyedVisualRng;
   }
+  // Mirrors the existing seeded diagnostic seed for stateless visual events.
+  let currentWorldSeedForVisuals = 0;
+  function worldSeedForVisualRng(){
+    return currentWorldSeedForVisuals;
+  }
 
   // ===== UI State =====
   const ui={ speed:1, mutation:0.03, showSense:false, tool:'food', popMax:CONFIG.population.maxDefault, parallax:1.0, roleViz:false, observeField:null, microView:true, forceFullRender:true };
@@ -767,7 +772,7 @@
   // ===== Entities =====
   const DETRITUS_PARTICLE_CAP=260;
   class Food{
-  constructor(x,y,type='small'){
+  constructor(x,y,type='small',opts={}){
     this.x=x; this.y=y; this.type=type;
     if(type==='small'){ this.r=2.2; this.gain=16; this.color='#8be9fd'; }
     else if(type==='big'){ this.r=4.6; this.gain=40; this.color='#fcbf49'; }
@@ -779,7 +784,12 @@
       this.t=rnd(1500,2600);
       this.vx=rnd(-0.10,0.10);
       this.vy=rnd(-0.10,0.10);
-      this.seed=Math.random()*TAU;
+      if(eventKeyedVisualRngEnabled()){
+        const key=opts.eventKey || `food-detritus:${frame}:${Math.round(this.x*100)}:${Math.round(this.y*100)}:${Math.round(this.r*1000)}:${Math.round(this.gain*1000)}:${Math.round(this.t)}`;
+        this.seed=visualRngForKey(key)()*TAU;
+      } else {
+        this.seed=Math.random()*TAU;
+      }
     }
     else { this.r=2.6; this.gain=16; this.color='#ffffff'; }
   }
@@ -844,7 +854,7 @@
     for(let i=0;i<count && liveDetritus<DETRITUS_PARTICLE_CAP;i++){
       const a=Math.random()*TAU;
       const d=rnd(Math.max(1,c.radius*0.35), Math.max(3,c.radius*1.75));
-      const f=new Food(clamp(c.x+Math.cos(a)*d,6,W-6), clamp(c.y+Math.sin(a)*d,6,H-6), 'detritus');
+      const f=new Food(clamp(c.x+Math.cos(a)*d,6,W-6), clamp(c.y+Math.sin(a)*d,6,H-6), 'detritus', {eventKey:`corpse-detritus:${frame}:${Math.round(c.x*100)}:${Math.round(c.y*100)}:${i}`});
       const push=rnd(0.04,0.22);
       f.vx+=Math.cos(a)*push;
       f.vy+=Math.sin(a)*push;
@@ -860,7 +870,7 @@
     }
     return made;
   }
-  class Corpse{ constructor(x,y,energy){ this.x=x; this.y=y; this.energy=energy; this.radius=Math.min(10, 2 + energy*0.05); this.t=900; this.wob=Math.random()*TAU; this.decayPulse=Math.random()*TAU; }
+  class Corpse{ constructor(x,y,energy,opts={}){ this.x=x; this.y=y; this.energy=energy; this.radius=Math.min(10, 2 + energy*0.05); this.t=900; if(eventKeyedVisualRngEnabled()){ const rng=visualRngForKey(opts.eventKey || `corpse:${frame}:${Math.round(x*100)}:${Math.round(y*100)}:${Math.round(energy*100)}`); this.wob=rng()*TAU; this.decayPulse=rng()*TAU; } else { this.wob=Math.random()*TAU; this.decayPulse=Math.random()*TAU; } }
     step(){
       this.t -= (1 + (worldEvent.corpseDecayExtra||0));
       this.wob+=0.03; this.decayPulse+=0.018; this.energy*=0.999;
@@ -903,14 +913,20 @@
       ctx.strokeStyle=`rgba(126,220,170,${0.08*k})`; ctx.lineWidth=1; ctx.stroke();
     } }
   class Plankton{
-    constructor(){
+    constructor(opts={}){
       this.x=rnd(8,W-8);
       this.y=rnd(8,H-8);
       this.vx=rnd(-0.08,0.08);
       this.vy=rnd(-0.08,0.08);
       this.t=rnd(1800,3600);
-      this.spin=rnd(0,TAU);
-      this.kind=(Math.random()*3)|0;
+      if(eventKeyedVisualRngEnabled()){
+        const rng=visualRngForKey(opts.eventKey || `plankton:${frame}:${Math.round(this.x*100)}:${Math.round(this.y*100)}:${Math.round(this.t)}`);
+        this.spin=rng()*TAU;
+        this.kind=(rng()*3)|0;
+      } else {
+        this.spin=rnd(0,TAU);
+        this.kind=(Math.random()*3)|0;
+      }
       this.fade=0;
     }
     step(){
@@ -973,14 +989,23 @@
   }
 
   class PredationBloom{
-    constructor(x,y,scale=1,hue=6){
+    constructor(x,y,scale=1,hue=6,opts={}){
       this.x=x; this.y=y; this.scale=clamp(scale,0.55,2.1); this.hue=hue;
       this.t=34+Math.round(8*this.scale); this.maxT=this.t;
       this.blobs=[];
       const n=renderPerf.low ? 4 : 6;
-      for(let i=0;i<n;i++){
-        const a=(i/n)*TAU + rnd(-0.34,0.34);
-        this.blobs.push({a,d:rnd(0.10,0.92),r:rnd(0.55,1.15),spin:rnd(-0.06,0.06)});
+      if(eventKeyedVisualRngEnabled()){
+        const baseKey=opts.eventKey || `predation-bloom:${frame}:${Math.round(x*100)}:${Math.round(y*100)}:${Math.round(scale*1000)}:${Math.round(hue)}`;
+        for(let i=0;i<n;i++){
+          const rng=opts.rng || visualRngForKey(`${baseKey}:blob:${i}`);
+          const a=(i/n)*TAU + visualRange(rng,-0.34,0.34);
+          this.blobs.push({a,d:visualRange(rng,0.10,0.92),r:visualRange(rng,0.55,1.15),spin:visualRange(rng,-0.06,0.06)});
+        }
+      } else {
+        for(let i=0;i<n;i++){
+          const a=(i/n)*TAU + rnd(-0.34,0.34);
+          this.blobs.push({a,d:rnd(0.10,0.92),r:rnd(0.55,1.15),spin:rnd(-0.06,0.06)});
+        }
       }
     }
     step(){ this.t--; }
@@ -1032,8 +1057,17 @@
   }
 
   class BodyParticle{
-    constructor(x,y,vx,vy,r,hue,light=66,life=58,core=false){
-      this.x=x; this.y=y; this.vx=vx; this.vy=vy; this.r=r; this.hue=hue; this.light=light; this.t=life; this.maxT=life; this.core=core; this.spin=Math.random()*TAU; this.rot=rnd(-0.09,0.09);
+    constructor(x,y,vx,vy,r,hue,light=66,life=58,core=false,opts={}){
+      this.x=x; this.y=y; this.vx=vx; this.vy=vy; this.r=r; this.hue=hue; this.light=light; this.t=life; this.maxT=life; this.core=core;
+      this.visualEventKey=opts.eventKey || null;
+      if(eventKeyedVisualRngEnabled()){
+        const rng=opts.rng || visualRngForKey(opts.eventKey || `body-particle:${frame}:${Math.round(x*100)}:${Math.round(y*100)}:${Math.round(vx*1000)}:${Math.round(vy*1000)}:${Math.round(r*1000)}:${Math.round(hue)}`);
+        this.spin=rng()*TAU;
+        this.rot=visualRange(rng,-0.09,0.09);
+      } else {
+        this.spin=Math.random()*TAU;
+        this.rot=rnd(-0.09,0.09);
+      }
     }
     step(){
       this.t--;
@@ -1095,13 +1129,40 @@
     }
   }
 
-  function spawnPredationScatter(prey,predator,scale=1){
+  function spawnPredationScatter(prey,predator,scale=1,opts={}){
     if(!prey) return;
     try{ if(!prey._symbol && prey.prepareSymbolDetails) prey.prepareSymbolDetails(); }catch(_){}
     const sym=prey._symbol||null;
     const nodes=(sym && sym.nodes && sym.nodes.length) ? sym.nodes : null;
     const heading=Number.isFinite(prey.heading) ? prey.heading : 0;
     const ca=Math.cos(heading), sa=Math.sin(heading);
+    if(eventKeyedVisualRngEnabled()){
+      const eventKey=opts.eventKey || `predation:${frame}:${predator?.id ?? 'none'}:${prey.id ?? 'unknown'}`;
+      const away=predator ? Math.atan2(prey.y-predator.y, prey.x-predator.x) : visualRngForKey(`${eventKey}:away`)()*TAU;
+      const defaultCount=Math.max(8, Math.min(renderPerf.low ? 24 : 34, Math.round(9 + prey.size*0.9 + (nodes?nodes.length*2.2:0) + scale*6)));
+      const overrideCount=Number(opts.particleCountOverride);
+      const count=Number.isFinite(overrideCount) ? Math.max(0,Math.floor(overrideCount)) : defaultCount;
+      for(let i=0;i<count;i++){
+        const rng=visualRngForKey(`${eventKey}:particle:${i}`);
+        const n=nodes ? nodes[i%nodes.length] : null;
+        const lx=n ? n.x*visualRange(rng,0.45,0.95) : Math.cos(rng()*TAU)*prey.size*visualRange(rng,0.05,0.85);
+        const ly=n ? n.y*visualRange(rng,0.45,0.95) : Math.sin(rng()*TAU)*prey.size*visualRange(rng,0.05,0.85);
+        const px=prey.x + lx*ca - ly*sa;
+        const py=prey.y + lx*sa + ly*ca;
+        const a=away*visualRange(rng,0.35,0.75) + Math.atan2(py-prey.y,px-prey.x)*visualRange(rng,0.25,0.65) + visualRange(rng,-0.95,0.95);
+        const sp=visualRange(rng,0.42,1.85)*(0.75+0.35*scale);
+        const core=(i%5===0);
+        const hue=core ? ((sym?.nucleusHue ?? ((prey.hue||180)+35))%360) : ((n?.hue ?? sym?.outlineHue ?? prey.hue ?? 190)%360);
+        const r=core ? visualRange(rng,1.1,2.7) : visualRange(rng,0.9,3.4);
+        const light=core ? 70 : visualRange(rng,52,72);
+        const life=Math.round(visualRange(rng,42,76)*(0.85+0.20*scale));
+        const particleKey=`${eventKey}:particle:${i}`;
+        sparks.push(new BodyParticle(px,py,Math.cos(a)*sp + (prey.vx||0)*0.18,Math.sin(a)*sp + (prey.vy||0)*0.18,r,hue,light,life,core,{rng,eventKey:particleKey}));
+      }
+      sparks.push(new Spark(prey.x, prey.y, clamp(scale*0.75,0.55,1.6),'rgba(255,120,120,'));
+      trimSparks();
+      return;
+    }
     const away=predator ? Math.atan2(prey.y-predator.y, prey.x-predator.x) : Math.random()*TAU;
     const count=Math.max(8, Math.min(renderPerf.low ? 24 : 34, Math.round(9 + prey.size*0.9 + (nodes?nodes.length*2.2:0) + scale*6)));
     for(let i=0;i<count;i++){
@@ -1181,6 +1242,12 @@
     let value=0;
     for(let i=0;i<=idx;i++) value=rng();
     return value;
+  }
+  function visualRngForKey(key){
+    return rngFromKey(key,worldSeedForVisualRng());
+  }
+  function visualRange(rng,a,b){
+    return rng()*(b-a)+a;
   }
   const SYMBOL_SHAPES = Object.freeze(['circle','square','triangle','ellipse','pentagon','hexagon','leaf','diamond','sparkle4','star6','cloud5','blob6','amoeba','pseudopod']);
   const silhouetteCache = new Map();
@@ -9231,10 +9298,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     rings.push(new RingEffect(x,y,opts));
     if(rings.length>CONFIG.rendering.maxRings) rings.splice(0,rings.length-CONFIG.rendering.maxRings);
   }
-  function pushPredationBloom(prey,predator,scale=1){
+  function pushPredationBloom(prey,predator,scale=1,opts={}){
     if(!prey) return;
     const hue=((predator && (predator.hue || predator._symbol?.outlineHue)) || 8) % 360;
-    predationBlooms.push(new PredationBloom(prey.x,prey.y,scale,hue));
+    if(eventKeyedVisualRngEnabled()){
+      const eventKey=opts.eventKey || `predation:${frame}:${predator?.id ?? 'none'}:${prey.id ?? 'unknown'}:bloom`;
+      predationBlooms.push(new PredationBloom(prey.x,prey.y,scale,hue,{eventKey}));
+    } else {
+      predationBlooms.push(new PredationBloom(prey.x,prey.y,scale,hue));
+    }
     trimPredationBlooms();
   }
   function distPointSegment(px,py,x1,y1,x2,y2){
@@ -10635,8 +10707,8 @@ if(Z>0.08){
           this.energy = 0.5;
         }
       }
-      if(this.energy<=0){ const corpseE = 0.45*(8*this.size); corpses.push(new Corpse(this.x,this.y,corpseE)); eco.detritusMeter += corpseE; sparks.push(new Spark(this.x,this.y,0.9*CONFIG.rendering.starvationParticleScale,'rgba(140,190,120,',CONFIG.rendering.starvationParticleAlpha)); this.deathCause='飢餓'; recordDeath(this,'飢餓'); this.dead=true; }
-      else if(this.age>12000){ const corpseE = 0.45*(0.6*this.energy + 8*this.size); corpses.push(new Corpse(this.x,this.y,corpseE)); eco.detritusMeter += corpseE; this.deathCause='老化'; recordDeath(this,'老化'); this.dead=true; }
+      if(this.energy<=0){ const corpseE = 0.45*(8*this.size); corpses.push(new Corpse(this.x,this.y,corpseE,{eventKey:`corpse:starvation:${frame}:${this.id}`})); eco.detritusMeter += corpseE; sparks.push(new Spark(this.x,this.y,0.9*CONFIG.rendering.starvationParticleScale,'rgba(140,190,120,',CONFIG.rendering.starvationParticleAlpha)); this.deathCause='飢餓'; recordDeath(this,'飢餓'); this.dead=true; }
+      else if(this.age>12000){ const corpseE = 0.45*(0.6*this.energy + 8*this.size); corpses.push(new Corpse(this.x,this.y,corpseE,{eventKey:`corpse:old-age:${frame}:${this.id}`})); eco.detritusMeter += corpseE; this.deathCause='老化'; recordDeath(this,'老化'); this.dead=true; }
     }
 
     tryPredate(){
@@ -11770,7 +11842,40 @@ if(p.type==='oxygen'){
     for(const arr of Object.values(dots)) arr.length=0;
     dotRandomState = 0x6d2b79f5;
   }
+  function dotVisualRandom(type,key,sampleIndex=0){
+    return visualRandomFromKey(`env-dot:${type}:${key}`,sampleIndex,worldSeedForVisualRng());
+  }
+  function dotStableKey(type,d){
+    if(!d.key) d.key=`legacy:${Math.round((d.x||0)*10)}:${Math.round((d.y||0)*10)}:${Math.round((d.t||0))}:${Math.round((d.v||0)*1000)}`;
+    return d.key;
+  }
+  function maintainDotsEventKeyed(type){
+    const arr=dots[type]; const cap=caps[type];
+    for(let i=arr.length-1;i>=0;--i){
+      const d=arr[i]; d.t--;
+      const key=dotStableKey(type,d);
+      const moveKey=`${key}:move:${frame}`;
+      d.x+=(dotVisualRandom(type,moveKey,0)-0.5)*0.6;
+      d.y+=(dotVisualRandom(type,moveKey,1)-0.5)*0.6;
+      if(d.t<=0 || d.x<0 || d.x>W || d.y<0 || d.y>H) arr.splice(i,1);
+    }
+    let need = cap - arr.length; let tries=0;
+    while(need>0 && tries<cap*6){
+      const sample=tries;
+      tries++;
+      const key=`spawn:${frame}:${sample}`;
+      const cx=(dotVisualRandom(type,key,0)*ew)|0, cy=(dotVisualRandom(type,key,1)*eh)|0;
+      const v=fields[type][idx(cx,cy)];
+      if(v>Th_on[type]){
+        const dotKey=`cell:${frame}:${cx}:${cy}:${sample}`;
+        const x=(cx+dotVisualRandom(type,dotKey,0))*cell, y=(cy+dotVisualRandom(type,dotKey,1))*cell;
+        arr.push({x,y,t: 200 + (v*200)|0, v, key:dotKey});
+        need--;
+      }
+    }
+  }
   function maintainDots(type){
+    if(eventKeyedVisualRngEnabled()) return maintainDotsEventKeyed(type);
     const arr=dots[type]; const cap=caps[type];
     // update
     for(let i=arr.length-1;i>=0;--i){
@@ -12458,6 +12563,11 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
   function initParallax(){
     const starN = renderPerf.mobile ? 70 : 110;
     const blobN = renderPerf.mobile ? 10 : 18;
+    if(eventKeyedVisualRngEnabled()){
+      parallax.stars.length=0; for(let i=0;i<starN;i++){ const rng=visualRngForKey(`parallax:star:${i}`); parallax.stars.push({x:rng(), y:rng(), z:visualRange(rng,0.2,1)}); }
+      parallax.blobs.length=0; for(let i=0;i<blobN;i++){ const rng=visualRngForKey(`parallax:blob:${i}`); parallax.blobs.push({x:rng(), y:rng(), r:visualRange(rng,40,160), z:visualRange(rng,0.3,0.9)}); }
+      return;
+    }
     parallax.stars.length=0; for(let i=0;i<starN;i++){ parallax.stars.push({x:Math.random(), y:Math.random(), z:rnd(0.2,1)}); }
     parallax.blobs.length=0; for(let i=0;i<blobN;i++){ parallax.blobs.push({x:Math.random(), y:Math.random(), r:rnd(40,160), z:rnd(0.3,0.9)}); }
   }
@@ -13218,7 +13328,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const n = Math.max(1, Math.round(rareMul * clamp(0.35 + 1.8*detritusSource, 0.25, 2.0)));
     const pts = (window.env && window.env.samplePlanktonSource) ? window.env.samplePlanktonSource(n) : [];
     for(let i=0;i<pts.length;i++){
-      const q = new Plankton();
+      const q = new Plankton({eventKey:`plankton-spawn:${frame}:${i}:${Math.round(pts[i].x*100)}:${Math.round(pts[i].y*100)}`});
       q.x=clamp(pts[i].x,8,W-8);
       q.y=clamp(pts[i].y,8,H-8);
       if(window.env){
@@ -13248,7 +13358,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       const detritusMorsels = 0;
       const pts = detritusMorsels>0 && window.env.sampleDetritus ? window.env.sampleDetritus(detritusMorsels) : [];
       for(const q of pts){
-        food.push(new Food(clamp(q.x,8,W-8), clamp(q.y,8,H-8), 'detritus'));
+        food.push(new Food(clamp(q.x,8,W-8), clamp(q.y,8,H-8), 'detritus', {eventKey:`wild-detritus:${frame}:${Math.round(q.x*100)}:${Math.round(q.y*100)}`}));
         if(window.env.sinkDetritusAt) window.env.sinkDetritusAt(q.x,q.y,0.018);
       }
       recordFoodSupply('wildDetritusParticle',pts.length);
@@ -17210,8 +17320,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const oldFeatureFlags={...featureFlags};
     const oldRandom=Math.random;
     const oldNextId=NEXT_ID;
+    const oldWorldSeedForVisuals=currentWorldSeedForVisuals;
     const startedAt=performance.now();
     try{
+      currentWorldSeedForVisuals=seed;
       if(opts.evolvableLifeHistory!=null) featureFlags.evolvableLifeHistory=!!opts.evolvableLifeHistory;
       if(opts.juvenileDevelopment!=null) featureFlags.juvenileDevelopment=!!opts.juvenileDevelopment;
       if(opts.predictiveHuntingReserve!=null) featureFlags.predictiveHuntingReserve=!!opts.predictiveHuntingReserve;
@@ -17275,7 +17387,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           packAttackAttempts:telemetry.packFormation.attackAttempts.length,
           packTargetEvents:telemetry.packFormation.targetEvents.length
         },
-        health
+        health,
+        ...(opts.includeModelState ? {modelState:visualRngComparableModelState()} : {})
       };
     } finally {
       Math.random=oldRandom;
@@ -17283,6 +17396,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       if(restoreAfterRun && saved) restore(saved);
       else if(NEXT_ID<oldNextId) NEXT_ID=oldNextId;
       Object.assign(featureFlags,oldFeatureFlags);
+      currentWorldSeedForVisuals=oldWorldSeedForVisuals;
     }
   }
   function runCarnivoreLineageMicroTests(){
@@ -19597,6 +19711,155 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     };
     return JSON.stringify(sortValue(value));
   }
+  function visualRngCloneJson(value){
+    return value==null ? value : JSON.parse(JSON.stringify(value));
+  }
+  function visualRngSortedEntries(map){
+    return Array.from(map.entries()).sort((a,b)=>String(a[0]).localeCompare(String(b[0])));
+  }
+  function visualRngComparableModelState(){
+    const envState=window.env?.captureState ? window.env.captureState() : null;
+    return {
+      frame,
+      generation,
+      NEXT_ID,
+      dayNight:{phase:dayNight.phase,isNight:!!dayNight.isNight,night:dayNight.night,light:dayNight.light,period:dayNight.period},
+      worldEvent:visualRngCloneJson(worldEvent),
+      eco:visualRngCloneJson(eco),
+      organisms:organisms.map(o=>({
+        id:o.id,x:o.x,y:o.y,vx:o.vx,vy:o.vy,energy:o.energy,age:o.age,birthFrame:o.birthFrame,
+        lineageInitial:o.lineageInitial,parentId:o.parentId??null,mateParentId:o.mateParentId??null,
+        generationDepth:o.generationDepth??0,birthExactDiet:o.birthExactDiet??null,birthDietClass:o.birthDietClass??null,
+        protect:o.protect,storeN:o.storeN,storeO:o.storeO,storeD:o.storeD,mem:o.mem,attackCD:o.attackCD,
+        fleeTimer:o.fleeTimer,chaseTimer:o.chaseTimer,preyTargetId:o.preyTargetId,
+        preyTargetOutOfRangeSteps:o.preyTargetOutOfRangeSteps||0,predatorThreatId:o.predatorThreatId,
+        grazingTimer:o.grazingTimer,genes:visualRngCloneJson(o.genes),role:normalizeRole(o.role),
+        socialMode:o.socialMode,sociality:o.sociality,speciesKey:o.speciesKey,
+        speciesIdentityVersion:o.speciesIdentityVersion??(speciesIdentityV2Enabled()?2:1),
+        speciesIdentityComponents:visualRngCloneJson(o.speciesIdentityComponents||null),
+        traits:visualRngCloneJson(o.traits||null),flags:visualRngCloneJson(o.flags||null),
+        morphologyTopology:o.morphologyTopology||topologyFromGenes(o.genes),
+        recentEvents:visualRngCloneJson(o.recentEvents||[]),lastAction:o.lastAction||null,
+        ...packIdentityOrganismSaveFields(o),
+        devInjected:!!o.devInjected,devInjectedLineage:!!o.devInjectedLineage,
+        injectionBatchId:o.injectionBatchId||null,injectionStep:o.injectionStep??null,
+        injectionGeneration:o.injectionGeneration??null,injectionAncestorId:o.injectionAncestorId??null,
+        injectionParentId:o.injectionParentId??null
+      })).sort((a,b)=>a.id-b.id),
+      food:food.map(f=>({x:f.x,y:f.y,type:f.type,r:f.r,gain:f.gain,t:f.t,vx:f.vx,vy:f.vy})),
+      corpses:corpses.map(c=>({x:c.x,y:c.y,energy:c.energy,radius:c.radius,t:c.t})),
+      detritusParticles:countDetritusParticles(),
+      plankton:plankton.map(p=>({x:p.x,y:p.y,vx:p.vx,vy:p.vy,t:p.t})),
+      patches:patches.map(p=>({type:p.type,x:p.x,y:p.y,r:p.r})),
+      membranes:membranes.map(m=>({x1:m.x1,y1:m.y1,x2:m.x2,y2:m.y2,type:m.type,t:m.t})),
+      envState:visualRngCloneJson(envState),
+      species:{
+        count:visualRngSortedEntries(speciesCount),
+        stats:visualRngSortedEntries(speciesStats)
+      },
+      lineage:{
+        nodes:visualRngSortedEntries(lineage.nodes),
+        edges:visualRngCloneJson(lineage.edges)
+      },
+      extinctRecords:visualRngCloneJson(extinctRecords),
+      discoveredRareTraits:Array.from(discoveredRareTraits).sort(),
+      evolutionMilestones:Array.from(evolutionMilestones).sort(),
+      pack:persistentPackIdentityEnabled() ? capturePackIdentityState() : null,
+      telemetry:{
+        counts:{
+          events:telemetry.events.length,
+          births:telemetry.births.size,
+          deaths:telemetry.events.filter(e=>e.kind==='death').length,
+          birthOrigins:telemetry.birthOrigins.length,
+          packHuntEvents:telemetry.packHuntEvents.length
+        },
+        events:visualRngCloneJson(telemetry.events),
+        births:visualRngSortedEntries(telemetry.births),
+        birthOrigins:visualRngCloneJson(telemetry.birthOrigins),
+        packHuntConservation:visualRngCloneJson(telemetry.packHuntConservation)
+      },
+      safety:{
+        nanOrInfinity:diagnosticNumberHealth().badCount,
+        energyCreationEvents:telemetry.packHuntConservation.energyCreationEvents,
+        nutrientCreationEvents:telemetry.packHuntConservation.nutrientCreationEvents
+      }
+    };
+  }
+  function visualRngPreview(value){
+    const s=String(stableJson(value));
+    return s.length>260 ? s.slice(0,260)+'...' : s;
+  }
+  function visualRngFirstDiff(a,b,path='$'){
+    if(Object.is(a,b)) return null;
+    const ta=typeof a, tb=typeof b;
+    if(a==null || b==null || ta!=='object' || tb!=='object'){
+      return {path,a:visualRngPreview(a),b:visualRngPreview(b)};
+    }
+    if(Array.isArray(a) || Array.isArray(b)){
+      if(!Array.isArray(a) || !Array.isArray(b)) return {path,a:visualRngPreview(a),b:visualRngPreview(b)};
+      if(a.length!==b.length) return {path:`${path}.length`,a:a.length,b:b.length};
+      for(let i=0;i<a.length;i++){
+        const d=visualRngFirstDiff(a[i],b[i],`${path}[${i}]`);
+        if(d) return d;
+      }
+      return null;
+    }
+    const keys=Array.from(new Set([...Object.keys(a),...Object.keys(b)])).sort();
+    for(const key of keys){
+      if(!Object.prototype.hasOwnProperty.call(a,key) || !Object.prototype.hasOwnProperty.call(b,key)){
+        return {path:`${path}.${key}`,a:visualRngPreview(a[key]),b:visualRngPreview(b[key])};
+      }
+      const d=visualRngFirstDiff(a[key],b[key],`${path}.${key}`);
+      if(d) return d;
+    }
+    return null;
+  }
+  function runVisualRngCanonicalAppearanceComparison(options={}){
+    const seed=Number(options.seed ?? 41001);
+    const steps=Math.max(1,Math.min(120000,Number(options.steps ?? 2000)));
+    const common={
+      seed,steps,restoreAfterRun:false,targetConsensus:false,shareFraction:0,packAttackBase:0.78,
+      evolvableLifeHistory:true,
+      juvenileDevelopment:true,
+      predictiveHuntingReserve:true,
+      persistentPackIdentity:true,
+      speciesIdentityV2:true,
+      eventKeyedVisualRng:true,
+      includeModelState:true
+    };
+    const off=runSeededWorldDiagnostic({...common,canonicalSpeciesAppearance:false,variant:`visualCanonicalOff:${seed}`});
+    const offState=off.modelState;
+    const on=runSeededWorldDiagnostic({...common,canonicalSpeciesAppearance:true,variant:`visualCanonicalOn:${seed}`});
+    const onState=on.modelState;
+    const same=stableJson(offState)===stableJson(onState);
+    const conservationOk=
+      offState?.safety?.energyCreationEvents===0
+      && offState?.safety?.nutrientCreationEvents===0
+      && onState?.safety?.energyCreationEvents===0
+      && onState?.safety?.nutrientCreationEvents===0;
+    const finiteOk=(offState?.safety?.nanOrInfinity===0) && (onState?.safety?.nanOrInfinity===0);
+    return {
+      ok:same && conservationOk && finiteOk,
+      seed,steps,
+      same,
+      firstDiff:same ? null : visualRngFirstDiff(offState,onState),
+      off:{
+        population:off.population,
+        nextId:off.nextId,
+        conservation:off.conservation,
+        health:off.health,
+        safety:offState?.safety
+      },
+      on:{
+        population:on.population,
+        nextId:on.nextId,
+        conservation:on.conservation,
+        health:on.health,
+        safety:onState?.safety
+      },
+      states:options.includeStates ? {off:offState,on:onState} : undefined
+    };
+  }
   function eventKeyedVisualRngSequence(key,worldSeed,count=10){
     const n=Math.max(0,Math.min(10000,Math.floor(Number(count)||0)));
     const rng=rngFromKey(key,worldSeed);
@@ -19686,6 +19949,140 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       }
     };
   }
+  function visualRngTestActors(){
+    const prey={
+      id:21,x:142,y:118,vx:0.22,vy:-0.08,size:12.5,heading:0.37,hue:194,
+      _symbol:{
+        outlineHue:196,
+        nucleusHue:238,
+        nodes:[
+          {x:-5.2,y:-1.4,hue:176},
+          {x:3.4,y:-3.1,hue:204},
+          {x:5.8,y:2.6,hue:218},
+          {x:-1.8,y:4.7,hue:188}
+        ]
+      }
+    };
+    const predator={id:7,x:109,y:121,vx:0,vy:0,hue:8,_symbol:{outlineHue:8}};
+    return {prey,predator};
+  }
+  function visualRngEffectSnapshot(sparkStart=0,bloomStart=0){
+    return {
+      sparks:sparks.slice(sparkStart).map(e=>({
+        type:e instanceof BodyParticle ? 'BodyParticle' : (e instanceof Spark ? 'Spark' : e?.constructor?.name || 'effect'),
+        eventKey:e.visualEventKey || null,
+        x:e.x,y:e.y,vx:e.vx??null,vy:e.vy??null,r:e.r??null,hue:e.hue??null,light:e.light??null,
+        t:e.t,maxT:e.maxT??null,core:e.core??null,spin:e.spin??null,rot:e.rot??null,
+        scale:e.scale??null,rays:e.rays??null,color:e.color??null,alphaMul:e.alphaMul??null
+      })),
+      blooms:predationBlooms.slice(bloomStart).map(b=>({
+        x:b.x,y:b.y,scale:b.scale,hue:b.hue,t:b.t,maxT:b.maxT,
+        blobs:b.blobs.map(l=>({a:l.a,d:l.d,r:l.r,spin:l.spin}))
+      }))
+    };
+  }
+  function visualRngRunPredationEvent(eventKey,particleCountOverride=null){
+    const {prey,predator}=visualRngTestActors();
+    const sparkStart=sparks.length;
+    const bloomStart=predationBlooms.length;
+    const opts={eventKey};
+    if(particleCountOverride!=null) opts.particleCountOverride=particleCountOverride;
+    spawnPredationScatter(prey,predator,1.2,opts);
+    pushPredationBloom(prey,predator,1.2,{eventKey:`${eventKey}:bloom`});
+    return visualRngEffectSnapshot(sparkStart,bloomStart);
+  }
+  function visualRngCallMigratedVisuals(){
+    const eventKey=`predation:${frame}:7:21`;
+    visualRngRunPredationEvent(eventKey,12);
+    initParallax();
+    new Corpse(44,55,31,{eventKey:`corpse:test:${frame}:44:55`});
+    if(window.env?.ensure) window.env.ensure();
+    if(window.env?.resetDots) window.env.resetDots();
+    if(window.env?.maintainDots){
+      window.env.maintainDots('algae');
+      window.env.maintainDots('cold');
+      window.env.maintainDots('oxygen');
+    }
+  }
+  function runVisualRngMigrationMicroTests(){
+    const saved=capture();
+    const oldRandom=Math.random;
+    const oldFeatureFlags={...featureFlags};
+    const oldWorldSeedForVisuals=currentWorldSeedForVisuals;
+    const oldFrame=frame;
+    const results=[];
+    const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
+    const same=(a,b)=>stableJson(a)===stableJson(b);
+    try{
+      const seed=41001;
+      featureFlags.eventKeyedVisualRng=true;
+      currentWorldSeedForVisuals=seed;
+      frame=321;
+      sparks.length=0; predationBlooms.length=0;
+      const eventA='predation:321:7:21';
+      const first=visualRngRunPredationEvent(eventA,18);
+      sparks.length=0; predationBlooms.length=0;
+      const second=visualRngRunPredationEvent(eventA,18);
+      add('Migration A predation visuals reproduce for same seed/frame/ids', same(first,second), {first,second});
+
+      sparks.length=0; predationBlooms.length=0;
+      visualRngRunPredationEvent('predation:322:7:21',1);
+      const bAfterA1=visualRngRunPredationEvent('predation:322:8:22',18);
+      sparks.length=0; predationBlooms.length=0;
+      visualRngRunPredationEvent('predation:322:7:21',100);
+      const bAfterA100=visualRngRunPredationEvent('predation:322:8:22',18);
+      add('Migration B other event particle count independent', same(bAfterA1,bAfterA100), {bAfterA1,bAfterA100});
+
+      sparks.length=0; predationBlooms.length=0;
+      const orderA1=visualRngRunPredationEvent('predation:323:7:21',18);
+      const orderB1=visualRngRunPredationEvent('predation:323:8:22',18);
+      sparks.length=0; predationBlooms.length=0;
+      const orderB2=visualRngRunPredationEvent('predation:323:8:22',18);
+      const orderA2=visualRngRunPredationEvent('predation:323:7:21',18);
+      add('Migration C visual draw/order independent', same(orderA1,orderA2) && same(orderB1,orderB2), {orderA1,orderA2,orderB1,orderB2});
+
+      const control=duelSeededRandom(24680);
+      const controlNext=[control(),control(),control(),control()];
+      const experiment=duelSeededRandom(24680);
+      Math.random=experiment;
+      sparks.length=0; predationBlooms.length=0;
+      visualRngCallMigratedVisuals();
+      const experimentNext=[experiment(),experiment(),experiment(),experiment()];
+      Math.random=oldRandom;
+      add('Migration D migrated visuals do not consume model RNG', same(controlNext,experimentNext), {controlNext,experimentNext});
+
+      let mathRandomCalls=0;
+      Math.random=()=>{ mathRandomCalls++; return 0.5; };
+      sparks.length=0; predationBlooms.length=0;
+      visualRngCallMigratedVisuals();
+      Math.random=oldRandom;
+      add('Migration E migrated visuals use no Math.random when feature ON', mathRandomCalls===0, {mathRandomCalls});
+
+      const offA=runSeededWorldDiagnostic({seed,steps:120,restoreAfterRun:false,targetConsensus:false,shareFraction:0,packAttackBase:0.78,eventKeyedVisualRng:false,includeModelState:true,variant:'visualOffCompatA'});
+      const offB=runSeededWorldDiagnostic({seed,steps:120,restoreAfterRun:false,targetConsensus:false,shareFraction:0,packAttackBase:0.78,eventKeyedVisualRng:false,includeModelState:true,variant:'visualOffCompatB'});
+      add('Migration F feature OFF fixed-seed self-compatibility', same(offA.modelState,offB.modelState), {firstDiff:same(offA.modelState,offB.modelState)?null:visualRngFirstDiff(offA.modelState,offB.modelState)});
+
+      const canonical=runVisualRngCanonicalAppearanceComparison({seed,steps:120});
+      add('Migration G canonical appearance does not affect model with feature ON', canonical.ok, canonical);
+
+      currentWorldSeedForVisuals=seed;
+      const before=eventKeyedVisualRngSequence('save-load:predation:10:1:2',seed,10);
+      const roundTrip=capture();
+      restore(roundTrip);
+      currentWorldSeedForVisuals=seed;
+      const after=eventKeyedVisualRngSequence('save-load:predation:10:1:2',seed,10);
+      add('Migration H save/load keeps stateless visual RNG reproducible', same(before,after), {before,after});
+    }catch(err){
+      add('Migration micro exception',false,{message:String(err?.message || err),stack:String(err?.stack || '')});
+    }finally{
+      Math.random=oldRandom;
+      Object.assign(featureFlags,oldFeatureFlags);
+      currentWorldSeedForVisuals=oldWorldSeedForVisuals;
+      frame=oldFrame;
+      restore(saved);
+    }
+    return {ok:results.every(r=>r.ok),results};
+  }
   function runEventKeyedVisualRngMicroTests(){
     const saved=capture();
     const oldRandom=Math.random;
@@ -19739,9 +20136,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       Math.random=oldRandom;
       add('Visual RNG H model RNG non-interference', same(controlValues,experimentValues) && mathRandomCalls===0, {controlValues,experimentValues,mathRandomCalls});
 
-      const off=eventKeyedVisualRngModelStateSnapshot(seed,120,false);
-      const on=eventKeyedVisualRngModelStateSnapshot(seed,120,true);
-      add('Visual RNG I feature flag model non-interference', same(off,on), {off,on});
+      const beforeSaveLoad=eventKeyedVisualRngSequence('save-load:foundation',seed,10);
+      const state=capture();
+      restore(state);
+      const afterSaveLoad=eventKeyedVisualRngSequence('save-load:foundation',seed,10);
+      add('Visual RNG I save/load keeps key-derived values stateless', same(beforeSaveLoad,afterSaveLoad), {beforeSaveLoad,afterSaveLoad});
     }catch(err){
       add('Visual RNG micro exception',false,{message:String(err?.message || err),stack:String(err?.stack || '')});
     }finally{
@@ -21496,6 +21895,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     visualRngSequence(key,worldSeed=0,count=10){
       return eventKeyedVisualRngSequence(key,worldSeed,count);
     },
+    visualWorldSeed(){
+      return worldSeedForVisualRng();
+    },
     speciesIdentityV2Summary(){
       return speciesIdentityV2Summary();
     },
@@ -21527,6 +21929,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     runEventKeyedVisualRngMicroTests(){
       return runEventKeyedVisualRngMicroTests();
+    },
+    runVisualRngMigrationMicroTests(){
+      return runVisualRngMigrationMicroTests();
+    },
+    runVisualRngCanonicalAppearanceComparison(options={}){
+      return runVisualRngCanonicalAppearanceComparison(options);
+    },
+    visualRngComparableModelState(){
+      return visualRngComparableModelState();
     },
     lifeHistorySummary(){
       return lifeHistorySummary();
@@ -21922,7 +22333,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const target=CONFIG.ecology.plankton.initialSeed;
     const pts=(window.env && window.env.samplePlanktonSource) ? window.env.samplePlanktonSource(target) : [];
     for(let i=0;i<target;i++){
-      const p=new Plankton();
+      const p=new Plankton({eventKey:`plankton:initial:${i}`});
       if(pts[i]){
         p.x=clamp(pts[i].x,8,W-8);
         p.y=clamp(pts[i].y,8,H-8);
@@ -21997,8 +22408,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         if(f.seed!=null) q.seed=f.seed;
         food.push(q);
       });
-      (state.corpses||[]).forEach(c=>{ const q=new Corpse(c.x,c.y,c.energy); if(c.t!=null) q.t=c.t; corpses.push(q); });
-      (state.plankton||[]).forEach(p=>{ const q=new Plankton(); q.x=p.x;q.y=p.y;q.vx=p.vx;q.vy=p.vy;q.t=p.t; if(p.kind!=null) q.kind=p.kind; q.fade=p.fade!=null ? p.fade : 1; plankton.push(q); });
+      (state.corpses||[]).forEach(c=>{ const q=new Corpse(c.x,c.y,c.energy,{eventKey:`corpse:load:${state.frame||0}:${Math.round(c.x*100)}:${Math.round(c.y*100)}:${Math.round(c.energy*100)}`}); if(c.t!=null) q.t=c.t; corpses.push(q); });
+      (state.plankton||[]).forEach(p=>{ const q=new Plankton({eventKey:`plankton:load:${Math.round(p.x*100)}:${Math.round(p.y*100)}:${Math.round((p.t||0))}`}); q.x=p.x;q.y=p.y;q.vx=p.vx;q.vy=p.vy;q.t=p.t; if(p.kind!=null) q.kind=p.kind; q.fade=p.fade!=null ? p.fade : 1; plankton.push(q); });
       (state.membranes||[]).forEach(m=>{ const q=new MembraneSegment(m.x1,m.y1,m.x2,m.y2,'wall'); if(m.t!=null) q.t=m.t; membranes.push(q); });
       const prevAnnounceMute=speciesAnnounceMuteUntil;
       speciesAnnounceMuteUntil=Number.MAX_SAFE_INTEGER;
