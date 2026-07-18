@@ -9,7 +9,7 @@
   const TAU=Math.PI*2; const rnd=(a,b)=>Math.random()*(b-a)+a; const clamp=(x,a,b)=>Math.max(a,Math.min(b,x)); const clamp01=(x)=>clamp(x,0,1); const lerp=(a,b,t)=>a+(b-a)*t; const sigmoid=x=>1/(1+Math.exp(-x));
   const hash01 = (s)=>{ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h>>>0)/2**32; };
   const ROLE_HUE = { ambusher:285, pursuit:6, scav:45, filter:145, other:200 };
-  const featureFlags = { speciesIdentityV2:false, evolvableLifeHistory:false, canonicalSpeciesAppearance:false };
+  const featureFlags = { speciesIdentityV2:false, evolvableLifeHistory:false, canonicalSpeciesAppearance:false, eventKeyedVisualRng:false };
   const BASE_GENE_KEYS=Object.freeze(['speed','size','metabolism','fecundity','sense','diet','formSeed']);
   function finiteGeneValue(value,fallback=0.5){ const n=Number(value); return clamp(Number.isFinite(n) ? n : fallback,0,1); }
   function normalizeRole(role){ return role==='pack' ? 'pursuit' : role; }
@@ -18,10 +18,61 @@
   function canonicalSpeciesAppearanceEnabled(){ return !!featureFlags.canonicalSpeciesAppearance && speciesIdentityV2Enabled(); }
   function setCanonicalSpeciesAppearance(enabled){ featureFlags.canonicalSpeciesAppearance=!!enabled; return canonicalSpeciesAppearanceEnabled(); }
   function setEvolvableLifeHistory(enabled){ featureFlags.evolvableLifeHistory=!!enabled; return featureFlags.evolvableLifeHistory; }
+  function eventKeyedVisualRngEnabled(){ return !!featureFlags.eventKeyedVisualRng; }
+  function setEventKeyedVisualRng(enabled){ featureFlags.eventKeyedVisualRng=!!enabled; return featureFlags.eventKeyedVisualRng; }
   function q4(x){ return x<0.25?0: x<0.5?1: x<0.75?2:3; }
   function q3(x){ return x<1/3?0: x<2/3?1:2; }
   function hashStr32(s){ let h=0x811c9dc5; for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = (h>>>0) * 0x01000193; h>>>0; } return h>>>0; }
-  function rngFromKey(key){ let x = hashStr32(String(key))||1; return function(){ x ^= x<<13; x ^= x>>>17; x ^= x<<5; x>>>=0; return (x & 0xffffffff)/0x100000000; }; }
+  function visualHashMixString32(h,value){
+    const s=String(value);
+    for(let i=0;i<s.length;i++){
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h,0x01000193)>>>0;
+    }
+    return h>>>0;
+  }
+  function visualAvalanche32(h){
+    h ^= h>>>16;
+    h = Math.imul(h,0x7feb352d)>>>0;
+    h ^= h>>>15;
+    h = Math.imul(h,0x846ca68b)>>>0;
+    h ^= h>>>16;
+    return h>>>0;
+  }
+  function visualEventSeed32(key,worldSeed){
+    let h=0x811c9dc5;
+    h=visualHashMixString32(h,'alife:visual:event-keyed:v1');
+    h=visualHashMixString32(h,'|seed|');
+    h=visualHashMixString32(h,worldSeed);
+    h=visualHashMixString32(h,'|key|');
+    h=visualHashMixString32(h,key);
+    return visualAvalanche32(h) || 0x9e3779b9;
+  }
+  function visualRngFromSeed32(seed){
+    let x=(seed>>>0) || 0x9e3779b9;
+    return function(){
+      x ^= x<<13;
+      x ^= x>>>17;
+      x ^= x<<5;
+      x >>>= 0;
+      return (x>>>0)/4294967296;
+    };
+  }
+  function rngFromKey(key,worldSeed){
+    if(worldSeed==null){
+      let x = hashStr32(String(key))||1;
+      return function(){ x ^= x<<13; x ^= x>>>17; x ^= x<<5; x>>>=0; return (x & 0xffffffff)/0x100000000; };
+    }
+    return visualRngFromSeed32(visualEventSeed32(key,worldSeed));
+  }
+  function visualRandomFromKey(key,sampleIndex=0,worldSeed=0){
+    const n=Number(sampleIndex);
+    const idx=Math.max(0,Math.floor(Number.isFinite(n) ? n : 0));
+    const rng=rngFromKey(key,worldSeed);
+    let value=0;
+    for(let i=0;i<=idx;i++) value=rng();
+    return value;
+  }
   const SYMBOL_SHAPES = Object.freeze(['circle','square','triangle','ellipse','pentagon','hexagon','leaf','diamond','sparkle4','star6','cloud5','blob6','amoeba','pseudopod']);
   function formFromGenes(g, key=''){
     const speed=clamp(g.speed??0.5,0,1), sense=clamp(g.sense??0.5,0,1), size=clamp(g.size??0.5,0,1), met=clamp(g.metabolism??0.5,0,1), diet=clamp(g.diet??0.5,0,1), seed=clamp(g.formSeed??0.5,0,1);
@@ -326,6 +377,7 @@
   global.OrganismModel.q3 = q3;
   global.OrganismModel.hashStr32 = hashStr32;
   global.OrganismModel.rngFromKey = rngFromKey;
+  global.OrganismModel.visualRandomFromKey = visualRandomFromKey;
   global.OrganismModel.SYMBOL_SHAPES = SYMBOL_SHAPES;
   global.OrganismModel.ROLE_HUE = ROLE_HUE;
   global.OrganismModel.formFromGenes = formFromGenes;
@@ -345,6 +397,8 @@
   global.OrganismModel.setSpeciesIdentityV2 = setSpeciesIdentityV2;
   global.OrganismModel.canonicalSpeciesAppearanceEnabled = canonicalSpeciesAppearanceEnabled;
   global.OrganismModel.setCanonicalSpeciesAppearance = setCanonicalSpeciesAppearance;
+  global.OrganismModel.eventKeyedVisualRngEnabled = eventKeyedVisualRngEnabled;
+  global.OrganismModel.setEventKeyedVisualRng = setEventKeyedVisualRng;
   global.OrganismModel.canonicalVisualGenesFromIdentity = canonicalVisualGenesFromIdentity;
   global.OrganismModel.speciesAppearanceProfile = speciesAppearanceProfile;
   global.OrganismModel.clearSpeciesAppearanceProfileCache = clearSpeciesAppearanceProfileCache;

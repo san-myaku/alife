@@ -339,7 +339,8 @@
       predictiveHuntingReserve: false,
       persistentPackIdentity: false,
       speciesIdentityV2: false,
-      canonicalSpeciesAppearance: false
+      canonicalSpeciesAppearance: false,
+      eventKeyedVisualRng: false
     }),
     population: Object.freeze({
       starter: 64,
@@ -506,7 +507,8 @@
     predictiveHuntingReserve: CONFIG.features.predictiveHuntingReserve,
     persistentPackIdentity: CONFIG.features.persistentPackIdentity,
     speciesIdentityV2: CONFIG.features.speciesIdentityV2,
-    canonicalSpeciesAppearance: CONFIG.features.canonicalSpeciesAppearance
+    canonicalSpeciesAppearance: CONFIG.features.canonicalSpeciesAppearance,
+    eventKeyedVisualRng: CONFIG.features.eventKeyedVisualRng
   };
   function evolvableLifeHistoryEnabled(){
     return !!featureFlags.evolvableLifeHistory;
@@ -525,6 +527,9 @@
   }
   function canonicalSpeciesAppearanceEnabled(){
     return !!featureFlags.canonicalSpeciesAppearance && speciesIdentityV2Enabled();
+  }
+  function eventKeyedVisualRngEnabled(){
+    return !!featureFlags.eventKeyedVisualRng;
   }
 
   // ===== UI State =====
@@ -1127,7 +1132,56 @@
 
   function q3(x){ return x<1/3?0: x<2/3?1:2; }
   function hashStr32(s){ let h=0x811c9dc5; for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = (h>>>0) * 0x01000193; h>>>0; } return h>>>0; }
-  function rngFromKey(key){ let x = hashStr32(String(key))||1; return function(){ x ^= x<<13; x ^= x>>>17; x ^= x<<5; x>>>=0; return (x & 0xffffffff)/0x100000000; }; }
+  function visualHashMixString32(h,value){
+    const s=String(value);
+    for(let i=0;i<s.length;i++){
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h,0x01000193)>>>0;
+    }
+    return h>>>0;
+  }
+  function visualAvalanche32(h){
+    h ^= h>>>16;
+    h = Math.imul(h,0x7feb352d)>>>0;
+    h ^= h>>>15;
+    h = Math.imul(h,0x846ca68b)>>>0;
+    h ^= h>>>16;
+    return h>>>0;
+  }
+  function visualEventSeed32(key,worldSeed){
+    let h=0x811c9dc5;
+    h=visualHashMixString32(h,'alife:visual:event-keyed:v1');
+    h=visualHashMixString32(h,'|seed|');
+    h=visualHashMixString32(h,worldSeed);
+    h=visualHashMixString32(h,'|key|');
+    h=visualHashMixString32(h,key);
+    return visualAvalanche32(h) || 0x9e3779b9;
+  }
+  function visualRngFromSeed32(seed){
+    let x=(seed>>>0) || 0x9e3779b9;
+    return function(){
+      x ^= x<<13;
+      x ^= x>>>17;
+      x ^= x<<5;
+      x >>>= 0;
+      return (x>>>0)/4294967296;
+    };
+  }
+  function rngFromKey(key,worldSeed){
+    if(worldSeed==null){
+      let x = hashStr32(String(key))||1;
+      return function(){ x ^= x<<13; x ^= x>>>17; x ^= x<<5; x>>>=0; return (x & 0xffffffff)/0x100000000; };
+    }
+    return visualRngFromSeed32(visualEventSeed32(key,worldSeed));
+  }
+  function visualRandomFromKey(key,sampleIndex=0,worldSeed=0){
+    const n=Number(sampleIndex);
+    const idx=Math.max(0,Math.floor(Number.isFinite(n) ? n : 0));
+    const rng=rngFromKey(key,worldSeed);
+    let value=0;
+    for(let i=0;i<=idx;i++) value=rng();
+    return value;
+  }
   const SYMBOL_SHAPES = Object.freeze(['circle','square','triangle','ellipse','pentagon','hexagon','leaf','diamond','sparkle4','star6','cloud5','blob6','amoeba','pseudopod']);
   const silhouetteCache = new Map();
   function formFromGenes(g, key=''){
@@ -17164,6 +17218,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       if(opts.persistentPackIdentity!=null) featureFlags.persistentPackIdentity=!!opts.persistentPackIdentity;
       if(opts.speciesIdentityV2!=null) featureFlags.speciesIdentityV2=!!opts.speciesIdentityV2;
       if(opts.canonicalSpeciesAppearance!=null) featureFlags.canonicalSpeciesAppearance=!!opts.canonicalSpeciesAppearance;
+      if(opts.eventKeyedVisualRng!=null) featureFlags.eventKeyedVisualRng=!!opts.eventKeyedVisualRng;
       Math.random=duelSeededRandom(seed);
       NEXT_ID=1;
       reset();
@@ -17181,6 +17236,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         seed,
         steps,
         frame,
+        nextId:NEXT_ID,
         elapsedMs:Number((performance.now()-startedAt).toFixed(2)),
         maxCarnivores:lineage.extinction.maxCarnivores,
         endCarnivores:lineage.extinction.currentCarnivores,
@@ -18799,6 +18855,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     }
     return {ok:true,canonicalSpeciesAppearance:canonicalSpeciesAppearanceEnabled()};
   }
+  function setEventKeyedVisualRng(enabled){
+    featureFlags.eventKeyedVisualRng=!!enabled;
+    return {ok:true,eventKeyedVisualRng:eventKeyedVisualRngEnabled()};
+  }
   function juvenileDevelopmentMetricBlank(){
     return {
       births:0,
@@ -19536,6 +19596,160 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       return out;
     };
     return JSON.stringify(sortValue(value));
+  }
+  function eventKeyedVisualRngSequence(key,worldSeed,count=10){
+    const n=Math.max(0,Math.min(10000,Math.floor(Number(count)||0)));
+    const rng=rngFromKey(key,worldSeed);
+    const values=[];
+    for(let i=0;i<n;i++) values.push(rng());
+    return values;
+  }
+  function eventKeyedVisualRngFoodTypeCounts(){
+    const out={small:0,big:0,algae:0,detritus:0,other:0};
+    for(const f of food){
+      if(f?.type==='small') out.small++;
+      else if(f?.type==='big') out.big++;
+      else if(f?.type==='algae') out.algae++;
+      else if(f?.type==='detritus') out.detritus++;
+      else out.other++;
+    }
+    return out;
+  }
+  function eventKeyedVisualRngPlanktonKindCounts(){
+    const out={};
+    for(const p of plankton){
+      const k=String(p?.kind ?? 'unknown');
+      out[k]=(out[k]||0)+1;
+    }
+    return out;
+  }
+  function eventKeyedVisualRngModelStateSnapshot(seed=41001,steps=120,enabled=false){
+    const run=runSeededWorldDiagnostic({
+      seed,steps,restoreAfterRun:false,targetConsensus:false,shareFraction:0,packAttackBase:0.78,
+      eventKeyedVisualRng:enabled,
+      variant:enabled ? 'eventKeyedVisualRngOn' : 'eventKeyedVisualRngOff'
+    });
+    const envAvg=window.env?.getAverages ? window.env.getAverages() : {};
+    const sum=(rows,pick)=>rows.reduce((s,row)=>s+Number(pick(row)||0),0);
+    const organismEnergy=sum(organisms,o=>o.energy);
+    const organismN=sum(organisms,o=>o.storeN);
+    const organismO=sum(organisms,o=>o.storeO);
+    const organismD=sum(organisms,o=>o.storeD);
+    const organismMem=sum(organisms,o=>o.mem);
+    const foodGain=sum(food,f=>f.gain);
+    const corpseEnergy=sum(corpses,c=>c.energy);
+    return {
+      seed,
+      steps,
+      frame:run.frame,
+      population:{
+        organisms:organisms.length,
+        births:run.population?.births ?? null,
+        deaths:run.population?.deaths ?? null,
+        NEXT_ID:run.nextId
+      },
+      energy:{
+        organisms:organismEnergy,
+        foodGain,
+        corpses:corpseEnergy
+      },
+      nutrient:{
+        eco:eco.nutrient,
+        organismStoreN:organismN,
+        organismStoreO:organismO,
+        organismStoreD:organismD,
+        organismMem,
+        envAlgae:envAvg.algae ?? null,
+        envOxygen:envAvg.oxygen ?? null
+      },
+      food:{
+        count:food.length,
+        types:eventKeyedVisualRngFoodTypeCounts()
+      },
+      detritus:{
+        particles:countDetritusParticles(),
+        ecoMeter:eco.detritusMeter,
+        env:envAvg.detritus ?? null
+      },
+      plankton:{
+        count:plankton.length,
+        kinds:eventKeyedVisualRngPlanktonKindCounts()
+      },
+      corpse:{
+        count:corpses.length,
+        energy:corpseEnergy
+      },
+      safety:{
+        nanOrInfinity:diagnosticNumberHealth().badCount,
+        energyCreationEvents:run.conservation?.energyCreationEvents ?? null,
+        nutrientCreationEvents:run.conservation?.nutrientCreationEvents ?? null
+      }
+    };
+  }
+  function runEventKeyedVisualRngMicroTests(){
+    const saved=capture();
+    const oldRandom=Math.random;
+    const oldFeatureFlags={...featureFlags};
+    const results=[];
+    const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
+    const same=(a,b)=>stableJson(a)===stableJson(b);
+    try{
+      const seed=41001;
+      const otherSeed=42001;
+      const keyA='predation:120:7:9';
+      const keyB='species-appearance:canonical-demo';
+      const seqA1=eventKeyedVisualRngSequence(keyA,seed,10);
+      const seqA2=eventKeyedVisualRngSequence(keyA,seed,10);
+      add('Visual RNG A same seed/key reproduces first 10 values', same(seqA1,seqA2), {seqA1,seqA2});
+
+      const seqB=eventKeyedVisualRngSequence(keyB,seed,10);
+      add('Visual RNG B different key changes sequence', !same(seqA1,seqB), {seqA:seqA1,seqB});
+
+      const orderAB={a:eventKeyedVisualRngSequence(keyA,seed,8),b:eventKeyedVisualRngSequence(keyB,seed,8)};
+      const orderBA={b:eventKeyedVisualRngSequence(keyB,seed,8),a:eventKeyedVisualRngSequence(keyA,seed,8)};
+      add('Visual RNG C call order independent', same(orderAB.a,orderBA.a) && same(orderAB.b,orderBA.b), {orderAB,orderBA});
+
+      const burnA1=rngFromKey(keyA,seed);
+      burnA1();
+      const bAfterA1=eventKeyedVisualRngSequence(keyB,seed,8);
+      const burnA100=rngFromKey(keyA,seed);
+      for(let i=0;i<100;i++) burnA100();
+      const bAfterA100=eventKeyedVisualRngSequence(keyB,seed,8);
+      add('Visual RNG D other event consumption independent', same(bAfterA1,bAfterA100), {bAfterA1,bAfterA100});
+
+      const seqOtherSeed=eventKeyedVisualRngSequence(keyA,otherSeed,10);
+      add('Visual RNG E world seed changes sequence', !same(seqA1,seqOtherSeed), {seed,otherSeed,seqA1,seqOtherSeed});
+
+      const values=eventKeyedVisualRngSequence('range-check',seed,512);
+      const rangeOk=values.every(v=>Number.isFinite(v) && v>=0 && v<1);
+      add('Visual RNG F finite [0,1) range', rangeOk, {count:values.length,min:Math.min(...values),max:Math.max(...values)});
+
+      const stream=eventKeyedVisualRngSequence('single-sample',seed,12);
+      const singles=stream.map((_,i)=>visualRandomFromKey('single-sample',i,seed));
+      add('Visual RNG G visualRandomFromKey matches stream index', same(stream,singles), {stream,singles});
+
+      const control=duelSeededRandom(13579);
+      const controlValues=[control(),control(),control(),control()];
+      const experiment=duelSeededRandom(13579);
+      for(let i=0;i<400;i++) visualRandomFromKey('model-noninterference:'+i,i%7,seed);
+      const experimentValues=[experiment(),experiment(),experiment(),experiment()];
+      let mathRandomCalls=0;
+      Math.random=()=>{ mathRandomCalls++; return 0.987654321; };
+      for(let i=0;i<200;i++) visualRandomFromKey('math-random-check:'+i,i,seed);
+      Math.random=oldRandom;
+      add('Visual RNG H model RNG non-interference', same(controlValues,experimentValues) && mathRandomCalls===0, {controlValues,experimentValues,mathRandomCalls});
+
+      const off=eventKeyedVisualRngModelStateSnapshot(seed,120,false);
+      const on=eventKeyedVisualRngModelStateSnapshot(seed,120,true);
+      add('Visual RNG I feature flag model non-interference', same(off,on), {off,on});
+    }catch(err){
+      add('Visual RNG micro exception',false,{message:String(err?.message || err),stack:String(err?.stack || '')});
+    }finally{
+      Math.random=oldRandom;
+      Object.assign(featureFlags,oldFeatureFlags);
+      restore(saved);
+    }
+    return {ok:results.every(r=>r.ok),results};
   }
   function speciesIdentityComponentSignature(components){
     const c=components || {};
@@ -21273,6 +21487,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     setCanonicalSpeciesAppearance(enabled){
       return setCanonicalSpeciesAppearance(enabled);
     },
+    setEventKeyedVisualRng(enabled){
+      return setEventKeyedVisualRng(enabled);
+    },
+    visualRandomFromKey(key,sampleIndex=0,worldSeed=0){
+      return visualRandomFromKey(key,sampleIndex,worldSeed);
+    },
+    visualRngSequence(key,worldSeed=0,count=10){
+      return eventKeyedVisualRngSequence(key,worldSeed,count);
+    },
     speciesIdentityV2Summary(){
       return speciesIdentityV2Summary();
     },
@@ -21301,6 +21524,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     runCanonicalSpeciesAppearanceReproducibilityMicroTest(options={}){
       return runCanonicalSpeciesAppearanceReproducibilityMicroTest(options);
+    },
+    runEventKeyedVisualRngMicroTests(){
+      return runEventKeyedVisualRngMicroTests();
     },
     lifeHistorySummary(){
       return lifeHistorySummary();
@@ -21716,7 +21942,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         predictiveHuntingReserve:predictiveHuntingReserveEnabled(),
         persistentPackIdentity:persistentPackIdentityEnabled(),
         speciesIdentityV2:speciesIdentityV2Enabled(),
-        canonicalSpeciesAppearance:!!featureFlags.canonicalSpeciesAppearance
+        canonicalSpeciesAppearance:!!featureFlags.canonicalSpeciesAppearance,
+        eventKeyedVisualRng:eventKeyedVisualRngEnabled()
       },
       speciesIdentityVersion:speciesIdentityV2Enabled() ? 2 : 1,
       envState: window.env?.captureState ? window.env.captureState() : null,
@@ -21747,6 +21974,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         if(state.features.persistentPackIdentity!=null) featureFlags.persistentPackIdentity=!!state.features.persistentPackIdentity;
         if(state.features.speciesIdentityV2!=null) featureFlags.speciesIdentityV2=!!state.features.speciesIdentityV2;
         if(state.features.canonicalSpeciesAppearance!=null) featureFlags.canonicalSpeciesAppearance=!!state.features.canonicalSpeciesAppearance;
+        if(state.features.eventKeyedVisualRng!=null) featureFlags.eventKeyedVisualRng=!!state.features.eventKeyedVisualRng;
       }
       running=false;
       food.length=0; corpses.length=0; plankton.length=0; patches.length=0; organisms.length=0; newborn.length=0; sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0; calls.length=0; speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear(); selectedOrganism=null; selectedDeadAt=0; resetPackIdentityState();
