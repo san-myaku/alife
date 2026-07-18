@@ -246,6 +246,48 @@
     ctx.restore();
   }
 
+  // interior: a few large translucent vacuoles, each with a bright rim and highlight.
+  function drawVacuoles(ctx, r, pal, rng, count) {
+    ctx.save();
+    for (let i = 0; i < count; i++) {
+      const a = rng() * TAU;
+      const d = Math.sqrt(rng()) * r * 0.56;
+      const x = Math.cos(a) * d, y = Math.sin(a) * d * 0.9;
+      const rr = r * (0.14 + rng() * 0.16);
+      const g = ctx.createRadialGradient(x - rr * 0.3, y - rr * 0.35, rr * 0.05, x, y, rr);
+      g.addColorStop(0, hsla(pal.hue + 26, 46, 96, 0.30));
+      g.addColorStop(0.7, hsla(pal.hue + 10, 40, 80, 0.06));
+      g.addColorStop(1, hsla(pal.hue, 42, 70, 0.14));
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, rr, 0, TAU);
+      ctx.fill();
+      ctx.strokeStyle = hsla(pal.hue - 6, 44, 40, 0.20);
+      ctx.lineWidth = Math.max(0.4, r * 0.012);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255,255,255,.42)";
+      ctx.beginPath();
+      ctx.arc(x - rr * 0.34, y - rr * 0.38, rr * 0.18, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // surface: soft mottled blotches sitting on the membrane (bigger, fewer than speckles).
+  function drawSpots(ctx, r, pal, rng, count) {
+    ctx.save();
+    for (let i = 0; i < count; i++) {
+      const a = rng() * TAU;
+      const d = Math.sqrt(rng()) * r * 0.7;
+      const rr = r * (0.06 + rng() * 0.09);
+      ctx.fillStyle = hsla(pal.hue + lerp(-18, 20, rng()), 44, 42, 0.16 + rng() * 0.12);
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * d, Math.sin(a) * d * 0.92, rr, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   function drawFineHalo(ctx, r, pal, rng, count, len, alpha) {
     ctx.save();
     ctx.lineCap = "round";
@@ -576,8 +618,7 @@
       ctx.bezierCurveTo(-r * 0.10, y - r * 0.10, r * 0.35, y - r * 0.04, r * 0.70, y * 0.32);
       ctx.stroke();
     }
-    drawGranules(ctx, r, pal, rng, 5 + Math.round((g.metabolism || 0.5) * 10), !!(o.flags && o.flags.chl));
-    drawSurfaceSpeckles(ctx, r, pal, rng, 12, 0.20);
+    drawInterior(ctx, o, r, pal, rng, { scale: 0.75 });
     ctx.restore();
     drawNucleus(ctx, -r * 0.05, -r * 0.02, r * 0.17, pal, rng, 0.85);
     ctx.restore();
@@ -609,8 +650,7 @@
       ctx.bezierCurveTo(-r * 0.12, y - r * 0.08, r * 0.42, y + r * 0.04, r * 0.78, y * 0.45);
       ctx.stroke();
     }
-    drawGranules(ctx, r * 0.82, pal, rng, 6 + Math.round((g.metabolism || 0.5) * 8), !!(o.flags && o.flags.chl));
-    drawSurfaceSpeckles(ctx, r, pal, rng, 14, 0.18);
+    drawInterior(ctx, o, r * 0.9, pal, rng, { scale: 0.75 });
     ctx.restore();
     drawNucleus(ctx, -r * 0.22, -r * 0.02, r * 0.17, pal, rng, 0.88);
     ctx.restore();
@@ -643,8 +683,7 @@
     fillAndStroke(ctx, r, pal, 0.64);
     ctx.save();
     ctx.clip();
-    drawGranules(ctx, r * 0.7, pal, rng, 6, !!(o.flags && o.flags.chl));
-    drawSurfaceSpeckles(ctx, r, pal, rng, 8, 0.16);
+    drawInterior(ctx, o, r * 0.7, pal, rng, { scale: 0.55 });
     ctx.restore();
     const na = -0.12, ncx = Math.sin(na) * Rc, ncy = cyc - Math.cos(na) * Rc;
     drawNucleus(ctx, ncx, ncy + r * 0.02, r * 0.14, pal, rng, 0.90);
@@ -683,7 +722,7 @@
       ctx.quadraticCurveTo(0, y + r * 0.05, wid * 0.7, y);
       ctx.stroke();
     }
-    drawSurfaceSpeckles(ctx, r, pal, rng, 8, 0.16);
+    drawInterior(ctx, o, r, pal, rng, { scale: 0.4, interior: "granules" });
     ctx.restore();
     drawNucleus(ctx, 0, 0, r * 0.15, pal, rng, 0.90);
     ctx.restore();
@@ -743,8 +782,7 @@
     fillAndStroke(ctx, r, pal, 0.62);
     ctx.save();
     ctx.clip();
-    drawGranules(ctx, r, pal, rng, 9, !!(o.flags && o.flags.chl));
-    drawSurfaceSpeckles(ctx, r, pal, rng, 12, 0.20);
+    drawInterior(ctx, o, r, pal, rng, { scale: 0.85 });
     ctx.restore();
     // the toothed mouth is a built-in trait carried by only some species (others gape smooth).
     const hasTeeth = (hashStr32((o.speciesKey || "x") + ":teeth") % 1000) < 520;
@@ -832,6 +870,58 @@
     return hashStr32(key) / 4294967296;
   }
   function svLerp(o, salt, lo, hi) { return lo + (hi - lo) * shapeVar(o, salt); }
+  function svPick(o, salt, list) { return list[Math.min(list.length - 1, Math.floor(shapeVar(o, salt) * list.length))]; }
+
+  // Interior and surface are their own per-species slots, independent of the body
+  // shape, so two same-form species differ inside as well as in outline.
+  const INTERIORS = ["granules", "vacuoles", "striations", "organelles"];
+  const SURFACES = ["clean", "speckles", "spots", "ridged"];
+  function interiorOf(o) { return svPick(o, "interior", INTERIORS); }
+  function surfaceOf(o) { return svPick(o, "surface", SURFACES); }
+
+  // Paint the chosen interior + surface inside an already-clipped body. `scale`
+  // trims counts for small bodies; `chl` tints granules toward chloroplast green.
+  function drawInterior(ctx, o, r, pal, rng, opts) {
+    opts = opts || {};
+    const scale = opts.scale == null ? 1 : opts.scale;
+    const detail = ((o.form || {}).detail || 0.5);
+    const interior = opts.interior || interiorOf(o);
+    const surface = opts.surface || surfaceOf(o);
+    const chl = !!(o.flags && o.flags.chl);
+    if (interior === "granules") {
+      drawGranules(ctx, r, pal, rng, Math.round((7 + detail * 10) * scale), chl);
+    } else if (interior === "vacuoles") {
+      drawVacuoles(ctx, r, pal, rng, Math.max(2, Math.round((3 + detail * 3) * scale)));
+      if (chl) drawGranules(ctx, r, pal, rng, Math.round(4 * scale), true);
+    } else if (interior === "striations") {
+      drawSegmentationLines(ctx, r * 1.3, pal, 4 + Math.round(detail * 4 * scale), shapeVar(o, "striAng") * 3.14);
+      drawGranules(ctx, r, pal, rng, Math.round(4 * scale), chl);
+    } else { // organelles: a scatter of small satellite nuclei around the main one
+      const n = Math.max(2, Math.round((3 + detail * 3) * scale));
+      for (let i = 0; i < n; i++) {
+        const a = rng() * TAU, d = r * (0.24 + rng() * 0.42);
+        drawNucleus(ctx, Math.cos(a) * d, Math.sin(a) * d * 0.9, r * (0.07 + rng() * 0.05), pal, rng, 0.7);
+      }
+    }
+    if (surface === "speckles") drawSurfaceSpeckles(ctx, r, pal, rng, Math.round(18 * scale), 0.24);
+    else if (surface === "spots") drawSpots(ctx, r, pal, rng, Math.round(9 * scale));
+    else if (surface === "ridged") { drawSurfaceSpeckles(ctx, r, pal, rng, Math.round(8 * scale), 0.16); drawRidges(ctx, r, pal, rng, 3 + Math.round(detail * 3)); }
+    // "clean" adds nothing
+  }
+
+  // surface: concentric arc ridges hugging the lit edge, like a ribbed shell.
+  function drawRidges(ctx, r, pal, rng, count) {
+    ctx.save();
+    ctx.strokeStyle = hsla(pal.hue - 6, 44, 90, 0.16);
+    ctx.lineWidth = Math.max(0.5, r * 0.016);
+    for (let i = 1; i <= count; i++) {
+      const rr = r * (0.34 + 0.5 * i / count);
+      ctx.beginPath();
+      ctx.arc(-r * 0.1, -r * 0.06, rr, Math.PI * 0.85, Math.PI * 1.75);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
   // sharp-tipped star: explicit tips joined by edges that bow deep toward the centre,
   // so the points stay needle-sharp instead of rounding off into petals.
   function _concaveStar(tips, inward) {
@@ -1079,8 +1169,7 @@
     _fillOutline(ctx, pts);
     fillAndStroke(ctx, r, pal, 0.68);
     ctx.clip();
-    drawGranules(ctx, r, pal, rng, 7 + Math.round((form.detail || 0.5) * 10), !!(o.flags && o.flags.chl));
-    drawSurfaceSpeckles(ctx, r, pal, rng, 18, 0.24);
+    drawInterior(ctx, o, r, pal, rng);
     if (nuclei && nuclei.length) {
       for (const nu of nuclei) drawNucleus(ctx, nu.x, nu.y, nu.r, pal, rng, 0.92);
     } else {
@@ -1753,6 +1842,9 @@
     drawOrganism,
     visualKind,
     singleShapes: SINGLE_SHAPES,
+    // Diagnostic: which per-species interior / surface slot a creature drew.
+    interiorOf: interiorOf,
+    surfaceOf: surfaceOf,
     // Diagnostic: a silhouette's reach in r units *after* its fit scale. The card
     // clips past ~1.06r vertically at the largest size gene, so tests can use this
     // to prove a per-species shape never grows out of its card.
