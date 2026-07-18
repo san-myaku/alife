@@ -531,7 +531,7 @@
   function eventKeyedVisualRngEnabled(){
     return !!featureFlags.eventKeyedVisualRng;
   }
-  // Mirrors the existing seeded diagnostic seed for stateless visual events.
+  // Stateless visual events default to seed 0; seeded diagnostics override it temporarily.
   let currentWorldSeedForVisuals = 0;
   function worldSeedForVisualRng(){
     return currentWorldSeedForVisuals;
@@ -1248,6 +1248,22 @@
   }
   function visualRange(rng,a,b){
     return rng()*(b-a)+a;
+  }
+  function visualChanceForKey(key,probability){
+    if(eventKeyedVisualRngEnabled()) return visualRngForKey(key)() < probability;
+    return Math.random() < probability;
+  }
+  function organismVisualIdentityKey(identityId){
+    const raw=identityId==null ? '' : String(identityId);
+    if(raw.startsWith('organism:')) return raw;
+    return `organism:${raw || 'unknown'}`;
+  }
+  function organismVisualPhaseGait(identityId){
+    const key=organismVisualIdentityKey(identityId);
+    return {
+      phase:visualRngForKey(`${key}:phase`)()*TAU,
+      gait:visualRngForKey(`${key}:gait`)()*TAU
+    };
   }
   const SYMBOL_SHAPES = Object.freeze(['circle','square','triangle','ellipse','pentagon','hexagon','leaf','diamond','sparkle4','star6','cloud5','blob6','amoeba','pseudopod']);
   const silhouetteCache = new Map();
@@ -9581,7 +9597,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
 
   class Organism{
     constructor(x,y,genes=null,bornByRepro=false,parentA=null,parentB=null,options=null){
-      this.id=NEXT_ID++; this.x=x; this.y=y; this.vx=0; this.vy=0; this.energy=100; this.storeN=0; this.storeO=0.75; this.storeD=0; this.mem=1.0; this.age=0; this.fitness=0; this.moveCostSum=0; this.trail=[]; this.phase=Math.random()*TAU; this.attackCD=0; this.fleeTimer=0; this.protect=90; this.mutagenBoost=0; this.burstTimer=0; this.role='other';
+      this.id=NEXT_ID++; this.x=x; this.y=y; this.vx=0; this.vy=0; this.energy=100; this.storeN=0; this.storeO=0.75; this.storeD=0; this.mem=1.0; this.age=0; this.fitness=0; this.moveCostSum=0; this.trail=[];
+      const visualIdentityKey=organismVisualIdentityKey(options?.visualIdentityKey ?? this.id);
+      if(eventKeyedVisualRngEnabled()) this.phase=visualRngForKey(`${visualIdentityKey}:phase`)()*TAU;
+      else this.phase=Math.random()*TAU;
+      this.attackCD=0; this.fleeTimer=0; this.protect=90; this.mutagenBoost=0; this.burstTimer=0; this.role='other';
       this.preyTargetId=null; this.preyTargetOutOfRangeSteps=0; this.chaseTimer=0; this.nextPreyScan=Math.floor(rnd(0,12)); this.predatorThreatId=null; this.recentEvents=[]; this.lastAction='誕生'; this.lastActionFrame=frame; this.deathCause=null;
       this._predictiveHuntPlan=null; this._predictiveHuntTargetId=null; this._basePredationIntent=0; this._huntPlanningPressure=0; this._huntSearchIntent=0; this._chaseIntent=0; this._attackIntent=0; this._predictiveHuntState='unplanned'; this._predictiveHuntIntent=null; this._predictiveHuntIntentBoost=0;
       this._chaseCommitmentState='idle'; this._chaseCommittedTargetId=null; this._chaseCommitmentEnteredFrame=null; this._chaseCommitmentSteps=0; this._chaseCommitmentReason=null; this._chaseCommitmentPlanSnapshot=null; this._chaseCommitmentBestDistance=null; this._chaseCommitmentNoProgressSteps=0;
@@ -9591,7 +9611,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this.grazingTimer=0;
       this.mateSeekT=0; this.callCD=0;
       this.restT=0; this.restCD=0;
-      this.heading=Math.random()*TAU; this.gait=Math.random()*TAU; this.motionLevel=0; this.socialCount=0; this.herdThreat=0; this.newSpeciesFlash=0;
+      this.heading=Math.random()*TAU;
+      if(eventKeyedVisualRngEnabled()) this.gait=visualRngForKey(`${visualIdentityKey}:gait`)()*TAU;
+      else this.gait=Math.random()*TAU;
+      this.motionLevel=0; this.socialCount=0; this.herdThreat=0; this.newSpeciesFlash=0;
       this.genes = geneSet(genes);
       this.speciesKey = speciesKey(this.genes);
       this.speciesIdentityVersion=speciesIdentityV2Enabled() ? 2 : 1;
@@ -10275,7 +10298,7 @@ const Z = env.valueAt('detritus',  this.x,this.y); // D (detritus)
           * (0.60 + 0.40*clamp01(En))
           * clamp(0.45 + 0.55*this.mem, 0.25, 1.0);
         env.addOxygenAt(this.x,this.y, release);
-        if(calm && frame-(this._lastPhotoAction||0)>900 && Math.random()<0.015){
+        if(calm && frame-(this._lastPhotoAction||0)>900 && visualChanceForKey(`photo-action:${frame}:${this.id}`,0.015)){
           recordAction(this,'酸素を放出した');
           this._lastPhotoAction=frame;
         }
@@ -10486,7 +10509,7 @@ if(Z>0.08){
             telemetryRecordAlgaeConsumption(this,gain);
             recordFoodUse('fieldAlgae',this,gain,1);
             if(gain>0.18) recordAction(this,'背景の藻を食べた');
-            if(gain>0.22 && frame-(this._lastGrazeSpark||0)>58 && Math.random()<0.34){
+            if(gain>0.22 && frame-(this._lastGrazeSpark||0)>58 && visualChanceForKey(`graze-ring:${frame}:${this.id}`,0.34)){
               pushRing(this.x,this.y,{r0:2,r1:14,color:'rgba(70,255,128,',t:22,width:1.0});
               this._lastGrazeSpark=frame;
             }
@@ -20083,6 +20106,113 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     }
     return {ok:results.every(r=>r.ok),results};
   }
+  function runVisualRngFinishSeparationMicroTests(){
+    const saved=capture();
+    const oldRandom=Math.random;
+    const oldFeatureFlags={...featureFlags};
+    const oldWorldSeedForVisuals=currentWorldSeedForVisuals;
+    const oldNextId=NEXT_ID;
+    const results=[];
+    const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
+    const same=(a,b)=>stableJson(a)===stableJson(b);
+    const genes=()=>Object.assign({}, DEV_VIABLE_GENES.herbivore);
+    try{
+      const seed=41001;
+      featureFlags.eventKeyedVisualRng=true;
+      currentWorldSeedForVisuals=seed;
+
+      const idA=42, idB=43;
+      const a1=organismVisualPhaseGait(idA);
+      const a2=organismVisualPhaseGait(`organism:${idA}`);
+      const b=organismVisualPhaseGait(idB);
+      add('Finish A phase/gait reproduce by visual seed and identity id', same(a1,a2) && (a1.phase!==b.phase || a1.gait!==b.gait), {idA,idB,a1,a2,b});
+
+      const control=duelSeededRandom(13579);
+      const controlNext=[control(),control(),control(),control()];
+      const experiment=duelSeededRandom(13579);
+      Math.random=experiment;
+      for(let i=0;i<500;i++) organismVisualPhaseGait(i+1);
+      const experimentNext=[experiment(),experiment(),experiment(),experiment()];
+      Math.random=oldRandom;
+      add('Finish B phase/gait visual generation does not consume model RNG', same(controlNext,experimentNext), {controlNext,experimentNext});
+
+      const values=[0.11,0.22,0.33,0.44,0.55,0.66,0.77,0.88,0.99];
+      let headingCalls=0;
+      Math.random=()=>values[(headingCalls++)%values.length];
+      const headingOrg=new Organism(80,80,genes(),false,null,null,{visualIdentityKey:'organism:999'});
+      Math.random=oldRandom;
+      add('Finish C heading remains model RNG', Math.abs(headingOrg.heading - values[1]*TAU) < 1e-12 && headingCalls>=2, {heading:headingOrg.heading,expected:values[1]*TAU,calls:headingCalls});
+
+      const controlChance=duelSeededRandom(24680);
+      const controlChanceNext=[controlChance(),controlChance(),controlChance(),controlChance()];
+      const experimentChance=duelSeededRandom(24680);
+      Math.random=experimentChance;
+      for(let i=0;i<400;i++){
+        visualChanceForKey(`graze-ring:${100+i}:${i}`,0.34);
+        visualChanceForKey(`photo-action:${200+i}:${i}`,0.015);
+      }
+      const experimentChanceNext=[experimentChance(),experimentChance(),experimentChance(),experimentChance()];
+      Math.random=oldRandom;
+      add('Finish D display chance checks do not consume model RNG when ON', same(controlChanceNext,experimentChanceNext), {controlChanceNext,experimentChanceNext});
+
+      let mathRandomCalls=0;
+      Math.random=()=>{ mathRandomCalls++; return 0.5; };
+      featureFlags.eventKeyedVisualRng=true;
+      visualChanceForKey('graze-ring:1:2',0.34);
+      visualChanceForKey('photo-action:1:2',0.015);
+      const onCalls=mathRandomCalls;
+      featureFlags.eventKeyedVisualRng=false;
+      visualChanceForKey('graze-ring:1:2',0.34);
+      visualChanceForKey('photo-action:1:2',0.015);
+      const offCalls=mathRandomCalls-onCalls;
+      Math.random=oldRandom;
+      featureFlags.eventKeyedVisualRng=true;
+      add('Finish E display chance Math.random usage is gated by feature flag', onCalls===0 && offCalls===2, {onCalls,offCalls,totalCalls:mathRandomCalls});
+
+      currentWorldSeedForVisuals=seed;
+      const grazeFirst=visualChanceForKey('graze-ring:500:7',0.34);
+      const photoSecond=visualChanceForKey('photo-action:500:7',0.015);
+      const photoFirst=visualChanceForKey('photo-action:500:7',0.015);
+      const grazeSecond=visualChanceForKey('graze-ring:500:7',0.34);
+      add('Finish F display chance call order independent', grazeFirst===grazeSecond && photoFirst===photoSecond, {grazeFirst,grazeSecond,photoFirst,photoSecond});
+
+      const savedForMicro=capture();
+      try{
+        organisms.length=0; newborn.length=0; food.length=0; corpses.length=0; plankton.length=0; patches.length=0; calls.length=0;
+        speciesCount.clear(); speciesStats.clear(); resetPackIdentityState(); resetTelemetry();
+        NEXT_ID=9000;
+        const targetId=777;
+        const o=new Organism(80,90,genes(),false,null,null,{visualIdentityKey:`organism:${targetId}`});
+        const temporaryId=o.id;
+        o.id=targetId;
+        organisms.push(o);
+        const before={phase:o.phase,gait:o.gait};
+        const expected=organismVisualPhaseGait(`organism:${targetId}`);
+        const roundTrip=capture();
+        NEXT_ID=12000;
+        restore(roundTrip);
+        const loaded=organisms.find(x=>x.id===targetId) || null;
+        const after=loaded ? {phase:loaded.phase,gait:loaded.gait} : null;
+        add('Finish G save/load phase/gait use saved identity id', !!loaded && temporaryId!==targetId && same(before,after) && same(before,expected), {temporaryId,targetId,before,after,expected});
+      } finally {
+        restore(savedForMicro);
+      }
+
+      const foundation=runEventKeyedVisualRngMicroTests();
+      add('Finish H existing event-keyed visual RNG micro passes', foundation.ok, {ok:foundation.ok,failed:foundation.results.filter(r=>!r.ok)});
+      const migration=runVisualRngMigrationMicroTests();
+      add('Finish H existing visual RNG migration micro passes', migration.ok, {ok:migration.ok,failed:migration.results.filter(r=>!r.ok)});
+    }catch(err){
+      add('Finish micro exception',false,{message:String(err?.message || err),stack:String(err?.stack || '')});
+    }finally{
+      Math.random=oldRandom;
+      Object.assign(featureFlags,oldFeatureFlags);
+      currentWorldSeedForVisuals=oldWorldSeedForVisuals;
+      if(NEXT_ID<oldNextId) NEXT_ID=oldNextId;
+      restore(saved);
+    }
+    return {ok:results.every(r=>r.ok),results};
+  }
   function runEventKeyedVisualRngMicroTests(){
     const saved=capture();
     const oldRandom=Math.random;
@@ -21933,6 +22063,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     runVisualRngMigrationMicroTests(){
       return runVisualRngMigrationMicroTests();
     },
+    runVisualRngFinishSeparationMicroTests(){
+      return runVisualRngFinishSeparationMicroTests();
+    },
     runVisualRngCanonicalAppearanceComparison(options={}){
       return runVisualRngCanonicalAppearanceComparison(options);
     },
@@ -22416,7 +22549,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       let maxRestoredId=0;
       const restoreSpeciesIdentityV2=speciesIdentityV2Enabled();
       (state.organisms||[]).forEach(o=>{
-        const u=new Organism(o.x,o.y,o.genes,false,null,null,restoreSpeciesIdentityV2 ? {deferSpeciesRegistration:true} : null);
+        const savedId=Number.isFinite(Number(o.id)) ? Number(o.id) : null;
+        const organismOptions=restoreSpeciesIdentityV2
+          ? {deferSpeciesRegistration:true, ...(savedId!=null ? {visualIdentityKey:`organism:${savedId}`} : {})}
+          : (savedId!=null ? {visualIdentityKey:`organism:${savedId}`} : null);
+        const u=new Organism(o.x,o.y,o.genes,false,null,null,organismOptions);
         if(Number.isFinite(Number(o.id))){
           u.id=Number(o.id);
           maxRestoredId=Math.max(maxRestoredId,u.id);
