@@ -2413,6 +2413,88 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     for(const key of BASE_GENE_KEYS) out[key]=finiteGeneValue(genes?.[key],0.5);
     return out;
   }
+  function lifeHistoryGeneSnapshot(genes){
+    const out={};
+    for(const key of LIFE_HISTORY_GENE_KEYS) out[key]=finiteGeneValue(genes?.[key],0.5);
+    return out;
+  }
+  function currentInitialBaseGenesForTopology(topology){
+    return baseGeneSnapshot(initialGenesForTopology(topology));
+  }
+  function expectedInitialBaseGenesForTopology(topology){
+    return baseGeneSnapshot(Object.assign({}, legacyInitialGenesForTopology(topology), topologyOverridesForInitialSeed(topology)));
+  }
+  function initialTopologyLifeHistoryPreservationReport(){
+    const rows=INITIAL_TOPOLOGY_SEEDS.map(seed=>{
+      const topology=seed.topology;
+      const actual=initialGenesForTopology(topology);
+      const expectedLifeHistory=lifeHistoryGeneSnapshot(legacyLifeHistoryGenesForInitialTopology(topology));
+      const actualLifeHistory=lifeHistoryGeneSnapshot(actual);
+      const expectedBase=expectedInitialBaseGenesForTopology(topology);
+      const actualBase=baseGeneSnapshot(actual);
+      const lifeHistoryOk=LIFE_HISTORY_GENE_KEYS.every(key=>actualLifeHistory[key]===expectedLifeHistory[key]);
+      const baseOk=BASE_GENE_KEYS.every(key=>actualBase[key]===expectedBase[key]);
+      return {
+        topology,
+        ok:lifeHistoryOk && baseOk,
+        lifeHistoryOk,
+        baseOk,
+        expectedLifeHistory,
+        actualLifeHistory,
+        expectedBase,
+        actualBase,
+        topologyFromGenes:topologyFromGenes(actual),
+        speciesKey:speciesKey(actual,{})
+      };
+    });
+    const overrideChecks={
+      singleDiet:initialGenesForTopology('single').diet===0.29,
+      radialSense:initialGenesForTopology('radial').sense===0.66,
+      ringSense:initialGenesForTopology('ring').sense===0.50,
+      amoebaFormSeed:initialGenesForTopology('amoeba').formSeed===0.88
+    };
+    return {
+      ok:rows.every(row=>row.ok) && Object.values(overrideChecks).every(Boolean),
+      lifeHistoryOk:rows.every(row=>row.lifeHistoryOk),
+      baseOk:rows.every(row=>row.baseOk),
+      overrideChecks,
+      rows,
+      mismatches:rows.filter(row=>!row.ok)
+    };
+  }
+  function initialTopologySeedDerivedIdentityReport(){
+    const rows=INITIAL_TOPOLOGY_SEEDS.map(seed=>{
+      const seedGenes=initialGenesForTopology(seed.topology);
+      const organism=organisms.find(o=>o && !o.dead && o.lineageInitial!==false && initialSeedGenesMatch(o.genes,seedGenes)) || null;
+      const record=organism?.lineageId ? lineageRecordById(organism.lineageId) : null;
+      const computedSpeciesKey=organism ? speciesKeyForOrganism(organism) : speciesKey(seedGenes,{});
+      const computedEcotypeSignature=organism ? lineageEcotypeSignatureFor(organism) : lineageEcotypeSignatureFor({genes:seedGenes,flags:{}});
+      const rootLineageId=`root:${computedSpeciesKey}`;
+      const rootConsistency=!organism?.lineageId || (
+        organism.speciesKey===computedSpeciesKey
+        && organism.canonicalAppearanceKey===organism.speciesKey
+        && organism.lineageId===rootLineageId
+        && (!record || (
+          record.founderSpeciesKey===organism.speciesKey
+          && record.canonicalAppearanceKey===organism.speciesKey
+          && record.ecotypeSignature===computedEcotypeSignature
+        ))
+      );
+      return {
+        topology:seed.topology,
+        ok:!!organism && organism.speciesKey===computedSpeciesKey && rootConsistency,
+        organismId:organism?.id ?? null,
+        speciesKey:organism?.speciesKey ?? null,
+        computedSpeciesKey,
+        canonicalAppearanceKey:organism?.canonicalAppearanceKey ?? null,
+        lineageId:organism?.lineageId ?? null,
+        expectedRootLineageId:rootLineageId,
+        record:record ? lineageRegistryRecordSnapshot(record) : null,
+        computedEcotypeSignature
+      };
+    });
+    return {ok:rows.every(row=>row.ok),rows,mismatches:rows.filter(row=>!row.ok)};
+  }
   function initialTopologySeedConsistencyReport(){
     const rows=INITIAL_TOPOLOGY_SEEDS.map(seed=>{
       const seedGenes=initialGenesForTopology(seed.topology);
@@ -2452,6 +2534,82 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
       rows,
       mismatches:rows.filter(row=>!row.ok)
     };
+  }
+  function initialPopulationComparisonSnapshot(options={}){
+    const opts=options || {};
+    const saved=capture();
+    const oldRandom=Math.random;
+    const oldFlags={...featureFlags};
+    const oldNextId=NEXT_ID;
+    const oldWorldSeedForVisuals=currentWorldSeedForVisuals;
+    const seed=Number(opts.seed ?? 41001);
+    const nextRandomCount=Math.max(0,Math.min(32,Number(opts.nextRandomCount ?? 8)|0));
+    try{
+      currentWorldSeedForVisuals=seed;
+      if(opts.evolvableLifeHistory!=null) featureFlags.evolvableLifeHistory=!!opts.evolvableLifeHistory;
+      if(opts.juvenileDevelopment!=null) featureFlags.juvenileDevelopment=!!opts.juvenileDevelopment;
+      if(opts.predictiveHuntingReserve!=null) featureFlags.predictiveHuntingReserve=!!opts.predictiveHuntingReserve;
+      if(opts.persistentPackIdentity!=null) featureFlags.persistentPackIdentity=!!opts.persistentPackIdentity;
+      if(opts.speciesIdentityV2!=null) featureFlags.speciesIdentityV2=!!opts.speciesIdentityV2;
+      if(opts.canonicalSpeciesAppearance!=null) featureFlags.canonicalSpeciesAppearance=!!opts.canonicalSpeciesAppearance;
+      if(opts.eventKeyedVisualRng!=null) featureFlags.eventKeyedVisualRng=!!opts.eventKeyedVisualRng;
+      if(opts.persistentLineageRegistry!=null) featureFlags.persistentLineageRegistry=!!opts.persistentLineageRegistry;
+      if(opts.provisionalLineageClassification!=null) featureFlags.provisionalLineageClassification=!!opts.provisionalLineageClassification;
+      Math.random=duelSeededRandom(seed);
+      NEXT_ID=1;
+      reset();
+      const topologyIds=new Set();
+      const topologySeedRows=INITIAL_TOPOLOGY_SEEDS.map(seedRow=>{
+        const seedGenes=initialGenesForTopology(seedRow.topology);
+        const organism=organisms.find(o=>o && !o.dead && initialSeedGenesMatch(o.genes,seedGenes)) || null;
+        if(organism) topologyIds.add(organism.id);
+        return {
+          topology:seedRow.topology,
+          organismId:organism?.id ?? null,
+          genes:organism ? {...organism.genes} : seedGenes,
+          baseGenes:organism ? baseGeneSnapshot(organism.genes) : baseGeneSnapshot(seedGenes),
+          lifeHistoryGenes:organism ? lifeHistoryGeneSnapshot(organism.genes) : lifeHistoryGeneSnapshot(seedGenes),
+          speciesKey:organism?.speciesKey ?? null,
+          canonicalAppearanceKey:organism?.canonicalAppearanceKey ?? null,
+          lineageId:organism?.lineageId ?? null,
+          morphologyTopology:organism?.morphologyTopology ?? null
+        };
+      });
+      const nonTopologyOrganisms=organisms
+        .filter(o=>o && !topologyIds.has(o.id))
+        .map(o=>({
+          id:o.id,x:o.x,y:o.y,vx:o.vx,vy:o.vy,
+          energy:o.energy,age:o.age,birthFrame:o.birthFrame,protect:o.protect,
+          genes:{...o.genes},
+          speciesKey:o.speciesKey,
+          morphologyTopology:o.morphologyTopology,
+          role:o.role,
+          socialMode:o.socialMode,
+          sociality:o.sociality,
+          traits:o.traits,
+          flags:o.flags
+        }))
+        .sort((a,b)=>a.id-b.id);
+      const nextRandomSequence=[];
+      for(let i=0;i<nextRandomCount;i++) nextRandomSequence.push(Math.random());
+      return {
+        seed,
+        frame,
+        generation,
+        nextId:NEXT_ID,
+        organismCount:organisms.length,
+        topologySeedCount:INITIAL_TOPOLOGY_SEEDS.length,
+        topologySeedRows,
+        nonTopologyOrganisms,
+        nextRandomSequence
+      };
+    }finally{
+      Math.random=oldRandom;
+      currentWorldSeedForVisuals=oldWorldSeedForVisuals;
+      restore(saved);
+      NEXT_ID=oldNextId;
+      Object.assign(featureFlags,oldFlags);
+    }
   }
   function morphologyTopologyGeneMismatchReport(){
     const rows=organisms
@@ -9103,18 +9261,38 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     return ({single:'単核型',chain:'数珠型',radial:'放射型',ring:'環状型',branch:'分岐型',cluster:'房型',amoeba:'アメーバ型',mesh:'網目型'})[t] || '単核型';
   }
   const INITIAL_TOPOLOGY_SEEDS = Object.freeze([
-    {topology:'single', genes:Object.freeze({speed:0.32,size:0.42,metabolism:0.72,fecundity:0.34,sense:0.36,diet:0.29,formSeed:0.08})},
-    {topology:'chain', genes:Object.freeze({speed:0.72,size:0.36,metabolism:0.44,fecundity:0.46,sense:0.56,diet:0.36,formSeed:0.22})},
-    {topology:'radial', genes:Object.freeze({speed:0.48,size:0.46,metabolism:0.48,fecundity:0.44,sense:0.66,diet:0.72,formSeed:0.78})},
-    {topology:'ring', genes:Object.freeze({speed:0.38,size:0.48,metabolism:0.76,fecundity:0.44,sense:0.50,diet:0.34,formSeed:0.52})},
-    {topology:'branch', genes:Object.freeze({speed:0.52,size:0.36,metabolism:0.50,fecundity:0.44,sense:0.82,diet:0.46,formSeed:0.66})},
-    {topology:'cluster', genes:Object.freeze({speed:0.34,size:0.34,metabolism:0.56,fecundity:0.84,sense:0.52,diet:0.22,formSeed:0.92})},
-    {topology:'amoeba', genes:Object.freeze({speed:0.42,size:0.46,metabolism:0.54,fecundity:0.50,sense:0.52,diet:0.28,formSeed:0.88})},
-    {topology:'mesh', genes:Object.freeze({speed:0.40,size:0.62,metabolism:0.82,fecundity:0.42,sense:0.66,diet:0.42,formSeed:0.58})}
+    {topology:'single', legacyGenes:Object.freeze({speed:0.32,size:0.42,metabolism:0.72,fecundity:0.34,sense:0.36,diet:0.28,formSeed:0.08}), topologyOverrides:Object.freeze({diet:0.29})},
+    {topology:'chain', legacyGenes:Object.freeze({speed:0.72,size:0.36,metabolism:0.44,fecundity:0.46,sense:0.56,diet:0.36,formSeed:0.22}), topologyOverrides:Object.freeze({})},
+    {topology:'radial', legacyGenes:Object.freeze({speed:0.48,size:0.46,metabolism:0.48,fecundity:0.44,sense:0.62,diet:0.72,formSeed:0.78}), topologyOverrides:Object.freeze({sense:0.66})},
+    {topology:'ring', legacyGenes:Object.freeze({speed:0.38,size:0.48,metabolism:0.76,fecundity:0.44,sense:0.52,diet:0.34,formSeed:0.52}), topologyOverrides:Object.freeze({sense:0.50})},
+    {topology:'branch', legacyGenes:Object.freeze({speed:0.52,size:0.36,metabolism:0.50,fecundity:0.44,sense:0.82,diet:0.46,formSeed:0.66}), topologyOverrides:Object.freeze({})},
+    {topology:'cluster', legacyGenes:Object.freeze({speed:0.34,size:0.34,metabolism:0.56,fecundity:0.84,sense:0.52,diet:0.22,formSeed:0.92}), topologyOverrides:Object.freeze({})},
+    {topology:'amoeba', legacyGenes:Object.freeze({speed:0.42,size:0.46,metabolism:0.54,fecundity:0.50,sense:0.52,diet:0.28,formSeed:0.86}), topologyOverrides:Object.freeze({formSeed:0.88})},
+    {topology:'mesh', legacyGenes:Object.freeze({speed:0.40,size:0.62,metabolism:0.82,fecundity:0.42,sense:0.66,diet:0.42,formSeed:0.58}), topologyOverrides:Object.freeze({})}
   ]);
+  function initialTopologySeedFor(topology){
+    return INITIAL_TOPOLOGY_SEEDS.find(row=>row.topology===topology) || null;
+  }
+  function legacyInitialGenesForTopology(topology){
+    const seed=initialTopologySeedFor(topology);
+    return Object.assign({}, seed?.legacyGenes || {});
+  }
+  function topologyOverridesForInitialSeed(topology){
+    const seed=initialTopologySeedFor(topology);
+    return Object.assign({}, seed?.topologyOverrides || {});
+  }
+  function legacyLifeHistoryGenesForInitialTopology(topology){
+    return normalizeLifeHistoryGenes(legacyInitialGenesForTopology(topology),true);
+  }
   function initialGenesForTopology(topology,baseGenes=null){
-    const seed=INITIAL_TOPOLOGY_SEEDS.find(row=>row.topology===topology);
-    return Object.assign({}, baseGenes || {}, seed?.genes || {});
+    const legacyBase=legacyInitialGenesForTopology(topology);
+    const legacyLifeHistory=normalizeLifeHistoryGenes({...legacyBase},true);
+    const currentBase=Object.assign({}, legacyBase, topologyOverridesForInitialSeed(topology), baseGenes || {});
+    return Object.assign(currentBase,{
+      energyCapacity:legacyLifeHistory.energyCapacity,
+      clutchPotential:legacyLifeHistory.clutchPotential,
+      parentalInvestment:legacyLifeHistory.parentalInvestment
+    });
   }
   function topologyNameCore(t){
     return ({single:'単核',chain:'数珠',radial:'放射',ring:'環状',branch:'分岐',cluster:'群体',amoeba:'アメーバ',mesh:'網目'})[t] || '単核';
@@ -23212,6 +23390,156 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     return {ok:results.every(r=>r.ok),results};
   }
 
+  function runInitialTopologyLifeHistoryPreservationMicroTests(){
+    const saved=capture();
+    const oldRandom=Math.random;
+    const oldFlags={...featureFlags};
+    const oldNextId=NEXT_ID;
+    const results=[];
+    const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
+    const same=(a,b)=>stableJson(a)===stableJson(b);
+    const enableFullLineageFeatures=()=>{
+      Object.assign(featureFlags,{
+        evolvableLifeHistory:true,
+        juvenileDevelopment:true,
+        predictiveHuntingReserve:true,
+        persistentPackIdentity:true,
+        speciesIdentityV2:true,
+        canonicalSpeciesAppearance:true,
+        eventKeyedVisualRng:true,
+        persistentLineageRegistry:true,
+        provisionalLineageClassification:true
+      });
+    };
+    const clear=()=>{
+      running=false;
+      frame=0;
+      generation=1;
+      NEXT_ID=1;
+      organisms.length=0; newborn.length=0; food.length=0; corpses.length=0; plankton.length=0; patches.length=0; calls.length=0;
+      sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0;
+      speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear();
+      lineage.nodes.clear(); lineage.edges.length=0;
+      clearSpeciesAppearanceProfileCache(); OrganismRender.clearCanonicalSymbolCache?.(); clearSymbolSpriteCache();
+      resetLineageRegistry(); resetPackIdentityState(); resetTelemetry(); resetFoodWebStats();
+    };
+    try{
+      Math.random=duelSeededRandom(57113);
+
+      const preservation=initialTopologyLifeHistoryPreservationReport();
+      add('Initial topology life history A legacy seed life-history genes are preserved',
+        preservation.lifeHistoryOk && preservation.rows.length===INITIAL_TOPOLOGY_SEEDS.length,
+        preservation
+      );
+      add('Initial topology life history B current topology base genes are preserved',
+        preservation.baseOk && Object.values(preservation.overrideChecks).every(Boolean),
+        preservation
+      );
+
+      enableFullLineageFeatures();
+      NEXT_ID=1;
+      reset();
+      const topologyReport=initialTopologySeedConsistencyReport();
+      const identityReport=initialTopologySeedDerivedIdentityReport();
+      const requiredTopologyOk=topologyReport.required.every(topology=>topologyReport.rows.some(row=>row.topology===topology && row.ok));
+      const rootDerivedOk=identityReport.rows.every(row=>row.ok
+        && row.lineageId===row.expectedRootLineageId
+        && row.canonicalAppearanceKey===row.speciesKey
+        && row.record?.founderSpeciesKey===row.speciesKey
+        && row.record?.canonicalAppearanceKey===row.speciesKey
+        && row.record?.ecotypeSignature===row.computedEcotypeSignature
+      );
+      add('Initial topology life history C topology and derived root identity remain consistent',
+        topologyReport.ok && requiredTopologyOk && identityReport.ok && rootDerivedOk,
+        {topologyReport,identityReport}
+      );
+
+      clear();
+      enableFullLineageFeatures();
+      const constructorRows=[];
+      for(const seed of INITIAL_TOPOLOGY_SEEDS){
+        const expected=lifeHistoryGeneSnapshot(legacyLifeHistoryGenesForInitialTopology(seed.topology));
+        const input=initialGenesForTopology(seed.topology);
+        const organism=new Organism(100+constructorRows.length*5,120,{...input});
+        const actual=lifeHistoryGeneSnapshot(organism.genes);
+        const fieldsOk=LIFE_HISTORY_GENE_KEYS.every(key=>actual[key]===expected[key] && actual[key]===input[key]);
+        constructorRows.push({
+          topology:seed.topology,
+          ok:fieldsOk,
+          input:lifeHistoryGeneSnapshot(input),
+          expected,
+          actual,
+          speciesKey:organism.speciesKey,
+          morphologyTopology:organism.morphologyTopology
+        });
+      }
+      add('Initial topology life history D constructor preserves explicit life-history genes',
+        constructorRows.every(row=>row.ok),
+        {rows:constructorRows}
+      );
+
+      const commonFeatures={
+        evolvableLifeHistory:true,
+        juvenileDevelopment:true,
+        predictiveHuntingReserve:true,
+        persistentPackIdentity:true,
+        speciesIdentityV2:true,
+        canonicalSpeciesAppearance:true,
+        eventKeyedVisualRng:true,
+        persistentLineageRegistry:true,
+        provisionalLineageClassification:true
+      };
+      const snapA=initialPopulationComparisonSnapshot({seed:41001,nextRandomCount:8,...commonFeatures});
+      const snapB=initialPopulationComparisonSnapshot({seed:41001,nextRandomCount:8,...commonFeatures});
+      add('Initial topology life history E initial population non-topology state and RNG are deterministic',
+        snapA.organismCount===snapB.organismCount
+          && snapA.topologySeedCount===8
+          && snapA.nextId===snapB.nextId
+          && same(snapA.nonTopologyOrganisms,snapB.nonTopologyOrganisms)
+          && same(snapA.nextRandomSequence,snapB.nextRandomSequence),
+        {first:{organismCount:snapA.organismCount,nextId:snapA.nextId,nextRandomSequence:snapA.nextRandomSequence},second:{organismCount:snapB.organismCount,nextId:snapB.nextId,nextRandomSequence:snapB.nextRandomSequence}}
+      );
+
+      enableFullLineageFeatures();
+      Math.random=duelSeededRandom(41001);
+      NEXT_ID=1;
+      reset();
+      const seedLifeHistoryRows=()=>INITIAL_TOPOLOGY_SEEDS.map(seed=>{
+        const seedGenes=initialGenesForTopology(seed.topology);
+        const organism=organisms.find(o=>o && !o.dead && initialSeedGenesMatch(o.genes,seedGenes)) || null;
+        return {
+          topology:seed.topology,
+          organismId:organism?.id ?? null,
+          lifeHistoryGenes:organism ? lifeHistoryGeneSnapshot(organism.genes) : null,
+          speciesKey:organism?.speciesKey ?? null,
+          lineageId:organism?.lineageId ?? null,
+          lineageGeneration:organism?.lineageGeneration ?? null
+        };
+      });
+      const fBefore=seedLifeHistoryRows();
+      const fSave=capture();
+      const fSaveState=JSON.parse(decodeURIComponent(escape(atob(String(fSave).split(':',2)[1] || ''))));
+      restore(fSave);
+      const fAfter=seedLifeHistoryRows();
+      const fValidation=validateLineageRegistry();
+      add('Initial topology life history F v7 save/load preserves explicit initial seed life-history genes',
+        fSaveState.v===7
+          && same(fBefore,fAfter)
+          && fAfter.every(row=>row.lifeHistoryGenes && LIFE_HISTORY_GENE_KEYS.every(key=>row.lifeHistoryGenes[key]===legacyLifeHistoryGenesForInitialTopology(row.topology)[key]))
+          && fValidation.ok,
+        {saveVersion:fSaveState.v,before:fBefore,after:fAfter,validation:fValidation}
+      );
+    }catch(err){
+      add('Initial topology life history micro exception',false,{message:String(err?.message || err),stack:String(err?.stack || '')});
+    }finally{
+      Math.random=oldRandom;
+      restore(saved);
+      NEXT_ID=oldNextId;
+      Object.assign(featureFlags,oldFlags);
+    }
+    return {ok:results.every(r=>r.ok),results};
+  }
+
   function runInitialTopologyLineageSafetyMicroTests(){
     const saved=capture();
     const oldRandom=Math.random;
@@ -23934,6 +24262,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     initialTopologySeedConsistencyReport(){
       return initialTopologySeedConsistencyReport();
     },
+    initialTopologyLifeHistoryPreservationReport(){
+      return initialTopologyLifeHistoryPreservationReport();
+    },
+    initialTopologySeedDerivedIdentityReport(){
+      return initialTopologySeedDerivedIdentityReport();
+    },
+    initialPopulationComparisonSnapshot(options={}){
+      return initialPopulationComparisonSnapshot(options);
+    },
     morphologyTopologyGeneMismatchReport(){
       return morphologyTopologyGeneMismatchReport();
     },
@@ -24025,6 +24362,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     runInitialTopologyLineageSafetyMicroTests(){
       return runInitialTopologyLineageSafetyMicroTests();
+    },
+    runInitialTopologyLifeHistoryPreservationMicroTests(){
+      return runInitialTopologyLifeHistoryPreservationMicroTests();
     },
     runCanonicalSpeciesAppearanceReproducibilityMicroTest(options={}){
       return runCanonicalSpeciesAppearanceReproducibilityMicroTest(options);
