@@ -1918,9 +1918,12 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     sameLineageCrossSpeciesKeySelected:0,
     legacyMateFallback:0,
     noMateFound:0,
+    // Successful reproduction counters are attempt counts, not born-individual counts.
     successfulSameLineageReproductions:0,
     successfulSameLineageCrossSpeciesKeyReproductions:0,
     successfulLegacyFallbackReproductions:0,
+    // mode "none" means no compatible mate was found; this is the intentional
+    // conditional asexual strategy and must not be treated as an error fallback.
     successfulAsexualReproductions:0
   };
   const lineageMateSelectionEventLog = [];
@@ -3051,6 +3054,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     samples: [],
     ecoBuckets: [],
     births: new Map(),
+    totalDeaths: 0,
     predationPairs: new Map(),
     predationNutrition: [],
     reproductionResource: [],
@@ -7512,6 +7516,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     telemetry.samples.length=0;
     telemetry.ecoBuckets.length=0;
     telemetry.births.clear();
+    telemetry.totalDeaths=0;
     telemetry.predationPairs.clear();
     telemetry.predationNutrition.length=0;
     telemetry.reproductionResource.length=0;
@@ -10072,6 +10077,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function recordDeath(o, cause){
     if(!o || o.__deathRecorded) return;
     o.__deathRecorded=true;
+    telemetry.totalDeaths++;
     o.deathCause=cause || o.deathCause || '不明';
     recordAction(o, `死亡：${o.deathCause}`);
     telemetryRecordDeath(o,o.deathCause);
@@ -11926,6 +11932,10 @@ if(Z>0.08){
       const baseMut=ui.mutation + (this.mutagenBoost>0? 0.08: 0);
       const pick=(a,b)=>Math.random()<0.5?a:b;
       const kids=[];
+      // Policy A: conditional asexual reproduction is an intentional life-history strategy.
+      // Compatible mate found => sexual reproduction with gene mixing.
+      // No mate found => asexual reproduction from the parent genome.
+      // This is not an error fallback; isolated or newly founded provisional lineages must keep this path.
       const isSex = !!mate;
       const mutationKeys=evolvableLifeHistoryEnabled() ? GENE_KEYS : LEGACY_REPRODUCTION_GENE_KEYS;
       let clutch, energyPlan, lifePlan=null;
@@ -18274,13 +18284,22 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     }
     return {ok:violations.length===0,violationCount:violations.length,violations:violations.slice(0,20),counts};
   }
-  function lineageAwareMateSelectionWorldSummary(){
+  function lineageAwareMateSelectionWorldSummary(initialPopulation=null){
     const registry=lineageRegistrySummary();
     const classification=registry.classification || {};
     return {
+      initialPopulation:Number.isFinite(Number(initialPopulation)) ? Number(initialPopulation) : null,
       endingPopulation:organisms.filter(o=>o && !o.dead).length,
+      // birthOrigins is one record per born child, including sexual/asexual and every clutch member.
       births:telemetry.birthOrigins.length,
-      deaths:telemetry.carnivoreDeaths.length,
+      totalDeaths:telemetry.totalDeaths,
+      carnivoreDeaths:telemetry.carnivoreDeaths.length,
+      successfulReproductionAttempts:{
+        sameLineage:lineageMateSelectionTelemetryState.successfulSameLineageReproductions,
+        sameLineageCrossSpeciesKey:lineageMateSelectionTelemetryState.successfulSameLineageCrossSpeciesKeyReproductions,
+        legacyFallback:lineageMateSelectionTelemetryState.successfulLegacyFallbackReproductions,
+        asexual:lineageMateSelectionTelemetryState.successfulAsexualReproductions
+      },
       rootLineageCount:classification.rootRecordCount ?? 0,
       provisionalLineageCount:classification.provisionalRecordCount ?? 0,
       livingProvisionalLineageCount:classification.livingProvisionalLineageCount ?? 0,
@@ -18325,6 +18344,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       Math.random=duelSeededRandom(seed);
       NEXT_ID=1;
       reset();
+      const diagnosticInitialPopulation=organisms.filter(o=>o && !o.dead).length;
       for(let i=0;i<steps;i++) updateModel();
       telemetrySampleFrame(true);
       const lineage=carnivoreLineageSummary({windowFrames:steps+60,includeIndividuals});
@@ -18340,7 +18360,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         eventInvariant:lineageMateSelectionEventInvariantSummary(),
         events:lineageMateSelectionEvents()
       };
-      const lineageAwareWorld=lineageAwareMateSelectionWorldSummary();
+      const lineageAwareWorld=lineageAwareMateSelectionWorldSummary(diagnosticInitialPopulation);
       const modelStateDiagnostic=opts.includeModelState ? visualRngComparableModelState() : null;
       const appearanceDiagnostic=opts.includeAppearanceState ? {
         summary:speciesAppearanceSummary(),
@@ -23944,6 +23964,229 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     return {ok:results.every(r=>r.ok),results};
   }
 
+  function runReproductionDiagnosticIntegrityMicroTests(){
+    const saved=capture();
+    const oldRandom=Math.random;
+    const oldFlags={...featureFlags};
+    const oldNextId=NEXT_ID;
+    const oldMutation=ui.mutation;
+    const results=[];
+    const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
+    const same=(a,b)=>stableJson(a)===stableJson(b);
+    const decodeSave=(saveData)=>JSON.parse(decodeURIComponent(escape(atob(saveData.split(':',2)[1]))));
+    const enableLineageMate=()=>{
+      Object.assign(featureFlags,{
+        evolvableLifeHistory:true,
+        juvenileDevelopment:true,
+        predictiveHuntingReserve:true,
+        persistentPackIdentity:true,
+        speciesIdentityV2:true,
+        canonicalSpeciesAppearance:true,
+        eventKeyedVisualRng:true,
+        persistentLineageRegistry:true,
+        provisionalLineageClassification:true,
+        lineageAwareMateSelection:true
+      });
+    };
+    const clear=()=>{
+      running=false;
+      frame=0;
+      generation=1;
+      NEXT_ID=1;
+      organisms.length=0; newborn.length=0; food.length=0; corpses.length=0; plankton.length=0; patches.length=0; calls.length=0;
+      sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0;
+      speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear();
+      lineage.nodes.clear(); lineage.edges.length=0;
+      clearSpeciesAppearanceProfileCache(); OrganismRender.clearCanonicalSymbolCache?.(); clearSymbolSpriteCache();
+      resetLineageRegistry(); resetPackIdentityState(); resetTelemetry(); resetFoodWebStats();
+    };
+    const testTraits=()=>({glowA1:'G',glowA2:'G',crownA1:'C',crownA2:'C',colonyA1:'K',colonyA2:'K',chlA1:'P',chlA2:'P'});
+    const testFlags=()=>({glow:false,crown:false,colony:false,chl:false});
+    const make=(genes,options={})=>{
+      const born=!!options.born;
+      const o=new Organism(
+        Number(options.x ?? 100),
+        Number(options.y ?? 100),
+        {...genes},
+        born,
+        options.parentSpeciesKey || null,
+        options.mateSpeciesKey || null,
+        speciesIdentityV2Enabled() ? {deferSpeciesRegistration:true} : null
+      );
+      o.traits=options.traits || testTraits();
+      o.flags=options.flags || testFlags();
+      finalizeOrganismSpeciesIdentity(o,{reason:options.reason || 'reproduction-diagnostic-micro'});
+      o.recalcPhenotype();
+      applyDevelopmentPhenotype(o);
+      o.updateColor();
+      registerFinalizedSpeciesIdentity(o,{
+        bornByRepro:born,
+        parentSpeciesKey:options.parentSpeciesKey || null,
+        mateSpeciesKey:options.mateSpeciesKey || null,
+        reason:options.reason || 'reproduction-diagnostic-micro'
+      });
+      o.age=Math.max(o.maturityAge||0,Number(options.age ?? 700));
+      o.energy=Number(options.energy ?? (effectiveReproThresholdFor(o)+320));
+      o.protect=0;
+      o.attackCD=0;
+      if(options.push!==false) organisms.push(o);
+      return o;
+    };
+    const cloneRecordAs=(sourceLineageId,lineageId,parentLineageId=null)=>{
+      const source=lineageRecordById(sourceLineageId);
+      const record={...lineageRegistryRecordSnapshot(source),lineageId,parentLineageId};
+      lineageRegistry.set(lineageId,record);
+      return record;
+    };
+    const lowClutchGenes=(diet,formSeed=0.35)=>speciesIdentityTestGenes({diet,formSeed,speed:0.42,size:0.44,sense:0.50,metabolism:0.46,fecundity:0.50,energyCapacity:0.80,clutchPotential:0,parentalInvestment:0.30});
+    const tripleClutchGenes=()=>speciesIdentityTestGenes({diet:0.22,formSeed:0.55,speed:0.42,size:0.44,sense:0.50,metabolism:0.46,fecundity:0.50,energyCapacity:1,clutchPotential:0.55,parentalInvestment:0.25});
+    const deathCounts=()=>({totalDeaths:telemetry.totalDeaths,carnivoreDeaths:telemetry.carnivoreDeaths.length});
+    const finalizeDeath=(o,cause='micro-death')=>{
+      recordDeath(o,cause);
+      o.dead=true;
+    };
+    try{
+      Math.random=duelSeededRandom(55101);
+      enableLineageMate();
+
+      clear(); enableLineageMate();
+      const aCarn=make(lowClutchGenes(0.90,0.11),{x:80,y:80});
+      const aHerb=make(lowClutchGenes(0.12,0.22),{x:120,y:80});
+      const aOmni=make(lowClutchGenes(0.50,0.33),{x:160,y:80});
+      finalizeDeath(aCarn,'micro-carnivore');
+      finalizeDeath(aHerb,'micro-herbivore');
+      finalizeDeath(aOmni,'micro-omnivore');
+      add('Micro A total deaths count all diets',
+        telemetry.totalDeaths===3 && telemetry.carnivoreDeaths.length===1 && telemetry.carnivoreDeaths.length<=telemetry.totalDeaths,
+        {counts:deathCounts(),deathEvents:telemetry.events.filter(e=>e.kind==='death').map(e=>({id:e.id,diet:e.diet,cause:e.cause}))}
+      );
+
+      clear(); enableLineageMate();
+      const bCarn=make(lowClutchGenes(0.90,0.44),{x:80,y:90});
+      finalizeDeath(bCarn,'micro-carnivore');
+      recordDeath(bCarn,'micro-carnivore-again');
+      telemetryRecordDeath(bCarn,'micro-direct-telemetry-not-finalization');
+      add('Micro B canonical death finalization is not double-counted',
+        telemetry.totalDeaths===1 && telemetry.carnivoreDeaths.length===1,
+        {counts:deathCounts(),deathRecorded:bCarn.__deathRecorded}
+      );
+
+      clear(); enableLineageMate();
+      const cCarn=make(lowClutchGenes(0.90,0.45),{x:80,y:100});
+      finalizeDeath(cCarn,'micro-carnivore');
+      resetTelemetry();
+      add('Micro C reset clears death diagnostics',
+        telemetry.totalDeaths===0 && telemetry.carnivoreDeaths.length===0,
+        {counts:deathCounts()}
+      );
+
+      clear(); enableLineageMate();
+      ui.mutation=0;
+      Math.random=duelSeededRandom(55102);
+      const dGenes=lowClutchGenes(0.22,0.51);
+      const dSameParent=make(dGenes,{x:100,y:100});
+      const dSameMate=make(dGenes,{x:116,y:100,born:true,parentSpeciesKey:dSameParent.speciesKey});
+      dSameMate.lineageId=dSameParent.lineageId;
+      const dLegacyParent=make(dGenes,{x:320,y:100});
+      const dLegacyMate=make(dGenes,{x:336,y:100});
+      cloneRecordAs(dLegacyParent.lineageId,'lineage:diagnostic-legacy'); dLegacyMate.lineageId='lineage:diagnostic-legacy';
+      const dAsexParent=make(dGenes,{x:540,y:100});
+      buildSpatialIndex();
+      const dKids1=dSameParent.tryReproduce();
+      const dKids2=dLegacyParent.tryReproduce();
+      const dKids3=dAsexParent.tryReproduce();
+      const dExpectedBirths=dKids1.length+dKids2.length+dKids3.length;
+      const dSummary=lineageAwareMateSelectionWorldSummary(organisms.length);
+      add('Micro D births count born individuals across sexual and asexual reproduction',
+        dExpectedBirths>0 && dSummary.births===dExpectedBirths && dKids1.length>0 && dKids2.length>0 && dKids3.length>0,
+        {expectedBirths:dExpectedBirths,summaryBirths:dSummary.births,kids:{sameLineage:dKids1.length,legacy:dKids2.length,asexual:dKids3.length},events:lineageMateSelectionEvents().map(e=>({mode:e.mode,reproduced:e.reproduced}))}
+      );
+
+      clear(); enableLineageMate();
+      ui.mutation=0;
+      Math.random=duelSeededRandom(55103);
+      const eParent=make(tripleClutchGenes(),{x:100,y:100});
+      eParent.energy=organismMaxEnergy(eParent);
+      buildSpatialIndex();
+      const eKids=eParent.tryReproduce();
+      const eSummary=lineageAwareMateSelectionWorldSummary(organisms.length);
+      add('Micro E successful attempts are separate from born individuals',
+        eKids.length===3
+          && lineageMateSelectionTelemetry().successfulAsexualReproductions===1
+          && eSummary.births===3,
+        {kids:eKids.length,telemetry:lineageMateSelectionTelemetry(),summary:eSummary,plan:planLifeHistoryReproduction(eParent,null)}
+      );
+
+      const fSummary=lineageAwareMateSelectionWorldSummary(organisms.length);
+      const fFields=['totalDeaths','carnivoreDeaths','births'];
+      const fFinite=fFields.every(key=>Number.isInteger(fSummary[key]) && fSummary[key]>=0);
+      add('Micro F world summary fields are unambiguous finite counters',
+        !Object.prototype.hasOwnProperty.call(fSummary,'deaths')
+          && fFinite
+          && fSummary.carnivoreDeaths<=fSummary.totalDeaths,
+        {summary:fSummary}
+      );
+
+      clear(); enableLineageMate();
+      const gOpts={seed:41001,steps:160,restoreAfterRun:false,targetConsensus:false,shareFraction:0,packAttackBase:0.78,includeModelState:true,evolvableLifeHistory:true,juvenileDevelopment:true,predictiveHuntingReserve:true,persistentPackIdentity:true,speciesIdentityV2:true,canonicalSpeciesAppearance:true,eventKeyedVisualRng:true,persistentLineageRegistry:true,provisionalLineageClassification:true,lineageAwareMateSelection:true,variant:'reproductionDiagnosticIntegrityG'};
+      const gDiag=runSeededWorldDiagnostic(gOpts);
+      const gModelBefore=visualRngComparableModelState();
+      const gCaptureBefore=capture();
+      const gCountBefore=telemetry.totalDeaths;
+      telemetry.totalDeaths=0;
+      const gModelAfter=visualRngComparableModelState();
+      const gCaptureAfter=capture();
+      telemetry.totalDeaths=gCountBefore;
+      add('Micro G diagnostic death counter is transient and model-noninterfering',
+        same(gModelBefore,gModelAfter) && gCaptureBefore===gCaptureAfter && gDiag.health.ok,
+        {totalDeathsBefore:gCountBefore,modelEqual:same(gModelBefore,gModelAfter),captureEqual:gCaptureBefore===gCaptureAfter,health:gDiag.health}
+      );
+
+      clear(); enableLineageMate();
+      const hParent=make(lowClutchGenes(0.22,0.61),{x:100,y:100});
+      const hChild=make(lowClutchGenes(0.22,0.62),{x:116,y:100,born:true,parentSpeciesKey:hParent.speciesKey});
+      hChild.lineageId=hParent.lineageId;
+      hChild.lineageGeneration=hParent.lineageGeneration+1;
+      buildSpatialIndex();
+      selectMateForReproduction(hParent,80,{recordTelemetry:true});
+      finalizeDeath(hParent,'micro-save-death');
+      const hBefore={
+        registry:captureLineageRegistryState(),
+        organisms:organisms.map(o=>({id:o.id,lineageId:o.lineageId ?? null,lineageGeneration:o.lineageGeneration ?? null,speciesKey:o.speciesKey ?? null})).sort((a,b)=>a.id-b.id)
+      };
+      const hSave=capture();
+      const hState=decodeSave(hSave);
+      clear(); enableLineageMate();
+      restore(hSave);
+      const hAfter={
+        registry:captureLineageRegistryState(),
+        organisms:organisms.map(o=>({id:o.id,lineageId:o.lineageId ?? null,lineageGeneration:o.lineageGeneration ?? null,speciesKey:o.speciesKey ?? null})).sort((a,b)=>a.id-b.id)
+      };
+      add('Micro H v8 save/load preserves lineage-aware state without diagnostic telemetry',
+        hState.v===8
+          && hState.features?.lineageAwareMateSelection===true
+          && !Object.prototype.hasOwnProperty.call(hState,'totalDeaths')
+          && !Object.prototype.hasOwnProperty.call(hState,'lineageMateSelection')
+          && same(hBefore,hAfter)
+          && telemetry.totalDeaths===0
+          && telemetry.carnivoreDeaths.length===0
+          && lineageMateSelectionTelemetry().attempts===0,
+        {saveVersion:hState.v,features:hState.features,before:hBefore,after:hAfter,totalDeaths:telemetry.totalDeaths,carnivoreDeaths:telemetry.carnivoreDeaths.length,mateTelemetry:lineageMateSelectionTelemetry()}
+      );
+    }catch(err){
+      add('Reproduction diagnostic integrity micro exception',false,{message:String(err?.message || err),stack:String(err?.stack || '')});
+    }finally{
+      Math.random=oldRandom;
+      ui.mutation=oldMutation;
+      NEXT_ID=oldNextId;
+      Object.assign(featureFlags,oldFlags);
+      restore(saved);
+      Object.assign(featureFlags,oldFlags);
+      NEXT_ID=Math.max(NEXT_ID,oldNextId);
+    }
+    return {ok:results.every(r=>r.ok),results};
+  }
+
   function runInitialTopologyLifeHistoryPreservationMicroTests(){
     const saved=capture();
     const oldRandom=Math.random;
@@ -24822,6 +25065,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     lineageMateSelectionEventInvariantSummary(events=null){
       return lineageMateSelectionEventInvariantSummary(events || lineageMateSelectionEvents());
     },
+    lineageAwareMateSelectionWorldSummary(initialPopulation=null){
+      return lineageAwareMateSelectionWorldSummary(initialPopulation);
+    },
     classifyChildLineageAtBirth(child,parent,mate){
       return classifyChildLineageAtBirth(child,parent,mate);
     },
@@ -24937,6 +25183,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     runLineageAwareMateSelectionMicroTests(){
       return runLineageAwareMateSelectionMicroTests();
+    },
+    runReproductionDiagnosticIntegrityMicroTests(){
+      return runReproductionDiagnosticIntegrityMicroTests();
     },
     runInitialTopologyLineageSafetyMicroTests(){
       return runInitialTopologyLineageSafetyMicroTests();
