@@ -1992,7 +1992,9 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     if(!lineageAwareMateSelectionEnabled()) return false;
     if(!parent?.lineageId || !candidate?.lineageId) return false;
     if(String(parent.lineageId)!==String(candidate.lineageId)) return false;
-    return validLineageRecordForReproduction(lineageRecordById(parent.lineageId));
+    const record=lineageRecordById(parent.lineageId);
+    if(!lineageReproductiveIsolationEnabled()) return !!record;
+    return validLineageRecordForReproduction(record);
   }
   function classifyLineageMateRelationship(parent,candidate){
     const parentLineageId=parent?.lineageId==null ? '' : String(parent.lineageId);
@@ -24446,6 +24448,77 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       add('Micro H feature OFF keeps legacy species fallback',
         h.mate===hCandidate && h.mode==='legacy-species-fallback',
         {selection:h,parentLineage:hParent.lineageId,candidateLineage:hCandidate.lineageId}
+      );
+
+      clear(); enableLineageMateOnly();
+      const hFailedParent=make(genesA,{x:100,y:100});
+      const hFailedCandidate=make(genesB,{x:116,y:100,born:true,parentSpeciesKey:hFailedParent.speciesKey});
+      const hFailedId='lineage:micro-h-failed-same';
+      cloneRecordAs(hFailedParent.lineageId,hFailedId,{speciesStatus:'failed'});
+      hFailedParent.lineageId=hFailedId;
+      hFailedCandidate.lineageId=hFailedId;
+      buildSpatialIndex();
+      const hFailedOff=selectMateForReproduction(hFailedParent,80,{recordTelemetry:false});
+      const hFailedRegistryBefore=captureLineageRegistryState();
+      featureFlags.lineageReproductiveIsolation=true;
+      buildSpatialIndex();
+      const hFailedOn=selectMateForReproduction(hFailedParent,80,{recordTelemetry:false});
+      const hFailedRegistryAfter=captureLineageRegistryState();
+      add('Micro H1 failed same-lineage record is legacy-valid only when isolation is OFF',
+        hFailedOff.mate===hFailedCandidate
+          && hFailedOff.mode==='same-lineage'
+          && hFailedOn.mate===null
+          && hFailedOn.mode==='none'
+          && same(hFailedRegistryBefore,hFailedRegistryAfter),
+        {off:hFailedOff,on:hFailedOn,registryBefore:hFailedRegistryBefore,registryAfter:hFailedRegistryAfter}
+      );
+
+      clear(); enableLineageMateOnly();
+      const hDanglingParent=make(genesA,{x:100,y:100});
+      const hDanglingCandidate=make(genesB,{x:116,y:100,born:true,parentSpeciesKey:hDanglingParent.speciesKey});
+      const hDanglingId='lineage:micro-h-dangling-same';
+      cloneRecordAs(hDanglingParent.lineageId,hDanglingId,{speciesStatus:'provisional',parentLineageId:'lineage:missing-parent'});
+      hDanglingParent.lineageId=hDanglingId;
+      hDanglingCandidate.lineageId=hDanglingId;
+      buildSpatialIndex();
+      const hDanglingOff=selectMateForReproduction(hDanglingParent,80,{recordTelemetry:false});
+      const hDanglingRegistryBefore=captureLineageRegistryState();
+      featureFlags.lineageReproductiveIsolation=true;
+      buildSpatialIndex();
+      const hDanglingOn=selectMateForReproduction(hDanglingParent,80,{recordTelemetry:false});
+      const hDanglingRegistryAfter=captureLineageRegistryState();
+      add('Micro H2 dangling provisional same-lineage record is legacy-valid only when isolation is OFF',
+        hDanglingOff.mate===hDanglingCandidate
+          && hDanglingOff.mode==='same-lineage'
+          && hDanglingOn.mate===null
+          && hDanglingOn.mode==='none'
+          && hDanglingOn.noMateReason==='invalid-parent-lineage'
+          && same(hDanglingRegistryBefore,hDanglingRegistryAfter),
+        {off:hDanglingOff,on:hDanglingOn,registryBefore:hDanglingRegistryBefore,registryAfter:hDanglingRegistryAfter}
+      );
+
+      clear(); enableLineageMateOnly();
+      const hInvalidParent=make(genesA,{x:100,y:100});
+      const hInvalidCandidate=make(genesB,{x:116,y:100,born:true,parentSpeciesKey:hInvalidParent.speciesKey});
+      const hInvalidId='lineage:micro-h-invalid-status-same';
+      cloneRecordAs(hInvalidParent.lineageId,hInvalidId,{speciesStatus:'experimental'});
+      hInvalidParent.lineageId=hInvalidId;
+      hInvalidCandidate.lineageId=hInvalidId;
+      buildSpatialIndex();
+      const hInvalidOff=selectMateForReproduction(hInvalidParent,80,{recordTelemetry:false});
+      const hInvalidRegistryBefore=captureLineageRegistryState();
+      featureFlags.lineageReproductiveIsolation=true;
+      buildSpatialIndex();
+      const hInvalidOn=selectMateForReproduction(hInvalidParent,80,{recordTelemetry:false});
+      const hInvalidRegistryAfter=captureLineageRegistryState();
+      add('Micro H3 invalid speciesStatus same-lineage record is legacy-valid only when isolation is OFF',
+        hInvalidOff.mate===hInvalidCandidate
+          && hInvalidOff.mode==='same-lineage'
+          && hInvalidOn.mate===null
+          && hInvalidOn.mode==='none'
+          && hInvalidOn.noMateReason==='invalid-parent-lineage'
+          && same(hInvalidRegistryBefore,hInvalidRegistryAfter),
+        {off:hInvalidOff,on:hInvalidOn,registryBefore:hInvalidRegistryBefore,registryAfter:hInvalidRegistryAfter}
       );
 
       clear(); enableIsolation();
