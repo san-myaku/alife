@@ -3302,6 +3302,32 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       previousSpeciesTargetState:new Map(),
       artificialRuns:[]
     },
+    packReproductionBottleneck: {
+      evaluated:0,
+      immature:0,
+      energyBelowThreshold:0,
+      lifeHistoryDeferral:0,
+      lifeHistoryDeferralAfterMate:0,
+      eligible:0,
+      populationBlocked:0,
+      probabilityFailed:0,
+      probabilityPassed:0,
+      tryReproduceNoKids:0,
+      reproduced:0,
+      births:0,
+      mateSelectionAttempts:0,
+      sexualAttempts:0,
+      asexualAttempts:0,
+      sameLineageMateAttempts:0,
+      legacyMateAttempts:0,
+      noCandidateAttempts:0,
+      reproductiveIsolationNoMateAttempts:0,
+      invalidLineageNoMateAttempts:0,
+      uniqueOrganismIds:new Set(),
+      uniquePackIds:new Set(),
+      byPack:new Map(),
+      recentEvents:[]
+    },
     worldReseedCount:0,
     runStartFrame: 0
   };
@@ -3583,6 +3609,233 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const ok=packIdentity.mode===organismIdentity.mode && packIdentity.key===organismIdentity.key;
     if(!ok && options.recordTelemetry) packIdentityNoteMismatch(pack,organism,options.reason || 'mismatch');
     return ok;
+  }
+  function packReproductionBottleneckTelemetry(){
+    return telemetry.packReproductionBottleneck;
+  }
+  function resetPackReproductionBottleneckTelemetry(){
+    const t=packReproductionBottleneckTelemetry();
+    for(const key of [
+      'evaluated','immature','energyBelowThreshold','lifeHistoryDeferral','lifeHistoryDeferralAfterMate',
+      'eligible','populationBlocked','probabilityFailed','probabilityPassed','tryReproduceNoKids',
+      'reproduced','births','mateSelectionAttempts','sexualAttempts','asexualAttempts',
+      'sameLineageMateAttempts','legacyMateAttempts','noCandidateAttempts',
+      'reproductiveIsolationNoMateAttempts','invalidLineageNoMateAttempts'
+    ]){
+      t[key]=0;
+    }
+    t.uniqueOrganismIds.clear();
+    t.uniquePackIds.clear();
+    t.byPack.clear();
+    t.recentEvents.length=0;
+  }
+  function packReproductionRowFor(packId,organism=null){
+    const id=String(packId || 'unknown');
+    const t=packReproductionBottleneckTelemetry();
+    let row=t.byPack.get(id);
+    if(!row){
+      const pack=activePackById(id) || packIdentityState.packs?.[id] || null;
+      row={
+        packId:id,
+        identityMode:pack?.identityMode ?? null,
+        identityKey:pack?.identityKey ?? null,
+        lineageId:pack?.lineageId ?? null,
+        speciesKey:pack?.speciesKey ?? pack?.founderSpeciesKey ?? null,
+        createdFrame:pack?.createdFrame ?? null,
+        firstObservedFrame:frame,
+        lastObservedFrame:frame,
+        maxPackSize:Number(pack?.maximumLivingMembers || 0),
+        evaluated:0,
+        immature:0,
+        energyBelowThreshold:0,
+        lifeHistoryDeferral:0,
+        lifeHistoryDeferralAfterMate:0,
+        eligible:0,
+        populationBlocked:0,
+        probabilityFailed:0,
+        probabilityPassed:0,
+        tryReproduceNoKids:0,
+        reproduced:0,
+        births:0,
+        mateSelectionAttempts:0,
+        sexualAttempts:0,
+        asexualAttempts:0,
+        sameLineageMateAttempts:0,
+        legacyMateAttempts:0,
+        noCandidateAttempts:0,
+        reproductiveIsolationNoMateAttempts:0,
+        invalidLineageNoMateAttempts:0,
+        maxEnergyRatio:0,
+        maxEnergy:0,
+        maxAge:0,
+        maxMaturityRatio:0,
+        maxProbability:0,
+        minPopulationScale:null,
+        organismIds:new Set()
+      };
+      t.byPack.set(id,row);
+    }
+    row.lastObservedFrame=frame;
+    const pack=activePackById(id) || packIdentityState.packs?.[id] || null;
+    if(pack) row.maxPackSize=Math.max(row.maxPackSize,Number(pack.maximumLivingMembers||0),Number(pack.currentLivingMembers||0));
+    if(organism){
+      row.organismIds.add(organism.id);
+      row.maxEnergy=Math.max(row.maxEnergy,Number(organism.energy||0));
+      row.maxEnergyRatio=Math.max(row.maxEnergyRatio,telemetryEnergyRatio(organism));
+      row.maxAge=Math.max(row.maxAge,Number(organism.age||0));
+      row.maxMaturityRatio=Math.max(row.maxMaturityRatio,packReproductionMaturityRatio(organism));
+    }
+    return row;
+  }
+  function packReproductionPushEvent(event){
+    const t=packReproductionBottleneckTelemetry();
+    t.recentEvents.push({frame,...event});
+    if(t.recentEvents.length>600) t.recentEvents.splice(0,t.recentEvents.length-600);
+  }
+  function packReproductionMaturityRatio(organism){
+    if(!organism) return 0;
+    return clamp(Number(organism.age || 0)/Math.max(1,reproductiveMaturityAgeFor(organism)),0,1);
+  }
+  function telemetryRecordPackReproductionGate(organism,gate,extra={}){
+    if(!persistentPackIdentityEnabled() || !organism?.packId) return null;
+    const pack=activePackById(organism.packId);
+    if(!pack) return null;
+    const t=packReproductionBottleneckTelemetry();
+    if(typeof t[gate]==='number') t[gate]++;
+    t.uniqueOrganismIds.add(organism.id);
+    t.uniquePackIds.add(pack.id);
+    const row=packReproductionRowFor(pack.id,organism);
+    if(typeof row[gate]==='number') row[gate]++;
+    if(Number.isFinite(Number(extra.probability))){
+      row.maxProbability=Math.max(row.maxProbability,Number(extra.probability));
+    }
+    if(Number.isFinite(Number(extra.populationScale))){
+      const scale=Number(extra.populationScale);
+      row.minPopulationScale=row.minPopulationScale==null ? scale : Math.min(row.minPopulationScale,scale);
+    }
+    if(gate==='eligible' || gate==='populationBlocked' || gate==='tryReproduceNoKids' || gate==='reproduced' || gate==='lifeHistoryDeferralAfterMate'){
+      packReproductionPushEvent({
+        type:'gate',
+        gate,
+        organismId:organism.id,
+        packId:pack.id,
+        energy:Number(organism.energy||0),
+        energyRatio:telemetryEnergyRatio(organism),
+        maturityRatio:packReproductionMaturityRatio(organism),
+        ...extra
+      });
+    }
+    return row;
+  }
+  function telemetryRecordPackReproductionMateSelection(parent,selection){
+    if(!persistentPackIdentityEnabled() || !parent?.packId || !activePackById(parent.packId) || !selection) return;
+    const t=packReproductionBottleneckTelemetry();
+    const row=packReproductionRowFor(parent.packId,parent);
+    t.mateSelectionAttempts++;
+    row.mateSelectionAttempts++;
+    if(selection.mate){
+      t.sexualAttempts++;
+      row.sexualAttempts++;
+      if(selection.mode==='same-lineage'){
+        t.sameLineageMateAttempts++;
+        row.sameLineageMateAttempts++;
+      } else if(selection.mode==='legacy-species-fallback'){
+        t.legacyMateAttempts++;
+        row.legacyMateAttempts++;
+      }
+    } else {
+      t.asexualAttempts++;
+      row.asexualAttempts++;
+      if(selection.noMateReason==='reproductive-isolation'){
+        t.reproductiveIsolationNoMateAttempts++;
+        row.reproductiveIsolationNoMateAttempts++;
+      } else if(selection.noMateReason==='invalid-parent-lineage'){
+        t.invalidLineageNoMateAttempts++;
+        row.invalidLineageNoMateAttempts++;
+      } else {
+        t.noCandidateAttempts++;
+        row.noCandidateAttempts++;
+      }
+    }
+    packReproductionPushEvent({
+      type:'mate-selection',
+      organismId:parent.id,
+      packId:parent.packId,
+      mode:selection.mode,
+      noMateReason:selection.noMateReason,
+      mateId:selection.mate?.id ?? null,
+      sameLineageCandidateCount:selection.sameLineageCandidateCount,
+      legacyCandidateCount:selection.legacyCandidateCount,
+      blockedCandidateCount:selection.blockedCandidateCount
+    });
+  }
+  function packReproductionBottleneckSummary(){
+    const t=packReproductionBottleneckTelemetry();
+    const packRows=[...t.byPack.values()].map(row=>({
+      packId:row.packId,
+      identityMode:row.identityMode,
+      identityKey:row.identityKey,
+      lineageId:row.lineageId,
+      speciesKey:row.speciesKey,
+      createdFrame:row.createdFrame,
+      firstObservedFrame:row.firstObservedFrame,
+      lastObservedFrame:row.lastObservedFrame,
+      observedLifetimeFrames:row.lastObservedFrame-row.firstObservedFrame,
+      uniqueOrganisms:row.organismIds.size,
+      maxPackSize:row.maxPackSize,
+      evaluated:row.evaluated,
+      immature:row.immature,
+      energyBelowThreshold:row.energyBelowThreshold,
+      lifeHistoryDeferral:row.lifeHistoryDeferral,
+      lifeHistoryDeferralAfterMate:row.lifeHistoryDeferralAfterMate,
+      eligible:row.eligible,
+      populationBlocked:row.populationBlocked,
+      probabilityFailed:row.probabilityFailed,
+      probabilityPassed:row.probabilityPassed,
+      tryReproduceNoKids:row.tryReproduceNoKids,
+      reproduced:row.reproduced,
+      births:row.births,
+      mateSelectionAttempts:row.mateSelectionAttempts,
+      sexualAttempts:row.sexualAttempts,
+      asexualAttempts:row.asexualAttempts,
+      sameLineageMateAttempts:row.sameLineageMateAttempts,
+      legacyMateAttempts:row.legacyMateAttempts,
+      noCandidateAttempts:row.noCandidateAttempts,
+      reproductiveIsolationNoMateAttempts:row.reproductiveIsolationNoMateAttempts,
+      invalidLineageNoMateAttempts:row.invalidLineageNoMateAttempts,
+      maxEnergyRatio:row.maxEnergyRatio,
+      maxEnergy:row.maxEnergy,
+      maxAge:row.maxAge,
+      maxMaturityRatio:row.maxMaturityRatio,
+      maxProbability:row.maxProbability,
+      minPopulationScale:row.minPopulationScale
+    })).sort((a,b)=>Number(b.evaluated||0)-Number(a.evaluated||0) || String(a.packId).localeCompare(String(b.packId)));
+    return {
+      evaluated:t.evaluated,
+      uniqueOrganisms:t.uniqueOrganismIds.size,
+      uniquePacks:t.uniquePackIds.size,
+      immature:t.immature,
+      energyBelowThreshold:t.energyBelowThreshold,
+      lifeHistoryDeferral:t.lifeHistoryDeferral,
+      lifeHistoryDeferralAfterMate:t.lifeHistoryDeferralAfterMate,
+      eligible:t.eligible,
+      populationBlocked:t.populationBlocked,
+      probabilityFailed:t.probabilityFailed,
+      probabilityPassed:t.probabilityPassed,
+      tryReproduceNoKids:t.tryReproduceNoKids,
+      reproduced:t.reproduced,
+      births:t.births,
+      mateSelectionAttempts:t.mateSelectionAttempts,
+      sexualAttempts:t.sexualAttempts,
+      asexualAttempts:t.asexualAttempts,
+      sameLineageMateAttempts:t.sameLineageMateAttempts,
+      legacyMateAttempts:t.legacyMateAttempts,
+      noCandidateAttempts:t.noCandidateAttempts,
+      reproductiveIsolationNoMateAttempts:t.reproductiveIsolationNoMateAttempts,
+      invalidLineageNoMateAttempts:t.invalidLineageNoMateAttempts,
+      topPacks:packRows.slice(0,12),
+      recentEvents:t.recentEvents.slice(-80)
+    };
   }
   function packReferenceRange(organism){
     return Math.max(24, Number(organism?.senseR || 0), Number(organism?.size || 0)*6);
@@ -7947,6 +8200,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     telemetry.packFormation.targetOscillations=0;
     telemetry.packFormation.previousSpeciesTargetState.clear();
     telemetry.packFormation.artificialRuns.length=0;
+    resetPackReproductionBottleneckTelemetry();
     telemetry.carnivoreLineageArchive.prunedRecords=0;
     Object.assign(telemetry.packHuntConservation,{
       energyPositiveResidualMax:0,
@@ -11977,10 +12231,12 @@ if(Z>0.08){
 
       // 繁殖
       telemetryRecordReproductionGate(this,'evaluated');
+      telemetryRecordPackReproductionGate(this,'evaluated');
       if(!duelExperimentActive){
         const canParticipate = canParticipateInReproduction(this);
         if(!canParticipate){
           telemetryRecordReproductionGate(this,'immature');
+          telemetryRecordPackReproductionGate(this,'immature');
           this.mateSeekT=0; this.callCD=0;
         } else if(canReproduceNow(this,true)){
         telemetryRecordReproductionGate(this,'eligible');
@@ -12010,6 +12266,7 @@ if(Z>0.08){
         const populationScale=populationReproductionScale();
         p*= populationScale;
         if(populationScale<=0) telemetryRecordReproductionGate(this,'populationBlocked');
+        if(populationScale<=0) telemetryRecordPackReproductionGate(this,'populationBlocked',{populationScale,probability:p});
         const reproResourceRec=telemetryRecordReproductionResourceAttempt(this,{
           en:En,
           originalAlgaeMultiplier,
@@ -12022,24 +12279,36 @@ if(Z>0.08){
           mem:this.mem ?? 1,
           probability:p
         });
+        telemetryRecordPackReproductionGate(this,'eligible',{populationScale,probability:p});
         let reproduced=false;
         let randomPassed=false;
         if(Math.random()<p){
           randomPassed=true;
+          telemetryRecordPackReproductionGate(this,'probabilityPassed',{populationScale,probability:p});
           const kids=this.tryReproduce();
           if(kids && kids.length){
             telemetryMarkReproductionResourceSuccess(reproResourceRec,kids);
             telemetryRecordReproduction(this,kids);
             telemetryRecordReproductionGate(this,'reproduced');
+            telemetryRecordPackReproductionGate(this,'reproduced',{populationScale,probability:p,births:kids.length});
+            const packReproBirthRow=telemetryRecordPackReproductionGate(this,'births',{populationScale,probability:p,births:kids.length});
+            if(packReproBirthRow) packReproductionBottleneckTelemetry().births+=Math.max(0,kids.length-1);
+            if(packReproBirthRow) packReproBirthRow.births+=Math.max(0,kids.length-1);
             newborn.push(...kids);
             recordAction(this,`繁殖した（${kids.length}個体）`);
             this.mateSeekT=0;
             reproduced=true;
+          } else {
+            telemetryRecordPackReproductionGate(this,'tryReproduceNoKids',{populationScale,probability:p});
           }
         }
-        if(!reproduced) telemetryRecordReproductionGate(this,randomPassed?'otherBlocked':'probabilityFailed');
+        if(!reproduced){
+          telemetryRecordReproductionGate(this,randomPassed?'otherBlocked':'probabilityFailed');
+          if(!randomPassed) telemetryRecordPackReproductionGate(this,'probabilityFailed',{populationScale,probability:p});
+        }
       } else {
         telemetryRecordReproductionGate(this,'energyBelowThreshold');
+        telemetryRecordPackReproductionGate(this,Number(this.energy || 0) > effectiveReproThresholdFor(this) ? 'lifeHistoryDeferral' : 'energyBelowThreshold');
         this.mateSeekT=0; this.callCD=0;
       }
       } else {
@@ -12318,6 +12587,7 @@ if(Z>0.08){
       // dynamic search radius expands with mate-seeking time
       let r = 50 + Math.min(70, this.mateSeekT * 0.20);
       const mateSelection=selectMateForReproduction(this,r,{recordTelemetry:true});
+      telemetryRecordPackReproductionMateSelection(this,mateSelection);
       let mate=mateSelection.mate;
       const baseMut=ui.mutation + (this.mutagenBoost>0? 0.08: 0);
       const pick=(a,b)=>Math.random()<0.5?a:b;
@@ -12333,6 +12603,13 @@ if(Z>0.08){
         lifePlan=planLifeHistoryReproduction(this,mate);
         if(lifePlan.actualClutch < 1){
           telemetryRecordLifeHistoryDeferral(this,mate,lifePlan);
+          telemetryRecordPackReproductionGate(this,'lifeHistoryDeferralAfterMate',{
+            mateId:mate?.id ?? null,
+            desiredClutch:lifePlan.desiredClutch,
+            affordableClutch:lifePlan.affordableClutch,
+            plannedChildEnergyEach:lifePlan.plannedChildEnergyEach,
+            minimumChildEnergy:lifePlan.minimumChildEnergy
+          });
           return [];
         }
         clutch=lifePlan.actualClutch;
@@ -18776,6 +19053,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         events:lineageMateSelectionEvents()
       };
       const lineageAwareWorld=lineageAwareMateSelectionWorldSummary(diagnosticInitialPopulation);
+      const packReproductionBottleneck=packReproductionBottleneckSummary();
       const modelStateDiagnostic=opts.includeModelState ? visualRngComparableModelState() : null;
       const appearanceDiagnostic=opts.includeAppearanceState ? {
         summary:speciesAppearanceSummary(),
@@ -18821,6 +19099,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         },
         lineageMateSelection:lineageMateSelectionDiagnostic,
         lineageAwareWorld,
+        packReproductionBottleneck,
         telemetryCounts:{
           events:telemetry.events.length,
           samples:telemetry.samples.length,
@@ -26214,6 +26493,124 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     return {ok:results.every(r=>r.ok),results};
   }
 
+  function runPackReproductionBottleneckMicroTests(){
+    const saved=capture();
+    const oldFlags={...featureFlags};
+    const results=[];
+    const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
+    const clear=()=>{
+      running=false;
+      frame=0;
+      generation=1;
+      NEXT_ID=1;
+      organisms.length=0; newborn.length=0; food.length=0; corpses.length=0; plankton.length=0; patches.length=0; calls.length=0;
+      sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0;
+      speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear();
+      resetLineageRegistry(); resetPackIdentityState(); resetTelemetry();
+    };
+    const genes=()=>normalizeLifeHistoryGenes({speed:0.62,size:0.44,metabolism:0.42,fecundity:0.50,sense:0.65,diet:0.88,formSeed:0.31,energyCapacity:0.5,clutchPotential:0.45,parentalInvestment:0.5},true);
+    const make=(x,y,species='pack-repro')=>{
+      const o=new Organism(x,y,genes(),false);
+      o.protect=0;
+      o.age=999;
+      o.recalcPhenotype();
+      applyDevelopmentPhenotype(o);
+      o.role='pursuit';
+      o.socialMode='hunt-pack';
+      o.sociality=0.8;
+      o.speciesKey=species;
+      o.energy=Math.max(120,o.reproThreshold*1.4);
+      o.birthStrategyClass=carnivoreStrategyClass(o);
+      o.currentStrategyClass=o.birthStrategyClass;
+      organisms.push(o);
+      return o;
+    };
+    try{
+      Object.assign(featureFlags,{
+        evolvableLifeHistory:true,
+        juvenileDevelopment:true,
+        predictiveHuntingReserve:true,
+        persistentPackIdentity:true,
+        speciesIdentityV2:false,
+        canonicalSpeciesAppearance:false,
+        persistentLineageRegistry:false,
+        provisionalLineageClassification:false,
+        lineageAwareMateSelection:false,
+        lineageReproductiveIsolation:false,
+        lineageAwarePackIdentity:false
+      });
+
+      clear();
+      Object.assign(featureFlags,{persistentPackIdentity:true,evolvableLifeHistory:true,juvenileDevelopment:true,predictiveHuntingReserve:true});
+      const lone=make(80,80,'lone');
+      telemetryRecordPackReproductionGate(lone,'evaluated');
+      add('Pack reproduction A ignores organisms outside packs',
+        packReproductionBottleneckSummary().evaluated===0,
+        {summary:packReproductionBottleneckSummary(),organism:{id:lone.id,packId:lone.packId}}
+      );
+
+      clear();
+      Object.assign(featureFlags,{persistentPackIdentity:true,evolvableLifeHistory:true,juvenileDevelopment:true,predictiveHuntingReserve:true});
+      const p=make(100,100,'gate'), q=make(106,100,'gate');
+      const pack=createPackIdentity([p,q]);
+      telemetryRecordPackReproductionGate(p,'evaluated');
+      telemetryRecordPackReproductionGate(p,'eligible',{populationScale:0.75,probability:0.02});
+      telemetryRecordPackReproductionGate(p,'probabilityFailed',{populationScale:0.75,probability:0.02});
+      telemetryRecordPackReproductionGate(q,'evaluated');
+      telemetryRecordPackReproductionGate(q,'immature');
+      const gateSummary=packReproductionBottleneckSummary();
+      add('Pack reproduction B records gates by pack',
+        !!pack
+          && gateSummary.evaluated===2
+          && gateSummary.eligible===1
+          && gateSummary.probabilityFailed===1
+          && gateSummary.immature===1
+          && gateSummary.uniquePacks===1
+          && gateSummary.topPacks[0]?.packId===pack.id,
+        {summary:gateSummary}
+      );
+
+      telemetryRecordPackReproductionMateSelection(p,{mate:q,mode:'legacy-species-fallback',noMateReason:null,sameLineageCandidateCount:0,legacyCandidateCount:1,blockedCandidateCount:0});
+      telemetryRecordPackReproductionMateSelection(p,{mate:null,mode:'none',noMateReason:'no-candidate',sameLineageCandidateCount:0,legacyCandidateCount:0,blockedCandidateCount:0});
+      const mateSummary=packReproductionBottleneckSummary();
+      add('Pack reproduction C records mate-selection bottlenecks',
+        mateSummary.mateSelectionAttempts===2
+          && mateSummary.sexualAttempts===1
+          && mateSummary.legacyMateAttempts===1
+          && mateSummary.asexualAttempts===1
+          && mateSummary.noCandidateAttempts===1,
+        {summary:mateSummary}
+      );
+
+      telemetryRecordPackReproductionGate(p,'reproduced',{births:3});
+      const birthRow=telemetryRecordPackReproductionGate(p,'births',{births:3});
+      if(birthRow) packReproductionBottleneckTelemetry().births+=2;
+      if(birthRow) birthRow.births+=2;
+      const birthSummary=packReproductionBottleneckSummary();
+      add('Pack reproduction D records clutch births',
+        birthSummary.reproduced===1 && birthSummary.births===3 && birthSummary.topPacks[0]?.births===3,
+        {summary:birthSummary}
+      );
+
+      resetTelemetry();
+      const resetSummary=packReproductionBottleneckSummary();
+      add('Pack reproduction E resetTelemetry clears bottleneck telemetry',
+        resetSummary.evaluated===0
+          && resetSummary.uniquePacks===0
+          && resetSummary.topPacks.length===0
+          && resetSummary.recentEvents.length===0,
+        {summary:resetSummary}
+      );
+    }catch(err){
+      add('Pack reproduction bottleneck micro exception',false,{message:String(err?.message || err),stack:String(err?.stack || '')});
+    }finally{
+      Object.assign(featureFlags,oldFlags);
+      restore(saved);
+      Object.assign(featureFlags,oldFlags);
+    }
+    return {ok:results.every(r=>r.ok),results};
+  }
+
   window.__alifeDebug = {
     counts(){
       return { organisms:organisms.length, food:food.length, detritusParticles:countDetritusParticles(), plankton:plankton.length, sparks:sparks.length, rings:rings.length, predationBlooms:predationBlooms.length, membranes:membranes.length, corpses:corpses.length, species:new Set(organisms.map(o=>o.speciesKey)).size };
@@ -26550,6 +26947,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     packIdentitySummary(){
       return packIdentitySummary();
     },
+    packReproductionBottleneckSummary(){
+      return packReproductionBottleneckSummary();
+    },
     capturePackIdentityState(){
       return capturePackIdentityState();
     },
@@ -26597,6 +26997,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     runLineageAwarePackIdentityMicroTests(){
       return runLineageAwarePackIdentityMicroTests();
+    },
+    runPackReproductionBottleneckMicroTests(){
+      return runPackReproductionBottleneckMicroTests();
     },
     runPersistentPackIdentityReproducibilityMicroTest(options={}){
       return runPersistentPackIdentityReproducibilityMicroTest(options);
