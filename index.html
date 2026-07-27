@@ -465,6 +465,7 @@
         leaveGraceSteps: 72,
         minimumFormationMembers: 2,
         allowParentInheritance: true,
+        allowReproductivePackFormation: true,
         requireSameSpeciesForFormation: true,
         requireSameSpeciesForJoining: true,
         keepSingleMemberPack: true
@@ -3358,7 +3359,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       packInvalidLineageRejected:0,
       packInvalidLineageCleanups:0,
       packIdentityRepaired:0,
-      packIdentityRepairFailed:0
+      packIdentityRepairFailed:0,
+      packReproductivePairPacksCreated:0,
+      packReproductivePairJoins:0,
+      packReproductivePairAlreadyAligned:0,
+      packReproductivePairConflicts:0,
+      packReproductiveFamilyPacksCreated:0
     }
   };
   function telemetryPush(event){
@@ -3463,7 +3469,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       packInvalidLineageRejected:0,
       packInvalidLineageCleanups:0,
       packIdentityRepaired:0,
-      packIdentityRepairFailed:0
+      packIdentityRepairFailed:0,
+      packReproductivePairPacksCreated:0,
+      packReproductivePairJoins:0,
+      packReproductivePairAlreadyAligned:0,
+      packReproductivePairConflicts:0,
+      packReproductiveFamilyPacksCreated:0
     });
   }
   function clearOrganismPackIdentity(organism,reason='cleared'){
@@ -4043,6 +4054,43 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     packIdentityRefreshPack(pack);
     return pack;
   }
+  function createSingleFounderPackIdentity(founder,options={}){
+    if(!persistentPackIdentityEnabled() || !packIdentityEligible(founder)) return null;
+    const identity=packBiologicalIdentityForOrganism(founder);
+    if(!identity){
+      if(lineageAwarePackIdentityEnabled()) packIdentityTelemetry().packInvalidLineageRejected++;
+      return null;
+    }
+    const id='pack-'+packIdentityState.nextPackId++;
+    const pack={
+      id,
+      createdFrame:frame,
+      dissolvedFrame:null,
+      founderId:founder.id,
+      founderSpeciesKey:identity.speciesKey,
+      speciesKey:identity.speciesKey,
+      identityMode:identity.mode,
+      identityKey:identity.key,
+      lineageId:identity.lineageId ?? null,
+      memberIds:[],
+      parentPackId:options.parentPackId ?? null,
+      totalMembersEver:0,
+      birthsIntoPack:0,
+      joins:0,
+      leaves:0,
+      deaths:0,
+      lastActiveFrame:frame,
+      currentLivingMembers:0,
+      maximumLivingMembers:0,
+      memberFramesTotal:0
+    };
+    packIdentityState.packs[id]=pack;
+    packIdentityTelemetry().packsCreated++;
+    if(lineageAwarePackIdentityEnabled()) packIdentityTelemetry().lineageBasedPacksCreated++;
+    joinPackIdentity(founder,id,{reason:options.reason || 'single-founder',founderId:founder.id});
+    packIdentityRefreshPack(pack);
+    return pack;
+  }
   function nearestLivingPackMember(organism,pack){
     if(!organism || !pack) return null;
     let best=null;
@@ -4175,6 +4223,81 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         pack.memberFramesTotal=Number(pack.memberFramesTotal||0)+Number(pack.currentLivingMembers||0)*interval;
       }
     }
+  }
+  function reproductivePackFormationEnabled(){
+    return lineageAwarePackIdentityEnabled()
+      && !!CONFIG.ecology.packIdentity.allowReproductivePackFormation
+      && !!CONFIG.ecology.packIdentity.allowParentInheritance;
+  }
+  function packRecordCanAcceptReproductivePair(pack,parent,mate,reason){
+    if(!pack || !parent || !mate) return false;
+    return packRecordMatchesOrganism(pack,parent,{recordTelemetry:true,reason:reason+'-parent'})
+      && packRecordMatchesOrganism(pack,mate,{recordTelemetry:true,reason:reason+'-mate'});
+  }
+  function ensureReproductivePairPackIdentity(parent,mate){
+    if(!reproductivePackFormationEnabled()) return false;
+    if(!parent || !mate || parent===mate) return false;
+    if(!packIdentityEligible(parent) || !packIdentityEligible(mate)) return false;
+    if(!samePackBiologicalIdentity(parent,mate)) return false;
+    const parentPack=parent.packId ? activePackById(parent.packId) : null;
+    const matePack=mate.packId ? activePackById(mate.packId) : null;
+    const parentPackAccepts=packRecordCanAcceptReproductivePair(parentPack,parent,mate,'reproductive-pair-parent-pack');
+    const matePackAccepts=packRecordCanAcceptReproductivePair(matePack,parent,mate,'reproductive-pair-mate-pack');
+    if(parentPackAccepts){
+      if(mate.packId===parentPack.id){
+        packIdentityTelemetry().packReproductivePairAlreadyAligned++;
+        return true;
+      }
+      if(matePack && matePack.id!==parentPack.id){
+        packIdentityTelemetry().packReproductivePairConflicts++;
+        return true;
+      }
+      if(joinPackIdentity(mate,parentPack.id,{reason:'reproductive-pair'})){
+        packIdentityTelemetry().packReproductivePairJoins++;
+        return true;
+      }
+      return false;
+    }
+    if(matePackAccepts){
+      if(joinPackIdentity(parent,matePack.id,{reason:'reproductive-pair'})){
+        packIdentityTelemetry().packReproductivePairJoins++;
+        return true;
+      }
+      return false;
+    }
+    if(parentPack || matePack){
+      packIdentityTelemetry().packReproductivePairConflicts++;
+      return false;
+    }
+    const pack=createPackIdentity([parent,mate],{reason:'reproductive-pair'});
+    if(pack){
+      packIdentityTelemetry().packReproductivePairPacksCreated++;
+      return true;
+    }
+    return false;
+  }
+  function ensureReproductiveFamilyPackIdentity(parent,mate,child){
+    if(!reproductivePackFormationEnabled()) return false;
+    if(!child || !packIdentityEligible(child)) return false;
+    const parentPack=parent?.packId ? activePackById(parent.packId) : null;
+    if(parentPack && packRecordMatchesOrganism(parentPack,child,{recordTelemetry:true,reason:'reproductive-family-parent-existing'})) return false;
+    const matePack=mate?.packId ? activePackById(mate.packId) : null;
+    if(matePack && packRecordMatchesOrganism(matePack,child,{recordTelemetry:true,reason:'reproductive-family-mate-existing'})) return false;
+    const candidates=[
+      {organism:parent,reason:'reproductive-family-parent'},
+      {organism:mate,reason:'reproductive-family-mate'}
+    ];
+    for(const candidate of candidates){
+      const source=candidate.organism;
+      if(!source || source.packId || !packIdentityEligible(source)) continue;
+      if(!samePackBiologicalIdentity(source,child)) continue;
+      const pack=createSingleFounderPackIdentity(source,{reason:candidate.reason});
+      if(pack){
+        packIdentityTelemetry().packReproductiveFamilyPacksCreated++;
+        return true;
+      }
+    }
+    return false;
   }
   function childHasNewProvisionalPackLineage(child,parent,mate){
     if(!lineageAwarePackIdentityEnabled() || !child?.lineageId) return false;
@@ -12619,6 +12742,9 @@ if(Z>0.08){
         clutch = sampleReproductionClutch(this);
         energyPlan = reproductionEnergyPlan(this,mate,clutch);
       }
+      if(isSex && mate){
+        ensureReproductivePairPackIdentity(this,mate);
+      }
       this._telemetryLastReproductionEnergyBefore=energyPlan.parentBefore;
       if(isSex && mate) mate._telemetryLastReproductionEnergyBefore=energyPlan.mateBefore;
 
@@ -12678,6 +12804,7 @@ if(Z>0.08){
           if(!speciesIdentityV2Enabled()) registerSpeciesStats(c);
 }catch(_){ /* ignore */ }
         assignInheritedLineageFoundation(c,this,mate);
+        ensureReproductiveFamilyPackIdentity(this,mate,c);
         if(c._wasNewSpecies) announceNewSpecies(c);
 
         // protection scaling for multi-birth
@@ -21522,6 +21649,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       invalidLineageCleanups:Number(packIdentityTelemetry().packInvalidLineageCleanups||0),
       packIdentityRepaired:Number(packIdentityTelemetry().packIdentityRepaired||0),
       packIdentityRepairFailed:Number(packIdentityTelemetry().packIdentityRepairFailed||0),
+      reproductivePairPacksCreated:Number(packIdentityTelemetry().packReproductivePairPacksCreated||0),
+      reproductivePairJoins:Number(packIdentityTelemetry().packReproductivePairJoins||0),
+      reproductivePairAlreadyAligned:Number(packIdentityTelemetry().packReproductivePairAlreadyAligned||0),
+      reproductivePairConflicts:Number(packIdentityTelemetry().packReproductivePairConflicts||0),
+      reproductiveFamilyPacksCreated:Number(packIdentityTelemetry().packReproductiveFamilyPacksCreated||0),
       invariants:packIdentityInvariantSummary(),
       eligibleAssigned,
       eligibleUnassigned,
@@ -26482,6 +26614,68 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           && hSummary.invariants.lineageMismatchMembers===0
           && organisms.every(o=>!o.packId || packRecordMatchesOrganism(activePackById(o.packId),o,{recordTelemetry:false})),
         {before:hBefore,toggle:hToggle,summary:hSummary,members:organisms.map(o=>({id:o.id,lineageId:o.lineageId,packId:o.packId,clearReason:o._packIdentityClearReason ?? null}))}
+      );
+
+      clear();
+      Object.assign(featureFlags,{persistentPackIdentity:true,persistentLineageRegistry:true,provisionalLineageClassification:true,lineageAwarePackIdentity:true,speciesIdentityV2:true,canonicalSpeciesAppearance:true});
+      const iParent=make(genesA,{x:100,y:100});
+      const iMate=make(genesA,{x:108,y:100});
+      const iPrepared=ensureReproductivePairPackIdentity(iParent,iMate);
+      const iChild=make(genesA,{x:104,y:104,born:true,parentSpeciesKey:iParent.speciesKey,mateSpeciesKey:iMate.speciesKey});
+      classifyChildLineageAtBirth(iChild,iParent,iMate);
+      const iInherited=inheritParentPackIdentity(iChild,iParent,iMate);
+      const iPack=packSnapshotSlim(iParent.packId);
+      add('Micro I same-lineage reproductive pair forms pack before child birth',
+        iPrepared
+          && iParent.lineageId===iMate.lineageId
+          && !!iParent.packId
+          && iMate.packId===iParent.packId
+          && iInherited
+          && iChild.packId===iParent.packId
+          && Number(packIdentityTelemetry().packReproductivePairPacksCreated||0)===1
+          && iPack?.livingMemberIds?.length===3,
+        {prepared:iPrepared,parent:{lineageId:iParent.lineageId,packId:iParent.packId},mate:{lineageId:iMate.lineageId,packId:iMate.packId},child:{lineageId:iChild.lineageId,packId:iChild.packId},pack:iPack,telemetry:{...packIdentityTelemetry()}}
+      );
+
+      clear();
+      Object.assign(featureFlags,{persistentPackIdentity:true,persistentLineageRegistry:true,provisionalLineageClassification:true,lineageAwarePackIdentity:false,speciesIdentityV2:true,canonicalSpeciesAppearance:true});
+      const jParent=make(genesA,{x:100,y:100});
+      const jMate=make(genesA,{x:108,y:100});
+      const jPrepared=ensureReproductivePairPackIdentity(jParent,jMate);
+      const jChild=make(genesA,{x:104,y:104,born:true,parentSpeciesKey:jParent.speciesKey,mateSpeciesKey:jMate.speciesKey});
+      cloneEstablishedLineage(jMate,'j-mate');
+      cloneEstablishedLineage(jChild,'j-child');
+      const jFamilyPrepared=ensureReproductiveFamilyPackIdentity(jParent,jMate,jChild);
+      const jInherited=inheritParentPackIdentity(jChild,jParent,jMate);
+      add('Micro J feature OFF does not create reproductive pair pack',
+        !jPrepared
+          && !jFamilyPrepared
+          && !jInherited
+          && jParent.packId==null
+          && jMate.packId==null
+          && jChild.packId==null
+          && activePackSnapshots().length===0,
+        {prepared:jPrepared,familyPrepared:jFamilyPrepared,inherited:jInherited,parent:{lineageId:jParent.lineageId,packId:jParent.packId},mate:{lineageId:jMate.lineageId,packId:jMate.packId},child:{lineageId:jChild.lineageId,packId:jChild.packId},telemetry:{...packIdentityTelemetry()}}
+      );
+
+      clear();
+      Object.assign(featureFlags,{persistentPackIdentity:true,persistentLineageRegistry:true,provisionalLineageClassification:true,lineageAwarePackIdentity:true,speciesIdentityV2:true,canonicalSpeciesAppearance:true});
+      const kParent=make(genesA,{x:100,y:100});
+      const kChild=make(genesA,{x:104,y:104,born:true,parentSpeciesKey:kParent.speciesKey});
+      classifyChildLineageAtBirth(kChild,kParent,null);
+      const kPrepared=ensureReproductiveFamilyPackIdentity(kParent,null,kChild);
+      const kInherited=inheritParentPackIdentity(kChild,kParent,null);
+      const kPack=packSnapshotSlim(kParent.packId);
+      add('Micro K same-lineage reproductive family creates parent pack before inheritance',
+        kPrepared
+          && kParent.lineageId===kChild.lineageId
+          && !!kParent.packId
+          && kChild.packId===kParent.packId
+          && kInherited
+          && Number(packIdentityTelemetry().packReproductiveFamilyPacksCreated||0)===1
+          && Number(packIdentityTelemetry().packParentLineageInheritedBirths||0)===1
+          && kPack?.livingMemberIds?.length===2,
+        {prepared:kPrepared,inherited:kInherited,parent:{lineageId:kParent.lineageId,packId:kParent.packId},child:{lineageId:kChild.lineageId,packId:kChild.packId},pack:kPack,telemetry:{...packIdentityTelemetry()}}
       );
     }catch(err){
       add('Lineage-aware pack identity micro exception',false,{message:String(err?.message || err),stack:String(err?.stack || '')});
