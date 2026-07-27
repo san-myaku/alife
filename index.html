@@ -3366,6 +3366,22 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       packReproductivePairConflicts:0,
       packReproductiveFamilyPacksCreated:0,
       packLineageFamilyNeighborJoins:0,
+      packFamilyNeighborScanCalls:0,
+      packFamilyNeighborSameLineageUnassigned:0,
+      packFamilyNeighborSameLineageEligible:0,
+      packFamilyNeighborSameLineageIneligible:0,
+      packFamilyNeighborNearEligible:0,
+      packFamilyNeighborNearIneligible:0,
+      packLifetimeOpportunitySamples:0,
+      packLifetimeSameLineageUnassignedEligible:0,
+      packLifetimeNearUnassignedEligible:0,
+      packLifetimeSameLineageUnassignedIneligible:0,
+      packLifetimeNearUnassignedIneligible:0,
+      packLifetimeSameLineageOtherPack:0,
+      packLifetimeNearOtherPack:0,
+      packFamilyReproductionEvents:0,
+      packFamilyMultiClutchEvents:0,
+      packFamilyMultiClutchChildren:0,
       packInheritedClutchEvents:0,
       packInheritedClutchChildren:0
     }
@@ -3479,6 +3495,22 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       packReproductivePairConflicts:0,
       packReproductiveFamilyPacksCreated:0,
       packLineageFamilyNeighborJoins:0,
+      packFamilyNeighborScanCalls:0,
+      packFamilyNeighborSameLineageUnassigned:0,
+      packFamilyNeighborSameLineageEligible:0,
+      packFamilyNeighborSameLineageIneligible:0,
+      packFamilyNeighborNearEligible:0,
+      packFamilyNeighborNearIneligible:0,
+      packLifetimeOpportunitySamples:0,
+      packLifetimeSameLineageUnassignedEligible:0,
+      packLifetimeNearUnassignedEligible:0,
+      packLifetimeSameLineageUnassignedIneligible:0,
+      packLifetimeNearUnassignedIneligible:0,
+      packLifetimeSameLineageOtherPack:0,
+      packLifetimeNearOtherPack:0,
+      packFamilyReproductionEvents:0,
+      packFamilyMultiClutchEvents:0,
+      packFamilyMultiClutchChildren:0,
       packInheritedClutchEvents:0,
       packInheritedClutchChildren:0
     });
@@ -4165,15 +4197,24 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     repairPackRecordIdentity(pack);
     const anchors=familyPackJoinAnchors(pack,sources);
     if(!anchors.length) return 0;
+    const packTelemetry=packIdentityTelemetry();
+    packTelemetry.packFamilyNeighborScanCalls++;
     let joins=0;
     const candidates=organisms
-      .filter(o=>o && !o.dead && !o.packId && packIdentityEligible(o))
+      .filter(o=>o && !o.dead && !o.packId)
       .sort((a,b)=>a.id-b.id);
     for(const candidate of candidates){
-      if(!packRecordMatchesOrganism(pack,candidate,{recordTelemetry:true,reason})) continue;
+      if(!packRecordMatchesOrganism(pack,candidate,{recordTelemetry:false,reason})) continue;
+      packTelemetry.packFamilyNeighborSameLineageUnassigned++;
+      const eligible=packIdentityEligible(candidate);
+      if(eligible) packTelemetry.packFamilyNeighborSameLineageEligible++;
+      else packTelemetry.packFamilyNeighborSameLineageIneligible++;
       if(!nearFamilyPackAnchor(candidate,anchors)) continue;
+      if(eligible) packTelemetry.packFamilyNeighborNearEligible++;
+      else packTelemetry.packFamilyNeighborNearIneligible++;
+      if(!eligible) continue;
       if(joinPackIdentity(candidate,pack.id,{reason})){
-        packIdentityTelemetry().packLineageFamilyNeighborJoins++;
+        packTelemetry.packLineageFamilyNeighborJoins++;
         joins++;
       }
     }
@@ -4198,6 +4239,32 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     });
     return rows.sort((a,b)=>a.id-b.id);
   }
+  function recordPackLifetimeGrowthOpportunities(living){
+    if(!lineageAwarePackIdentityEnabled()) return;
+    const telemetry=packIdentityTelemetry();
+    for(const pack of packIdentitySortedPacks()){
+      const anchors=packIdentityLivingMembers(pack);
+      if(!anchors.length) continue;
+      telemetry.packLifetimeOpportunitySamples++;
+      for(const candidate of living){
+        if(!candidate || candidate.dead || candidate.packId===pack.id) continue;
+        if(!packRecordMatchesOrganism(pack,candidate,{recordTelemetry:false,reason:'lifetime-opportunity'})) continue;
+        const near=nearFamilyPackAnchor(candidate,anchors);
+        if(candidate.packId){
+          telemetry.packLifetimeSameLineageOtherPack++;
+          if(near) telemetry.packLifetimeNearOtherPack++;
+          continue;
+        }
+        if(packIdentityEligible(candidate)){
+          telemetry.packLifetimeSameLineageUnassignedEligible++;
+          if(near) telemetry.packLifetimeNearUnassignedEligible++;
+        } else {
+          telemetry.packLifetimeSameLineageUnassignedIneligible++;
+          if(near) telemetry.packLifetimeNearUnassignedIneligible++;
+        }
+      }
+    }
+  }
   function updatePersistentPackIdentity(force=false){
     if(!persistentPackIdentityEnabled()) return;
     const cfg=CONFIG.ecology.packIdentity;
@@ -4220,6 +4287,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       }
     }
     packIdentityRefreshAllPacks();
+    recordPackLifetimeGrowthOpportunities(living);
     const distanceLeaves=[];
     for(const o of living){
       if(!o.packId) continue;
@@ -4398,6 +4466,13 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       const pack=activePackById(child.packId);
       if(!pack) continue;
       byPack.set(pack.id,Number(byPack.get(pack.id)||0)+1);
+    }
+    if(byPack.size){
+      packIdentityTelemetry().packFamilyReproductionEvents++;
+      if(kids.length>=2){
+        packIdentityTelemetry().packFamilyMultiClutchEvents++;
+        packIdentityTelemetry().packFamilyMultiClutchChildren+=kids.length;
+      }
     }
     for(const count of byPack.values()){
       if(count<2) continue;
@@ -21726,6 +21801,22 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       reproductivePairConflicts:Number(packIdentityTelemetry().packReproductivePairConflicts||0),
       reproductiveFamilyPacksCreated:Number(packIdentityTelemetry().packReproductiveFamilyPacksCreated||0),
       lineageFamilyNeighborJoins:Number(packIdentityTelemetry().packLineageFamilyNeighborJoins||0),
+      familyNeighborScanCalls:Number(packIdentityTelemetry().packFamilyNeighborScanCalls||0),
+      familyNeighborSameLineageUnassigned:Number(packIdentityTelemetry().packFamilyNeighborSameLineageUnassigned||0),
+      familyNeighborSameLineageEligible:Number(packIdentityTelemetry().packFamilyNeighborSameLineageEligible||0),
+      familyNeighborSameLineageIneligible:Number(packIdentityTelemetry().packFamilyNeighborSameLineageIneligible||0),
+      familyNeighborNearEligible:Number(packIdentityTelemetry().packFamilyNeighborNearEligible||0),
+      familyNeighborNearIneligible:Number(packIdentityTelemetry().packFamilyNeighborNearIneligible||0),
+      lifetimeOpportunitySamples:Number(packIdentityTelemetry().packLifetimeOpportunitySamples||0),
+      lifetimeSameLineageUnassignedEligible:Number(packIdentityTelemetry().packLifetimeSameLineageUnassignedEligible||0),
+      lifetimeNearUnassignedEligible:Number(packIdentityTelemetry().packLifetimeNearUnassignedEligible||0),
+      lifetimeSameLineageUnassignedIneligible:Number(packIdentityTelemetry().packLifetimeSameLineageUnassignedIneligible||0),
+      lifetimeNearUnassignedIneligible:Number(packIdentityTelemetry().packLifetimeNearUnassignedIneligible||0),
+      lifetimeSameLineageOtherPack:Number(packIdentityTelemetry().packLifetimeSameLineageOtherPack||0),
+      lifetimeNearOtherPack:Number(packIdentityTelemetry().packLifetimeNearOtherPack||0),
+      familyReproductionEvents:Number(packIdentityTelemetry().packFamilyReproductionEvents||0),
+      familyMultiClutchEvents:Number(packIdentityTelemetry().packFamilyMultiClutchEvents||0),
+      familyMultiClutchChildren:Number(packIdentityTelemetry().packFamilyMultiClutchChildren||0),
       inheritedClutchEvents:Number(packIdentityTelemetry().packInheritedClutchEvents||0),
       inheritedClutchChildren:Number(packIdentityTelemetry().packInheritedClutchChildren||0),
       invariants:packIdentityInvariantSummary(),

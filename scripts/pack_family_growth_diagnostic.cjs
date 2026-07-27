@@ -97,6 +97,22 @@ function aggregate(results) {
     totalPackJoins: results.reduce((sum, result) => sum + Number(result.packSummary.joins || 0), 0),
     totalPackInheritedBirths: results.reduce((sum, result) => sum + Number(result.packSummary.parentInheritedBirths || 0), 0),
     totalLineageFamilyNeighborJoins: results.reduce((sum, result) => sum + Number(result.packSummary.lineageFamilyNeighborJoins || 0), 0),
+    totalFamilyNeighborScanCalls: results.reduce((sum, result) => sum + Number(result.packSummary.familyNeighborScanCalls || 0), 0),
+    totalFamilyNeighborSameLineageUnassigned: results.reduce((sum, result) => sum + Number(result.packSummary.familyNeighborSameLineageUnassigned || 0), 0),
+    totalFamilyNeighborSameLineageEligible: results.reduce((sum, result) => sum + Number(result.packSummary.familyNeighborSameLineageEligible || 0), 0),
+    totalFamilyNeighborSameLineageIneligible: results.reduce((sum, result) => sum + Number(result.packSummary.familyNeighborSameLineageIneligible || 0), 0),
+    totalFamilyNeighborNearEligible: results.reduce((sum, result) => sum + Number(result.packSummary.familyNeighborNearEligible || 0), 0),
+    totalFamilyNeighborNearIneligible: results.reduce((sum, result) => sum + Number(result.packSummary.familyNeighborNearIneligible || 0), 0),
+    totalLifetimeOpportunitySamples: results.reduce((sum, result) => sum + Number(result.packSummary.lifetimeOpportunitySamples || 0), 0),
+    totalLifetimeSameLineageUnassignedEligible: results.reduce((sum, result) => sum + Number(result.packSummary.lifetimeSameLineageUnassignedEligible || 0), 0),
+    totalLifetimeNearUnassignedEligible: results.reduce((sum, result) => sum + Number(result.packSummary.lifetimeNearUnassignedEligible || 0), 0),
+    totalLifetimeSameLineageUnassignedIneligible: results.reduce((sum, result) => sum + Number(result.packSummary.lifetimeSameLineageUnassignedIneligible || 0), 0),
+    totalLifetimeNearUnassignedIneligible: results.reduce((sum, result) => sum + Number(result.packSummary.lifetimeNearUnassignedIneligible || 0), 0),
+    totalLifetimeSameLineageOtherPack: results.reduce((sum, result) => sum + Number(result.packSummary.lifetimeSameLineageOtherPack || 0), 0),
+    totalLifetimeNearOtherPack: results.reduce((sum, result) => sum + Number(result.packSummary.lifetimeNearOtherPack || 0), 0),
+    totalFamilyReproductionEvents: results.reduce((sum, result) => sum + Number(result.packSummary.familyReproductionEvents || 0), 0),
+    totalFamilyMultiClutchEvents: results.reduce((sum, result) => sum + Number(result.packSummary.familyMultiClutchEvents || 0), 0),
+    totalFamilyMultiClutchChildren: results.reduce((sum, result) => sum + Number(result.packSummary.familyMultiClutchChildren || 0), 0),
     totalInheritedClutchEvents: results.reduce((sum, result) => sum + Number(result.packSummary.inheritedClutchEvents || 0), 0),
     totalInheritedClutchChildren: results.reduce((sum, result) => sum + Number(result.packSummary.inheritedClutchChildren || 0), 0),
     totalLaterInheritedBirths: packRows.reduce((sum, pack) => sum + Math.max(0, Number(pack.birthsIntoPack || 0) - 1), 0),
@@ -129,6 +145,22 @@ function markdownReport(data) {
   lines.push(`- totalPackJoins: ${data.aggregate.totalPackJoins}`);
   lines.push(`- totalPackInheritedBirths: ${data.aggregate.totalPackInheritedBirths}`);
   lines.push(`- totalLineageFamilyNeighborJoins: ${data.aggregate.totalLineageFamilyNeighborJoins}`);
+  lines.push(`- totalFamilyNeighborScanCalls: ${data.aggregate.totalFamilyNeighborScanCalls}`);
+  lines.push(`- totalFamilyNeighborSameLineageUnassigned: ${data.aggregate.totalFamilyNeighborSameLineageUnassigned}`);
+  lines.push(`- totalFamilyNeighborSameLineageEligible: ${data.aggregate.totalFamilyNeighborSameLineageEligible}`);
+  lines.push(`- totalFamilyNeighborSameLineageIneligible: ${data.aggregate.totalFamilyNeighborSameLineageIneligible}`);
+  lines.push(`- totalFamilyNeighborNearEligible: ${data.aggregate.totalFamilyNeighborNearEligible}`);
+  lines.push(`- totalFamilyNeighborNearIneligible: ${data.aggregate.totalFamilyNeighborNearIneligible}`);
+  lines.push(`- totalLifetimeOpportunitySamples: ${data.aggregate.totalLifetimeOpportunitySamples}`);
+  lines.push(`- totalLifetimeSameLineageUnassignedEligible: ${data.aggregate.totalLifetimeSameLineageUnassignedEligible}`);
+  lines.push(`- totalLifetimeNearUnassignedEligible: ${data.aggregate.totalLifetimeNearUnassignedEligible}`);
+  lines.push(`- totalLifetimeSameLineageUnassignedIneligible: ${data.aggregate.totalLifetimeSameLineageUnassignedIneligible}`);
+  lines.push(`- totalLifetimeNearUnassignedIneligible: ${data.aggregate.totalLifetimeNearUnassignedIneligible}`);
+  lines.push(`- totalLifetimeSameLineageOtherPack: ${data.aggregate.totalLifetimeSameLineageOtherPack}`);
+  lines.push(`- totalLifetimeNearOtherPack: ${data.aggregate.totalLifetimeNearOtherPack}`);
+  lines.push(`- totalFamilyReproductionEvents: ${data.aggregate.totalFamilyReproductionEvents}`);
+  lines.push(`- totalFamilyMultiClutchEvents: ${data.aggregate.totalFamilyMultiClutchEvents}`);
+  lines.push(`- totalFamilyMultiClutchChildren: ${data.aggregate.totalFamilyMultiClutchChildren}`);
   lines.push(`- totalInheritedClutchEvents: ${data.aggregate.totalInheritedClutchEvents}`);
   lines.push(`- totalLaterInheritedBirths: ${data.aggregate.totalLaterInheritedBirths}`);
   lines.push(`- packsWithRepeatedInheritedBirths: ${data.aggregate.packsWithRepeatedInheritedBirths}`);
@@ -138,8 +170,8 @@ function markdownReport(data) {
   lines.push(`- badNumbers: ${data.aggregate.badNumberCount}`);
   lines.push(`- roundTripOk: ${data.aggregate.roundTripOk}`);
   lines.push('');
-  lines.push('| seed | packsCreated | maxPackSizeEver | joins | inheritedBirths | laterInheritedBirths | familyNeighborJoins | inheritedClutchEvents | activePacks | mismatch | mixed | missingIdentity | energyCreate | nutrientCreate | badNumbers | roundTrip |');
-  lines.push('| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |');
+  lines.push('| seed | packsCreated | maxPackSizeEver | joins | inheritedBirths | laterInheritedBirths | familyNeighborJoins | sameLineageEligible | nearEligible | familyMultiClutch | inheritedClutchEvents | activePacks | mismatch | mixed | missingIdentity | energyCreate | nutrientCreate | badNumbers | roundTrip |');
+  lines.push('| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |');
   for (const result of data.results) {
     const laterInheritedBirths = result.packs.reduce((sum, pack) => sum + Math.max(0, Number(pack.birthsIntoPack || 0) - 1), 0);
     lines.push([
@@ -150,6 +182,9 @@ function markdownReport(data) {
       Number(result.packSummary.parentInheritedBirths || 0),
       laterInheritedBirths,
       Number(result.packSummary.lineageFamilyNeighborJoins || 0),
+      Number(result.packSummary.familyNeighborSameLineageEligible || 0),
+      Number(result.packSummary.familyNeighborNearEligible || 0),
+      Number(result.packSummary.familyMultiClutchEvents || 0),
       Number(result.packSummary.inheritedClutchEvents || 0),
       result.activePackCount,
       result.lineageMismatchMembers,
@@ -172,8 +207,21 @@ function markdownReport(data) {
   return lines.join('\n') + '\n';
 }
 
-async function bootPage(browser) {
+async function bootPage(browser, initSeed = null) {
   const page = await browser.newPage({ viewport, deviceScaleFactor: 1 });
+  if (initSeed != null) {
+    await page.addInitScript(seed => {
+      let state = (Number(seed) || 1) >>> 0;
+      if (state === 0) state = 1;
+      Math.random = function seededDiagnosticRandom() {
+        state = (state + 0x6D2B79F5) >>> 0;
+        let value = state;
+        value = Math.imul(value ^ (value >>> 15), value | 1);
+        value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+        return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+      };
+    }, initSeed);
+  }
   const errors = [];
   page.on('pageerror', error => errors.push(`pageerror:${error.message}`));
   page.on('console', msg => {
@@ -186,7 +234,7 @@ async function bootPage(browser) {
 }
 
 async function runSeed(browser, seed) {
-  const boot = await bootPage(browser);
+  const boot = await bootPage(browser, seed);
   try {
     const payload = await boot.page.evaluate(({ seed, steps }) => {
       const flags = {
@@ -200,7 +248,8 @@ async function runSeed(browser, seed) {
         provisionalLineageClassification: true,
         lineageAwareMateSelection: true,
         lineageReproductiveIsolation: false,
-        lineageAwarePackIdentity: true
+        lineageAwarePackIdentity: true,
+        eventKeyedVisualRng: true
       };
       const d = window.__alifeDebug;
       const run = d.runSeededWorldDiagnostic({
@@ -214,6 +263,10 @@ async function runSeed(browser, seed) {
         packHuntTelemetry: true,
         ...flags
       });
+      d.setPersistentLineageRegistry(true);
+      d.setProvisionalLineageClassification(true);
+      d.setPersistentPackIdentity(true);
+      d.setLineageAwarePackIdentity(true);
       const packState = d.capturePackIdentityState();
       const packSummary = d.packIdentitySummary();
       const roundTrip = d.roundTripSave();
@@ -273,7 +326,7 @@ async function runMicros(browser) {
       && micro.roundTrip?.ok === true
       && data.aggregate.maximumPackSizeEver >= 3
       && data.aggregate.totalPackInheritedBirths > 0
-      && (data.aggregate.totalLineageFamilyNeighborJoins > 0 || data.aggregate.totalInheritedClutchEvents > 0 || data.aggregate.totalLaterInheritedBirths > 0)
+      && (data.aggregate.totalLineageFamilyNeighborJoins > 0 || data.aggregate.totalInheritedClutchEvents > 0)
       && data.aggregate.lineageMismatchMembers === 0
       && data.aggregate.mixedLineagePacks === 0
       && data.aggregate.missingRecordIdentityPacks === 0
