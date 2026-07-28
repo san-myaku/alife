@@ -16529,6 +16529,64 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     }
     return selected;
   }
+  function viabilityAwareCapacityCullSelection(allRows,removeNeed){
+    const dietOrder=['h','m','c'];
+    const cohortOrder=[];
+    const remainingMatureByDiet=new Map();
+    for(const diet of dietOrder){
+      for(const mature of [false,true]){
+        const rows=allRows
+          .filter(row=>telemetryDiet(row.o)===diet && canParticipateInReproduction(row.o)===mature)
+          .sort((a,b)=>{
+            const ar=canReproduceNow(a.o) ? 1 : 0;
+            const br=canReproduceNow(b.o) ? 1 : 0;
+            return ar-br || a.score-b.score || b.age-a.age || a.o.id-b.o.id;
+          });
+        if(rows.length) cohortOrder.push({diet,mature,rows,index:0,selected:0});
+        if(mature) remainingMatureByDiet.set(diet,rows.length);
+      }
+    }
+    const selected=[];
+    while(selected.length<removeNeed){
+      const available=cohortOrder
+        .filter(cohort=>cohort.index<cohort.rows.length)
+        .sort((a,b)=>{
+          const af=(a.selected+1)/a.rows.length;
+          const bf=(b.selected+1)/b.rows.length;
+          return af-bf
+            || dietOrder.indexOf(a.diet)-dietOrder.indexOf(b.diet)
+            || Number(a.mature)-Number(b.mature);
+        });
+      if(!available.length) break;
+      let chosen=null;
+      for(const cohort of available){
+        if(cohort.mature && Number(remainingMatureByDiet.get(cohort.diet)||0)<=1) continue;
+        chosen=cohort;
+        break;
+      }
+      if(!chosen){
+        break;
+      }
+      const row=chosen.rows[chosen.index++];
+      chosen.selected++;
+      selected.push(row);
+      if(chosen.mature){
+        remainingMatureByDiet.set(chosen.diet,Math.max(0,Number(remainingMatureByDiet.get(chosen.diet)||0)-1));
+      }
+    }
+    if(selected.length<removeNeed){
+      const selectedSet=new Set(selected.map(row=>row.o));
+      const fallback=allRows
+        .filter(row=>!selectedSet.has(row.o))
+        .sort((a,b)=>{
+          const ar=canReproduceNow(a.o) ? 1 : 0;
+          const br=canReproduceNow(b.o) ? 1 : 0;
+          return ar-br || a.score-b.score || b.age-a.age || a.o.id-b.o.id;
+        });
+      selected.push(...fallback.slice(0,removeNeed-selected.length));
+    }
+    return selected;
+  }
   function capacityCullSelectionSnapshot(rows,context,legacySelectedSet){
     const selectedRows=rows.map(row=>capacityCullCandidateSnapshot(row,context)).filter(Boolean);
     const byDiet={h:0,m:0,c:0};
@@ -16572,6 +16630,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const selectedRows=selected.map(row=>capacityCullCandidateSnapshot(row,context)).filter(Boolean);
     const allScoreSelection=capacityCullCounterfactualSelection(allRows,removeNeed,false);
     const matureDietGuardedSelection=capacityCullCounterfactualSelection(allRows,removeNeed,true);
+    const stratifiedViabilitySelection=viabilityAwareCapacityCullSelection(allRows,removeNeed);
     const alternatives=allRows
       .filter(row=>!selectedSet.has(row.o))
       .sort((a,b)=>{
@@ -16603,7 +16662,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       afterMatureByDiet:dietObject(afterMatureDietCounts),
       counterfactual:{
         allScore:capacityCullSelectionSnapshot(allScoreSelection,context,selectedIdSet),
-        matureDietGuarded:capacityCullSelectionSnapshot(matureDietGuardedSelection,context,selectedIdSet)
+        matureDietGuarded:capacityCullSelectionSnapshot(matureDietGuardedSelection,context,selectedIdSet),
+        stratifiedViability:capacityCullSelectionSnapshot(stratifiedViabilitySelection,context,selectedIdSet)
       }
     });
     if(telemetry.capacityCullEvents.length>1200){
@@ -16662,7 +16722,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       selectedLastMatureOfLineage:selected.filter(row=>row.lastMatureOfLineage).length,
       counterfactual:{
         allScore:counterfactualSummary('allScore'),
-        matureDietGuarded:counterfactualSummary('matureDietGuarded')
+        matureDietGuarded:counterfactualSummary('matureDietGuarded'),
+        stratifiedViability:counterfactualSummary('stratifiedViability')
       },
       recentEvents:events.slice(-80)
     };

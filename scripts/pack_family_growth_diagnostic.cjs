@@ -150,7 +150,7 @@ function aggregate(results) {
     totalPackBornCapacityCullDeaths: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selectedPackBorn || 0), 0),
     totalLastMatureDietCapacityCullDeaths: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selectedLastMatureOfDiet || 0), 0),
     totalLastMatureLineageCapacityCullDeaths: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selectedLastMatureOfLineage || 0), 0),
-    capacityCullCounterfactual: Object.fromEntries(['allScore', 'matureDietGuarded'].map(mode => {
+    capacityCullCounterfactual: Object.fromEntries(['allScore', 'matureDietGuarded', 'stratifiedViability'].map(mode => {
       const rows = results.map(result => result.run.capacityCull?.counterfactual?.[mode] || {});
       const selectedByDiet = Object.fromEntries(['h', 'm', 'c'].map(diet => [
         diet,
@@ -280,7 +280,7 @@ function markdownReport(data) {
   lines.push(`- totalPackBornCapacityCullDeaths: ${data.aggregate.totalPackBornCapacityCullDeaths}`);
   lines.push(`- totalLastMatureDietCapacityCullDeaths: ${data.aggregate.totalLastMatureDietCapacityCullDeaths}`);
   lines.push(`- totalLastMatureLineageCapacityCullDeaths: ${data.aggregate.totalLastMatureLineageCapacityCullDeaths}`);
-  for (const mode of ['allScore', 'matureDietGuarded']) {
+  for (const mode of ['allScore', 'matureDietGuarded', 'stratifiedViability']) {
     const row = data.aggregate.capacityCullCounterfactual?.[mode] || {};
     lines.push(`- capacityCullCounterfactual.${mode}: events=${row.events || 0}, different=${row.eventsDifferentFromLegacy || 0}, selectedByDiet=${JSON.stringify(row.selectedByDiet || {})}, matureByDiet=${JSON.stringify(row.selectedMatureByDiet || {})}, readyByDiet=${JSON.stringify(row.selectedReproductionReadyByDiet || {})}, mature=${row.selectedMature || 0}, ready=${row.selectedReproductionReady || 0}, activePack=${row.selectedActivePackMembers || 0}, packBorn=${row.selectedPackBorn || 0}, lastMatureDiet=${row.selectedLastMatureOfDiet || 0}, lastMatureLineage=${row.selectedLastMatureOfLineage || 0}, outsideLegacy=${row.selectedOutsideLegacy || 0}`);
   }
