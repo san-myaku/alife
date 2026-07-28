@@ -502,6 +502,17 @@
     environment: Object.freeze({
       cellSize: 18,
       algaeVisualSubdiv: 5,
+      initialization: Object.freeze({
+        defaultMode: 'patchy-intermediate',
+        modes: Object.freeze(['legacy-uniform','patchy-intermediate']),
+        defaultSeed: 41001,
+        legacyUniformAlgae: 0.25,
+        patchScaleCells: 7,
+        lowThreshold: 0.075,
+        highThreshold: 0.185,
+        patchyMinimum: 0.020,
+        patchyMaximum: 0.340
+      }),
       fieldTypes: Object.freeze(['algae','cold','oxygen','detritus']),
       dotCaps: Object.freeze({ algae:240, cold:180, oxygen:200 }),
       thresholdsOn: Object.freeze({ algae:0.35, cold:0.35, oxygen:0.30 }),
@@ -571,8 +582,25 @@
   }
   // Stateless visual events default to seed 0; seeded diagnostics override it temporarily.
   let currentWorldSeedForVisuals = 0;
+  let environmentInitializationMode = CONFIG.environment.initialization.defaultMode;
+  let environmentInitializationSeed = CONFIG.environment.initialization.defaultSeed;
   function worldSeedForVisualRng(){
     return currentWorldSeedForVisuals;
+  }
+  function normalizeEnvironmentInitializationMode(mode){
+    const value=String(mode || '').trim();
+    return CONFIG.environment.initialization.modes.includes(value)
+      ? value
+      : CONFIG.environment.initialization.defaultMode;
+  }
+  function normalizeEnvironmentInitializationSeed(seed){
+    const value=Number(seed);
+    return Number.isFinite(value) ? (value>>>0) : CONFIG.environment.initialization.defaultSeed;
+  }
+  function environmentSeedForReset(){
+    return currentWorldSeedForVisuals
+      ? normalizeEnvironmentInitializationSeed(currentWorldSeedForVisuals)
+      : normalizeEnvironmentInitializationSeed(environmentInitializationSeed);
   }
 
   // ===== UI State =====
@@ -9628,11 +9656,16 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       m:currentDiets.m ? storeNSums.m/currentDiets.m : 0,
       c:currentDiets.c ? storeNSums.c/currentDiets.c : 0
     };
+    const peakPopulation=samples.reduce((max,s)=>Math.max(max,Number(s.population||0)),organisms.length);
+    const firstAtPopulationCap=samples.find(s=>Number(s.population||0)>=ui.popMax) || null;
     return {
       frame,
       windowFrames:wf,
       startPopulation:first?.population ?? null,
       endPopulation:organisms.length,
+      peakPopulation,
+      populationCap:ui.popMax,
+      firstPopulationCapFrame:firstAtPopulationCap?.frame ?? null,
       startDiets:first?.diets ?? null,
       endDiets:currentDiets,
       endAverageStoreNByDiet,
@@ -9642,6 +9675,62 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       reproductions,
       deathCauses,
       newborn
+    };
+  }
+  function resourceSpatialUseSummary(){
+    const cfg=CONFIG.environment.initialization;
+    const byDiet={
+      h:{count:0,low:0,medium:0,high:0,algaeSum:0,recentGrazers:0},
+      m:{count:0,low:0,medium:0,high:0,algaeSum:0,recentGrazers:0},
+      c:{count:0,low:0,medium:0,high:0,algaeSum:0,recentGrazers:0}
+    };
+    const living=organisms.filter(o=>o && !o.dead);
+    for(const o of living){
+      const diet=telemetryDiet(o);
+      const row=byDiet[diet] || byDiet.m;
+      const algae=window.env?.valueAt ? window.env.valueAt('algae',o.x,o.y) : 0;
+      row.count++;
+      row.algaeSum+=algae;
+      if(algae<cfg.lowThreshold) row.low++;
+      else if(algae<cfg.highThreshold) row.medium++;
+      else row.high++;
+      const recent=(o.recentEvents||[]).some(e=>String(e?.msg||'').includes('背景の藻'));
+      if(recent || String(o.lastAction||'').includes('背景の藻')) row.recentGrazers++;
+    }
+    const summary={};
+    for(const diet of ['h','m','c']){
+      const row=byDiet[diet];
+      const ratio=value=>row.count ? value/row.count : 0;
+      summary[diet]={
+        count:row.count,
+        meanLocalAlgae:row.count ? row.algaeSum/row.count : 0,
+        lowRatio:ratio(row.low),
+        mediumRatio:ratio(row.medium),
+        highRatio:ratio(row.high),
+        recentGrazers:row.recentGrazers
+      };
+    }
+    const prey=living.filter(o=>telemetryDiet(o)!=='c');
+    const predators=living.filter(o=>telemetryDiet(o)==='c');
+    const nearestPreyDistances=predators.map(predator=>{
+      let best=Infinity;
+      for(const target of prey){
+        const distance=Math.hypot(target.x-predator.x,target.y-predator.y);
+        if(distance<best) best=distance;
+      }
+      return Number.isFinite(best) ? best : null;
+    }).filter(Number.isFinite);
+    return {
+      frame,
+      field:window.env?.currentAlgaeSummary ? window.env.currentAlgaeSummary() : null,
+      byDiet:summary,
+      carnivorePreyProximity:{
+        predators:predators.length,
+        meanNearestPreyDistance:nearestPreyDistances.length
+          ? nearestPreyDistances.reduce((sum,value)=>sum+value,0)/nearestPreyDistances.length
+          : null,
+        minimumNearestPreyDistance:nearestPreyDistances.length ? Math.min(...nearestPreyDistances) : null
+      }
     };
   }
   function predationFunnelSummary(windowFrames=1800){
@@ -14694,7 +14783,8 @@ const env = (function(){
   let bioGrid = null;     // Uint16 counts per cell (organisms)
   let scavGrid = null;    // Uint16 counts per cell (scavengers)
   let grazeScar = null;   // visual-only dark green grazing marks at 5x env resolution
-  let _avgN=0.25, _avgO=0.75, _avgD=0.05, _avgC=0.25;
+  let _avgN=CONFIG.environment.initialization.legacyUniformAlgae, _avgO=0.75, _avgD=0.05, _avgC=0.25;
+  let lastInitialization = null;
   const caps  = CONFIG.environment.dotCaps; // dot caps (used if viewMode==='dots')
   const Th_on = CONFIG.environment.thresholdsOn;
   const Th_off= CONFIG.environment.thresholdsOff;
@@ -14770,7 +14860,7 @@ const env = (function(){
       grazeScar = new Float32Array(scarW*scarH);
 
       // Baseline world state for new cells; existing cells are copied below on resize.
-      fields.algae.fill(0.25);
+      fields.algae.fill(CONFIG.environment.initialization.legacyUniformAlgae);
       fields.cold.fill(0.25);
       fields.oxygen.fill(0.75);
       fields.detritus.fill(0.05);
@@ -14790,7 +14880,7 @@ const env = (function(){
           }
         }
       }
-      _avgN=0.25; _avgO=0.75; _avgD=0.05; _avgC=0.25;
+      _avgN=CONFIG.environment.initialization.legacyUniformAlgae; _avgO=0.75; _avgD=0.05; _avgC=0.25;
 
       pxCanvas = document.createElement('canvas'); pxCanvas.width=ew; pxCanvas.height=eh; pxCtx = pxCanvas.getContext('2d', { willReadFrequently: true });
       gpuCanvas=null; gpuGL=null; gpuProgram=null; gpuTex=null; gpuBuffer=null; gpuFieldBytes=null; gpuReady=false;
@@ -14800,7 +14890,7 @@ const env = (function(){
   }
   function resetAll(){
     if(!fields) return;
-    fields.algae.fill(0.25);
+    fields.algae.fill(CONFIG.environment.initialization.legacyUniformAlgae);
     fields.cold.fill(0.25);
     fields.oxygen.fill(0.75);
     fields.detritus.fill(0.05);
@@ -14809,10 +14899,198 @@ const env = (function(){
     if(bioGrid) bioGrid.fill(0);
     if(scavGrid) scavGrid.fill(0);
     if(grazeScar) grazeScar.fill(0);
-    _avgN=0.25; _avgO=0.75; _avgD=0.05; _avgC=0.25;
+    _avgN=CONFIG.environment.initialization.legacyUniformAlgae; _avgO=0.75; _avgD=0.05; _avgC=0.25;
+    lastInitialization=null;
     lastPaint = -999;
     resetDots();
     markAlgaeAllDirty();
+  }
+  function refreshFieldAverages(){
+    const len=Math.max(1,fields?.algae?.length || 0);
+    let sumN=0,sumO=0,sumD=0,sumC=0;
+    for(let i=0;i<len;i++){
+      sumN+=fields.algae[i]||0;
+      sumO+=fields.oxygen[i]||0;
+      sumD+=fields.detritus[i]||0;
+      sumC+=fields.cold[i]||0;
+    }
+    _avgN=sumN/len; _avgO=sumO/len; _avgD=sumD/len; _avgC=sumC/len;
+  }
+  function initializationRandom(seed){
+    let state=normalizeEnvironmentInitializationSeed(seed)>>>0;
+    return ()=>{
+      state=(state+0x6D2B79F5)>>>0;
+      let t=state;
+      t=Math.imul(t^(t>>>15),t|1);
+      t^=t+Math.imul(t^(t>>>7),t|61);
+      return ((t^(t>>>14))>>>0)/4294967296;
+    };
+  }
+  function smoothStep01(value){
+    const t=clamp01(value);
+    return t*t*(3-2*t);
+  }
+  function makeInitializationNoiseLayer(scale,rng){
+    const spacing=Math.max(2,Number(scale)||2);
+    const gw=Math.ceil(Math.max(0,ew-1)/spacing)+2;
+    const gh=Math.ceil(Math.max(0,eh-1)/spacing)+2;
+    const lattice=new Float32Array(gw*gh);
+    for(let i=0;i<lattice.length;i++) lattice[i]=rng();
+    return (x,y)=>{
+      const gx=x/spacing, gy=y/spacing;
+      const x0=Math.min(gw-2,Math.max(0,Math.floor(gx)));
+      const y0=Math.min(gh-2,Math.max(0,Math.floor(gy)));
+      const tx=smoothStep01(gx-x0), ty=smoothStep01(gy-y0);
+      const a=lattice[y0*gw+x0], b=lattice[y0*gw+x0+1];
+      const c=lattice[(y0+1)*gw+x0], d=lattice[(y0+1)*gw+x0+1];
+      return lerp(lerp(a,b,tx),lerp(c,d,tx),ty);
+    };
+  }
+  function initializePatchyAlgae(seed){
+    const cfg=CONFIG.environment.initialization;
+    const rng=initializationRandom(seed);
+    const baseScale=Math.max(3,cfg.patchScaleCells);
+    const detail=makeInitializationNoiseLayer(baseScale,rng);
+    const broad=makeInitializationNoiseLayer(baseScale*2.15,rng);
+    const phaseX=rng()*TAU, phaseY=rng()*TAU;
+    const raw=new Array(ew*eh);
+    for(let y=0;y<eh;y++){
+      for(let x=0;x<ew;x++){
+        const wave=0.5
+          + 0.25*Math.sin(phaseX + x/Math.max(1,ew)*TAU*1.35)
+          + 0.25*Math.cos(phaseY + y/Math.max(1,eh)*TAU*1.15);
+        raw[idx(x,y)]=0.62*detail(x,y)+0.28*broad(x,y)+0.10*wave;
+      }
+    }
+    const order=raw.map((value,index)=>({value,index}))
+      .sort((a,b)=>a.value-b.value || a.index-b.index);
+    const n=Math.max(1,order.length);
+    for(let rank=0;rank<order.length;rank++){
+      const q=(rank+0.5)/n;
+      let value=0;
+      if(q<0.25){
+        value=lerp(cfg.patchyMinimum,cfg.lowThreshold,smoothStep01(q/0.25));
+      }else if(q<0.75){
+        value=lerp(cfg.lowThreshold,cfg.highThreshold,smoothStep01((q-0.25)/0.50));
+      }else{
+        value=lerp(cfg.highThreshold,cfg.patchyMaximum,smoothStep01((q-0.75)/0.25));
+      }
+      fields.algae[order[rank].index]=clamp01(value);
+    }
+  }
+  function algaeFieldHash(){
+    ensure();
+    let hash=2166136261>>>0;
+    const bytes=new Uint8Array(4);
+    const view=new DataView(bytes.buffer);
+    for(let i=0;i<fields.algae.length;i++){
+      view.setFloat32(0,fields.algae[i],true);
+      for(let j=0;j<4;j++){
+        hash^=bytes[j];
+        hash=Math.imul(hash,16777619);
+      }
+    }
+    return (hash>>>0).toString(16).padStart(8,'0');
+  }
+  function algaeBandAndPatchSummary(){
+    ensure();
+    const cfg=CONFIG.environment.initialization;
+    const values=fields.algae;
+    const len=values.length;
+    const band=new Uint8Array(len);
+    const counts=[0,0,0];
+    for(let i=0;i<len;i++){
+      const label=values[i]<cfg.lowThreshold ? 0 : (values[i]<cfg.highThreshold ? 1 : 2);
+      band[i]=label;
+      counts[label]++;
+    }
+    const visited=new Uint8Array(len);
+    const queue=new Int32Array(Math.max(1,len));
+    const components=[0,0,0];
+    const largest=[0,0,0];
+    for(let start=0;start<len;start++){
+      if(visited[start]) continue;
+      const label=band[start];
+      components[label]++;
+      let head=0,tail=0,size=0;
+      queue[tail++]=start;
+      visited[start]=1;
+      while(head<tail){
+        const current=queue[head++];
+        size++;
+        const x=current%ew, y=(current/ew)|0;
+        const neighbors=[
+          x>0 ? current-1 : -1,
+          x<ew-1 ? current+1 : -1,
+          y>0 ? current-ew : -1,
+          y<eh-1 ? current+ew : -1
+        ];
+        for(const next of neighbors){
+          if(next<0 || visited[next] || band[next]!==label) continue;
+          visited[next]=1;
+          queue[tail++]=next;
+        }
+      }
+      if(size>largest[label]) largest[label]=size;
+    }
+    const ratio=count=>len ? count/len : 0;
+    return {
+      thresholds:{lowMax:cfg.lowThreshold,highMin:cfg.highThreshold},
+      ratios:{low:ratio(counts[0]),medium:ratio(counts[1]),high:ratio(counts[2])},
+      spatial:{
+        componentCount:components[0]+components[1]+components[2],
+        resourcePatchCount:components[0]+components[2],
+        byBand:{
+          low:{components:components[0],largestCells:largest[0],largestShare:ratio(largest[0])},
+          medium:{components:components[1],largestCells:largest[1],largestShare:ratio(largest[1])},
+          high:{components:components[2],largestCells:largest[2],largestShare:ratio(largest[2])}
+        }
+      }
+    };
+  }
+  function currentAlgaeSummary(metadata=null){
+    const stats=algaeStats();
+    const bands=algaeBandAndPatchSummary();
+    return {
+      mode:metadata?.mode ?? lastInitialization?.mode ?? null,
+      seed:metadata?.seed ?? lastInitialization?.seed ?? null,
+      cellCount:stats.count,
+      minimumAlgae:stats.min,
+      maximumAlgae:stats.max,
+      meanAlgae:stats.mean,
+      medianAlgae:stats.median,
+      standardDeviation:stats.stdDev,
+      fieldHash:algaeFieldHash(),
+      ...bands
+    };
+  }
+  function initializeEnvironment(options={}){
+    ensure();
+    const mode=normalizeEnvironmentInitializationMode(options.mode);
+    const seed=normalizeEnvironmentInitializationSeed(options.seed);
+    resetAll();
+    if(mode==='patchy-intermediate') initializePatchyAlgae(seed);
+    seedFromPatches(Array.isArray(options.patches) ? options.patches : [],{includeAlgae:mode==='legacy-uniform'});
+    refreshFieldAverages();
+    lastInitialization={
+      mode,
+      seed,
+      generatedAtFrame:Number(frame)||0,
+      legacyUniformAlgae:CONFIG.environment.initialization.legacyUniformAlgae,
+      targetMeanRange:[
+        CONFIG.environment.initialization.legacyUniformAlgae*0.45,
+        CONFIG.environment.initialization.legacyUniformAlgae*0.60
+      ],
+      summary:null
+    };
+    lastInitialization.summary=currentAlgaeSummary(lastInitialization);
+    markAlgaeAllDirty();
+    lastPaint=-999;
+    return initializationSummary();
+  }
+  function initializationSummary(){
+    if(!lastInitialization) return currentAlgaeSummary();
+    return JSON.parse(JSON.stringify(lastInitialization.summary));
   }
   function setViewMode(m){ viewMode = m; }
   function idx(x,y){ return y*ew + x; }
@@ -14954,10 +15232,12 @@ const env = (function(){
   }
 
   // ---- Seeding from legacy patches ----
-  function seedFromPatches(patches){
+  function seedFromPatches(patches,options={}){
     ensure();
+    const includeAlgae=options.includeAlgae!==false;
     for(const p of patches){
       if(!fields[p.type]) continue;
+      if(p.type==='algae' && !includeAlgae) continue;
       const rad = Math.max(1, Math.floor(p.r/cell));
       const cx = Math.floor(p.x/cell), cy = Math.floor(p.y/cell);
       for(let dy=-rad; dy<=rad; dy++){
@@ -15538,6 +15818,7 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
     ensure();
     return {
       cell, ew, eh, scarW, scarH,
+      initialization:lastInitialization ? JSON.parse(JSON.stringify(lastInitialization)) : null,
       fields:{
         algae:fieldArray('algae'),
         cold:fieldArray('cold'),
@@ -15557,7 +15838,7 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
       const n=Math.min(dst.length,src.length);
       for(let i=0;i<n;i++) dst[i]=clamp01(Number(src[i])||0);
       for(let i=n;i<dst.length;i++){
-        dst[i]=key==='algae'?0.25:(key==='cold'?0.25:(key==='oxygen'?0.75:0.05));
+        dst[i]=key==='algae'?CONFIG.environment.initialization.legacyUniformAlgae:(key==='cold'?0.25:(key==='oxygen'?0.75:0.05));
       }
     }
     if(Array.isArray(state.grazeScar) && grazeScar){
@@ -15565,9 +15846,21 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
       for(let i=0;i<n;i++) grazeScar[i]=clamp01(Number(state.grazeScar[i])||0);
       for(let i=n;i<grazeScar.length;i++) grazeScar[i]=0;
     }
-    let n=fields.algae.length||1, sumN=0,sumO=0,sumD=0,sumC=0;
-    for(let i=0;i<n;i++){ sumN+=fields.algae[i]||0; sumO+=fields.oxygen[i]||0; sumD+=fields.detritus[i]||0; sumC+=fields.cold[i]||0; }
-    _avgN=sumN/n; _avgO=sumO/n; _avgD=sumD/n; _avgC=sumC/n;
+    refreshFieldAverages();
+    if(state.initialization && typeof state.initialization==='object'){
+      lastInitialization=JSON.parse(JSON.stringify(state.initialization));
+      if(!lastInitialization.summary) lastInitialization.summary=currentAlgaeSummary(lastInitialization);
+    }else{
+      lastInitialization={
+        mode:'saved-field',
+        seed:null,
+        generatedAtFrame:null,
+        legacyUniformAlgae:CONFIG.environment.initialization.legacyUniformAlgae,
+        targetMeanRange:null,
+        summary:null
+      };
+      lastInitialization.summary=currentAlgaeSummary(lastInitialization);
+    }
     markAlgaeAllDirty();
     lastPaint=-999;
     return true;
@@ -15578,11 +15871,14 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
   maintainDots,
   resetDots,
   reset: resetAll,
+  initialize: options=>initializeEnvironment(options),
   valueAt: (type,x,y)=> valueAt(type,x,y),
   bestAlgaeNear: (x,y,r,minValue)=> bestAlgaeNear(x,y,r,minValue),
   grazeAlgaeAt: (x,y,appetite,radius)=> grazeAlgaeAt(x,y,appetite,radius),
   getAverages: ()=>averages(),
   algaeStats: ()=>algaeStats(),
+  currentAlgaeSummary: ()=>currentAlgaeSummary(),
+  initializationSummary: ()=>initializationSummary(),
   localAlgaeStats: (x,y,radius)=>localAlgaeStats(x,y,radius),
   captureState: ()=>captureState(),
   restoreState: (state)=>restoreState(state),
@@ -15661,6 +15957,14 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
 };
 })(); window.env = env;
 
+function initializeConfiguredEnvironment(){
+  if(!window.env?.initialize) return null;
+  return window.env.initialize({
+    mode:environmentInitializationMode,
+    seed:environmentSeedForReset(),
+    patches
+  });
+}
 
 function log(msg){
   window.__evoBuf = window.__evoBuf || [];
@@ -16818,11 +17122,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     // re-seed population and environment
     initPopulation(CONFIG.population.starter);
     seedPatches();
-    if(window.env && window.env.reset){
-      window.env.ensure();
-      window.env.reset();
-      window.env.seedFromPatches(patches);
-    }
+    initializeConfiguredEnvironment();
     seedPlankton();
     addFood(10,2,'initialFood');
     resetTelemetry();
@@ -20952,9 +21252,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const oldRandom=Math.random;
     const oldNextId=NEXT_ID;
     const oldWorldSeedForVisuals=currentWorldSeedForVisuals;
+    const oldEnvironmentInitializationMode=environmentInitializationMode;
+    const oldEnvironmentInitializationSeed=environmentInitializationSeed;
     const startedAt=performance.now();
     try{
       currentWorldSeedForVisuals=seed;
+      if(opts.environmentInitializationMode!=null){
+        environmentInitializationMode=normalizeEnvironmentInitializationMode(opts.environmentInitializationMode);
+      }
+      environmentInitializationSeed=normalizeEnvironmentInitializationSeed(seed);
       if(opts.evolvableLifeHistory!=null) featureFlags.evolvableLifeHistory=!!opts.evolvableLifeHistory;
       if(opts.juvenileDevelopment!=null) featureFlags.juvenileDevelopment=!!opts.juvenileDevelopment;
       if(opts.predictiveHuntingReserve!=null) featureFlags.predictiveHuntingReserve=!!opts.predictiveHuntingReserve;
@@ -20971,8 +21277,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       Math.random=duelSeededRandom(seed);
       NEXT_ID=1;
       reset();
+      const initialEnvironment=window.env?.initializationSummary ? window.env.initializationSummary() : null;
+      const initialResourceSpatial=resourceSpatialUseSummary();
       const diagnosticInitialPopulation=organisms.filter(o=>o && !o.dead).length;
-      for(let i=0;i<steps;i++) updateModel();
+      const resourceSpatialMilestones=[];
+      const milestoneFrames=new Set([120,300,500,750,1000].filter(value=>value<=steps));
+      for(let i=0;i<steps;i++){
+        updateModel();
+        if(milestoneFrames.has(i+1)) resourceSpatialMilestones.push(resourceSpatialUseSummary());
+      }
       telemetrySampleFrame(true);
       const lineage=carnivoreLineageSummary({windowFrames:steps+60,includeIndividuals});
       const population=populationTurnoverSummary(steps+60);
@@ -21038,6 +21351,13 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         lineageAwareWorld,
         packReproductionBottleneck,
         capacityCull,
+        environmentInitialization:initialEnvironment,
+        environmentCurrent:window.env?.currentAlgaeSummary ? window.env.currentAlgaeSummary() : null,
+        resourceSpatial:{
+          initial:initialResourceSpatial,
+          milestones:resourceSpatialMilestones,
+          current:resourceSpatialUseSummary()
+        },
         telemetryCounts:{
           events:telemetry.events.length,
           samples:telemetry.samples.length,
@@ -21059,6 +21379,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       currentWorldSeedForVisuals=oldWorldSeedForVisuals;
       if(restoreAfterRun && saved){ restore(saved); NEXT_ID=oldNextId; }
       else if(NEXT_ID<oldNextId) NEXT_ID=oldNextId;
+      environmentInitializationMode=oldEnvironmentInitializationMode;
+      environmentInitializationSeed=oldEnvironmentInitializationSeed;
       Object.assign(featureFlags,oldFeatureFlags);
     }
   }
@@ -29547,11 +29869,44 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     captureSaveData(){
       return capture();
     },
+    restoreSaveData(data){
+      restore(String(data || ''));
+      return {
+        counts:this.counts(),
+        environmentInitialization:window.env?.initializationSummary ? window.env.initializationSummary() : null
+      };
+    },
     restoreTestSnapshot(name='snapshot'){
       return restoreTestSnapshot(name);
     },
     config(){
       return CONFIG;
+    },
+    environmentInitializationSummary(){
+      return window.env?.initializationSummary ? window.env.initializationSummary() : null;
+    },
+    currentAlgaeSummary(){
+      return window.env?.currentAlgaeSummary ? window.env.currentAlgaeSummary() : null;
+    },
+    resourceSpatialUseSummary(){
+      return resourceSpatialUseSummary();
+    },
+    setEnvironmentInitialization(options={}){
+      const opts=options || {};
+      if(opts.mode!=null){
+        const requested=String(opts.mode).trim();
+        if(!CONFIG.environment.initialization.modes.includes(requested)){
+          throw new RangeError(`Unknown environment initialization mode: ${requested}`);
+        }
+        environmentInitializationMode=requested;
+      }
+      if(opts.seed!=null) environmentInitializationSeed=normalizeEnvironmentInitializationSeed(opts.seed);
+      if(opts.reset===true) reset();
+      return {
+        mode:environmentInitializationMode,
+        seed:environmentInitializationSeed,
+        field:window.env?.initializationSummary ? window.env.initializationSummary() : null
+      };
     },
     clearSymbolSpriteCache,
     clearCanonicalSymbolCache(){
@@ -29767,7 +30122,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         overEmergency:ui.popMax>0 ? organisms.length>emergencyPopulationLimit() : false
       };
     },
-    resetSimulation(){
+    resetSimulation(options={}){
+      const opts=options || {};
+      if(opts.mode!=null || opts.seed!=null){
+        this.setEnvironmentInitialization({mode:opts.mode ?? environmentInitializationMode,seed:opts.seed ?? environmentInitializationSeed});
+      }
       reset();
       return this.counts();
     },
@@ -29812,9 +30171,17 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     modelStep(frames=1){ for(let i=0;i<Math.max(1,Math.min(20,frames|0));i++) updateModel(); return this.counts(); },
     roundTripSave(){
+      const before=window.env?.currentAlgaeSummary ? window.env.currentAlgaeSummary() : null;
       const data=capture();
       restore(data);
-      return { ok:true, organisms:organisms.length, extinctRecords:extinctRecords.length };
+      const after=window.env?.currentAlgaeSummary ? window.env.currentAlgaeSummary() : null;
+      return {
+        ok:before?.fieldHash===after?.fieldHash,
+        organisms:organisms.length,
+        extinctRecords:extinctRecords.length,
+        algaeFieldHashBefore:before?.fieldHash ?? null,
+        algaeFieldHashAfter:after?.fieldHash ?? null
+      };
     }
   };
 
@@ -29854,7 +30221,12 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const saveLineageAwareMateSelection=lineageAwareMateSelectionEnabled();
     const saveLineageReproductiveIsolation=lineageReproductiveIsolationEnabled();
     const saveLineageAwarePackIdentity=lineageAwarePackIdentityEnabled();
+    const activeEnvironmentInitialization=window.env?.initializationSummary ? window.env.initializationSummary() : null;
     const state={v:saveProvisionalLineagePromotion ? 11 : (saveLineageAwarePackIdentity ? 10 : (saveLineageReproductiveIsolation ? 9 : (saveLineageAwareMateSelection ? 8 : (saveProvisionalLineageClassification ? 7 : (saveLineageRegistry ? 6 : 5))))),frame,generation,dayNight:{phase:dayNight.phase},worldEvent,eco,
+      environmentInitialization:{
+        mode:normalizeEnvironmentInitializationMode(activeEnvironmentInitialization?.mode || environmentInitializationMode),
+        seed:normalizeEnvironmentInitializationSeed(activeEnvironmentInitialization?.seed ?? environmentInitializationSeed)
+      },
       features:{
         evolvableLifeHistory:evolvableLifeHistoryEnabled(),
         juvenileDevelopment:juvenileDevelopmentEnabled(),
@@ -29915,6 +30287,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         featureFlags.lineageReproductiveIsolation=false;
         featureFlags.lineageAwarePackIdentity=false;
       }
+      if(state.environmentInitialization && typeof state.environmentInitialization==='object'){
+        environmentInitializationMode=normalizeEnvironmentInitializationMode(state.environmentInitialization.mode);
+        environmentInitializationSeed=normalizeEnvironmentInitializationSeed(state.environmentInitialization.seed);
+      }
       clearSpeciesAppearanceProfileCache();
       OrganismRender.clearCanonicalSymbolCache?.();
       clearSymbolSpriteCache();
@@ -29925,10 +30301,12 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       (state.patches||[]).forEach(p=>patches.push(new Patch(p.type,p.x,p.y,p.r)));
       if(window.env && state.envState && window.env.restoreState){
         window.env.restoreState(state.envState);
-      } else if(window.env && window.env.reset){
-        window.env.ensure();
-        window.env.reset();
-        window.env.seedFromPatches(patches);
+      } else if(window.env?.initialize){
+        window.env.initialize({
+          mode:'legacy-uniform',
+          seed:environmentInitializationSeed,
+          patches
+        });
       }
       (state.food||[]).forEach(f=>{
         const q=new Food(f.x,f.y,f.type);
@@ -30154,8 +30532,8 @@ organisms.push(u);
       toastBlockUntil = frame + 600; 
       speciesAnnounceMuteUntil = frame + 600;
       initPopulation(CONFIG.population.starter);
-      seedPatches(); 
-      if(window.env) window.env.seedFromPatches(patches);
+      seedPatches();
+      initializeConfiguredEnvironment();
       seedPlankton(); 
       addFood(10,2,'initialFood');
       resetTelemetry();
