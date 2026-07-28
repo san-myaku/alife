@@ -7961,9 +7961,51 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     }
     const d=telemetryChaseDistance(predator,prey);
     const contactR=(predator.size||0)+(prey.size||0)+3.8;
+    const predatorBirth=telemetry.births.get(predator.id) || null;
+    const predatorPredationRecord=telemetry.predationIndividuals.get(predator.id) || null;
+    const preyBirth=telemetry.births.get(prey.id) || null;
+    const coordination=packAttackCoordinationFor(predator,prey);
+    const activePack=predator.packId ? activePackById(predator.packId) : null;
+    const activePackMembers=activePack
+      ? packIdentityLivingMembers(activePack).filter(member=>member!==predator)
+      : [];
+    const activePackMemberDistances=activePackMembers
+      .map(member=>telemetryChaseDistance(predator,member))
+      .filter(Number.isFinite);
+    const huntPlan=predictiveHuntPlan(predator,prey,d);
     const ep={
       predatorId:predator.id,
       preyId:prey.id,
+      predatorInitial:predator.lineageInitial!==false && !predatorBirth,
+      predatorGenerationDepth:telemetryLineageDepth(predator,predatorBirth),
+      predatorBornIntoPack:!!predatorPredationRecord?.bornIntoPack || !!predatorBirth?.birthPackId,
+      predatorBirthPackId:predatorPredationRecord?.birthPackId ?? predatorBirth?.birthPackId ?? null,
+      predatorPackIdAtStart:predator.packId ?? null,
+      predatorLineageId:predator.lineageId ?? null,
+      predatorSpeciesKey:predator.speciesKey ?? null,
+      predatorStrategy:carnivoreStrategyClass(predator),
+      predatorMaxSpeed:Number(predator.maxSpeed||0),
+      predatorEnergyRatioAtStart:Number(predator.energy||0)/Math.max(1,Number(predator.reproThreshold||1)),
+      activePackMateCountAtStart:coordination.activePackMateCount,
+      biologicalMateCountAtStart:coordination.mateCount,
+      activePackMemberCountAtStart:activePackMembers.length,
+      activePackSameTargetCountAtStart:activePackMembers.filter(member=>member.preyTargetId===prey.id).length,
+      activePackTargetlessCountAtStart:activePackMembers.filter(member=>member.preyTargetId==null).length,
+      activePackMinimumMemberDistanceAtStart:activePackMemberDistances.length
+        ? Math.min(...activePackMemberDistances)
+        : null,
+      predictedHuntAffordableAtStart:huntPlan?.affordable ?? null,
+      predictedHuntStateAtStart:huntPlan ? predictiveHuntState(huntPlan) : null,
+      predictedRequiredEnergyAtStart:huntPlan?.requiredEnergy ?? null,
+      predictedEnergyMarginAtStart:huntPlan?.energyMargin ?? null,
+      predictedEstimatedStepsAtStart:huntPlan?.estimatedSteps ?? null,
+      predictedClosingSpeedAtStart:huntPlan?.closingSpeed ?? null,
+      preyDiet:telemetryDiet(prey),
+      preyGenerationDepth:telemetryLineageDepth(prey,preyBirth),
+      preySocialMode:prey.socialMode ?? null,
+      preyRole:prey.role ?? null,
+      preyMaxSpeed:Number(prey.maxSpeed||0),
+      preyDefenseIds:predationDefensesFor(prey).map(row=>row.id),
       startFrame:frame,
       endFrame:null,
       endReason:null,
@@ -9760,7 +9802,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       };
     });
     const records=completed.concat(active);
-    const nums=arr=>arr.map(Number).filter(Number.isFinite);
+    const nums=arr=>arr.filter(value=>value!=null).map(Number).filter(Number.isFinite);
     const avg=arr=>{ const a=nums(arr); return a.length ? a.reduce((x,y)=>x+y,0)/a.length : null; };
     const sum=arr=>nums(arr).reduce((x,y)=>x+y,0);
     const uniq=arr=>new Set(arr.filter(v=>v!=null)).size;
@@ -9817,6 +9859,107 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         averageEnergySpent:avg(eps.map(ep=>ep.energySpent))
       };
     }
+    const cohortSummary=(episodes)=>{
+      const complete=episodes.filter(ep=>!ep.active);
+      const reasons={};
+      const preyDiets={h:0,m:0,c:0};
+      const preyDefenses={};
+      for(const ep of episodes){
+        if(ep.preyDiet==='h' || ep.preyDiet==='m' || ep.preyDiet==='c') preyDiets[ep.preyDiet]++;
+        for(const id of ep.preyDefenseIds || []) preyDefenses[id]=(preyDefenses[id]||0)+1;
+      }
+      for(const reason of TELEMETRY_CHASE_END_REASONS){
+        const count=complete.filter(ep=>ep.endReason===reason).length;
+        if(count) reasons[reason]=count;
+      }
+      return {
+        episodes:episodes.length,
+        completedEpisodes:complete.length,
+        uniquePredators:uniq(episodes.map(ep=>ep.predatorId)),
+        reachedContact:episodes.filter(ep=>ep.reachedContact).length,
+        attemptedAttack:episodes.filter(ep=>ep.attemptedAttack).length,
+        succeededPredation:episodes.filter(ep=>ep.succeededPredation).length,
+        averageStartDistance:avg(episodes.map(ep=>ep.startDistance)),
+        averageMinimumDistance:avg(episodes.map(ep=>ep.minimumDistance)),
+        averageDistanceReductionRatio:avg(episodes.map(ep=>ep.distanceReductionRatio)),
+        averageDuration:avg(episodes.map(ep=>ep.duration)),
+        averagePredatorSpeed:avg(episodes.map(ep=>ep.predatorSpeedAverage)),
+        averagePreySpeed:avg(episodes.map(ep=>ep.preySpeedAverage)),
+        averagePredatorPreySpeedRatio:avg(episodes.map(ep=>ep.speedRatioAverage)),
+        averageStartEnergyRatio:avg(episodes.map(ep=>ep.predatorEnergyRatioAtStart)),
+        averageActivePackMateCountAtStart:avg(episodes.map(ep=>ep.activePackMateCountAtStart)),
+        averageActivePackMemberCountAtStart:avg(episodes.map(ep=>ep.activePackMemberCountAtStart)),
+        affordableAtStart:episodes.filter(ep=>ep.predictedHuntAffordableAtStart===true).length,
+        unaffordableAtStart:episodes.filter(ep=>ep.predictedHuntAffordableAtStart===false).length,
+        averagePredictedEnergyMarginAtStart:avg(episodes.map(ep=>ep.predictedEnergyMarginAtStart)),
+        averagePredictedEstimatedStepsAtStart:avg(episodes.map(ep=>ep.predictedEstimatedStepsAtStart)),
+        averagePredictedClosingSpeedAtStart:avg(episodes.map(ep=>ep.predictedClosingSpeedAtStart)),
+        preyDiets,
+        preyDefenses,
+        endReasons:reasons
+      };
+    };
+    const generationGroups=new Map();
+    for(const ep of derived){
+      const key=ep.predatorInitial
+        ? 'initial'
+        : `generation${Math.max(1,Math.floor(Number(ep.predatorGenerationDepth)||1))}`;
+      if(!generationGroups.has(key)) generationGroups.set(key,[]);
+      generationGroups.get(key).push(ep);
+    }
+    const generationOrder=key=>key==='initial' ? -1 : Number(key.slice('generation'.length))||0;
+    const byGeneration=Object.fromEntries(
+      [...generationGroups.entries()]
+        .sort((a,b)=>generationOrder(a[0])-generationOrder(b[0]))
+        .map(([key,episodes])=>[key,cohortSummary(episodes)])
+    );
+    const byOrigin={
+      initial:cohortSummary(derived.filter(ep=>ep.predatorInitial)),
+      packBorn:cohortSummary(derived.filter(ep=>!ep.predatorInitial && ep.predatorBornIntoPack)),
+      nonPackBorn:cohortSummary(derived.filter(ep=>!ep.predatorInitial && !ep.predatorBornIntoPack))
+    };
+    const episodeRows=derived.slice(-160).map(ep=>({
+      predatorId:ep.predatorId,
+      preyId:ep.preyId,
+      predatorInitial:ep.predatorInitial,
+      predatorGenerationDepth:ep.predatorGenerationDepth,
+      predatorBornIntoPack:ep.predatorBornIntoPack,
+      predatorBirthPackId:ep.predatorBirthPackId,
+      predatorPackIdAtStart:ep.predatorPackIdAtStart,
+      predatorLineageId:ep.predatorLineageId,
+      predatorStrategy:ep.predatorStrategy,
+      preyDiet:ep.preyDiet,
+      preySocialMode:ep.preySocialMode,
+      preyRole:ep.preyRole,
+      preyDefenseIds:ep.preyDefenseIds,
+      startFrame:ep.startFrame,
+      endFrame:ep.endFrame,
+      endReason:ep.endReason,
+      duration:ep.duration,
+      startDistance:ep.startDistance,
+      minimumDistance:ep.minimumDistance,
+      finalDistance:ep.finalDistance,
+      distanceReductionRatio:ep.distanceReductionRatio,
+      predatorSpeedAverage:ep.predatorSpeedAverage,
+      preySpeedAverage:ep.preySpeedAverage,
+      speedRatioAverage:ep.speedRatioAverage,
+      predatorEnergyRatioAtStart:ep.predatorEnergyRatioAtStart,
+      activePackMateCountAtStart:ep.activePackMateCountAtStart,
+      biologicalMateCountAtStart:ep.biologicalMateCountAtStart,
+      activePackMemberCountAtStart:ep.activePackMemberCountAtStart,
+      activePackSameTargetCountAtStart:ep.activePackSameTargetCountAtStart,
+      activePackTargetlessCountAtStart:ep.activePackTargetlessCountAtStart,
+      activePackMinimumMemberDistanceAtStart:ep.activePackMinimumMemberDistanceAtStart,
+      predictedHuntAffordableAtStart:ep.predictedHuntAffordableAtStart,
+      predictedHuntStateAtStart:ep.predictedHuntStateAtStart,
+      predictedRequiredEnergyAtStart:ep.predictedRequiredEnergyAtStart,
+      predictedEnergyMarginAtStart:ep.predictedEnergyMarginAtStart,
+      predictedEstimatedStepsAtStart:ep.predictedEstimatedStepsAtStart,
+      predictedClosingSpeedAtStart:ep.predictedClosingSpeedAtStart,
+      reachedContact:ep.reachedContact,
+      attemptedAttack:ep.attemptedAttack,
+      succeededPredation:ep.succeededPredation
+    }));
     return {
       frame,
       windowFrames:wf,
@@ -9900,6 +10043,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         targetLostCount:sum(derived.map(ep=>ep.targetLostCount))
       },
       endReasons,
+      byGeneration,
+      byOrigin,
+      recentEpisodes:episodeRows,
       classificationRule:{
         episode:'continuous period where one carnivore keeps the same prey target',
         possibleContactSkip:'relative segment between consecutive sampled positions crosses contact radius while both sampled endpoints are outside it',
