@@ -134,6 +134,13 @@ function aggregate(results) {
     totalSurplusFeedingEvents: results.reduce((sum, result) => sum + Number(result.packSummary.surplusFeedingEvents || 0), 0),
     totalSurplusEnergyTransferred: results.reduce((sum, result) => sum + Number(result.packSummary.surplusEnergyTransferred || 0), 0),
     totalSurplusRecipients: results.reduce((sum, result) => sum + Number(result.packSummary.surplusRecipients || 0), 0),
+    totalCapacityCullEvents: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.events || 0), 0),
+    totalCapacityCullDeaths: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selected || 0), 0),
+    totalCarnivoreCapacityCullDeaths: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selectedByDiet?.c || 0), 0),
+    totalActivePackMemberCapacityCullDeaths: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selectedActivePackMembers || 0), 0),
+    totalPackBornCapacityCullDeaths: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selectedPackBorn || 0), 0),
+    totalLastMatureDietCapacityCullDeaths: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selectedLastMatureOfDiet || 0), 0),
+    totalLastMatureLineageCapacityCullDeaths: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selectedLastMatureOfLineage || 0), 0),
     totalLaterInheritedBirths: packRows.reduce((sum, pack) => sum + Math.max(0, Number(pack.birthsIntoPack || 0) - 1), 0),
     packsWithRepeatedInheritedBirths: packRows.filter(pack => Number(pack.birthsIntoPack || 0) > 1).length,
     totalActivePackCount: results.reduce((sum, result) => sum + Number(result.activePackCount || 0), 0),
@@ -218,6 +225,13 @@ function markdownReport(data) {
   lines.push(`- totalSurplusFeedingEvents: ${data.aggregate.totalSurplusFeedingEvents}`);
   lines.push(`- totalSurplusEnergyTransferred: ${data.aggregate.totalSurplusEnergyTransferred}`);
   lines.push(`- totalSurplusRecipients: ${data.aggregate.totalSurplusRecipients}`);
+  lines.push(`- totalCapacityCullEvents: ${data.aggregate.totalCapacityCullEvents}`);
+  lines.push(`- totalCapacityCullDeaths: ${data.aggregate.totalCapacityCullDeaths}`);
+  lines.push(`- totalCarnivoreCapacityCullDeaths: ${data.aggregate.totalCarnivoreCapacityCullDeaths}`);
+  lines.push(`- totalActivePackMemberCapacityCullDeaths: ${data.aggregate.totalActivePackMemberCapacityCullDeaths}`);
+  lines.push(`- totalPackBornCapacityCullDeaths: ${data.aggregate.totalPackBornCapacityCullDeaths}`);
+  lines.push(`- totalLastMatureDietCapacityCullDeaths: ${data.aggregate.totalLastMatureDietCapacityCullDeaths}`);
+  lines.push(`- totalLastMatureLineageCapacityCullDeaths: ${data.aggregate.totalLastMatureLineageCapacityCullDeaths}`);
   lines.push(`- totalLaterInheritedBirths: ${data.aggregate.totalLaterInheritedBirths}`);
   lines.push(`- packsWithRepeatedInheritedBirths: ${data.aggregate.packsWithRepeatedInheritedBirths}`);
   lines.push(`- totalActivePackCount: ${data.aggregate.totalActivePackCount}`);
