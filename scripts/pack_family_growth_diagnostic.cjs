@@ -138,10 +138,47 @@ function aggregate(results) {
     totalCapacityCullEvents: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.events || 0), 0),
     totalCapacityCullDeaths: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selected || 0), 0),
     totalCarnivoreCapacityCullDeaths: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selectedByDiet?.c || 0), 0),
+    capacityCullSelectedMatureByDiet: Object.fromEntries(['h', 'm', 'c'].map(diet => [
+      diet,
+      results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selectedMatureByDiet?.[diet] || 0), 0)
+    ])),
+    capacityCullSelectedReproductionReadyByDiet: Object.fromEntries(['h', 'm', 'c'].map(diet => [
+      diet,
+      results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selectedReproductionReadyByDiet?.[diet] || 0), 0)
+    ])),
     totalActivePackMemberCapacityCullDeaths: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selectedActivePackMembers || 0), 0),
     totalPackBornCapacityCullDeaths: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selectedPackBorn || 0), 0),
     totalLastMatureDietCapacityCullDeaths: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selectedLastMatureOfDiet || 0), 0),
     totalLastMatureLineageCapacityCullDeaths: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selectedLastMatureOfLineage || 0), 0),
+    capacityCullCounterfactual: Object.fromEntries(['allScore', 'matureDietGuarded'].map(mode => {
+      const rows = results.map(result => result.run.capacityCull?.counterfactual?.[mode] || {});
+      const selectedByDiet = Object.fromEntries(['h', 'm', 'c'].map(diet => [
+        diet,
+        rows.reduce((sum, row) => sum + Number(row.selectedByDiet?.[diet] || 0), 0)
+      ]));
+      const selectedMatureByDiet = Object.fromEntries(['h', 'm', 'c'].map(diet => [
+        diet,
+        rows.reduce((sum, row) => sum + Number(row.selectedMatureByDiet?.[diet] || 0), 0)
+      ]));
+      const selectedReproductionReadyByDiet = Object.fromEntries(['h', 'm', 'c'].map(diet => [
+        diet,
+        rows.reduce((sum, row) => sum + Number(row.selectedReproductionReadyByDiet?.[diet] || 0), 0)
+      ]));
+      return [mode, {
+        events: rows.reduce((sum, row) => sum + Number(row.events || 0), 0),
+        eventsDifferentFromLegacy: rows.reduce((sum, row) => sum + Number(row.eventsDifferentFromLegacy || 0), 0),
+        selectedByDiet,
+        selectedMatureByDiet,
+        selectedReproductionReadyByDiet,
+        selectedMature: rows.reduce((sum, row) => sum + Number(row.selectedMature || 0), 0),
+        selectedReproductionReady: rows.reduce((sum, row) => sum + Number(row.selectedReproductionReady || 0), 0),
+        selectedActivePackMembers: rows.reduce((sum, row) => sum + Number(row.selectedActivePackMembers || 0), 0),
+        selectedPackBorn: rows.reduce((sum, row) => sum + Number(row.selectedPackBorn || 0), 0),
+        selectedLastMatureOfDiet: rows.reduce((sum, row) => sum + Number(row.selectedLastMatureOfDiet || 0), 0),
+        selectedLastMatureOfLineage: rows.reduce((sum, row) => sum + Number(row.selectedLastMatureOfLineage || 0), 0),
+        selectedOutsideLegacy: rows.reduce((sum, row) => sum + Number(row.selectedOutsideLegacy || 0), 0)
+      }];
+    })),
     totalExactPackSexualAttempts: results.reduce((sum, result) => sum + Number(result.run.packReproductionBottleneck?.sexualAttempts || 0), 0),
     totalExactPackAsexualAttempts: results.reduce((sum, result) => sum + Number(result.run.packReproductionBottleneck?.asexualAttempts || 0), 0),
     totalExactPackSameLineageMateAttempts: results.reduce((sum, result) => sum + Number(result.run.packReproductionBottleneck?.sameLineageMateAttempts || 0), 0),
@@ -237,10 +274,16 @@ function markdownReport(data) {
   lines.push(`- totalCapacityCullEvents: ${data.aggregate.totalCapacityCullEvents}`);
   lines.push(`- totalCapacityCullDeaths: ${data.aggregate.totalCapacityCullDeaths}`);
   lines.push(`- totalCarnivoreCapacityCullDeaths: ${data.aggregate.totalCarnivoreCapacityCullDeaths}`);
+  lines.push(`- capacityCullSelectedMatureByDiet: ${JSON.stringify(data.aggregate.capacityCullSelectedMatureByDiet)}`);
+  lines.push(`- capacityCullSelectedReproductionReadyByDiet: ${JSON.stringify(data.aggregate.capacityCullSelectedReproductionReadyByDiet)}`);
   lines.push(`- totalActivePackMemberCapacityCullDeaths: ${data.aggregate.totalActivePackMemberCapacityCullDeaths}`);
   lines.push(`- totalPackBornCapacityCullDeaths: ${data.aggregate.totalPackBornCapacityCullDeaths}`);
   lines.push(`- totalLastMatureDietCapacityCullDeaths: ${data.aggregate.totalLastMatureDietCapacityCullDeaths}`);
   lines.push(`- totalLastMatureLineageCapacityCullDeaths: ${data.aggregate.totalLastMatureLineageCapacityCullDeaths}`);
+  for (const mode of ['allScore', 'matureDietGuarded']) {
+    const row = data.aggregate.capacityCullCounterfactual?.[mode] || {};
+    lines.push(`- capacityCullCounterfactual.${mode}: events=${row.events || 0}, different=${row.eventsDifferentFromLegacy || 0}, selectedByDiet=${JSON.stringify(row.selectedByDiet || {})}, matureByDiet=${JSON.stringify(row.selectedMatureByDiet || {})}, readyByDiet=${JSON.stringify(row.selectedReproductionReadyByDiet || {})}, mature=${row.selectedMature || 0}, ready=${row.selectedReproductionReady || 0}, activePack=${row.selectedActivePackMembers || 0}, packBorn=${row.selectedPackBorn || 0}, lastMatureDiet=${row.selectedLastMatureOfDiet || 0}, lastMatureLineage=${row.selectedLastMatureOfLineage || 0}, outsideLegacy=${row.selectedOutsideLegacy || 0}`);
+  }
   lines.push(`- totalExactPackSexualAttempts: ${data.aggregate.totalExactPackSexualAttempts}`);
   lines.push(`- totalExactPackAsexualAttempts: ${data.aggregate.totalExactPackAsexualAttempts}`);
   lines.push(`- totalExactPackSameLineageMateAttempts: ${data.aggregate.totalExactPackSameLineageMateAttempts}`);

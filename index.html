@@ -16502,6 +16502,57 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         && canParticipateInReproduction(o)
     };
   }
+  function capacityCullCounterfactualSelection(allRows,removeNeed,preserveLastMatureDiet=false){
+    const sorted=allRows.slice().sort((a,b)=>
+      a.score-b.score || b.age-a.age || a.o.id-b.o.id
+    );
+    const remainingMatureByDiet=new Map();
+    for(const row of sorted){
+      if(!canParticipateInReproduction(row.o)) continue;
+      const diet=telemetryDiet(row.o);
+      remainingMatureByDiet.set(diet,(remainingMatureByDiet.get(diet)||0)+1);
+    }
+    const selected=[], deferred=[];
+    for(const row of sorted){
+      if(selected.length>=removeNeed) break;
+      const mature=canParticipateInReproduction(row.o);
+      const diet=telemetryDiet(row.o);
+      if(preserveLastMatureDiet && mature && Number(remainingMatureByDiet.get(diet)||0)<=1){
+        deferred.push(row);
+        continue;
+      }
+      selected.push(row);
+      if(mature) remainingMatureByDiet.set(diet,Math.max(0,Number(remainingMatureByDiet.get(diet)||0)-1));
+    }
+    if(selected.length<removeNeed){
+      selected.push(...deferred.slice(0,removeNeed-selected.length));
+    }
+    return selected;
+  }
+  function capacityCullSelectionSnapshot(rows,context,legacySelectedSet){
+    const selectedRows=rows.map(row=>capacityCullCandidateSnapshot(row,context)).filter(Boolean);
+    const byDiet={h:0,m:0,c:0};
+    const matureByDiet={h:0,m:0,c:0};
+    const reproductionReadyByDiet={h:0,m:0,c:0};
+    for(const row of selectedRows) if(byDiet[row.diet]!=null) byDiet[row.diet]++;
+    for(const row of selectedRows){
+      if(row.mature && matureByDiet[row.diet]!=null) matureByDiet[row.diet]++;
+      if(row.reproductionReady && reproductionReadyByDiet[row.diet]!=null) reproductionReadyByDiet[row.diet]++;
+    }
+    return {
+      ids:selectedRows.map(row=>row.id),
+      selectedByDiet:byDiet,
+      selectedMatureByDiet:matureByDiet,
+      selectedReproductionReadyByDiet:reproductionReadyByDiet,
+      selectedMature:selectedRows.filter(row=>row.mature).length,
+      selectedReproductionReady:selectedRows.filter(row=>row.reproductionReady).length,
+      selectedActivePackMembers:selectedRows.filter(row=>row.packId!=null).length,
+      selectedPackBorn:selectedRows.filter(row=>row.packBorn).length,
+      selectedLastMatureOfDiet:selectedRows.filter(row=>row.lastMatureOfDiet).length,
+      selectedLastMatureOfLineage:selectedRows.filter(row=>row.lastMatureOfLineage).length,
+      selectedOutsideLegacy:selectedRows.filter(row=>!legacySelectedSet.has(row.id)).length
+    };
+  }
   function recordCapacityCullSelection(allRows,selected,emergencyLimit,removeNeed){
     const dietCounts=new Map(), matureDietCounts=new Map(), lineageCounts=new Map(), matureLineageCounts=new Map();
     for(const row of allRows){
@@ -16517,7 +16568,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     }
     const context={dietCounts,matureDietCounts,lineageCounts,matureLineageCounts};
     const selectedSet=new Set(selected.map(row=>row.o));
+    const selectedIdSet=new Set(selected.map(row=>row.o.id));
     const selectedRows=selected.map(row=>capacityCullCandidateSnapshot(row,context)).filter(Boolean);
+    const allScoreSelection=capacityCullCounterfactualSelection(allRows,removeNeed,false);
+    const matureDietGuardedSelection=capacityCullCounterfactualSelection(allRows,removeNeed,true);
     const alternatives=allRows
       .filter(row=>!selectedSet.has(row.o))
       .sort((a,b)=>{
@@ -16546,7 +16600,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       beforeByDiet:dietObject(dietCounts),
       beforeMatureByDiet:dietObject(matureDietCounts),
       afterByDiet:dietObject(afterDietCounts),
-      afterMatureByDiet:dietObject(afterMatureDietCounts)
+      afterMatureByDiet:dietObject(afterMatureDietCounts),
+      counterfactual:{
+        allScore:capacityCullSelectionSnapshot(allScoreSelection,context,selectedIdSet),
+        matureDietGuarded:capacityCullSelectionSnapshot(matureDietGuardedSelection,context,selectedIdSet)
+      }
     });
     if(telemetry.capacityCullEvents.length>1200){
       telemetry.capacityCullEvents.splice(0,telemetry.capacityCullEvents.length-1000);
@@ -16556,17 +16614,56 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const events=telemetry.capacityCullEvents;
     const selected=events.flatMap(event=>event.selected || []);
     const byDiet={h:0,m:0,c:0};
+    const matureByDiet={h:0,m:0,c:0};
+    const reproductionReadyByDiet={h:0,m:0,c:0};
     for(const row of selected) if(byDiet[row.diet]!=null) byDiet[row.diet]++;
+    for(const row of selected){
+      if(row.mature && matureByDiet[row.diet]!=null) matureByDiet[row.diet]++;
+      if(row.reproductionReady && reproductionReadyByDiet[row.diet]!=null) reproductionReadyByDiet[row.diet]++;
+    }
+    const counterfactualSummary=mode=>{
+      const rows=events.map(event=>event.counterfactual?.[mode]).filter(Boolean);
+      const selectedByDiet={h:0,m:0,c:0};
+      const selectedMatureByDiet={h:0,m:0,c:0};
+      const selectedReproductionReadyByDiet={h:0,m:0,c:0};
+      for(const row of rows){
+        for(const diet of ['h','m','c']){
+          selectedByDiet[diet]+=Number(row.selectedByDiet?.[diet]||0);
+          selectedMatureByDiet[diet]+=Number(row.selectedMatureByDiet?.[diet]||0);
+          selectedReproductionReadyByDiet[diet]+=Number(row.selectedReproductionReadyByDiet?.[diet]||0);
+        }
+      }
+      return {
+        events:rows.length,
+        eventsDifferentFromLegacy:rows.filter(row=>Number(row.selectedOutsideLegacy||0)>0).length,
+        selectedByDiet,
+        selectedMatureByDiet,
+        selectedReproductionReadyByDiet,
+        selectedMature:rows.reduce((sum,row)=>sum+Number(row.selectedMature||0),0),
+        selectedReproductionReady:rows.reduce((sum,row)=>sum+Number(row.selectedReproductionReady||0),0),
+        selectedActivePackMembers:rows.reduce((sum,row)=>sum+Number(row.selectedActivePackMembers||0),0),
+        selectedPackBorn:rows.reduce((sum,row)=>sum+Number(row.selectedPackBorn||0),0),
+        selectedLastMatureOfDiet:rows.reduce((sum,row)=>sum+Number(row.selectedLastMatureOfDiet||0),0),
+        selectedLastMatureOfLineage:rows.reduce((sum,row)=>sum+Number(row.selectedLastMatureOfLineage||0),0),
+        selectedOutsideLegacy:rows.reduce((sum,row)=>sum+Number(row.selectedOutsideLegacy||0),0)
+      };
+    };
     return {
       events:events.length,
       selected:selected.length,
       selectedByDiet:byDiet,
+      selectedMatureByDiet:matureByDiet,
+      selectedReproductionReadyByDiet:reproductionReadyByDiet,
       selectedActivePackMembers:selected.filter(row=>row.packId!=null).length,
       selectedPackBorn:selected.filter(row=>row.packBorn).length,
       selectedLastOfDiet:selected.filter(row=>row.lastOfDiet).length,
       selectedLastMatureOfDiet:selected.filter(row=>row.lastMatureOfDiet).length,
       selectedLastOfLineage:selected.filter(row=>row.lastOfLineage).length,
       selectedLastMatureOfLineage:selected.filter(row=>row.lastMatureOfLineage).length,
+      counterfactual:{
+        allScore:counterfactualSummary('allScore'),
+        matureDietGuarded:counterfactualSummary('matureDietGuarded')
+      },
       recentEvents:events.slice(-80)
     };
   }
