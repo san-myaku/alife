@@ -3442,7 +3442,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       packFamilyMultiClutchEvents:0,
       packFamilyMultiClutchChildren:0,
       packInheritedClutchEvents:0,
-      packInheritedClutchChildren:0
+      packInheritedClutchChildren:0,
+      packOverflowFeedingEvents:0,
+      packOverflowEnergyTransferred:0,
+      packOverflowNutrientTransferred:0,
+      packOverflowRecipients:0
     }
   };
   const PACK_MEMBER_LIFECYCLE_EVENT_LIMIT=2400;
@@ -3918,7 +3922,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       packFamilyMultiClutchEvents:0,
       packFamilyMultiClutchChildren:0,
       packInheritedClutchEvents:0,
-      packInheritedClutchChildren:0
+      packInheritedClutchChildren:0,
+      packOverflowFeedingEvents:0,
+      packOverflowEnergyTransferred:0,
+      packOverflowNutrientTransferred:0,
+      packOverflowRecipients:0
     });
   }
   function clearOrganismPackIdentity(organism,reason='cleared'){
@@ -3968,6 +3976,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(!a || !b) return false;
     if(lineageAwarePackIdentityEnabled()) return samePackBiologicalIdentity(a,b);
     return packIdentitySpeciesKey(a)===packIdentitySpeciesKey(b);
+  }
+  function sameActivePackMembership(a,b){
+    if(!a || !b || a===b || !a.packId || a.packId!==b.packId) return false;
+    const pack=activePackById(a.packId);
+    return !!(
+      pack
+      && packRecordMatchesOrganism(pack,a,{recordTelemetry:false,reason:'active-pack-membership-a'})
+      && packRecordMatchesOrganism(pack,b,{recordTelemetry:false,reason:'active-pack-membership-b'})
+    );
   }
   function packIdentityApplyRecord(pack,identity){
     if(!pack || !identity) return null;
@@ -6680,8 +6697,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const value=Number(diagnosticPackSharing.packAttackBase);
     return Number.isFinite(value) ? clamp(value,0.1,2.0) : 0.78;
   }
-  function applyDiagnosticPackPreySharing(predator,prey,grossGain,nutrientGain,attackCost,sizeInfo){
+  function applyPackPreyDistribution(predator,prey,grossGain,nutrientGain,attackCost,sizeInfo){
     const helpers=(sizeInfo?.eligiblePackHelpers || eligiblePackHelpersFor(predator,prey,'attack')).filter(h=>h && !h.dead);
+    const activePackHelpers=lineageAwarePackIdentityEnabled() && !duelExperimentActive
+      ? helpers.filter(helper=>sameActivePackMembership(predator,helper)).sort((a,b)=>{
+          const ar=Number(a.energy||0)/Math.max(1,organismMaxEnergy(a));
+          const br=Number(b.energy||0)/Math.max(1,organismMaxEnergy(b));
+          return ar-br || a.id-b.id;
+        })
+      : [];
     const shareFraction=diagnosticPackShareFraction();
     const packKiller=predationUsesPackHelpers(predator);
     const groupHunt=packKiller && helpers.length>0;
@@ -6728,8 +6752,53 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       helperStoreNAfter.push(nAfter);
       if(actual>0) microRecordEnergyFlow(h,'predationGain',actual,'gain');
     }
-    const energyOverflowLoss=Math.max(0,originalGrossGain-killerActualGain-helperActualGainTotal);
-    const nutrientOverflowLoss=Math.max(0,originalNutrientGain-killerNutrientGain-helperNutrientGainTotal);
+    let energyOverflowLoss=Math.max(0,originalGrossGain-killerActualGain-helperActualGainTotal);
+    let nutrientOverflowLoss=Math.max(0,originalNutrientGain-killerNutrientGain-helperNutrientGainTotal);
+    let activePackOverflowEnergyShared=0;
+    let activePackOverflowNutrientShared=0;
+    const activePackOverflowRecipients=[];
+    for(const helper of activePackHelpers){
+      const index=helpers.indexOf(helper);
+      if(index<0) continue;
+      const energyBefore=Number(helper.energy||0);
+      const energyCapacity=Math.max(0,organismMaxEnergy(helper)-energyBefore);
+      const energyTransfer=Math.min(energyOverflowLoss,energyCapacity);
+      if(energyTransfer>0){
+        helper.energy=energyBefore+energyTransfer;
+        helperActualGains[index]+=energyTransfer;
+        helperActualGainTotal+=energyTransfer;
+        helperEnergyAfter[index]=helper.energy;
+        energyOverflowLoss-=energyTransfer;
+        activePackOverflowEnergyShared+=energyTransfer;
+        microRecordEnergyFlow(helper,'predationGain',energyTransfer,'gain');
+      }
+      const nutrientBefore=clamp01(helper.storeN||0);
+      const nutrientCapacity=Math.max(0,1-nutrientBefore);
+      const nutrientTransfer=Math.min(nutrientOverflowLoss,nutrientCapacity);
+      if(nutrientTransfer>0){
+        helper.storeN=nutrientBefore+nutrientTransfer;
+        helperNutrientGains[index]+=nutrientTransfer;
+        helperNutrientGainTotal+=nutrientTransfer;
+        helperStoreNAfter[index]=helper.storeN;
+        nutrientOverflowLoss-=nutrientTransfer;
+        activePackOverflowNutrientShared+=nutrientTransfer;
+      }
+      if(energyTransfer>0 || nutrientTransfer>0){
+        activePackOverflowRecipients.push({
+          id:helper.id,
+          energy:energyTransfer,
+          nutrient:nutrientTransfer
+        });
+      }
+      if(energyOverflowLoss<=1e-12 && nutrientOverflowLoss<=1e-12) break;
+    }
+    if(activePackOverflowRecipients.length){
+      const identityTelemetry=packIdentityTelemetry();
+      identityTelemetry.packOverflowFeedingEvents++;
+      identityTelemetry.packOverflowEnergyTransferred+=activePackOverflowEnergyShared;
+      identityTelemetry.packOverflowNutrientTransferred+=activePackOverflowNutrientShared;
+      identityTelemetry.packOverflowRecipients+=activePackOverflowRecipients.length;
+    }
     const energyResidual=killerActualGain+helperActualGainTotal-originalGrossGain;
     const nutrientResidual=killerNutrientGain+helperNutrientGainTotal-originalNutrientGain;
     if(energyResidual>telemetry.packHuntConservation.energyPositiveResidualMax) telemetry.packHuntConservation.energyPositiveResidualMax=energyResidual;
@@ -6743,6 +6812,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       preyId:prey?.id ?? null,
       helperIds:helpers.map(h=>h.id),
       helperCount:helpers.length,
+      activePackId:predator?.packId ?? null,
+      activePackHelperIds:activePackHelpers.map(h=>h.id),
+      activePackHelperCount:activePackHelpers.length,
       killerStrategy:carnivoreStrategyClass(predator),
       helperStrategies:helpers.map(h=>carnivoreStrategyClass(h)),
       soloHunt:!groupHunt,
@@ -6762,6 +6834,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       killerActualGain,
       helperActualGainTotal,
       helperActualGains,
+      activePackOverflowEnergyShared,
+      activePackOverflowNutrientShared,
+      activePackOverflowRecipients,
       energyOverflowLoss,
       originalNutrientGain,
       killerNutrientGain,
@@ -10682,6 +10757,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       groupHuntEvents:packEvents.filter(e=>e.groupHunt).length,
       soloPackHuntEvents:packEvents.filter(e=>e.killerStrategy==='pack' && !e.groupHunt).length,
       averageHelperCount:packEvents.length ? sumEvent(e=>e.helperCount)/packEvents.length : null,
+      activePackGroupHuntEvents:packEvents.filter(e=>Number(e.activePackHelperCount||0)>0).length,
+      activePackOverflowFeedingEvents:packEvents.filter(e=>Number(e.activePackOverflowEnergyShared||0)>0 || Number(e.activePackOverflowNutrientShared||0)>0).length,
+      activePackOverflowEnergyShared:sumEvent(e=>e.activePackOverflowEnergyShared),
+      activePackOverflowNutrientShared:sumEvent(e=>e.activePackOverflowNutrientShared),
       helperChaseCostTotal:sumEvent(e=>(e.helperChaseCosts||[]).reduce((s,x)=>s+Number(x||0),0)),
       helperActualEnergyTotal:sumEvent(e=>e.helperActualGainTotal),
       killerActualEnergyTotal:sumEvent(e=>e.killerActualGain),
@@ -13436,7 +13515,7 @@ if(Z>0.08){
         const predationStoreNBefore=clamp01(this.storeN||0);
         const predationEnergyBefore=this.energy;
         const predationNutrientGain=0.050*(gain/40);
-        const packShareEvent=applyDiagnosticPackPreySharing(this,prey,gain,predationNutrientGain,cost,sizeInfo);
+        const packShareEvent=applyPackPreyDistribution(this,prey,gain,predationNutrientGain,cost,sizeInfo);
         applyPredationDefenses(this,prey,preyDefenses,gainRaw);
         const predationStoreNAfter=clamp01(this.storeN||0);
         const predationEnergyAfter=this.energy;
@@ -20215,7 +20294,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     };
     const share=(fraction,killer,prey,helpers,gross=100,nutrient=0.10,cost=0)=>{
       diagnosticPackSharing.shareFraction=fraction;
-      return applyDiagnosticPackPreySharing(killer,prey,gross,nutrient,cost,{
+      return applyPackPreyDistribution(killer,prey,gross,nutrient,cost,{
         eligiblePackHelpers:helpers,
         effectiveSizeRatio:0.8,
         packSizeMultiplier:helpers.length ? 1.5 : 1,
@@ -22490,6 +22569,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       familyMultiClutchChildren:Number(packIdentityTelemetry().packFamilyMultiClutchChildren||0),
       inheritedClutchEvents:Number(packIdentityTelemetry().packInheritedClutchEvents||0),
       inheritedClutchChildren:Number(packIdentityTelemetry().packInheritedClutchChildren||0),
+      overflowFeedingEvents:Number(packIdentityTelemetry().packOverflowFeedingEvents||0),
+      overflowEnergyTransferred:Number(packIdentityTelemetry().packOverflowEnergyTransferred||0),
+      overflowNutrientTransferred:Number(packIdentityTelemetry().packOverflowNutrientTransferred||0),
+      overflowRecipients:Number(packIdentityTelemetry().packOverflowRecipients||0),
       invariants:packIdentityInvariantSummary(),
       eligibleAssigned,
       eligibleUnassigned,
@@ -27219,6 +27302,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   function runLineageAwarePackIdentityMicroTests(){
     const saved=capture();
     const oldFlags={...featureFlags};
+    const oldPackSharing={...diagnosticPackSharing};
     const results=[];
     const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
     const same=(a,b)=>stableJson(a)===stableJson(b);
@@ -27669,9 +27753,82 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           disabled:qOff
         }
       );
+
+      clear();
+      Object.assign(featureFlags,{persistentPackIdentity:true,persistentLineageRegistry:true,provisionalLineageClassification:true,lineageAwarePackIdentity:true,speciesIdentityV2:true,canonicalSpeciesAppearance:true});
+      diagnosticPackSharing.shareFraction=0;
+      const rKiller=make(genesA,{x:100,y:100});
+      const rHelper=make(genesA,{x:104,y:100});
+      const rSameLineageOutsider=make(genesA,{x:106,y:100});
+      const rPrey=make(genesB,{x:108,y:100,eligible:false});
+      createPackIdentity([rKiller,rHelper]);
+      const rKillerMax=organismMaxEnergy(rKiller);
+      rKiller.energy=rKillerMax-5;
+      rHelper.energy=Math.min(5,organismMaxEnergy(rHelper)*0.05);
+      rSameLineageOutsider.energy=Math.min(5,organismMaxEnergy(rSameLineageOutsider)*0.05);
+      const rHelperBefore=rHelper.energy;
+      const rOutsiderBefore=rSameLineageOutsider.energy;
+      const rEvent=applyPackPreyDistribution(
+        rKiller,
+        rPrey,
+        25,
+        0,
+        0,
+        {eligiblePackHelpers:[rHelper,rSameLineageOutsider],effectiveSizeRatio:1,packHelperContribution:PACK_HELPER_SIZE_CONTRIBUTION,packSizeMultiplier:1}
+      );
+      add('Micro R active pack helper receives only otherwise-lost predation overflow',
+        rKiller.energy===rKillerMax
+          && rHelper.energy>rHelperBefore
+          && rSameLineageOutsider.energy===rOutsiderBefore
+          && rEvent.activePackHelperCount===1
+          && rEvent.activePackOverflowEnergyShared>0
+          && rEvent.energyResidual<=1e-9
+          && Number(packIdentityTelemetry().packOverflowFeedingEvents||0)===1,
+        {
+          killer:{id:rKiller.id,energy:rKiller.energy,maxEnergy:rKillerMax,actualGain:rEvent.killerActualGain},
+          helper:{id:rHelper.id,before:rHelperBefore,after:rHelper.energy},
+          outsider:{id:rSameLineageOutsider.id,before:rOutsiderBefore,after:rSameLineageOutsider.energy},
+          event:rEvent,
+          telemetry:{...packIdentityTelemetry()}
+        }
+      );
+
+      clear();
+      Object.assign(featureFlags,{persistentPackIdentity:true,persistentLineageRegistry:true,provisionalLineageClassification:true,lineageAwarePackIdentity:true,speciesIdentityV2:true,canonicalSpeciesAppearance:true});
+      const sKiller=make(genesA,{x:100,y:100});
+      const sHelper=make(genesA,{x:104,y:100});
+      const sPrey=make(genesB,{x:108,y:100,eligible:false});
+      createPackIdentity([sKiller,sHelper]);
+      const sKillerMax=organismMaxEnergy(sKiller);
+      sKiller.energy=sKillerMax-5;
+      sHelper.energy=Math.min(5,organismMaxEnergy(sHelper)*0.05);
+      const sHelperBefore=sHelper.energy;
+      featureFlags.lineageAwarePackIdentity=false;
+      const sEvent=applyPackPreyDistribution(
+        sKiller,
+        sPrey,
+        25,
+        0,
+        0,
+        {eligiblePackHelpers:[sHelper],effectiveSizeRatio:1,packHelperContribution:PACK_HELPER_SIZE_CONTRIBUTION,packSizeMultiplier:1}
+      );
+      add('Micro S feature OFF preserves legacy overflow loss',
+        sKiller.energy===sKillerMax
+          && sHelper.energy===sHelperBefore
+          && sEvent.activePackHelperCount===0
+          && sEvent.activePackOverflowEnergyShared===0
+          && Number(packIdentityTelemetry().packOverflowFeedingEvents||0)===0,
+        {
+          killer:{id:sKiller.id,energy:sKiller.energy,maxEnergy:sKillerMax,actualGain:sEvent.killerActualGain},
+          helper:{id:sHelper.id,before:sHelperBefore,after:sHelper.energy},
+          event:sEvent,
+          telemetry:{...packIdentityTelemetry()}
+        }
+      );
     }catch(err){
       add('Lineage-aware pack identity micro exception',false,{message:String(err?.message || err),stack:String(err?.stack || '')});
     }finally{
+      Object.assign(diagnosticPackSharing,oldPackSharing);
       Object.assign(featureFlags,oldFlags);
       restore(saved);
       Object.assign(featureFlags,oldFlags);
