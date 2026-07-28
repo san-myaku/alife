@@ -374,6 +374,7 @@ async function runSeed(browser, seed) {
         targetConsensus,
         packAttackBase,
         packHuntTelemetry: true,
+        includeLineageRegistryState: true,
         includeModelState,
         ...flags
       });

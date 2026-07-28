@@ -2335,6 +2335,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   let nextLineageSerial = 1;
   let lineageRegistryRestoreInProgress = false;
   const lineageRegistryLastRestoreIssues = { duplicateLineageIds:[] };
+  const lineageEstablishmentEvidenceState = new Map();
   const provisionalLineageTelemetryState = {
     inheritedPrimary:0,
     inheritedMate:0,
@@ -2347,6 +2348,83 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   }
   function provisionalLineageTelemetry(){
     return {...provisionalLineageTelemetryState};
+  }
+  function resetLineageEstablishmentEvidence(){
+    lineageEstablishmentEvidenceState.clear();
+  }
+  function noteLineageEstablishmentBirth(record,child,parent,mate,created=false){
+    if(!record?.lineageId || !child) return null;
+    const lineageId=String(record.lineageId);
+    const current=lineageEstablishmentEvidenceState.get(lineageId) || {
+      lineageId,
+      speciesStatus:String(record.speciesStatus || ''),
+      firstBirthFrame:frame,
+      lastBirthFrame:frame,
+      observedBirths:0,
+      inheritedBirths:0,
+      sexualBirths:0,
+      asexualBirths:0,
+      sameLineageSexualBirths:0,
+      maxLineageGeneration:0,
+      maxGenerationDepth:0,
+      peakConcurrentLiving:0
+    };
+    current.speciesStatus=String(record.speciesStatus || current.speciesStatus || '');
+    current.lastBirthFrame=frame;
+    current.observedBirths++;
+    if(!created) current.inheritedBirths++;
+    if(mate){
+      current.sexualBirths++;
+      if(String(parent?.lineageId ?? '')===lineageId && String(mate?.lineageId ?? '')===lineageId){
+        current.sameLineageSexualBirths++;
+      }
+    } else {
+      current.asexualBirths++;
+    }
+    current.maxLineageGeneration=Math.max(
+      current.maxLineageGeneration,
+      finiteNonNegativeInteger(child.lineageGeneration,0)
+    );
+    current.maxGenerationDepth=Math.max(
+      current.maxGenerationDepth,
+      finiteNonNegativeInteger(child.generationDepth,0)
+    );
+    const livingIds=new Set(
+      organisms
+        .filter(organism=>organism && !organism.dead && String(organism.lineageId ?? '')===lineageId)
+        .map(organism=>organism.id)
+    );
+    livingIds.add(child.id);
+    current.peakConcurrentLiving=Math.max(current.peakConcurrentLiving,livingIds.size);
+    lineageEstablishmentEvidenceState.set(lineageId,current);
+    return current;
+  }
+  function lineageEstablishmentEvidenceSummary(){
+    const livingCounts=new Map();
+    for(const organism of organisms){
+      if(!organism || organism.dead || organism.lineageId==null) continue;
+      const lineageId=String(organism.lineageId);
+      livingCounts.set(lineageId,(livingCounts.get(lineageId)||0)+1);
+    }
+    const rows=Array.from(lineageEstablishmentEvidenceState.values())
+      .map(row=>({
+        ...row,
+        currentLiving:Number(livingCounts.get(row.lineageId)||0)
+      }))
+      .sort((a,b)=>
+        b.maxLineageGeneration-a.maxLineageGeneration
+        || b.sameLineageSexualBirths-a.sameLineageSexualBirths
+        || b.observedBirths-a.observedBirths
+        || String(a.lineageId).localeCompare(String(b.lineageId))
+      );
+    return {
+      lineageCount:rows.length,
+      provisionalLineageCount:rows.filter(row=>row.speciesStatus==='provisional').length,
+      provisionalWithTwoGenerations:rows.filter(row=>row.speciesStatus==='provisional' && row.maxLineageGeneration>=2).length,
+      provisionalWithSameLineageSexualBirth:rows.filter(row=>row.speciesStatus==='provisional' && row.sameLineageSexualBirths>0).length,
+      provisionalWithThreeConcurrent:rows.filter(row=>row.speciesStatus==='provisional' && row.peakConcurrentLiving>=3).length,
+      rows
+    };
   }
   function rootLineageIdForSpeciesKey(speciesKeyValue){
     return `root:${String(speciesKeyValue || 'unknown')}`;
@@ -2427,7 +2505,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     if(!source?.record?.ecotypeSignature) return null;
     return source;
   }
-  function inheritChildLineageFromCandidate(child,candidate,telemetryKey){
+  function inheritChildLineageFromCandidate(child,candidate,telemetryKey,parent=null,mate=null){
     if(!child || !candidate?.record) return null;
     const previousCanonicalIdentity=canonicalAppearanceIdentityKey(child);
     child.lineageId=String(candidate.record.lineageId);
@@ -2435,6 +2513,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     child.canonicalAppearanceKey=String(candidate.record.canonicalAppearanceKey || candidate.record.founderSpeciesKey || child.speciesKey || speciesKeyForOrganism(child));
     refreshSymbolIfCanonicalIdentityChanged(child,previousCanonicalIdentity);
     if(telemetryKey && provisionalLineageTelemetryState[telemetryKey]!=null) provisionalLineageTelemetryState[telemetryKey]++;
+    noteLineageEstablishmentBirth(candidate.record,child,parent,mate,false);
     return candidate.record;
   }
   function makeProvisionalLineageRecordForChild(child,parentLineageId,ecotypeSignature){
@@ -2451,7 +2530,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
       speciesStatus:'provisional'
     };
   }
-  function createProvisionalLineageForChild(child,parentCandidate,childEcotypeSignature){
+  function createProvisionalLineageForChild(child,parentCandidate,childEcotypeSignature,parent=null,mate=null){
     if(!child || !parentCandidate?.record) return null;
     const previousCanonicalIdentity=canonicalAppearanceIdentityKey(child);
     const record=makeProvisionalLineageRecordForChild(child,parentCandidate.record.lineageId,childEcotypeSignature);
@@ -2462,6 +2541,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     refreshSymbolIfCanonicalIdentityChanged(child,previousCanonicalIdentity);
     provisionalLineageTelemetryState.provisionalCreated++;
     if(lineageRecordById(record.parentLineageId)?.speciesStatus==='provisional') provisionalLineageTelemetryState.nestedProvisionalCreated++;
+    noteLineageEstablishmentBirth(record,child,parent || parentCandidate.organism,mate,true);
     normalizeNextLineageSerial();
     return record;
   }
@@ -2485,14 +2565,14 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     let mateCandidate=validLineageClassificationCandidate(mate);
     if(primary && mateCandidate && primary.record.lineageId===mateCandidate.record.lineageId) mateCandidate=null;
     if(primary?.record?.ecotypeSignature===childEcotypeSignature){
-      return inheritChildLineageFromCandidate(child,primary,'inheritedPrimary');
+      return inheritChildLineageFromCandidate(child,primary,'inheritedPrimary',parent,mate);
     }
     if(mateCandidate?.record?.ecotypeSignature===childEcotypeSignature){
-      return inheritChildLineageFromCandidate(child,mateCandidate,'inheritedMate');
+      return inheritChildLineageFromCandidate(child,mateCandidate,'inheritedMate',parent,mate);
     }
     const parentCandidate=primary || mateCandidate;
     if(parentCandidate){
-      return createProvisionalLineageForChild(child,parentCandidate,childEcotypeSignature);
+      return createProvisionalLineageForChild(child,parentCandidate,childEcotypeSignature,parent,mate);
     }
     provisionalLineageTelemetryState.rootFallback++;
     return ensureRootLineageForOrganism(child,{lineageGeneration:finiteNonNegativeInteger(child.generationDepth,0),reason:'classification-root-fallback'});
@@ -2530,6 +2610,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     nextLineageSerial=1;
     lineageRegistryLastRestoreIssues.duplicateLineageIds=[];
     resetProvisionalLineageTelemetry();
+    resetLineageEstablishmentEvidence();
   }
   function hasNonRootLineages(){
     for(const record of lineageRegistry.values()){
@@ -3030,6 +3111,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
       derived,
       classification:lineageRegistryClassificationSummary(derived),
       telemetry:provisionalLineageTelemetry(),
+      establishmentEvidence:lineageEstablishmentEvidenceSummary(),
       validation:validateLineageRegistry()
     };
   }
