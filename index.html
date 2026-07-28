@@ -5584,6 +5584,18 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         firstSuccessEnergyBefore:null,
         firstSuccessEnergyAfter:null,
         firstSuccessSteps:null,
+        attackProbabilitySum:0,
+        attackProbabilitySamples:0,
+        attackDefenseMulSum:0,
+        attackDefenseMulSamples:0,
+        attackRiskMulSum:0,
+        attackRiskMulSamples:0,
+        attackAvoidMulSum:0,
+        attackAvoidMulSamples:0,
+        minimumAttackProbability:null,
+        minimumAttackDefenseMul:null,
+        attemptedPreyDietCounts:{h:0,m:0,c:0},
+        attemptedPreyDefenseCounts:{},
         scanEvents:0,
         potentialPreyScanEvents:0,
         validPreyScanEvents:0,
@@ -7622,6 +7634,39 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     } else if(stage==='attempt'){
       rec.attemptedAttack=true;
       if(!rec.succeededPredation) rec.attackAttemptsBeforeSuccess++;
+      const probability=Number(data?.probability);
+      if(Number.isFinite(probability)){
+        rec.attackProbabilitySum+=probability;
+        rec.attackProbabilitySamples++;
+        rec.minimumAttackProbability=rec.minimumAttackProbability==null ? probability : Math.min(rec.minimumAttackProbability,probability);
+      }
+      const defenseMul=Number(data?.defenseMul);
+      if(Number.isFinite(defenseMul)){
+        rec.attackDefenseMulSum+=defenseMul;
+        rec.attackDefenseMulSamples++;
+        rec.minimumAttackDefenseMul=rec.minimumAttackDefenseMul==null ? defenseMul : Math.min(rec.minimumAttackDefenseMul,defenseMul);
+      }
+      if(prey){
+        const preyDiet=telemetryDiet(prey);
+        if(rec.attemptedPreyDietCounts[preyDiet]==null) rec.attemptedPreyDietCounts[preyDiet]=0;
+        rec.attemptedPreyDietCounts[preyDiet]++;
+        const riskMul=Number(prey.predationRiskMul ?? 1);
+        if(Number.isFinite(riskMul)){
+          rec.attackRiskMulSum+=riskMul;
+          rec.attackRiskMulSamples++;
+        }
+        let avoidMul=1;
+        for(const defense of predationDefensesFor(prey)){
+          const id=defense?.id || 'unknown';
+          rec.attemptedPreyDefenseCounts[id]=(rec.attemptedPreyDefenseCounts[id]||0)+1;
+          avoidMul*=Number(defense?.defense?.avoidMul ?? 1);
+          if(isAmbusherPredator(o)) avoidMul*=Number(defense?.defense?.ambusherAvoidMul ?? 1);
+        }
+        if(Number.isFinite(avoidMul)){
+          rec.attackAvoidMulSum+=avoidMul;
+          rec.attackAvoidMulSamples++;
+        }
+      }
       if(rec.firstAttackFrame==null){ rec.firstAttackFrame=frame; rec.firstAttackAge=telemetryLifeAge(o,rec); rec.firstAttackEnergy=Number(o.energy||0); }
     } else if(stage==='success'){
       rec.succeededPredation=true;
@@ -9105,6 +9150,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         oldAge:0,
         other:0
       };
+      const attemptedPreyDietCounts={h:0,m:0,c:0};
+      const attemptedPreyDefenseCounts={};
       for(const r of rows){
         for(const key of TELEMETRY_PREDATION_FAILURE_KEYS){
           const n=Number(r.failureCounts?.[key] || 0);
@@ -9120,8 +9167,30 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
             cohortDeathsBeforeSuccess[cause]++;
           }
         }
+        for(const [diet,count] of Object.entries(r.attemptedPreyDietCounts || {})){
+          attemptedPreyDietCounts[diet]=(attemptedPreyDietCounts[diet]||0)+Number(count||0);
+        }
+        for(const [defense,count] of Object.entries(r.attemptedPreyDefenseCounts || {})){
+          attemptedPreyDefenseCounts[defense]=(attemptedPreyDefenseCounts[defense]||0)+Number(count||0);
+        }
       }
       const cohortSuccesses=rows.filter(r=>r.succeededPredation);
+      const weightedField=(sumKey,sampleKey)=>{
+        let total=0, samples=0;
+        for(const r of rows){
+          const n=Number(r?.[sampleKey] || 0);
+          const value=Number(r?.[sumKey] || 0);
+          if(n>0 && Number.isFinite(value)){ total+=value; samples+=n; }
+        }
+        return samples ? total/samples : null;
+      };
+      const minimumField=key=>{
+        const values=rows
+          .map(r=>r?.[key])
+          .filter(value=>value!=null && Number.isFinite(Number(value)))
+          .map(Number);
+        return values.length ? Math.min(...values) : null;
+      };
       return {
         observed:rows.length,
         alive:rows.filter(r=>r.deathFrame==null).length,
@@ -9138,6 +9207,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         failureOrganisms:cohortFailureOrganisms,
         dominantFailureReasons:cohortFailures,
         deathsBeforeFirstPredation:cohortDeathsBeforeSuccess,
+        attemptedPreyDietCounts,
+        attemptedPreyDefenseCounts,
+        averageAttackProbability:weightedField('attackProbabilitySum','attackProbabilitySamples'),
+        minimumAttackProbability:minimumField('minimumAttackProbability'),
+        averageAttackDefenseMul:weightedField('attackDefenseMulSum','attackDefenseMulSamples'),
+        minimumAttackDefenseMul:minimumField('minimumAttackDefenseMul'),
+        averageAttackRiskMul:weightedField('attackRiskMulSum','attackRiskMulSamples'),
+        averageAttackAvoidMul:weightedField('attackAvoidMulSum','attackAvoidMulSamples'),
         averageBirthEnergy:avg(rows.map(r=>r.birthEnergy)),
         averageFirstContactEnergy:avg(rows.map(r=>r.firstContactEnergy)),
         averageFirstSuccessEnergyBefore:avg(rows.map(r=>r.firstSuccessEnergyBefore)),
