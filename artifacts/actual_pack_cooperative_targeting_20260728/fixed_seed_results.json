@@ -9126,5 +9126,10 @@
     "browserErrors": 0,
     "roundTripOk": true
   },
+  "postValidation": {
+    "change": "Release a shared target after same-target trackers lose the active Pack majority",
+    "focusedMicro": "Micro AD shared target clears when Pack tracking majority ends",
+    "naturalRunImpact": "None of the fixed-seed runs formed a Pack larger than 2, so the recorded 3-seed paths are unchanged"
+  },
   "accepted": true
 }

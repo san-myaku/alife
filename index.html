@@ -7461,6 +7461,23 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       && Math.hypot(member.x-predator.x,member.y-predator.y)<=communicationRange
     );
   }
+  function actualPackSharedTargetSupportStatus(predator,prey){
+    if(!packCooperativeTargetingEnabled() || !predator || !prey){
+      return {livingMembers:[],localSupporters:[],sameTargetTrackers:0,majorityContinuing:false};
+    }
+    const pack=predator.packId ? activePackById(predator.packId) : null;
+    const livingMembers=pack ? packIdentityLivingMembers(pack) : [];
+    const localSupporters=actualPackSharedTargetSupport(predator,prey);
+    const sameTargetTrackers=livingMembers.filter(member=>
+      isPackHunter(member) && member.preyTargetId===prey.id
+    ).length;
+    return {
+      livingMembers,
+      localSupporters,
+      sameTargetTrackers,
+      majorityContinuing:sameTargetTrackers>livingMembers.length/2
+    };
+  }
   function updatePackCooperativeTrackerMaximum(){
     if(!packCooperativeTargetingEnabled()) return;
     const t=telemetry.packCooperativeTargeting;
@@ -7498,12 +7515,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       predator.packSharedTargetBestDistance=distance;
       predator.packSharedTargetLastProgressFrame=frame;
     }
-    const supporters=actualPackSharedTargetSupport(predator,prey);
-    if(supporters.length) predator.packSharedTargetLastSupportFrame=frame;
+    const support=actualPackSharedTargetSupportStatus(predator,prey);
+    if(support.localSupporters.length && support.majorityContinuing) predator.packSharedTargetLastSupportFrame=frame;
     const lastSupport=Number(predator.packSharedTargetLastSupportFrame);
     const lastProgress=Number(predator.packSharedTargetLastProgressFrame);
-    if(!supporters.length && Number.isFinite(lastSupport) && frame-lastSupport>cfg.supportGraceSteps){
-      clearPackCooperativeTargetState(predator,'pack-support-ended',true);
+    if((!support.localSupporters.length || !support.majorityContinuing)
+      && Number.isFinite(lastSupport)
+      && frame-lastSupport>cfg.supportGraceSteps
+    ){
+      clearPackCooperativeTargetState(predator,support.majorityContinuing?'pack-support-ended':'pack-majority-ended',true);
       return false;
     }
     if(Number.isFinite(lastProgress)
@@ -7513,7 +7533,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       clearPackCooperativeTargetState(predator,'shared-target-no-progress',true);
       return false;
     }
-    if(supporters.length
+    if(support.localSupporters.length
+      && support.majorityContinuing
       && frame-Number(predator.packSharedTargetAdoptedFrame||frame)<=cfg.retentionSteps
     ){
       telemetry.packCooperativeTargeting.retentionSteps++;
@@ -7525,7 +7546,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(!predator || !prey || predator.packSharedTargetId!==prey.id) return false;
     const cfg=CONFIG.ecology.packIdentity.cooperativeTargeting;
     const age=frame-Number(predator.packSharedTargetAdoptedFrame||frame);
-    return age<=cfg.retentionSteps && actualPackSharedTargetSupport(predator,prey).length>0;
+    const support=actualPackSharedTargetSupportStatus(predator,prey);
+    return age<=cfg.retentionSteps
+      && support.localSupporters.length>0
+      && support.majorityContinuing;
   }
   function packSharedTargetClearlyBetter(predator,current,candidate,currentScore,candidateScore){
     if(!predator || !current || !candidate) return false;
@@ -29902,6 +29926,41 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           && abLoadedFollower.packSharedTargetId==null
           && abLoadedFollower.preyTargetId==null,
         {follower:{sharedTargetId:abLoadedFollower?.packSharedTargetId,targetId:abLoadedFollower?.preyTargetId},leaderDead:!!abLoadedLeader?.dead}
+      );
+
+      clear();
+      Object.assign(featureFlags,{persistentPackIdentity:true,persistentLineageRegistry:true,provisionalLineageClassification:true,lineageAwarePackIdentity:true,packCooperativeTargeting:true,speciesIdentityV2:true,canonicalSpeciesAppearance:true});
+      const adLeader=make(genesA,{x:104,y:100});
+      const adFollower=make(genesA,{x:100,y:100});
+      const adSupporter=make(genesA,{x:106,y:100});
+      const adTargetless=make(genesA,{x:108,y:100});
+      const adPrey=make(genesB,{x:112,y:100,eligible:false});
+      adPrey.protect=0;
+      createPackIdentity([adLeader,adFollower,adSupporter,adTargetless]);
+      adLeader.preyTargetId=adPrey.id;
+      adLeader.chaseTimer=80;
+      adSupporter.preyTargetId=adPrey.id;
+      adSupporter.chaseTimer=80;
+      buildSpatialIndex();
+      adFollower.socialSteer();
+      const adMajorityBefore=actualPackSharedTargetSupportStatus(adFollower,adPrey);
+      adSupporter.preyTargetId=null;
+      frame+=CONFIG.ecology.packIdentity.cooperativeTargeting.supportGraceSteps+1;
+      maintainPackSharedTarget(adFollower);
+      add('Micro AD shared target clears when Pack tracking majority ends',
+        adMajorityBefore.majorityContinuing
+          && adMajorityBefore.sameTargetTrackers===3
+          && adFollower.packSharedTargetId==null
+          && adFollower.preyTargetId==null,
+        {
+          before:{
+            livingMemberCount:adMajorityBefore.livingMembers.length,
+            localSupporterIds:adMajorityBefore.localSupporters.map(member=>member.id),
+            sameTargetTrackers:adMajorityBefore.sameTargetTrackers,
+            majorityContinuing:adMajorityBefore.majorityContinuing
+          },
+          after:{sharedTargetId:adFollower.packSharedTargetId,targetId:adFollower.preyTargetId}
+        }
       );
 
       clear();

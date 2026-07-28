@@ -37,3 +37,5 @@
 ## 判定
 
 採用候補。actual Pack内の自然共有、contact/killへの進行、OFF非干渉、保存則、不変条件を満たした。
+
+固定seedで観測された最大Pack規模は2だった。最終HEADでは、4体以上のPackについても同target追跡者がPack過半数を失った場合、18 stepのgrace後に共有targetを解除するMicroを追加している。この局所修正は上記3 seedの観測経路には影響しない。
