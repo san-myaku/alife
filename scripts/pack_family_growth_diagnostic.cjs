@@ -32,6 +32,7 @@ const targetConsensus = String(process.env.ALIFE_PACK_TARGET_CONSENSUS || '').to
 const packAttackBase = Math.max(0.1, Math.min(2, Number(process.env.ALIFE_PACK_ATTACK_BASE || 0.78)));
 const variant = process.env.ALIFE_PACK_VARIANT || 'pack-family-growth';
 const lineageAwarePackIdentity = String(process.env.ALIFE_LINEAGE_AWARE_PACK_IDENTITY || 'true').toLowerCase() !== 'false';
+const provisionalLineagePromotion = String(process.env.ALIFE_PROVISIONAL_LINEAGE_PROMOTION || '').toLowerCase() === 'true';
 const includeModelState = String(process.env.ALIFE_INCLUDE_MODEL_STATE || '').toLowerCase() === 'true';
 const viewport = { width: 1280, height: 720 };
 
@@ -201,6 +202,7 @@ function markdownReport(data) {
   lines.push(`- targetConsensus: ${data.targetConsensus}`);
   lines.push(`- packAttackBase: ${data.packAttackBase}`);
   lines.push(`- lineageAwarePackIdentity: ${data.lineageAwarePackIdentity}`);
+  lines.push(`- provisionalLineagePromotion: ${data.provisionalLineagePromotion}`);
   lines.push(`- maximumPackSizeEver: ${data.aggregate.maximumPackSizeEver}`);
   lines.push(`- maximumPackGenerationDepth: ${data.aggregate.maximumPackGenerationDepth}`);
   lines.push(`- seedsWithPackAtLeast3: ${data.aggregate.seedsWithPackAtLeast3.join(', ') || 'none'}`);
@@ -349,7 +351,7 @@ async function bootPage(browser, initSeed = null) {
 async function runSeed(browser, seed) {
   const boot = await bootPage(browser, seed);
   try {
-    const payload = await boot.page.evaluate(({ seed, steps, shareFraction, targetConsensus, packAttackBase, variant, lineageAwarePackIdentity, includeModelState }) => {
+    const payload = await boot.page.evaluate(({ seed, steps, shareFraction, targetConsensus, packAttackBase, variant, lineageAwarePackIdentity, provisionalLineagePromotion, includeModelState }) => {
       const flags = {
         evolvableLifeHistory: true,
         juvenileDevelopment: true,
@@ -359,6 +361,7 @@ async function runSeed(browser, seed) {
         canonicalSpeciesAppearance: true,
         persistentLineageRegistry: true,
         provisionalLineageClassification: true,
+        provisionalLineagePromotion,
         lineageAwareMateSelection: true,
         lineageReproductiveIsolation: false,
         lineageAwarePackIdentity,
@@ -402,7 +405,7 @@ async function runSeed(browser, seed) {
       const roundTrip = d.roundTripSave();
       const packStateAfterRoundTrip = d.capturePackIdentityState();
       return { run, packState, packSummary, packMemberLifecycle, juvenileDevelopment, roundTrip, packStateAfterRoundTrip };
-    }, { seed, steps, shareFraction, targetConsensus, packAttackBase, variant, lineageAwarePackIdentity, includeModelState });
+    }, { seed, steps, shareFraction, targetConsensus, packAttackBase, variant, lineageAwarePackIdentity, provisionalLineagePromotion, includeModelState });
     return { ...compactRun(seed, payload), browserErrors: boot.errors };
   } finally {
     await boot.page.close();
@@ -418,6 +421,7 @@ async function runMicros(browser) {
         canonicalAppearance: window.__alifeDebug.runCanonicalSpeciesAppearanceMicroTests(),
         persistentLineage: window.__alifeDebug.runPersistentLineageRegistryMicroTests(),
         provisionalLineage: window.__alifeDebug.runProvisionalLineageClassificationMicroTests(),
+        provisionalLineagePromotion: window.__alifeDebug.runProvisionalLineagePromotionMicroTests(),
         lineageAwareMateSelection: window.__alifeDebug.runLineageAwareMateSelectionMicroTests(),
         eventKeyedVisualRng: window.__alifeDebug.runEventKeyedVisualRngMicroTests(),
         juvenileDevelopment: window.__alifeDebug.runJuvenileDevelopmentMicroTests(),
@@ -438,6 +442,7 @@ const requiredMicroKeys = [
   'canonicalAppearance',
   'persistentLineage',
   'provisionalLineage',
+  'provisionalLineagePromotion',
   'lineageAwareMateSelection',
   'eventKeyedVisualRng',
   'juvenileDevelopment',
@@ -470,6 +475,7 @@ function requiredMicrosPassed(micro) {
       targetConsensus,
       packAttackBase,
       lineageAwarePackIdentity,
+      provisionalLineagePromotion,
       includeModelState,
       micro,
       results,

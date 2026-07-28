@@ -342,6 +342,7 @@
       canonicalSpeciesAppearance: false,
       persistentLineageRegistry: false,
       provisionalLineageClassification: false,
+      provisionalLineagePromotion: false,
       lineageAwareMateSelection: false,
       lineageReproductiveIsolation: false,
       lineageAwarePackIdentity: false,
@@ -516,6 +517,7 @@
     canonicalSpeciesAppearance: CONFIG.features.canonicalSpeciesAppearance,
     persistentLineageRegistry: CONFIG.features.persistentLineageRegistry,
     provisionalLineageClassification: CONFIG.features.provisionalLineageClassification,
+    provisionalLineagePromotion: CONFIG.features.provisionalLineagePromotion,
     lineageAwareMateSelection: CONFIG.features.lineageAwareMateSelection,
     lineageReproductiveIsolation: CONFIG.features.lineageReproductiveIsolation,
     lineageAwarePackIdentity: CONFIG.features.lineageAwarePackIdentity,
@@ -544,6 +546,10 @@
   }
   function provisionalLineageClassificationEnabled(){
     return persistentLineageRegistryEnabled() && !!featureFlags.provisionalLineageClassification;
+  }
+  function provisionalLineagePromotionEnabled(){
+    return provisionalLineageClassificationEnabled()
+      && !!featureFlags.provisionalLineagePromotion;
   }
   function lineageAwareMateSelectionEnabled(){
     return persistentLineageRegistryEnabled()
@@ -2329,13 +2335,22 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     if(lineage.edges.length>LIM) lineage.edges.splice(0, lineage.edges.length-LIM);
   }
 
-  const LINEAGE_REGISTRY_VERSION = 1;
+  const LINEAGE_REGISTRY_VERSION = 2;
   const LINEAGE_SPECIES_STATUS = new Set(['established','provisional','failed']);
+  const PROVISIONAL_LINEAGE_PROMOTION_CRITERIA = Object.freeze({
+    minimumLineageGeneration:2,
+    minimumPeakConcurrentLiving:3,
+    minimumSameLineageSexualBirths:1
+  });
   const lineageRegistry = new Map();
   let nextLineageSerial = 1;
   let lineageRegistryRestoreInProgress = false;
   const lineageRegistryLastRestoreIssues = { duplicateLineageIds:[] };
   const lineageEstablishmentEvidenceState = new Map();
+  const provisionalLineagePromotionTelemetryState = {
+    evaluations:0,
+    promotions:0
+  };
   const provisionalLineageTelemetryState = {
     inheritedPrimary:0,
     inheritedMate:0,
@@ -2349,8 +2364,77 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   function provisionalLineageTelemetry(){
     return {...provisionalLineageTelemetryState};
   }
+  function resetProvisionalLineagePromotionTelemetry(){
+    for(const key of Object.keys(provisionalLineagePromotionTelemetryState)){
+      provisionalLineagePromotionTelemetryState[key]=0;
+    }
+  }
+  function provisionalLineagePromotionTelemetry(){
+    return {
+      ...provisionalLineagePromotionTelemetryState,
+      enabled:provisionalLineagePromotionEnabled(),
+      criteria:{...PROVISIONAL_LINEAGE_PROMOTION_CRITERIA}
+    };
+  }
   function resetLineageEstablishmentEvidence(){
     lineageEstablishmentEvidenceState.clear();
+  }
+  function lineageEstablishmentEvidenceSnapshot(row){
+    if(!row?.lineageId) return null;
+    return {
+      lineageId:String(row.lineageId),
+      speciesStatus:String(row.speciesStatus || ''),
+      firstBirthFrame:finiteNonNegativeInteger(row.firstBirthFrame,0),
+      lastBirthFrame:finiteNonNegativeInteger(row.lastBirthFrame,0),
+      observedBirths:finiteNonNegativeInteger(row.observedBirths,0),
+      inheritedBirths:finiteNonNegativeInteger(row.inheritedBirths,0),
+      sexualBirths:finiteNonNegativeInteger(row.sexualBirths,0),
+      asexualBirths:finiteNonNegativeInteger(row.asexualBirths,0),
+      sameLineageSexualBirths:finiteNonNegativeInteger(row.sameLineageSexualBirths,0),
+      maxLineageGeneration:finiteNonNegativeInteger(row.maxLineageGeneration,0),
+      maxGenerationDepth:finiteNonNegativeInteger(row.maxGenerationDepth,0),
+      peakConcurrentLiving:finiteNonNegativeInteger(row.peakConcurrentLiving,0)
+    };
+  }
+  function captureLineageEstablishmentEvidenceState(){
+    return Array.from(lineageEstablishmentEvidenceState.values())
+      .map(lineageEstablishmentEvidenceSnapshot)
+      .filter(Boolean)
+      .sort((a,b)=>String(a.lineageId).localeCompare(String(b.lineageId)));
+  }
+  function restoreLineageEstablishmentEvidenceState(rows){
+    resetLineageEstablishmentEvidence();
+    if(!provisionalLineagePromotionEnabled() || !Array.isArray(rows)) return;
+    for(const raw of rows){
+      const row=lineageEstablishmentEvidenceSnapshot(raw);
+      if(!row || !lineageRegistry.has(row.lineageId)) continue;
+      row.speciesStatus=String(lineageRecordById(row.lineageId)?.speciesStatus || row.speciesStatus || '');
+      lineageEstablishmentEvidenceState.set(row.lineageId,row);
+    }
+  }
+  function provisionalLineagePromotionEvidence(row){
+    return {
+      maxLineageGeneration:finiteNonNegativeInteger(row?.maxLineageGeneration,0),
+      peakConcurrentLiving:finiteNonNegativeInteger(row?.peakConcurrentLiving,0),
+      sameLineageSexualBirths:finiteNonNegativeInteger(row?.sameLineageSexualBirths,0),
+      observedBirths:finiteNonNegativeInteger(row?.observedBirths,0)
+    };
+  }
+  function maybePromoteProvisionalLineage(record,row){
+    if(!provisionalLineagePromotionEnabled() || record?.speciesStatus!=='provisional' || !row) return false;
+    provisionalLineagePromotionTelemetryState.evaluations++;
+    const evidence=provisionalLineagePromotionEvidence(row);
+    if(evidence.maxLineageGeneration<PROVISIONAL_LINEAGE_PROMOTION_CRITERIA.minimumLineageGeneration
+      || evidence.peakConcurrentLiving<PROVISIONAL_LINEAGE_PROMOTION_CRITERIA.minimumPeakConcurrentLiving
+      || evidence.sameLineageSexualBirths<PROVISIONAL_LINEAGE_PROMOTION_CRITERIA.minimumSameLineageSexualBirths){
+      return false;
+    }
+    record.speciesStatus='established';
+    record.promotedFrame=frame;
+    record.promotionEvidence=evidence;
+    row.speciesStatus='established';
+    provisionalLineagePromotionTelemetryState.promotions++;
+    return true;
   }
   function noteLineageEstablishmentBirth(record,child,parent,mate,created=false){
     if(!record?.lineageId || !child) return null;
@@ -2397,6 +2481,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     livingIds.add(child.id);
     current.peakConcurrentLiving=Math.max(current.peakConcurrentLiving,livingIds.size);
     lineageEstablishmentEvidenceState.set(lineageId,current);
+    maybePromoteProvisionalLineage(record,current);
     return current;
   }
   function lineageEstablishmentEvidenceSummary(){
@@ -2409,6 +2494,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     const rows=Array.from(lineageEstablishmentEvidenceState.values())
       .map(row=>({
         ...row,
+        speciesStatus:String(lineageRecordById(row.lineageId)?.speciesStatus || row.speciesStatus || ''),
         currentLiving:Number(livingCounts.get(row.lineageId)||0)
       }))
       .sort((a,b)=>
@@ -2423,6 +2509,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
       provisionalWithTwoGenerations:rows.filter(row=>row.speciesStatus==='provisional' && row.maxLineageGeneration>=2).length,
       provisionalWithSameLineageSexualBirth:rows.filter(row=>row.speciesStatus==='provisional' && row.sameLineageSexualBirths>0).length,
       provisionalWithThreeConcurrent:rows.filter(row=>row.speciesStatus==='provisional' && row.peakConcurrentLiving>=3).length,
+      promotedLineageCount:rows.filter(row=>lineageRecordById(row.lineageId)?.promotedFrame!=null).length,
       rows
     };
   }
@@ -2454,7 +2541,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   }
   function lineageRegistryRecordSnapshot(record){
     if(!record) return null;
-    return {
+    const snapshot={
       lineageId:String(record.lineageId),
       parentLineageId:record.parentLineageId==null ? null : String(record.parentLineageId),
       founderId:Number.isFinite(Number(record.founderId)) ? Number(record.founderId) : null,
@@ -2465,6 +2552,11 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
       canonicalAppearanceKey:String(record.canonicalAppearanceKey || ''),
       speciesStatus:String(record.speciesStatus || '')
     };
+    if(Number.isFinite(Number(record.promotedFrame))){
+      snapshot.promotedFrame=finiteNonNegativeInteger(record.promotedFrame,0);
+      snapshot.promotionEvidence=provisionalLineagePromotionEvidence(record.promotionEvidence);
+    }
+    return snapshot;
   }
   function makeRootLineageRecord(organism,options={}){
     const speciesKeyValue=String(organism?.speciesKey || speciesKeyForOrganism(organism));
@@ -2597,12 +2689,16 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     return id;
   }
   function captureLineageRegistryState(){
+    const savePromotion=provisionalLineagePromotionEnabled();
     return {
-      version:LINEAGE_REGISTRY_VERSION,
+      version:savePromotion ? LINEAGE_REGISTRY_VERSION : 1,
       nextLineageSerial:normalizeNextLineageSerial(),
       records:Array.from(lineageRegistry.values())
         .map(lineageRegistryRecordSnapshot)
-        .sort((a,b)=>String(a.lineageId).localeCompare(String(b.lineageId)))
+        .sort((a,b)=>String(a.lineageId).localeCompare(String(b.lineageId))),
+      ...(savePromotion ? {
+        establishmentEvidence:captureLineageEstablishmentEvidenceState()
+      } : {})
     };
   }
   function resetLineageRegistry(){
@@ -2611,6 +2707,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     lineageRegistryLastRestoreIssues.duplicateLineageIds=[];
     resetProvisionalLineageTelemetry();
     resetLineageEstablishmentEvidence();
+    resetProvisionalLineagePromotionTelemetry();
   }
   function hasNonRootLineages(){
     for(const record of lineageRegistry.values()){
@@ -2645,6 +2742,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     lineageRegistryLastRestoreIssues.duplicateLineageIds=Array.from(duplicates).sort();
     nextLineageSerial=finiteNonNegativeInteger(rawState?.nextLineageSerial,1);
     normalizeNextLineageSerial();
+    restoreLineageEstablishmentEvidenceState(rawState?.establishmentEvidence);
     return captureLineageRegistryState();
   }
   function rebuildRootLineagesFromOrganisms(list=organisms,options={}){
@@ -2767,6 +2865,8 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     const provisionalRecords=records.filter(record=>record.speciesStatus==='provisional');
     return {
       rootRecordCount:records.filter(record=>String(record.lineageId).startsWith('root:')).length,
+      establishedRecordCount:records.filter(record=>record.speciesStatus==='established').length,
+      promotedLineageCount:records.filter(record=>record.speciesStatus==='established' && record.promotedFrame!=null).length,
       provisionalRecordCount:provisionalRecords.length,
       failedRecordCount:records.filter(record=>record.speciesStatus==='failed').length,
       livingProvisionalLineageCount:provisionalRecords.filter(record=>Number(derivedById.get(String(record.lineageId))?.livingCount || 0)>0).length,
@@ -3026,6 +3126,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
       if(opts.eventKeyedVisualRng!=null) featureFlags.eventKeyedVisualRng=!!opts.eventKeyedVisualRng;
       if(opts.persistentLineageRegistry!=null) featureFlags.persistentLineageRegistry=!!opts.persistentLineageRegistry;
       if(opts.provisionalLineageClassification!=null) featureFlags.provisionalLineageClassification=!!opts.provisionalLineageClassification;
+      if(opts.provisionalLineagePromotion!=null) featureFlags.provisionalLineagePromotion=!!opts.provisionalLineagePromotion;
       if(opts.lineageAwareMateSelection!=null) featureFlags.lineageAwareMateSelection=!!opts.lineageAwareMateSelection;
       if(opts.lineageReproductiveIsolation!=null) featureFlags.lineageReproductiveIsolation=!!opts.lineageReproductiveIsolation;
       if(opts.lineageAwarePackIdentity!=null) featureFlags.lineageAwarePackIdentity=!!opts.lineageAwarePackIdentity;
@@ -3111,6 +3212,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
       derived,
       classification:lineageRegistryClassificationSummary(derived),
       telemetry:provisionalLineageTelemetry(),
+      promotion:provisionalLineagePromotionTelemetry(),
       establishmentEvidence:lineageEstablishmentEvidenceSummary(),
       validation:validateLineageRegistry()
     };
@@ -20703,6 +20805,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       if(opts.canonicalSpeciesAppearance!=null) featureFlags.canonicalSpeciesAppearance=!!opts.canonicalSpeciesAppearance;
       if(opts.persistentLineageRegistry!=null) featureFlags.persistentLineageRegistry=!!opts.persistentLineageRegistry;
       if(opts.provisionalLineageClassification!=null) featureFlags.provisionalLineageClassification=!!opts.provisionalLineageClassification;
+      if(opts.provisionalLineagePromotion!=null) featureFlags.provisionalLineagePromotion=!!opts.provisionalLineagePromotion;
       if(opts.lineageAwareMateSelection!=null) featureFlags.lineageAwareMateSelection=!!opts.lineageAwareMateSelection;
       if(opts.lineageReproductiveIsolation!=null) featureFlags.lineageReproductiveIsolation=!!opts.lineageReproductiveIsolation;
       if(opts.lineageAwarePackIdentity!=null) featureFlags.lineageAwarePackIdentity=!!opts.lineageAwarePackIdentity;
@@ -22339,7 +22442,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     return {ok:true,persistentPackIdentity:persistentPackIdentityEnabled()};
   }
   function setPersistentLineageRegistry(enabled){
+    const promotionWasEnabled=provisionalLineagePromotionEnabled();
     featureFlags.persistentLineageRegistry=!!enabled;
+    if(promotionWasEnabled!==provisionalLineagePromotionEnabled()) resetLineageEstablishmentEvidence();
     if(persistentLineageRegistryEnabled()){
       repairLineageRegistryAfterLoad(true);
     }
@@ -22347,12 +22452,29 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     return {ok:true,persistentLineageRegistry:persistentLineageRegistryEnabled(),summary:lineageRegistrySummary()};
   }
   function setProvisionalLineageClassification(enabled){
+    const promotionWasEnabled=provisionalLineagePromotionEnabled();
     featureFlags.provisionalLineageClassification=!!enabled;
+    if(promotionWasEnabled!==provisionalLineagePromotionEnabled()) resetLineageEstablishmentEvidence();
     if(persistentPackIdentityEnabled()) packIdentityRepairMemberships();
     return {
       ok:true,
       provisionalLineageClassification:provisionalLineageClassificationEnabled(),
       persistentLineageRegistry:persistentLineageRegistryEnabled()
+    };
+  }
+  function setProvisionalLineagePromotion(enabled){
+    const requested=!!enabled;
+    const changed=requested!==!!featureFlags.provisionalLineagePromotion;
+    featureFlags.provisionalLineagePromotion=requested;
+    if(changed) resetLineageEstablishmentEvidence();
+    return {
+      ok:true,
+      requested,
+      rawFlag:!!featureFlags.provisionalLineagePromotion,
+      enabled:provisionalLineagePromotionEnabled(),
+      criteria:{...PROVISIONAL_LINEAGE_PROMOTION_CRITERIA},
+      persistentLineageRegistry:persistentLineageRegistryEnabled(),
+      provisionalLineageClassification:provisionalLineageClassificationEnabled()
     };
   }
   function setLineageAwareMateSelection(enabled){
@@ -26119,6 +26241,137 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     return {ok:results.every(r=>r.ok),results};
   }
 
+  function runProvisionalLineagePromotionMicroTests(){
+    const saved=capture();
+    const oldRandom=Math.random;
+    const oldFlags={...featureFlags};
+    const results=[];
+    const add=(name,ok,details={})=>results.push({name,ok:!!ok,details});
+    const decodeSave=(saveData)=>JSON.parse(decodeURIComponent(escape(atob(saveData.split(':',2)[1]))));
+    const encodeSave=(state)=>'ALIFE2:'+btoa(unescape(encodeURIComponent(JSON.stringify(state))));
+    const clear=()=>{
+      running=false;
+      frame=0;
+      generation=1;
+      NEXT_ID=1;
+      organisms.length=0; newborn.length=0; food.length=0; corpses.length=0; plankton.length=0; patches.length=0; calls.length=0;
+      sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0;
+      speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear();
+      lineage.nodes.clear(); lineage.edges.length=0;
+      resetLineageRegistry(); resetPackIdentityState(); resetTelemetry();
+    };
+    const traits=()=>({glowA1:'G',glowA2:'G',crownA1:'C',crownA2:'C',colonyA1:'K',colonyA2:'K',chlA1:'P',chlA2:'P'});
+    const make=(genes,born=false)=>{
+      const o=new Organism(100+organisms.length*8,100,{...genes},born,null,null,{deferSpeciesRegistration:true});
+      o.traits=traits();
+      o.flags={glow:false,crown:false,colony:false,chl:false};
+      finalizeOrganismSpeciesIdentity(o,{reason:'provisional-promotion-micro'});
+      o.recalcPhenotype();
+      applyDevelopmentPhenotype(o);
+      registerFinalizedSpeciesIdentity(o,{bornByRepro:born,reason:'provisional-promotion-micro'});
+      organisms.push(o);
+      return o;
+    };
+    const rootGenes=speciesIdentityTestGenes({diet:0.20,speed:0.42,size:0.44,sense:0.48,metabolism:0.50,fecundity:0.52,formSeed:0.45});
+    const branchGenes=speciesIdentityTestGenes({diet:0.88,speed:0.70,size:0.58,sense:0.76,metabolism:0.36,fecundity:0.44,formSeed:0.82});
+    const buildEstablishedFamily=()=>{
+      const root=make(rootGenes,false);
+      const founder=make(branchGenes,true);
+      const record=classifyChildLineageAtBirth(founder,root,null);
+      const child1=make(branchGenes,true);
+      classifyChildLineageAtBirth(child1,founder,null);
+      const beforeFinal=String(record?.speciesStatus || '');
+      const child2=make(branchGenes,true);
+      classifyChildLineageAtBirth(child2,child1,founder);
+      return {root,founder,child1,child2,record,beforeFinal,evidence:lineageEstablishmentEvidenceSummary()};
+    };
+    try{
+      Math.random=duelSeededRandom(81237);
+      Object.assign(featureFlags,{
+        evolvableLifeHistory:true,
+        juvenileDevelopment:true,
+        persistentPackIdentity:false,
+        speciesIdentityV2:true,
+        canonicalSpeciesAppearance:true,
+        persistentLineageRegistry:true,
+        provisionalLineageClassification:true,
+        provisionalLineagePromotion:true,
+        lineageAwareMateSelection:false,
+        lineageReproductiveIsolation:false,
+        lineageAwarePackIdentity:false
+      });
+
+      clear();
+      const promoted=buildEstablishedFamily();
+      const promotedSnapshot=lineageRegistryRecordSnapshot(promoted.record);
+      add('Promotion A requires multigeneration same-lineage sexual establishment',
+        promoted.beforeFinal==='provisional'
+          && promoted.record?.speciesStatus==='established'
+          && promoted.founder.lineageId===promoted.child1.lineageId
+          && promoted.child1.lineageId===promoted.child2.lineageId
+          && promoted.child2.lineageGeneration===2
+          && promotedSnapshot?.promotedFrame===frame
+          && promotedSnapshot?.promotionEvidence?.peakConcurrentLiving===3
+          && promotedSnapshot?.promotionEvidence?.sameLineageSexualBirths===1
+          && provisionalLineagePromotionTelemetryState.promotions===1,
+        {beforeFinal:promoted.beforeFinal,record:promotedSnapshot,telemetry:provisionalLineagePromotionTelemetry(),evidence:promoted.evidence}
+      );
+
+      const promotedSave=capture();
+      const promotedSaveState=decodeSave(promotedSave);
+      const promotedLineageId=promoted.record.lineageId;
+      clear();
+      restore(promotedSave);
+      const restoredRecord=lineageRecordById(promotedLineageId);
+      const restoredEvidence=lineageEstablishmentEvidenceSummary().rows.find(row=>row.lineageId===promotedLineageId);
+      add('Promotion B save/load preserves status evidence and audit fields',
+        promotedSaveState.v===11
+          && promotedSaveState.features?.provisionalLineagePromotion===true
+          && promotedSaveState.lineageRegistry?.version===LINEAGE_REGISTRY_VERSION
+          && restoredRecord?.speciesStatus==='established'
+          && restoredRecord?.promotedFrame===promotedSnapshot.promotedFrame
+          && restoredRecord?.promotionEvidence?.sameLineageSexualBirths===1
+          && restoredEvidence?.sameLineageSexualBirths===1,
+        {saveVersion:promotedSaveState.v,registryVersion:promotedSaveState.lineageRegistry?.version,record:restoredRecord,evidence:restoredEvidence}
+      );
+
+      clear();
+      featureFlags.provisionalLineagePromotion=false;
+      const disabled=buildEstablishedFamily();
+      add('Promotion C feature OFF leaves the same evidence provisional',
+        disabled.beforeFinal==='provisional'
+          && disabled.record?.speciesStatus==='provisional'
+          && disabled.record?.promotedFrame==null
+          && provisionalLineagePromotionTelemetryState.promotions===0,
+        {record:lineageRegistryRecordSnapshot(disabled.record),evidence:disabled.evidence,promotion:provisionalLineagePromotionTelemetry()}
+      );
+
+      const legacyState=decodeSave(capture());
+      delete legacyState.features.provisionalLineagePromotion;
+      legacyState.lineageRegistry.version=1;
+      delete legacyState.lineageRegistry.establishmentEvidence;
+      const legacyLineageId=disabled.record.lineageId;
+      clear();
+      restore(encodeSave(legacyState));
+      setProvisionalLineagePromotion(true);
+      const migratedRecord=lineageRecordById(legacyLineageId);
+      add('Promotion D registry v1 migration does not infer missing establishment evidence',
+        migratedRecord?.speciesStatus==='provisional'
+          && lineageEstablishmentEvidenceSummary().rows.length===0
+          && provisionalLineagePromotionEnabled(),
+        {record:migratedRecord,evidence:lineageEstablishmentEvidenceSummary(),promotion:provisionalLineagePromotionTelemetry()}
+      );
+    }catch(err){
+      add('Promotion micro exception',false,{message:String(err?.message || err),stack:String(err?.stack || '')});
+    }finally{
+      Math.random=oldRandom;
+      Object.assign(featureFlags,oldFlags);
+      restore(saved);
+      Object.assign(featureFlags,oldFlags);
+    }
+    return {ok:results.every(result=>result.ok),results};
+  }
+
   function runLineageAwareMateSelectionMicroTests(){
     const saved=capture();
     const oldRandom=Math.random;
@@ -28792,6 +29045,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     provisionalLineageClassificationEnabled(){
       return provisionalLineageClassificationEnabled();
     },
+    setProvisionalLineagePromotion(enabled){
+      return setProvisionalLineagePromotion(enabled);
+    },
+    provisionalLineagePromotionEnabled(){
+      return provisionalLineagePromotionEnabled();
+    },
+    provisionalLineagePromotionTelemetry(){
+      return provisionalLineagePromotionTelemetry();
+    },
     setLineageAwareMateSelection(enabled){
       return setLineageAwareMateSelection(enabled);
     },
@@ -28952,6 +29214,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     runProvisionalLineageClassificationMicroTests(){
       return runProvisionalLineageClassificationMicroTests();
+    },
+    runProvisionalLineagePromotionMicroTests(){
+      return runProvisionalLineagePromotionMicroTests();
     },
     runLineageAwareMateSelectionMicroTests(){
       return runLineageAwareMateSelectionMicroTests();
@@ -29427,10 +29692,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   function capture(){
     const saveLineageRegistry=persistentLineageRegistryEnabled();
     const saveProvisionalLineageClassification=provisionalLineageClassificationEnabled();
+    const saveProvisionalLineagePromotion=provisionalLineagePromotionEnabled();
     const saveLineageAwareMateSelection=lineageAwareMateSelectionEnabled();
     const saveLineageReproductiveIsolation=lineageReproductiveIsolationEnabled();
     const saveLineageAwarePackIdentity=lineageAwarePackIdentityEnabled();
-    const state={v:saveLineageAwarePackIdentity ? 10 : (saveLineageReproductiveIsolation ? 9 : (saveLineageAwareMateSelection ? 8 : (saveProvisionalLineageClassification ? 7 : (saveLineageRegistry ? 6 : 5)))),frame,generation,dayNight:{phase:dayNight.phase},worldEvent,eco,
+    const state={v:saveProvisionalLineagePromotion ? 11 : (saveLineageAwarePackIdentity ? 10 : (saveLineageReproductiveIsolation ? 9 : (saveLineageAwareMateSelection ? 8 : (saveProvisionalLineageClassification ? 7 : (saveLineageRegistry ? 6 : 5))))),frame,generation,dayNight:{phase:dayNight.phase},worldEvent,eco,
       features:{
         evolvableLifeHistory:evolvableLifeHistoryEnabled(),
         juvenileDevelopment:juvenileDevelopmentEnabled(),
@@ -29443,6 +29709,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           persistentLineageRegistry:true,
           provisionalLineageClassification:!!featureFlags.provisionalLineageClassification
         } : {}),
+        ...(saveProvisionalLineagePromotion ? {provisionalLineagePromotion:true} : {}),
         ...(saveLineageAwareMateSelection ? {lineageAwareMateSelection:true} : {}),
         ...(saveLineageReproductiveIsolation ? {lineageReproductiveIsolation:true} : {}),
         ...(saveLineageAwarePackIdentity ? {lineageAwarePackIdentity:true} : {})
@@ -29479,11 +29746,13 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         if(state.features.canonicalSpeciesAppearance!=null) featureFlags.canonicalSpeciesAppearance=!!state.features.canonicalSpeciesAppearance;
         if(state.features.persistentLineageRegistry!=null) featureFlags.persistentLineageRegistry=!!state.features.persistentLineageRegistry;
         if(state.features.provisionalLineageClassification!=null) featureFlags.provisionalLineageClassification=!!state.features.provisionalLineageClassification;
+        featureFlags.provisionalLineagePromotion=!!state.features.provisionalLineagePromotion;
         featureFlags.lineageAwareMateSelection=!!state.features.lineageAwareMateSelection;
         featureFlags.lineageReproductiveIsolation=!!state.features.lineageReproductiveIsolation;
         featureFlags.lineageAwarePackIdentity=!!state.features.lineageAwarePackIdentity;
         if(state.features.eventKeyedVisualRng!=null) featureFlags.eventKeyedVisualRng=!!state.features.eventKeyedVisualRng;
       } else {
+        featureFlags.provisionalLineagePromotion=false;
         featureFlags.lineageAwareMateSelection=false;
         featureFlags.lineageReproductiveIsolation=false;
         featureFlags.lineageAwarePackIdentity=false;
