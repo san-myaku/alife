@@ -1,0 +1,838 @@
+{
+  "generatedAt": "2026-07-28T15:25:32.989Z",
+  "seed": 41001,
+  "enabled": true,
+  "variant": "resource_limited",
+  "scale": 0.7,
+  "rows": [
+    {
+      "frame": 0,
+      "image": "artifacts\\algae_regrowth_balance_20260729\\resource_limited_seed_41001_frame_0.png",
+      "counts": {
+        "organisms": 64,
+        "food": 12,
+        "detritusParticles": 0,
+        "plankton": 70,
+        "sparks": 0,
+        "rings": 0,
+        "predationBlooms": 0,
+        "membranes": 0,
+        "corpses": 0,
+        "species": 59
+      },
+      "field": {
+        "mode": "patchy-intermediate",
+        "seed": 41001,
+        "cellCount": 1911,
+        "minimumAlgae": 0.02000018022954464,
+        "maximumAlgae": 0.3399994969367981,
+        "meanAlgae": 0.14250000017002606,
+        "medianAlgae": 0.12999999523162842,
+        "standardDeviation": 0.08654581772617116,
+        "fieldHash": "a0ae915b",
+        "thresholds": {
+          "lowMax": 0.075,
+          "highMin": 0.185
+        },
+        "ratios": {
+          "low": 0.250130821559393,
+          "medium": 0.49973835688121404,
+          "high": 0.250130821559393
+        },
+        "spatial": {
+          "componentCount": 17,
+          "resourcePatchCount": 13,
+          "byBand": {
+            "low": {
+              "components": 7,
+              "largestCells": 244,
+              "largestShare": 0.12768184196755625
+            },
+            "medium": {
+              "components": 4,
+              "largestCells": 830,
+              "largestShare": 0.43432757718472004
+            },
+            "high": {
+              "components": 6,
+              "largestCells": 357,
+              "largestShare": 0.18681318681318682
+            }
+          }
+        }
+      },
+      "flow": {
+        "enabled": true,
+        "configuredScale": 0.7,
+        "effectiveScale": 0.7,
+        "startedAtFrame": 0,
+        "elapsedFrames": 0,
+        "tickCount": 0,
+        "cellUpdates": 0,
+        "algaeRegrowth": 0,
+        "decompositionInput": 0,
+        "grazingRemoved": 0,
+        "totalBiologicalInput": 0,
+        "inputMinusGrazing": 0,
+        "currentTotal": 272.3175003249198,
+        "currentMean": 0.14250000017002606
+      },
+      "population": {
+        "frame": 0,
+        "windowFrames": 2100,
+        "startPopulation": 64,
+        "endPopulation": 64,
+        "peakPopulation": 64,
+        "populationCap": 120,
+        "firstPopulationCapFrame": null,
+        "startDiets": {
+          "h": 21,
+          "m": 27,
+          "c": 16
+        },
+        "endDiets": {
+          "h": 21,
+          "m": 27,
+          "c": 16
+        },
+        "endAverageStoreNByDiet": {
+          "h": 0,
+          "m": 0,
+          "c": 0
+        },
+        "byDiet": {
+          "h": {
+            "births": 0,
+            "reproductions": 0,
+            "deaths": 0,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 0,
+            "starvationDeaths": 0,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          },
+          "m": {
+            "births": 0,
+            "reproductions": 0,
+            "deaths": 0,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 0,
+            "starvationDeaths": 0,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          },
+          "c": {
+            "births": 0,
+            "reproductions": 0,
+            "deaths": 0,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 0,
+            "starvationDeaths": 0,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          }
+        },
+        "births": 0,
+        "deaths": 0,
+        "reproductions": 0,
+        "deathCauses": {
+          "starvation": 0,
+          "oldAge": 0,
+          "predation": 0,
+          "overcrowding": 0,
+          "other": 0
+        },
+        "newborn": {
+          "births": 0,
+          "survived60": 0,
+          "survived180": 0,
+          "survived240": 0,
+          "deathsWithin60": 0,
+          "deathsWithin180": 0,
+          "deathsWithin240": 0,
+          "overcrowdingDeathsWithin60": 0,
+          "overcrowdingDeathsWithin180": 0,
+          "overcrowdingDeathsWithin240": 0,
+          "survivalRateByDiet": {
+            "h": {
+              "eligible60": 0,
+              "survived60": 0,
+              "rate60": null,
+              "eligible180": 0,
+              "survived180": 0,
+              "rate180": null,
+              "eligible240": 0,
+              "survived240": 0,
+              "rate240": null
+            },
+            "m": {
+              "eligible60": 0,
+              "survived60": 0,
+              "rate60": null,
+              "eligible180": 0,
+              "survived180": 0,
+              "rate180": null,
+              "eligible240": 0,
+              "survived240": 0,
+              "rate240": null
+            },
+            "c": {
+              "eligible60": 0,
+              "survived60": 0,
+              "rate60": null,
+              "eligible180": 0,
+              "survived180": 0,
+              "rate180": null,
+              "eligible240": 0,
+              "survived240": 0,
+              "rate240": null
+            }
+          }
+        }
+      },
+      "grazing": {
+        "grazing": 0,
+        "recentGrazing": 0,
+        "herbivores": 21,
+        "omnivores": 27,
+        "carnivores": 16,
+        "food": 12,
+        "env": {
+          "N": 0.14250000017002606,
+          "D": 0.057012305954156406,
+          "O": 0.7324365823408311,
+          "C": 0.25,
+          "algae": 0.14250000017002606,
+          "nutrient": 0.14250000017002606,
+          "detritus": 0.057012305954156406,
+          "decomposition": 0.057012305954156406,
+          "oxygen": 0.7324365823408311,
+          "cold": 0.25,
+          "temperature": 0.75
+        }
+      }
+    },
+    {
+      "frame": 500,
+      "image": "artifacts\\algae_regrowth_balance_20260729\\resource_limited_seed_41001_frame_500.png",
+      "counts": {
+        "organisms": 28,
+        "food": 261,
+        "detritusParticles": 260,
+        "plankton": 90,
+        "sparks": 191,
+        "rings": 6,
+        "predationBlooms": 5,
+        "membranes": 0,
+        "corpses": 38,
+        "species": 20
+      },
+      "field": {
+        "mode": "patchy-intermediate",
+        "seed": 41001,
+        "cellCount": 1911,
+        "minimumAlgae": 0.11013968288898468,
+        "maximumAlgae": 0.9986723065376282,
+        "meanAlgae": 0.34791940442091007,
+        "medianAlgae": 0.342692494392395,
+        "standardDeviation": 0.11559944069594419,
+        "fieldHash": "f6ccaea7",
+        "thresholds": {
+          "lowMax": 0.075,
+          "highMin": 0.185
+        },
+        "ratios": {
+          "low": 0,
+          "medium": 0.0695970695970696,
+          "high": 0.9304029304029304
+        },
+        "spatial": {
+          "componentCount": 6,
+          "resourcePatchCount": 2,
+          "byBand": {
+            "low": {
+              "components": 0,
+              "largestCells": 0,
+              "largestShare": 0
+            },
+            "medium": {
+              "components": 4,
+              "largestCells": 123,
+              "largestShare": 0.06436420722135008
+            },
+            "high": {
+              "components": 2,
+              "largestCells": 1734,
+              "largestShare": 0.9073783359497645
+            }
+          }
+        }
+      },
+      "flow": {
+        "enabled": true,
+        "configuredScale": 0.7,
+        "effectiveScale": 0.7,
+        "startedAtFrame": 0,
+        "elapsedFrames": 500,
+        "tickCount": 31,
+        "cellUpdates": 59241,
+        "algaeRegrowth": 363.2869628248471,
+        "decompositionInput": 41.131057790417906,
+        "grazingRemoved": 31.978231678542812,
+        "totalBiologicalInput": 404.418020615265,
+        "inputMinusGrazing": 372.43978893672215,
+        "currentTotal": 664.8739818483591,
+        "currentMean": 0.34791940442091007
+      },
+      "population": {
+        "frame": 500,
+        "windowFrames": 2100,
+        "startPopulation": 64,
+        "endPopulation": 28,
+        "peakPopulation": 66,
+        "populationCap": 120,
+        "firstPopulationCapFrame": null,
+        "startDiets": {
+          "h": 21,
+          "m": 27,
+          "c": 16
+        },
+        "endDiets": {
+          "h": 14,
+          "m": 11,
+          "c": 3
+        },
+        "endAverageStoreNByDiet": {
+          "h": 0.3515112726726774,
+          "m": 0.2346896514128842,
+          "c": 0.026073037035280158
+        },
+        "byDiet": {
+          "h": {
+            "births": 8,
+            "reproductions": 8,
+            "deaths": 15,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 2,
+            "starvationDeaths": 13,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          },
+          "m": {
+            "births": 3,
+            "reproductions": 3,
+            "deaths": 19,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 2,
+            "starvationDeaths": 17,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          },
+          "c": {
+            "births": 1,
+            "reproductions": 1,
+            "deaths": 14,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 1,
+            "starvationDeaths": 13,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          }
+        },
+        "births": 12,
+        "deaths": 48,
+        "reproductions": 12,
+        "deathCauses": {
+          "starvation": 43,
+          "oldAge": 0,
+          "predation": 5,
+          "overcrowding": 0,
+          "other": 0
+        },
+        "newborn": {
+          "births": 12,
+          "survived60": 10,
+          "survived180": 5,
+          "survived240": 5,
+          "deathsWithin60": 0,
+          "deathsWithin180": 2,
+          "deathsWithin240": 2,
+          "overcrowdingDeathsWithin60": 0,
+          "overcrowdingDeathsWithin180": 0,
+          "overcrowdingDeathsWithin240": 0,
+          "survivalRateByDiet": {
+            "h": {
+              "eligible60": 7,
+              "survived60": 7,
+              "rate60": 1,
+              "eligible180": 5,
+              "survived180": 4,
+              "rate180": 0.8,
+              "eligible240": 5,
+              "survived240": 4,
+              "rate240": 0.8
+            },
+            "m": {
+              "eligible60": 2,
+              "survived60": 2,
+              "rate60": 1,
+              "eligible180": 1,
+              "survived180": 1,
+              "rate180": 1,
+              "eligible240": 1,
+              "survived240": 1,
+              "rate240": 1
+            },
+            "c": {
+              "eligible60": 1,
+              "survived60": 1,
+              "rate60": 1,
+              "eligible180": 1,
+              "survived180": 0,
+              "rate180": 0,
+              "eligible240": 1,
+              "survived240": 0,
+              "rate240": 0
+            }
+          }
+        }
+      },
+      "grazing": {
+        "grazing": 17,
+        "recentGrazing": 22,
+        "herbivores": 14,
+        "omnivores": 11,
+        "carnivores": 3,
+        "food": 261,
+        "env": {
+          "N": 0.34798249860417463,
+          "D": 0.04731850482694988,
+          "O": 0.9603164721921686,
+          "C": 0.25,
+          "algae": 0.34798249860417463,
+          "nutrient": 0.34798249860417463,
+          "detritus": 0.04731850482694988,
+          "decomposition": 0.04731850482694988,
+          "oxygen": 0.9603164721921686,
+          "cold": 0.25,
+          "temperature": 0.75
+        }
+      }
+    },
+    {
+      "frame": 1000,
+      "image": "artifacts\\algae_regrowth_balance_20260729\\resource_limited_seed_41001_frame_1000.png",
+      "counts": {
+        "organisms": 59,
+        "food": 257,
+        "detritusParticles": 256,
+        "plankton": 83,
+        "sparks": 186,
+        "rings": 15,
+        "predationBlooms": 4,
+        "membranes": 0,
+        "corpses": 40,
+        "species": 18
+      },
+      "field": {
+        "mode": "patchy-intermediate",
+        "seed": 41001,
+        "cellCount": 1911,
+        "minimumAlgae": 0.2501457929611206,
+        "maximumAlgae": 0.9997570514678955,
+        "meanAlgae": 0.5917349192311413,
+        "medianAlgae": 0.5886209607124329,
+        "standardDeviation": 0.10413020364818779,
+        "fieldHash": "defadb6a",
+        "thresholds": {
+          "lowMax": 0.075,
+          "highMin": 0.185
+        },
+        "ratios": {
+          "low": 0,
+          "medium": 0,
+          "high": 1
+        },
+        "spatial": {
+          "componentCount": 1,
+          "resourcePatchCount": 1,
+          "byBand": {
+            "low": {
+              "components": 0,
+              "largestCells": 0,
+              "largestShare": 0
+            },
+            "medium": {
+              "components": 0,
+              "largestCells": 0,
+              "largestShare": 0
+            },
+            "high": {
+              "components": 1,
+              "largestCells": 1911,
+              "largestShare": 1
+            }
+          }
+        }
+      },
+      "flow": {
+        "enabled": true,
+        "configuredScale": 0.7,
+        "effectiveScale": 0.7,
+        "startedAtFrame": 0,
+        "elapsedFrames": 1000,
+        "tickCount": 62,
+        "cellUpdates": 118482,
+        "algaeRegrowth": 836.2815422250208,
+        "decompositionInput": 76.06297532757839,
+        "grazingRemoved": 109.27927475692347,
+        "totalBiologicalInput": 912.3445175525992,
+        "inputMinusGrazing": 803.0652427956758,
+        "currentTotal": 1130.805430650711,
+        "currentMean": 0.5917349192311413
+      },
+      "population": {
+        "frame": 1000,
+        "windowFrames": 2100,
+        "startPopulation": 64,
+        "endPopulation": 59,
+        "peakPopulation": 66,
+        "populationCap": 120,
+        "firstPopulationCapFrame": null,
+        "startDiets": {
+          "h": 21,
+          "m": 27,
+          "c": 16
+        },
+        "endDiets": {
+          "h": 42,
+          "m": 16,
+          "c": 1
+        },
+        "endAverageStoreNByDiet": {
+          "h": 0.5293135647542472,
+          "m": 0.4847268202736939,
+          "c": 0.12636089291852945
+        },
+        "byDiet": {
+          "h": {
+            "births": 41,
+            "reproductions": 33,
+            "deaths": 20,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 3,
+            "starvationDeaths": 17,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          },
+          "m": {
+            "births": 13,
+            "reproductions": 10,
+            "deaths": 24,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 3,
+            "starvationDeaths": 21,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          },
+          "c": {
+            "births": 2,
+            "reproductions": 2,
+            "deaths": 17,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 2,
+            "starvationDeaths": 15,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          }
+        },
+        "births": 56,
+        "deaths": 61,
+        "reproductions": 45,
+        "deathCauses": {
+          "starvation": 53,
+          "oldAge": 0,
+          "predation": 8,
+          "overcrowding": 0,
+          "other": 0
+        },
+        "newborn": {
+          "births": 56,
+          "survived60": 48,
+          "survived180": 33,
+          "survived240": 29,
+          "deathsWithin60": 0,
+          "deathsWithin180": 2,
+          "deathsWithin240": 2,
+          "overcrowdingDeathsWithin60": 0,
+          "overcrowdingDeathsWithin180": 0,
+          "overcrowdingDeathsWithin240": 0,
+          "survivalRateByDiet": {
+            "h": {
+              "eligible60": 36,
+              "survived60": 36,
+              "rate60": 1,
+              "eligible180": 23,
+              "survived180": 22,
+              "rate180": 0.9565217391304348,
+              "eligible240": 21,
+              "survived240": 20,
+              "rate240": 0.9523809523809523
+            },
+            "m": {
+              "eligible60": 10,
+              "survived60": 10,
+              "rate60": 1,
+              "eligible180": 10,
+              "survived180": 10,
+              "rate180": 1,
+              "eligible240": 8,
+              "survived240": 8,
+              "rate240": 1
+            },
+            "c": {
+              "eligible60": 2,
+              "survived60": 2,
+              "rate60": 1,
+              "eligible180": 2,
+              "survived180": 1,
+              "rate180": 0.5,
+              "eligible240": 2,
+              "survived240": 1,
+              "rate240": 0.5
+            }
+          }
+        }
+      },
+      "grazing": {
+        "grazing": 45,
+        "recentGrazing": 56,
+        "herbivores": 42,
+        "omnivores": 16,
+        "carnivores": 1,
+        "food": 257,
+        "env": {
+          "N": 0.5923192192596144,
+          "D": 0.03417596627369889,
+          "O": 0.9921441832454977,
+          "C": 0.25,
+          "algae": 0.5923192192596144,
+          "nutrient": 0.5923192192596144,
+          "detritus": 0.03417596627369889,
+          "decomposition": 0.03417596627369889,
+          "oxygen": 0.9921441832454977,
+          "cold": 0.25,
+          "temperature": 0.75
+        }
+      }
+    },
+    {
+      "frame": 2000,
+      "image": "artifacts\\algae_regrowth_balance_20260729\\resource_limited_seed_41001_frame_2000.png",
+      "counts": {
+        "organisms": 122,
+        "food": 255,
+        "detritusParticles": 255,
+        "plankton": 86,
+        "sparks": 190,
+        "rings": 43,
+        "predationBlooms": 6,
+        "membranes": 0,
+        "corpses": 10,
+        "species": 22
+      },
+      "field": {
+        "mode": "patchy-intermediate",
+        "seed": 41001,
+        "cellCount": 1911,
+        "minimumAlgae": 0.1716422140598297,
+        "maximumAlgae": 1,
+        "meanAlgae": 0.8053371685531238,
+        "medianAlgae": 0.8469810485839844,
+        "standardDeviation": 0.12505965160444335,
+        "fieldHash": "2149def9",
+        "thresholds": {
+          "lowMax": 0.075,
+          "highMin": 0.185
+        },
+        "ratios": {
+          "low": 0,
+          "medium": 0.0010465724751439038,
+          "high": 0.998953427524856
+        },
+        "spatial": {
+          "componentCount": 3,
+          "resourcePatchCount": 1,
+          "byBand": {
+            "low": {
+              "components": 0,
+              "largestCells": 0,
+              "largestShare": 0
+            },
+            "medium": {
+              "components": 2,
+              "largestCells": 1,
+              "largestShare": 0.0005232862375719519
+            },
+            "high": {
+              "components": 1,
+              "largestCells": 1909,
+              "largestShare": 0.998953427524856
+            }
+          }
+        }
+      },
+      "flow": {
+        "enabled": true,
+        "configuredScale": 0.7,
+        "effectiveScale": 0.7,
+        "startedAtFrame": 0,
+        "elapsedFrames": 2000,
+        "tickCount": 125,
+        "cellUpdates": 238875,
+        "algaeRegrowth": 1542.5441697309482,
+        "decompositionInput": 147.46128490973516,
+        "grazingRemoved": 533.260683771925,
+        "totalBiologicalInput": 1690.0054546406834,
+        "inputMinusGrazing": 1156.7447708687585,
+        "currentTotal": 1538.9993291050196,
+        "currentMean": 0.8053371685531238
+      },
+      "population": {
+        "frame": 2000,
+        "windowFrames": 2100,
+        "startPopulation": 64,
+        "endPopulation": 122,
+        "peakPopulation": 126,
+        "populationCap": 120,
+        "firstPopulationCapFrame": 1470,
+        "startDiets": {
+          "h": 21,
+          "m": 27,
+          "c": 16
+        },
+        "endDiets": {
+          "h": 97,
+          "m": 24,
+          "c": 1
+        },
+        "endAverageStoreNByDiet": {
+          "h": 0.8104247696684795,
+          "m": 0.6574534896992461,
+          "c": 0.36594023577337187
+        },
+        "byDiet": {
+          "h": {
+            "births": 155,
+            "reproductions": 128,
+            "deaths": 79,
+            "overcrowdingDeaths": 28,
+            "predationDeaths": 6,
+            "starvationDeaths": 45,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          },
+          "m": {
+            "births": 42,
+            "reproductions": 36,
+            "deaths": 45,
+            "overcrowdingDeaths": 15,
+            "predationDeaths": 6,
+            "starvationDeaths": 24,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          },
+          "c": {
+            "births": 2,
+            "reproductions": 2,
+            "deaths": 17,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 2,
+            "starvationDeaths": 15,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          }
+        },
+        "births": 199,
+        "deaths": 141,
+        "reproductions": 166,
+        "deathCauses": {
+          "starvation": 84,
+          "oldAge": 0,
+          "predation": 14,
+          "overcrowding": 43,
+          "other": 0
+        },
+        "newborn": {
+          "births": 199,
+          "survived60": 191,
+          "survived180": 173,
+          "survived240": 164,
+          "deathsWithin60": 0,
+          "deathsWithin180": 4,
+          "deathsWithin240": 7,
+          "overcrowdingDeathsWithin60": 0,
+          "overcrowdingDeathsWithin180": 0,
+          "overcrowdingDeathsWithin240": 0,
+          "survivalRateByDiet": {
+            "h": {
+              "eligible60": 151,
+              "survived60": 151,
+              "rate60": 1,
+              "eligible180": 138,
+              "survived180": 135,
+              "rate180": 0.9782608695652174,
+              "eligible240": 133,
+              "survived240": 127,
+              "rate240": 0.9548872180451128
+            },
+            "m": {
+              "eligible60": 38,
+              "survived60": 38,
+              "rate60": 1,
+              "eligible180": 37,
+              "survived180": 37,
+              "rate180": 1,
+              "eligible240": 36,
+              "survived240": 36,
+              "rate240": 1
+            },
+            "c": {
+              "eligible60": 2,
+              "survived60": 2,
+              "rate60": 1,
+              "eligible180": 2,
+              "survived180": 1,
+              "rate180": 0.5,
+              "eligible240": 2,
+              "survived240": 1,
+              "rate240": 0.5
+            }
+          }
+        }
+      },
+      "grazing": {
+        "grazing": 114,
+        "recentGrazing": 121,
+        "herbivores": 97,
+        "omnivores": 24,
+        "carnivores": 1,
+        "food": 255,
+        "env": {
+          "N": 0.8053371685531238,
+          "D": 0.060537471186411326,
+          "O": 0.9799348464808785,
+          "C": 0.25,
+          "algae": 0.8053371685531238,
+          "nutrient": 0.8053371685531238,
+          "detritus": 0.060537471186411326,
+          "decomposition": 0.060537471186411326,
+          "oxygen": 0.9799348464808785,
+          "cold": 0.25,
+          "temperature": 0.75
+        }
+      }
+    }
+  ],
+  "errors": []
+}

@@ -1,0 +1,5034 @@
+{
+  "generatedAt": "2026-07-28T15:24:14.130Z",
+  "baseCommit": "0c4d29b5ebb823adf83e4083fc2583a92c53ae8a",
+  "phase": "final",
+  "htmlFile": "C:\\Users\\yuhim\\Documents\\ALIFE\\.codex_worktrees\\algae_regeneration_balance\\index.html",
+  "steps": 2000,
+  "seeds": [
+    41001,
+    43001,
+    51001
+  ],
+  "scales": [
+    0.7
+  ],
+  "groups": [
+    {
+      "label": "legacy scale 1.0",
+      "enabled": false,
+      "scale": 1,
+      "rows": [
+        {
+          "seed": 41001,
+          "steps": 2000,
+          "variant": "legacy-algae-regrowth",
+          "elapsedMs": 7035.9,
+          "population": {
+            "start": 64,
+            "end": 122,
+            "peak": 126,
+            "firstCapFrame": 1330,
+            "births": 255,
+            "reproductions": 157,
+            "deaths": 197,
+            "deathCauses": {
+              "starvation": 47,
+              "oldAge": 0,
+              "predation": 21,
+              "overcrowding": 129,
+              "other": 0
+            },
+            "byDiet": {
+              "h": {
+                "births": 218,
+                "reproductions": 127,
+                "deaths": 133,
+                "overcrowdingDeaths": 114,
+                "predationDeaths": 10,
+                "starvationDeaths": 9,
+                "oldAgeDeaths": 0,
+                "otherDeaths": 0
+              },
+              "m": {
+                "births": 28,
+                "reproductions": 22,
+                "deaths": 35,
+                "overcrowdingDeaths": 15,
+                "predationDeaths": 5,
+                "starvationDeaths": 15,
+                "oldAgeDeaths": 0,
+                "otherDeaths": 0
+              },
+              "c": {
+                "births": 9,
+                "reproductions": 8,
+                "deaths": 29,
+                "overcrowdingDeaths": 0,
+                "predationDeaths": 6,
+                "starvationDeaths": 23,
+                "oldAgeDeaths": 0,
+                "otherDeaths": 0
+              }
+            },
+            "endDiets": {
+              "h": 108,
+              "m": 14,
+              "c": 0
+            }
+          },
+          "algae": {
+            "initial": {
+              "mode": "patchy-intermediate",
+              "seed": 41001,
+              "cellCount": 1911,
+              "minimumAlgae": 0.02000018022954464,
+              "maximumAlgae": 0.3399994969367981,
+              "meanAlgae": 0.14250000017002606,
+              "medianAlgae": 0.12999999523162842,
+              "standardDeviation": 0.08654581772617116,
+              "fieldHash": "a0ae915b",
+              "thresholds": {
+                "lowMax": 0.075,
+                "highMin": 0.185
+              },
+              "ratios": {
+                "low": 0.250130821559393,
+                "medium": 0.49973835688121404,
+                "high": 0.250130821559393
+              },
+              "spatial": {
+                "componentCount": 17,
+                "resourcePatchCount": 13,
+                "byBand": {
+                  "low": {
+                    "components": 7,
+                    "largestCells": 244,
+                    "largestShare": 0.12768184196755625
+                  },
+                  "medium": {
+                    "components": 4,
+                    "largestCells": 830,
+                    "largestShare": 0.43432757718472004
+                  },
+                  "high": {
+                    "components": 6,
+                    "largestCells": 357,
+                    "largestShare": 0.18681318681318682
+                  }
+                }
+              }
+            },
+            "current": {
+              "mode": "patchy-intermediate",
+              "seed": 41001,
+              "cellCount": 1911,
+              "minimumAlgae": 0.23488345742225647,
+              "maximumAlgae": 0.9986208081245422,
+              "meanAlgae": 0.8272890250511908,
+              "medianAlgae": 0.8659337759017944,
+              "standardDeviation": 0.13907539350243578,
+              "fieldHash": "40321ac3",
+              "thresholds": {
+                "lowMax": 0.075,
+                "highMin": 0.185
+              },
+              "ratios": {
+                "low": 0,
+                "medium": 0,
+                "high": 1
+              },
+              "spatial": {
+                "componentCount": 1,
+                "resourcePatchCount": 1,
+                "byBand": {
+                  "low": {
+                    "components": 0,
+                    "largestCells": 0,
+                    "largestShare": 0
+                  },
+                  "medium": {
+                    "components": 0,
+                    "largestCells": 0,
+                    "largestShare": 0
+                  },
+                  "high": {
+                    "components": 1,
+                    "largestCells": 1911,
+                    "largestShare": 1
+                  }
+                }
+              }
+            },
+            "flow": {
+              "enabled": false,
+              "configuredScale": 0.7,
+              "effectiveScale": 1,
+              "startedAtFrame": 0,
+              "elapsedFrames": 2000,
+              "tickCount": 125,
+              "cellUpdates": 238875,
+              "algaeRegrowth": 1806.4953371255533,
+              "decompositionInput": 172.27592750929537,
+              "grazingRemoved": 586.718534267732,
+              "totalBiologicalInput": 1978.7712646348486,
+              "inputMinusGrazing": 1392.0527303671165,
+              "currentTotal": 1580.9493268728256,
+              "currentMean": 0.8272890250511908
+            },
+            "spatialMilestones": [
+              {
+                "frame": 120,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 41001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.052232351154088974,
+                  "maximumAlgae": 0.49223682284355164,
+                  "meanAlgae": 0.19540431492970228,
+                  "medianAlgae": 0.18509696424007416,
+                  "standardDeviation": 0.09503450787233786,
+                  "fieldHash": "609e1747",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0.09157509157509157,
+                    "medium": 0.40816326530612246,
+                    "high": 0.500261643118786
+                  },
+                  "spatial": {
+                    "componentCount": 15,
+                    "resourcePatchCount": 8,
+                    "byBand": {
+                      "low": {
+                        "components": 4,
+                        "largestCells": 153,
+                        "largestShare": 0.08006279434850863
+                      },
+                      "medium": {
+                        "components": 7,
+                        "largestCells": 521,
+                        "largestShare": 0.2726321297749869
+                      },
+                      "high": {
+                        "components": 4,
+                        "largestCells": 910,
+                        "largestShare": 0.47619047619047616
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 22,
+                    "meanLocalAlgae": 0.2251417294821956,
+                    "lowRatio": 0.18181818181818182,
+                    "mediumRatio": 0.22727272727272727,
+                    "highRatio": 0.5909090909090909,
+                    "recentGrazers": 7
+                  },
+                  "m": {
+                    "count": 20,
+                    "meanLocalAlgae": 0.1930955458432436,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.5,
+                    "highRatio": 0.5,
+                    "recentGrazers": 0
+                  },
+                  "c": {
+                    "count": 24,
+                    "meanLocalAlgae": 0.2126051515030364,
+                    "lowRatio": 0.16666666666666666,
+                    "mediumRatio": 0.3333333333333333,
+                    "highRatio": 0.5,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 24,
+                  "meanNearestPreyDistance": 61.368766154270396,
+                  "minimumNearestPreyDistance": 15.576512004670157
+                }
+              },
+              {
+                "frame": 300,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 41001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.1196582093834877,
+                  "maximumAlgae": 0.5536062717437744,
+                  "meanAlgae": 0.2962168320420835,
+                  "medianAlgae": 0.2884356379508972,
+                  "standardDeviation": 0.10769223716110879,
+                  "fieldHash": "18798f86",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0.1564625850340136,
+                    "high": 0.8435374149659864
+                  },
+                  "spatial": {
+                    "componentCount": 10,
+                    "resourcePatchCount": 2,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 8,
+                        "largestCells": 195,
+                        "largestShare": 0.10204081632653061
+                      },
+                      "high": {
+                        "components": 2,
+                        "largestCells": 1594,
+                        "largestShare": 0.8341182626896912
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 17,
+                    "meanLocalAlgae": 0.3195972021888284,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.11764705882352941,
+                    "highRatio": 0.8823529411764706,
+                    "recentGrazers": 10
+                  },
+                  "m": {
+                    "count": 18,
+                    "meanLocalAlgae": 0.3376536774966452,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.16666666666666666,
+                    "highRatio": 0.8333333333333334,
+                    "recentGrazers": 8
+                  },
+                  "c": {
+                    "count": 10,
+                    "meanLocalAlgae": 0.37891254872083663,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 10,
+                  "meanNearestPreyDistance": 87.31094813499485,
+                  "minimumNearestPreyDistance": 21.67590414466033
+                }
+              },
+              {
+                "frame": 500,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 41001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.20622991025447845,
+                  "maximumAlgae": 0.703256368637085,
+                  "meanAlgae": 0.4379939462098696,
+                  "medianAlgae": 0.43855637311935425,
+                  "standardDeviation": 0.11288844050517396,
+                  "fieldHash": "caa04cdc",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 11,
+                    "meanLocalAlgae": 0.5222766670313749,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 11
+                  },
+                  "m": {
+                    "count": 18,
+                    "meanLocalAlgae": 0.4499976072046492,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 9
+                  },
+                  "c": {
+                    "count": 5,
+                    "meanLocalAlgae": 0.46183439493179324,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 5,
+                  "meanNearestPreyDistance": 109.4119397572387,
+                  "minimumNearestPreyDistance": 55.51827317797854
+                }
+              },
+              {
+                "frame": 750,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 41001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.2880078852176666,
+                  "maximumAlgae": 0.8239802718162537,
+                  "meanAlgae": 0.6034641135025873,
+                  "medianAlgae": 0.6057456135749817,
+                  "standardDeviation": 0.09502613206365708,
+                  "fieldHash": "27df8d8a",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 14,
+                    "meanLocalAlgae": 0.5730132907629013,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 14
+                  },
+                  "m": {
+                    "count": 14,
+                    "meanLocalAlgae": 0.6693247045789447,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 12
+                  },
+                  "c": {
+                    "count": 2,
+                    "meanLocalAlgae": 0.6695695221424103,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 2,
+                  "meanNearestPreyDistance": 148.8483090069094,
+                  "minimumNearestPreyDistance": 146.02969258406617
+                }
+              },
+              {
+                "frame": 1000,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 41001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.2974635660648346,
+                  "maximumAlgae": 0.9086430072784424,
+                  "meanAlgae": 0.7464760088253121,
+                  "medianAlgae": 0.7494052052497864,
+                  "standardDeviation": 0.07563131236939119,
+                  "fieldHash": "a3e7d06c",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 30,
+                    "meanLocalAlgae": 0.6819465935230256,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 30
+                  },
+                  "m": {
+                    "count": 13,
+                    "meanLocalAlgae": 0.6757361269914187,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 13
+                  },
+                  "c": {
+                    "count": 2,
+                    "meanLocalAlgae": 0.8471773564815521,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 2,
+                  "meanNearestPreyDistance": 233.1739954566524,
+                  "minimumNearestPreyDistance": 219.85648346020687
+                }
+              },
+              {
+                "frame": 1500,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 41001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.15145243704319,
+                  "maximumAlgae": 0.9993283748626709,
+                  "meanAlgae": 0.800144470857738,
+                  "medianAlgae": 0.858332097530365,
+                  "standardDeviation": 0.14851079916520754,
+                  "fieldHash": "5ca9ea4b",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0.0005232862375719519,
+                    "high": 0.9994767137624281
+                  },
+                  "spatial": {
+                    "componentCount": 2,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 1,
+                        "largestCells": 1,
+                        "largestShare": 0.0005232862375719519
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1910,
+                        "largestShare": 0.9994767137624281
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 105,
+                    "meanLocalAlgae": 0.6178803936356589,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 105
+                  },
+                  "m": {
+                    "count": 15,
+                    "meanLocalAlgae": 0.7585413694381714,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 15
+                  },
+                  "c": {
+                    "count": 0,
+                    "meanLocalAlgae": 0,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 0,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 0,
+                  "meanNearestPreyDistance": null,
+                  "minimumNearestPreyDistance": null
+                }
+              },
+              {
+                "frame": 2000,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 41001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.23488345742225647,
+                  "maximumAlgae": 0.9986208081245422,
+                  "meanAlgae": 0.8272890250511908,
+                  "medianAlgae": 0.8659337759017944,
+                  "standardDeviation": 0.13907539350243578,
+                  "fieldHash": "40321ac3",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 108,
+                    "meanLocalAlgae": 0.7225916656079115,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 108
+                  },
+                  "m": {
+                    "count": 14,
+                    "meanLocalAlgae": 0.7760622841971261,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 14
+                  },
+                  "c": {
+                    "count": 0,
+                    "meanLocalAlgae": 0,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 0,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 0,
+                  "meanNearestPreyDistance": null,
+                  "minimumNearestPreyDistance": null
+                }
+              }
+            ],
+            "flowMilestones": [
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 120,
+                "tickCount": 7,
+                "cellUpdates": 13377,
+                "algaeRegrowth": 95.10373288004311,
+                "decompositionInput": 8.510112331884063,
+                "grazingRemoved": 3.326060600865206,
+                "totalBiologicalInput": 103.61384521192717,
+                "inputMinusGrazing": 100.28778461106197,
+                "currentTotal": 373.41764583066106,
+                "currentMean": 0.19540431492970228
+              },
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 300,
+                "tickCount": 18,
+                "cellUpdates": 34398,
+                "algaeRegrowth": 280.777442189579,
+                "decompositionInput": 23.708554781132456,
+                "grazingRemoved": 12.606088765385095,
+                "totalBiologicalInput": 304.4859969707115,
+                "inputMinusGrazing": 291.8799082053264,
+                "currentTotal": 566.0703660324216,
+                "currentMean": 0.2962168320420835
+              },
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 500,
+                "tickCount": 31,
+                "cellUpdates": 59241,
+                "algaeRegrowth": 550.0824038321025,
+                "decompositionInput": 42.42404557147304,
+                "grazingRemoved": 28.906345934126534,
+                "totalBiologicalInput": 592.5064494035755,
+                "inputMinusGrazing": 563.600103469449,
+                "currentTotal": 837.0064312070608,
+                "currentMean": 0.4379939462098696
+              },
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 750,
+                "tickCount": 46,
+                "cellUpdates": 87906,
+                "algaeRegrowth": 876.9917416224089,
+                "decompositionInput": 61.294150322168235,
+                "grazingRemoved": 56.05265646453945,
+                "totalBiologicalInput": 938.2858919445771,
+                "inputMinusGrazing": 882.2332354800376,
+                "currentTotal": 1153.2199209034443,
+                "currentMean": 0.6034641135025873
+              },
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 1000,
+                "tickCount": 62,
+                "cellUpdates": 118482,
+                "algaeRegrowth": 1177.672385056019,
+                "decompositionInput": 78.04643012184155,
+                "grazingRemoved": 95.68714025563052,
+                "totalBiologicalInput": 1255.7188151778605,
+                "inputMinusGrazing": 1160.03167492223,
+                "currentTotal": 1426.5156528651714,
+                "currentMean": 0.7464760088253121
+              },
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 1500,
+                "tickCount": 93,
+                "cellUpdates": 177723,
+                "algaeRegrowth": 1495.4082388761726,
+                "decompositionInput": 115.01177845432437,
+                "grazingRemoved": 316.42875470877516,
+                "totalBiologicalInput": 1610.420017330497,
+                "inputMinusGrazing": 1293.991262621722,
+                "currentTotal": 1529.0760838091373,
+                "currentMean": 0.800144470857738
+              },
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 2000,
+                "tickCount": 125,
+                "cellUpdates": 238875,
+                "algaeRegrowth": 1806.4953371255533,
+                "decompositionInput": 172.27592750929537,
+                "grazingRemoved": 586.718534267732,
+                "totalBiologicalInput": 1978.7712646348486,
+                "inputMinusGrazing": 1392.0527303671165,
+                "currentTotal": 1580.9493268728256,
+                "currentMean": 0.8272890250511908
+              }
+            ]
+          },
+          "carnivore": {
+            "maximum": 24,
+            "end": 0,
+            "extinctionFrame": 1187,
+            "births": 9
+          },
+          "conservation": {
+            "energyPositiveResidualMax": 5.684341886080802e-14,
+            "nutrientPositiveResidualMax": 2.7755575615628914e-17,
+            "energyCreationEvents": 0,
+            "nutrientCreationEvents": 0
+          },
+          "health": {
+            "ok": true,
+            "badCount": 0,
+            "bad": []
+          },
+          "browserErrors": []
+        },
+        {
+          "seed": 43001,
+          "steps": 2000,
+          "variant": "legacy-algae-regrowth",
+          "elapsedMs": 8136.5,
+          "population": {
+            "start": 64,
+            "end": 120,
+            "peak": 126,
+            "firstCapFrame": 1410,
+            "births": 240,
+            "reproductions": 188,
+            "deaths": 184,
+            "deathCauses": {
+              "starvation": 58,
+              "oldAge": 0,
+              "predation": 9,
+              "overcrowding": 117,
+              "other": 0
+            },
+            "byDiet": {
+              "h": {
+                "births": 227,
+                "reproductions": 178,
+                "deaths": 130,
+                "overcrowdingDeaths": 109,
+                "predationDeaths": 4,
+                "starvationDeaths": 17,
+                "oldAgeDeaths": 0,
+                "otherDeaths": 0
+              },
+              "m": {
+                "births": 4,
+                "reproductions": 3,
+                "deaths": 20,
+                "overcrowdingDeaths": 8,
+                "predationDeaths": 5,
+                "starvationDeaths": 7,
+                "oldAgeDeaths": 0,
+                "otherDeaths": 0
+              },
+              "c": {
+                "births": 9,
+                "reproductions": 7,
+                "deaths": 34,
+                "overcrowdingDeaths": 0,
+                "predationDeaths": 0,
+                "starvationDeaths": 34,
+                "oldAgeDeaths": 0,
+                "otherDeaths": 0
+              }
+            },
+            "endDiets": {
+              "h": 119,
+              "m": 1,
+              "c": 0
+            }
+          },
+          "algae": {
+            "initial": {
+              "mode": "patchy-intermediate",
+              "seed": 43001,
+              "cellCount": 1911,
+              "minimumAlgae": 0.02000018022954464,
+              "maximumAlgae": 0.3399994969367981,
+              "meanAlgae": 0.14250000017002606,
+              "medianAlgae": 0.12999999523162842,
+              "standardDeviation": 0.08654581772617116,
+              "fieldHash": "adc64a47",
+              "thresholds": {
+                "lowMax": 0.075,
+                "highMin": 0.185
+              },
+              "ratios": {
+                "low": 0.250130821559393,
+                "medium": 0.49973835688121404,
+                "high": 0.250130821559393
+              },
+              "spatial": {
+                "componentCount": 16,
+                "resourcePatchCount": 15,
+                "byBand": {
+                  "low": {
+                    "components": 7,
+                    "largestCells": 228,
+                    "largestShare": 0.11930926216640503
+                  },
+                  "medium": {
+                    "components": 1,
+                    "largestCells": 955,
+                    "largestShare": 0.49973835688121404
+                  },
+                  "high": {
+                    "components": 8,
+                    "largestCells": 328,
+                    "largestShare": 0.17163788592360021
+                  }
+                }
+              }
+            },
+            "current": {
+              "mode": "patchy-intermediate",
+              "seed": 43001,
+              "cellCount": 1911,
+              "minimumAlgae": 0.4633645713329315,
+              "maximumAlgae": 1,
+              "meanAlgae": 0.9066733605789302,
+              "medianAlgae": 0.9235047698020935,
+              "standardDeviation": 0.07861542085983082,
+              "fieldHash": "cbb948c8",
+              "thresholds": {
+                "lowMax": 0.075,
+                "highMin": 0.185
+              },
+              "ratios": {
+                "low": 0,
+                "medium": 0,
+                "high": 1
+              },
+              "spatial": {
+                "componentCount": 1,
+                "resourcePatchCount": 1,
+                "byBand": {
+                  "low": {
+                    "components": 0,
+                    "largestCells": 0,
+                    "largestShare": 0
+                  },
+                  "medium": {
+                    "components": 0,
+                    "largestCells": 0,
+                    "largestShare": 0
+                  },
+                  "high": {
+                    "components": 1,
+                    "largestCells": 1911,
+                    "largestShare": 1
+                  }
+                }
+              }
+            },
+            "flow": {
+              "enabled": false,
+              "configuredScale": 0.7,
+              "effectiveScale": 1,
+              "startedAtFrame": 0,
+              "elapsedFrames": 2000,
+              "tickCount": 125,
+              "cellUpdates": 238875,
+              "algaeRegrowth": 1747.6656141700164,
+              "decompositionInput": 154.7737546303534,
+              "grazingRemoved": 603.025393594614,
+              "totalBiologicalInput": 1902.4393688003697,
+              "inputMinusGrazing": 1299.4139752057558,
+              "currentTotal": 1732.6527920663357,
+              "currentMean": 0.9066733605789302
+            },
+            "spatialMilestones": [
+              {
+                "frame": 120,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 43001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.0540725402534008,
+                  "maximumAlgae": 0.5115324258804321,
+                  "meanAlgae": 0.19614713568647826,
+                  "medianAlgae": 0.18441729247570038,
+                  "standardDeviation": 0.09647585825392876,
+                  "fieldHash": "8a9db221",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0.09157509157509157,
+                    "medium": 0.41130298273155413,
+                    "high": 0.4971219256933543
+                  },
+                  "spatial": {
+                    "componentCount": 17,
+                    "resourcePatchCount": 10,
+                    "byBand": {
+                      "low": {
+                        "components": 5,
+                        "largestCells": 94,
+                        "largestShare": 0.049188906331763475
+                      },
+                      "medium": {
+                        "components": 7,
+                        "largestCells": 397,
+                        "largestShare": 0.20774463631606488
+                      },
+                      "high": {
+                        "components": 5,
+                        "largestCells": 906,
+                        "largestShare": 0.4740973312401884
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 23,
+                    "meanLocalAlgae": 0.2614923385174378,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.391304347826087,
+                    "highRatio": 0.6086956521739131,
+                    "recentGrazers": 10
+                  },
+                  "m": {
+                    "count": 16,
+                    "meanLocalAlgae": 0.22474453877657652,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.625,
+                    "highRatio": 0.375,
+                    "recentGrazers": 2
+                  },
+                  "c": {
+                    "count": 27,
+                    "meanLocalAlgae": 0.19945505275218575,
+                    "lowRatio": 0.14814814814814814,
+                    "mediumRatio": 0.37037037037037035,
+                    "highRatio": 0.48148148148148145,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 27,
+                  "meanNearestPreyDistance": 66.66875669233204,
+                  "minimumNearestPreyDistance": 11.583933353234741
+                }
+              },
+              {
+                "frame": 300,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 43001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.12327086180448532,
+                  "maximumAlgae": 0.9995509386062622,
+                  "meanAlgae": 0.3000085628442837,
+                  "medianAlgae": 0.2881907820701599,
+                  "standardDeviation": 0.11708103796343879,
+                  "fieldHash": "61fb2fb2",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0.15855572998430142,
+                    "high": 0.8414442700156985
+                  },
+                  "spatial": {
+                    "componentCount": 5,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 4,
+                        "largestCells": 126,
+                        "largestShare": 0.06593406593406594
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1608,
+                        "largestShare": 0.8414442700156985
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 16,
+                    "meanLocalAlgae": 0.5266192182898521,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 15
+                  },
+                  "m": {
+                    "count": 9,
+                    "meanLocalAlgae": 0.47125087678432465,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 5
+                  },
+                  "c": {
+                    "count": 14,
+                    "meanLocalAlgae": 0.48839216040713446,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 14,
+                  "meanNearestPreyDistance": 65.59217145444484,
+                  "minimumNearestPreyDistance": 3.925750628726162
+                }
+              },
+              {
+                "frame": 500,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 43001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.2301362007856369,
+                  "maximumAlgae": 0.9998654127120972,
+                  "meanAlgae": 0.4446065375812387,
+                  "medianAlgae": 0.44280195236206055,
+                  "standardDeviation": 0.1205473791440069,
+                  "fieldHash": "f9f7d784",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 15,
+                    "meanLocalAlgae": 0.603732309738795,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 15
+                  },
+                  "m": {
+                    "count": 5,
+                    "meanLocalAlgae": 0.6191719233989715,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 5
+                  },
+                  "c": {
+                    "count": 9,
+                    "meanLocalAlgae": 0.5985540052254995,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 9,
+                  "meanNearestPreyDistance": 38.47264368343245,
+                  "minimumNearestPreyDistance": 21.13360155109097
+                }
+              },
+              {
+                "frame": 750,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 43001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.3736187815666199,
+                  "maximumAlgae": 1,
+                  "meanAlgae": 0.6160595853374866,
+                  "medianAlgae": 0.6182396411895752,
+                  "standardDeviation": 0.10654763104977052,
+                  "fieldHash": "7076ec0c",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 19,
+                    "meanLocalAlgae": 0.7209014672982065,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 19
+                  },
+                  "m": {
+                    "count": 5,
+                    "meanLocalAlgae": 0.7018898248672485,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 5
+                  },
+                  "c": {
+                    "count": 2,
+                    "meanLocalAlgae": 0.6786136031150818,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 2,
+                  "meanNearestPreyDistance": 82.41871043099621,
+                  "minimumNearestPreyDistance": 81.76014743481996
+                }
+              },
+              {
+                "frame": 1000,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 43001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.42999741435050964,
+                  "maximumAlgae": 1,
+                  "meanAlgae": 0.762551912925806,
+                  "medianAlgae": 0.7619103789329529,
+                  "standardDeviation": 0.08137072032751674,
+                  "fieldHash": "b4adb0ac",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 33,
+                    "meanLocalAlgae": 0.8439154895869169,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 33
+                  },
+                  "m": {
+                    "count": 6,
+                    "meanLocalAlgae": 0.7920881609121958,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 5
+                  },
+                  "c": {
+                    "count": 0,
+                    "meanLocalAlgae": 0,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 0,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 0,
+                  "meanNearestPreyDistance": null,
+                  "minimumNearestPreyDistance": null
+                }
+              },
+              {
+                "frame": 1500,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 43001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.4088359475135803,
+                  "maximumAlgae": 1,
+                  "meanAlgae": 0.8804152991714308,
+                  "medianAlgae": 0.9037044048309326,
+                  "standardDeviation": 0.0789503372520501,
+                  "fieldHash": "3735ba67",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 118,
+                    "meanLocalAlgae": 0.8766133552890712,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 118
+                  },
+                  "m": {
+                    "count": 2,
+                    "meanLocalAlgae": 0.9100985825061798,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 2
+                  },
+                  "c": {
+                    "count": 0,
+                    "meanLocalAlgae": 0,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 0,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 0,
+                  "meanNearestPreyDistance": null,
+                  "minimumNearestPreyDistance": null
+                }
+              },
+              {
+                "frame": 2000,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 43001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.4633645713329315,
+                  "maximumAlgae": 1,
+                  "meanAlgae": 0.9066733605789302,
+                  "medianAlgae": 0.9235047698020935,
+                  "standardDeviation": 0.07861542085983082,
+                  "fieldHash": "cbb948c8",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 119,
+                    "meanLocalAlgae": 0.8757682067005574,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 117
+                  },
+                  "m": {
+                    "count": 1,
+                    "meanLocalAlgae": 0.9780558347702026,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 1
+                  },
+                  "c": {
+                    "count": 0,
+                    "meanLocalAlgae": 0,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 0,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 0,
+                  "meanNearestPreyDistance": null,
+                  "minimumNearestPreyDistance": null
+                }
+              }
+            ],
+            "flowMilestones": [
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 120,
+                "tickCount": 7,
+                "cellUpdates": 13377,
+                "algaeRegrowth": 95.31374091730208,
+                "decompositionInput": 8.508736068926707,
+                "grazingRemoved": 4.474188055444474,
+                "totalBiologicalInput": 103.82247698622879,
+                "inputMinusGrazing": 99.34828893078432,
+                "currentTotal": 374.83717629686,
+                "currentMean": 0.19614713568647826
+              },
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 300,
+                "tickCount": 18,
+                "cellUpdates": 34398,
+                "algaeRegrowth": 281.00806003217906,
+                "decompositionInput": 23.84120538308928,
+                "grazingRemoved": 14.83743448478392,
+                "totalBiologicalInput": 304.84926541526835,
+                "inputMinusGrazing": 290.01183093048445,
+                "currentTotal": 573.3163635954261,
+                "currentMean": 0.3000085628442837
+              },
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 500,
+                "tickCount": 31,
+                "cellUpdates": 59241,
+                "algaeRegrowth": 548.9897778988766,
+                "decompositionInput": 42.413077321133024,
+                "grazingRemoved": 29.448528837186522,
+                "totalBiologicalInput": 591.4028552200097,
+                "inputMinusGrazing": 561.9543263828232,
+                "currentTotal": 849.6430933177471,
+                "currentMean": 0.4446065375812387
+              },
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 750,
+                "tickCount": 46,
+                "cellUpdates": 87906,
+                "algaeRegrowth": 871.7977153773095,
+                "decompositionInput": 60.94930484966458,
+                "grazingRemoved": 53.761733899656534,
+                "totalBiologicalInput": 932.7470202269741,
+                "inputMinusGrazing": 878.9852863273176,
+                "currentTotal": 1177.289867579937,
+                "currentMean": 0.6160595853374866
+              },
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 1000,
+                "tickCount": 62,
+                "cellUpdates": 118482,
+                "algaeRegrowth": 1162.5775152936862,
+                "decompositionInput": 77.06558466485347,
+                "grazingRemoved": 96.24318187803708,
+                "totalBiologicalInput": 1239.6430999585398,
+                "inputMinusGrazing": 1143.3999180805026,
+                "currentTotal": 1457.2367056012154,
+                "currentMean": 0.762551912925806
+              },
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 1500,
+                "tickCount": 93,
+                "cellUpdates": 177723,
+                "algaeRegrowth": 1513.4756764908034,
+                "decompositionInput": 108.54567077270195,
+                "grazingRemoved": 321.6769968187339,
+                "totalBiologicalInput": 1622.0213472635053,
+                "inputMinusGrazing": 1300.3443504447714,
+                "currentTotal": 1682.4736367166042,
+                "currentMean": 0.8804152991714308
+              },
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 2000,
+                "tickCount": 125,
+                "cellUpdates": 238875,
+                "algaeRegrowth": 1747.6656141700164,
+                "decompositionInput": 154.7737546303534,
+                "grazingRemoved": 603.025393594614,
+                "totalBiologicalInput": 1902.4393688003697,
+                "inputMinusGrazing": 1299.4139752057558,
+                "currentTotal": 1732.6527920663357,
+                "currentMean": 0.9066733605789302
+              }
+            ]
+          },
+          "carnivore": {
+            "maximum": 27,
+            "end": 0,
+            "extinctionFrame": 839,
+            "births": 9
+          },
+          "conservation": {
+            "energyPositiveResidualMax": 2.842170943040401e-14,
+            "nutrientPositiveResidualMax": 2.7755575615628914e-17,
+            "energyCreationEvents": 0,
+            "nutrientCreationEvents": 0
+          },
+          "health": {
+            "ok": true,
+            "badCount": 0,
+            "bad": []
+          },
+          "browserErrors": []
+        },
+        {
+          "seed": 51001,
+          "steps": 2000,
+          "variant": "legacy-algae-regrowth",
+          "elapsedMs": 9804.9,
+          "population": {
+            "start": 64,
+            "end": 123,
+            "peak": 126,
+            "firstCapFrame": 1400,
+            "births": 207,
+            "reproductions": 201,
+            "deaths": 148,
+            "deathCauses": {
+              "starvation": 53,
+              "oldAge": 0,
+              "predation": 25,
+              "overcrowding": 70,
+              "other": 0
+            },
+            "byDiet": {
+              "h": {
+                "births": 170,
+                "reproductions": 174,
+                "deaths": 83,
+                "overcrowdingDeaths": 62,
+                "predationDeaths": 7,
+                "starvationDeaths": 14,
+                "oldAgeDeaths": 0,
+                "otherDeaths": 0
+              },
+              "m": {
+                "births": 30,
+                "reproductions": 20,
+                "deaths": 39,
+                "overcrowdingDeaths": 8,
+                "predationDeaths": 8,
+                "starvationDeaths": 23,
+                "oldAgeDeaths": 0,
+                "otherDeaths": 0
+              },
+              "c": {
+                "births": 7,
+                "reproductions": 7,
+                "deaths": 26,
+                "overcrowdingDeaths": 0,
+                "predationDeaths": 10,
+                "starvationDeaths": 16,
+                "oldAgeDeaths": 0,
+                "otherDeaths": 0
+              }
+            },
+            "endDiets": {
+              "h": 106,
+              "m": 17,
+              "c": 0
+            }
+          },
+          "algae": {
+            "initial": {
+              "mode": "patchy-intermediate",
+              "seed": 51001,
+              "cellCount": 1911,
+              "minimumAlgae": 0.02000018022954464,
+              "maximumAlgae": 0.3399994969367981,
+              "meanAlgae": 0.14250000017002606,
+              "medianAlgae": 0.12999999523162842,
+              "standardDeviation": 0.08654581772617116,
+              "fieldHash": "38f9097f",
+              "thresholds": {
+                "lowMax": 0.075,
+                "highMin": 0.185
+              },
+              "ratios": {
+                "low": 0.250130821559393,
+                "medium": 0.49973835688121404,
+                "high": 0.250130821559393
+              },
+              "spatial": {
+                "componentCount": 15,
+                "resourcePatchCount": 13,
+                "byBand": {
+                  "low": {
+                    "components": 8,
+                    "largestCells": 207,
+                    "largestShare": 0.10832025117739404
+                  },
+                  "medium": {
+                    "components": 2,
+                    "largestCells": 936,
+                    "largestShare": 0.4897959183673469
+                  },
+                  "high": {
+                    "components": 5,
+                    "largestCells": 259,
+                    "largestShare": 0.13553113553113552
+                  }
+                }
+              }
+            },
+            "current": {
+              "mode": "patchy-intermediate",
+              "seed": 51001,
+              "cellCount": 1911,
+              "minimumAlgae": 0.45048078894615173,
+              "maximumAlgae": 1,
+              "meanAlgae": 0.9210591580560855,
+              "medianAlgae": 0.9319064617156982,
+              "standardDeviation": 0.05754557372070594,
+              "fieldHash": "c9ec0e49",
+              "thresholds": {
+                "lowMax": 0.075,
+                "highMin": 0.185
+              },
+              "ratios": {
+                "low": 0,
+                "medium": 0,
+                "high": 1
+              },
+              "spatial": {
+                "componentCount": 1,
+                "resourcePatchCount": 1,
+                "byBand": {
+                  "low": {
+                    "components": 0,
+                    "largestCells": 0,
+                    "largestShare": 0
+                  },
+                  "medium": {
+                    "components": 0,
+                    "largestCells": 0,
+                    "largestShare": 0
+                  },
+                  "high": {
+                    "components": 1,
+                    "largestCells": 1911,
+                    "largestShare": 1
+                  }
+                }
+              }
+            },
+            "flow": {
+              "enabled": false,
+              "configuredScale": 0.7,
+              "effectiveScale": 1,
+              "startedAtFrame": 0,
+              "elapsedFrames": 2000,
+              "tickCount": 125,
+              "cellUpdates": 238875,
+              "algaeRegrowth": 1649.6738894789835,
+              "decompositionInput": 151.83063106213848,
+              "grazingRemoved": 633.592077910101,
+              "totalBiologicalInput": 1801.504520541122,
+              "inputMinusGrazing": 1167.912442631021,
+              "currentTotal": 1760.1440510451794,
+              "currentMean": 0.9210591580560855
+            },
+            "spatialMilestones": [
+              {
+                "frame": 120,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 51001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.053995728492736816,
+                  "maximumAlgae": 0.5934953689575195,
+                  "meanAlgae": 0.1966595412634044,
+                  "medianAlgae": 0.1835280954837799,
+                  "standardDeviation": 0.09842313021007407,
+                  "fieldHash": "70e231dd",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0.09366823652537938,
+                    "medium": 0.41025641025641024,
+                    "high": 0.49607535321821034
+                  },
+                  "spatial": {
+                    "componentCount": 18,
+                    "resourcePatchCount": 12,
+                    "byBand": {
+                      "low": {
+                        "components": 6,
+                        "largestCells": 74,
+                        "largestShare": 0.03872318158032444
+                      },
+                      "medium": {
+                        "components": 6,
+                        "largestCells": 572,
+                        "largestShare": 0.29931972789115646
+                      },
+                      "high": {
+                        "components": 6,
+                        "largestCells": 521,
+                        "largestShare": 0.2726321297749869
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 20,
+                    "meanLocalAlgae": 0.2517586089670658,
+                    "lowRatio": 0.1,
+                    "mediumRatio": 0.25,
+                    "highRatio": 0.65,
+                    "recentGrazers": 5
+                  },
+                  "m": {
+                    "count": 26,
+                    "meanLocalAlgae": 0.20676576288846824,
+                    "lowRatio": 0.07692307692307693,
+                    "mediumRatio": 0.38461538461538464,
+                    "highRatio": 0.5384615384615384,
+                    "recentGrazers": 1
+                  },
+                  "c": {
+                    "count": 18,
+                    "meanLocalAlgae": 0.20326491652263534,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.4444444444444444,
+                    "highRatio": 0.5555555555555556,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 18,
+                  "meanNearestPreyDistance": 58.54785735926147,
+                  "minimumNearestPreyDistance": 5.29237927326353
+                }
+              },
+              {
+                "frame": 300,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 51001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.10342644155025482,
+                  "maximumAlgae": 0.9995697140693665,
+                  "meanAlgae": 0.2981852899119843,
+                  "medianAlgae": 0.2875710725784302,
+                  "standardDeviation": 0.11713588170891738,
+                  "fieldHash": "9d1ba113",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0.17582417582417584,
+                    "high": 0.8241758241758241
+                  },
+                  "spatial": {
+                    "componentCount": 13,
+                    "resourcePatchCount": 2,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 11,
+                        "largestCells": 114,
+                        "largestShare": 0.059654631083202514
+                      },
+                      "high": {
+                        "components": 2,
+                        "largestCells": 1548,
+                        "largestShare": 0.8100470957613815
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 17,
+                    "meanLocalAlgae": 0.4922344596946941,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.11764705882352941,
+                    "highRatio": 0.8823529411764706,
+                    "recentGrazers": 14
+                  },
+                  "m": {
+                    "count": 19,
+                    "meanLocalAlgae": 0.33817440741940547,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.10526315789473684,
+                    "highRatio": 0.8947368421052632,
+                    "recentGrazers": 7
+                  },
+                  "c": {
+                    "count": 8,
+                    "meanLocalAlgae": 0.3676473032683134,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 8,
+                  "meanNearestPreyDistance": 56.13668452015037,
+                  "minimumNearestPreyDistance": 18.250240940884606
+                }
+              },
+              {
+                "frame": 500,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 51001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.15373678505420685,
+                  "maximumAlgae": 0.9994263052940369,
+                  "meanAlgae": 0.44264321843252824,
+                  "medianAlgae": 0.4375627934932709,
+                  "standardDeviation": 0.12858806173226126,
+                  "fieldHash": "f751e8ee",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0.003663003663003663,
+                    "high": 0.9963369963369964
+                  },
+                  "spatial": {
+                    "componentCount": 2,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 1,
+                        "largestCells": 7,
+                        "largestShare": 0.003663003663003663
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1904,
+                        "largestShare": 0.9963369963369964
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 16,
+                    "meanLocalAlgae": 0.727036114782095,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 15
+                  },
+                  "m": {
+                    "count": 15,
+                    "meanLocalAlgae": 0.5693186183770498,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 9
+                  },
+                  "c": {
+                    "count": 6,
+                    "meanLocalAlgae": 0.5982345243295034,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 6,
+                  "meanNearestPreyDistance": 76.37094554400913,
+                  "minimumNearestPreyDistance": 14.943729583570352
+                }
+              },
+              {
+                "frame": 750,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 51001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.21682055294513702,
+                  "maximumAlgae": 0.9997788667678833,
+                  "meanAlgae": 0.6114251569248755,
+                  "medianAlgae": 0.6149080991744995,
+                  "standardDeviation": 0.11804332228466118,
+                  "fieldHash": "bc9b666e",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 21,
+                    "meanLocalAlgae": 0.8506679392996288,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 21
+                  },
+                  "m": {
+                    "count": 11,
+                    "meanLocalAlgae": 0.6037744879722595,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 10
+                  },
+                  "c": {
+                    "count": 3,
+                    "meanLocalAlgae": 0.7618578871091207,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 3,
+                  "meanNearestPreyDistance": 113.62186460659602,
+                  "minimumNearestPreyDistance": 19.024098866447844
+                }
+              },
+              {
+                "frame": 1000,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 51001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.2962970733642578,
+                  "maximumAlgae": 1,
+                  "meanAlgae": 0.7601136721159887,
+                  "medianAlgae": 0.7665460109710693,
+                  "standardDeviation": 0.09135797814139009,
+                  "fieldHash": "c4c3db15",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 38,
+                    "meanLocalAlgae": 0.8967777349446949,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 38
+                  },
+                  "m": {
+                    "count": 14,
+                    "meanLocalAlgae": 0.8486536315509251,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 14
+                  },
+                  "c": {
+                    "count": 3,
+                    "meanLocalAlgae": 0.8709012667338053,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 3,
+                  "meanNearestPreyDistance": 58.762322184832954,
+                  "minimumNearestPreyDistance": 36.72604211098754
+                }
+              },
+              {
+                "frame": 1500,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 51001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.41089382767677307,
+                  "maximumAlgae": 1,
+                  "meanAlgae": 0.8694918942133336,
+                  "medianAlgae": 0.8752466440200806,
+                  "standardDeviation": 0.06869355522532919,
+                  "fieldHash": "bc64dd17",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 108,
+                    "meanLocalAlgae": 0.9222070701696254,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 105
+                  },
+                  "m": {
+                    "count": 16,
+                    "meanLocalAlgae": 0.838879369199276,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 12
+                  },
+                  "c": {
+                    "count": 0,
+                    "meanLocalAlgae": 0,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 0,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 0,
+                  "meanNearestPreyDistance": null,
+                  "minimumNearestPreyDistance": null
+                }
+              },
+              {
+                "frame": 2000,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 51001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.45048078894615173,
+                  "maximumAlgae": 1,
+                  "meanAlgae": 0.9210591580560855,
+                  "medianAlgae": 0.9319064617156982,
+                  "standardDeviation": 0.05754557372070594,
+                  "fieldHash": "c9ec0e49",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 106,
+                    "meanLocalAlgae": 0.9354438168822594,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 106
+                  },
+                  "m": {
+                    "count": 17,
+                    "meanLocalAlgae": 0.8635212638798881,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 16
+                  },
+                  "c": {
+                    "count": 0,
+                    "meanLocalAlgae": 0,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 0,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 0,
+                  "meanNearestPreyDistance": null,
+                  "minimumNearestPreyDistance": null
+                }
+              }
+            ],
+            "flowMilestones": [
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 120,
+                "tickCount": 7,
+                "cellUpdates": 13377,
+                "algaeRegrowth": 95.93509752827357,
+                "decompositionInput": 8.468271232300687,
+                "grazingRemoved": 4.096737404823724,
+                "totalBiologicalInput": 104.40336876057427,
+                "inputMinusGrazing": 100.30663135575054,
+                "currentTotal": 375.8163833543658,
+                "currentMean": 0.1966595412634044
+              },
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 300,
+                "tickCount": 18,
+                "cellUpdates": 34398,
+                "algaeRegrowth": 282.28544908618665,
+                "decompositionInput": 23.52009548226356,
+                "grazingRemoved": 19.85045652048013,
+                "totalBiologicalInput": 305.8055445684502,
+                "inputMinusGrazing": 285.9550880479701,
+                "currentTotal": 569.832089021802,
+                "currentMean": 0.2981852899119843
+              },
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 500,
+                "tickCount": 31,
+                "cellUpdates": 59241,
+                "algaeRegrowth": 548.13510717952,
+                "decompositionInput": 41.98784640543441,
+                "grazingRemoved": 39.62324799311556,
+                "totalBiologicalInput": 590.1229535849544,
+                "inputMinusGrazing": 550.4997055918388,
+                "currentTotal": 845.8911904245615,
+                "currentMean": 0.44264321843252824
+              },
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 750,
+                "tickCount": 46,
+                "cellUpdates": 87906,
+                "algaeRegrowth": 866.9563872299411,
+                "decompositionInput": 60.88212736639448,
+                "grazingRemoved": 72.81123375473364,
+                "totalBiologicalInput": 927.8385145963356,
+                "inputMinusGrazing": 855.027280841602,
+                "currentTotal": 1168.4334748834372,
+                "currentMean": 0.6114251569248755
+              },
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 1000,
+                "tickCount": 62,
+                "cellUpdates": 118482,
+                "algaeRegrowth": 1155.498504242656,
+                "decompositionInput": 78.1855539969542,
+                "grazingRemoved": 125.97781046427573,
+                "totalBiologicalInput": 1233.6840582396103,
+                "inputMinusGrazing": 1107.7062477753345,
+                "currentTotal": 1452.5772274136543,
+                "currentMean": 0.7601136721159887
+              },
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 1500,
+                "tickCount": 93,
+                "cellUpdates": 177723,
+                "algaeRegrowth": 1439.5293298084548,
+                "decompositionInput": 111.11690000699292,
+                "grazingRemoved": 361.73547767189365,
+                "totalBiologicalInput": 1550.6462298154477,
+                "inputMinusGrazing": 1188.910752143554,
+                "currentTotal": 1661.5990098416805,
+                "currentMean": 0.8694918942133336
+              },
+              {
+                "enabled": false,
+                "configuredScale": 0.7,
+                "effectiveScale": 1,
+                "startedAtFrame": 0,
+                "elapsedFrames": 2000,
+                "tickCount": 125,
+                "cellUpdates": 238875,
+                "algaeRegrowth": 1649.6738894789835,
+                "decompositionInput": 151.83063106213848,
+                "grazingRemoved": 633.592077910101,
+                "totalBiologicalInput": 1801.504520541122,
+                "inputMinusGrazing": 1167.912442631021,
+                "currentTotal": 1760.1440510451794,
+                "currentMean": 0.9210591580560855
+              }
+            ]
+          },
+          "carnivore": {
+            "maximum": 19,
+            "end": 0,
+            "extinctionFrame": 1462,
+            "births": 7
+          },
+          "conservation": {
+            "energyPositiveResidualMax": 5.684341886080802e-14,
+            "nutrientPositiveResidualMax": 2.7755575615628914e-17,
+            "energyCreationEvents": 0,
+            "nutrientCreationEvents": 0
+          },
+          "health": {
+            "ok": true,
+            "badCount": 0,
+            "bad": []
+          },
+          "browserErrors": []
+        }
+      ],
+      "aggregate": {
+        "seeds": [
+          41001,
+          43001,
+          51001
+        ],
+        "runs": 3,
+        "meanFinalAlgae": 0.8850071812287356,
+        "meanFinalAlgaeStdDev": 0.0917454626943242,
+        "meanFinalMinimumAlgae": 0.3829096059004466,
+        "meanPopulationEnd": 121.66666666666667,
+        "meanPopulationPeak": 126,
+        "medianFirstCapFrame": 1400,
+        "capReachedRuns": 3,
+        "herbivoreStarvationDeaths": 40,
+        "omnivoreStarvationDeaths": 45,
+        "carnivoreStarvationDeaths": 73,
+        "herbivoreOvercrowdingDeaths": 285,
+        "omnivoreOvercrowdingDeaths": 31,
+        "fieldRegrowth": 5203.834840774553,
+        "decompositionInput": 478.88031320178726,
+        "grazingRemoved": 1823.3360057724472,
+        "carnivoreBirths": 25,
+        "endDiets": {
+          "h": 333,
+          "m": 32,
+          "c": 0
+        },
+        "energyCreationEvents": 0,
+        "nutrientCreationEvents": 0,
+        "browserErrors": 0,
+        "badNumbers": 0
+      }
+    },
+    {
+      "label": "resource-limited scale 0.7",
+      "enabled": true,
+      "scale": 0.7,
+      "rows": [
+        {
+          "seed": 41001,
+          "steps": 2000,
+          "variant": "algae-regrowth-0.7",
+          "elapsedMs": 6604.3,
+          "population": {
+            "start": 64,
+            "end": 122,
+            "peak": 122,
+            "firstCapFrame": 1940,
+            "births": 156,
+            "reproductions": 143,
+            "deaths": 98,
+            "deathCauses": {
+              "starvation": 66,
+              "oldAge": 0,
+              "predation": 32,
+              "overcrowding": 0,
+              "other": 0
+            },
+            "byDiet": {
+              "h": {
+                "births": 79,
+                "reproductions": 73,
+                "deaths": 26,
+                "overcrowdingDeaths": 0,
+                "predationDeaths": 11,
+                "starvationDeaths": 15,
+                "oldAgeDeaths": 0,
+                "otherDeaths": 0
+              },
+              "m": {
+                "births": 53,
+                "reproductions": 57,
+                "deaths": 29,
+                "overcrowdingDeaths": 0,
+                "predationDeaths": 8,
+                "starvationDeaths": 21,
+                "oldAgeDeaths": 0,
+                "otherDeaths": 0
+              },
+              "c": {
+                "births": 24,
+                "reproductions": 13,
+                "deaths": 43,
+                "overcrowdingDeaths": 0,
+                "predationDeaths": 13,
+                "starvationDeaths": 30,
+                "oldAgeDeaths": 0,
+                "otherDeaths": 0
+              }
+            },
+            "endDiets": {
+              "h": 76,
+              "m": 45,
+              "c": 1
+            }
+          },
+          "algae": {
+            "initial": {
+              "mode": "patchy-intermediate",
+              "seed": 41001,
+              "cellCount": 1911,
+              "minimumAlgae": 0.02000018022954464,
+              "maximumAlgae": 0.3399994969367981,
+              "meanAlgae": 0.14250000017002606,
+              "medianAlgae": 0.12999999523162842,
+              "standardDeviation": 0.08654581772617116,
+              "fieldHash": "a0ae915b",
+              "thresholds": {
+                "lowMax": 0.075,
+                "highMin": 0.185
+              },
+              "ratios": {
+                "low": 0.250130821559393,
+                "medium": 0.49973835688121404,
+                "high": 0.250130821559393
+              },
+              "spatial": {
+                "componentCount": 17,
+                "resourcePatchCount": 13,
+                "byBand": {
+                  "low": {
+                    "components": 7,
+                    "largestCells": 244,
+                    "largestShare": 0.12768184196755625
+                  },
+                  "medium": {
+                    "components": 4,
+                    "largestCells": 830,
+                    "largestShare": 0.43432757718472004
+                  },
+                  "high": {
+                    "components": 6,
+                    "largestCells": 357,
+                    "largestShare": 0.18681318681318682
+                  }
+                }
+              }
+            },
+            "current": {
+              "mode": "patchy-intermediate",
+              "seed": 41001,
+              "cellCount": 1911,
+              "minimumAlgae": 0.22841639816761017,
+              "maximumAlgae": 0.9692603945732117,
+              "meanAlgae": 0.7394024000577687,
+              "medianAlgae": 0.7573888301849365,
+              "standardDeviation": 0.10991039072325849,
+              "fieldHash": "378db315",
+              "thresholds": {
+                "lowMax": 0.075,
+                "highMin": 0.185
+              },
+              "ratios": {
+                "low": 0,
+                "medium": 0,
+                "high": 1
+              },
+              "spatial": {
+                "componentCount": 1,
+                "resourcePatchCount": 1,
+                "byBand": {
+                  "low": {
+                    "components": 0,
+                    "largestCells": 0,
+                    "largestShare": 0
+                  },
+                  "medium": {
+                    "components": 0,
+                    "largestCells": 0,
+                    "largestShare": 0
+                  },
+                  "high": {
+                    "components": 1,
+                    "largestCells": 1911,
+                    "largestShare": 1
+                  }
+                }
+              }
+            },
+            "flow": {
+              "enabled": true,
+              "configuredScale": 0.7,
+              "effectiveScale": 0.7,
+              "startedAtFrame": 0,
+              "elapsedFrames": 2000,
+              "tickCount": 125,
+              "cellUpdates": 238875,
+              "algaeRegrowth": 1340.4012092716785,
+              "decompositionInput": 141.01951899673085,
+              "grazingRemoved": 311.93534635888426,
+              "totalBiologicalInput": 1481.4207282684092,
+              "inputMinusGrazing": 1169.485381909525,
+              "currentTotal": 1412.997986510396,
+              "currentMean": 0.7394024000577687
+            },
+            "spatialMilestones": [
+              {
+                "frame": 120,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 41001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.043427079916000366,
+                  "maximumAlgae": 0.47375720739364624,
+                  "meanAlgae": 0.1798775248221706,
+                  "medianAlgae": 0.1689220666885376,
+                  "standardDeviation": 0.09211252476468108,
+                  "fieldHash": "a5599e0d",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0.11983254840397697,
+                    "medium": 0.42804814233385663,
+                    "high": 0.4521193092621664
+                  },
+                  "spatial": {
+                    "componentCount": 16,
+                    "resourcePatchCount": 8,
+                    "byBand": {
+                      "low": {
+                        "components": 4,
+                        "largestCells": 176,
+                        "largestShare": 0.09209837781266353
+                      },
+                      "medium": {
+                        "components": 8,
+                        "largestCells": 546,
+                        "largestShare": 0.2857142857142857
+                      },
+                      "high": {
+                        "components": 4,
+                        "largestCells": 808,
+                        "largestShare": 0.4228152799581371
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 22,
+                    "meanLocalAlgae": 0.21590665270659057,
+                    "lowRatio": 0.13636363636363635,
+                    "mediumRatio": 0.3181818181818182,
+                    "highRatio": 0.5454545454545454,
+                    "recentGrazers": 7
+                  },
+                  "m": {
+                    "count": 20,
+                    "meanLocalAlgae": 0.19161696135997772,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.5,
+                    "highRatio": 0.5,
+                    "recentGrazers": 0
+                  },
+                  "c": {
+                    "count": 20,
+                    "meanLocalAlgae": 0.1718247476965189,
+                    "lowRatio": 0.2,
+                    "mediumRatio": 0.4,
+                    "highRatio": 0.4,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 20,
+                  "meanNearestPreyDistance": 61.405663523949634,
+                  "minimumNearestPreyDistance": 23.059004742772757
+                }
+              },
+              {
+                "frame": 300,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 41001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.09012965112924576,
+                  "maximumAlgae": 0.4911861717700958,
+                  "meanAlgae": 0.24710011254159772,
+                  "medianAlgae": 0.2395544797182083,
+                  "standardDeviation": 0.09996001340692665,
+                  "fieldHash": "8f3fdb52",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0.34746206174777605,
+                    "high": 0.652537938252224
+                  },
+                  "spatial": {
+                    "componentCount": 10,
+                    "resourcePatchCount": 3,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 7,
+                        "largestCells": 271,
+                        "largestShare": 0.14181057038199896
+                      },
+                      "high": {
+                        "components": 3,
+                        "largestCells": 1215,
+                        "largestShare": 0.6357927786499215
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 17,
+                    "meanLocalAlgae": 0.2869857987936805,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.17647058823529413,
+                    "highRatio": 0.8235294117647058,
+                    "recentGrazers": 10
+                  },
+                  "m": {
+                    "count": 16,
+                    "meanLocalAlgae": 0.2857478251680732,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.25,
+                    "highRatio": 0.75,
+                    "recentGrazers": 7
+                  },
+                  "c": {
+                    "count": 11,
+                    "meanLocalAlgae": 0.21226823194460434,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.5454545454545454,
+                    "highRatio": 0.45454545454545453,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 11,
+                  "meanNearestPreyDistance": 147.22524859632745,
+                  "minimumNearestPreyDistance": 55.881753031165765
+                }
+              },
+              {
+                "frame": 500,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 41001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.12598338723182678,
+                  "maximumAlgae": 0.6066343188285828,
+                  "meanAlgae": 0.3423092418366362,
+                  "medianAlgae": 0.338345468044281,
+                  "standardDeviation": 0.10775524717547472,
+                  "fieldHash": "80ea8258",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0.07326007326007326,
+                    "high": 0.9267399267399268
+                  },
+                  "spatial": {
+                    "componentCount": 7,
+                    "resourcePatchCount": 2,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 5,
+                        "largestCells": 129,
+                        "largestShare": 0.06750392464678179
+                      },
+                      "high": {
+                        "components": 2,
+                        "largestCells": 1737,
+                        "largestShare": 0.9089481946624803
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 12,
+                    "meanLocalAlgae": 0.39069968834519386,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.08333333333333333,
+                    "highRatio": 0.9166666666666666,
+                    "recentGrazers": 12
+                  },
+                  "m": {
+                    "count": 13,
+                    "meanLocalAlgae": 0.3863019931774873,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.15384615384615385,
+                    "highRatio": 0.8461538461538461,
+                    "recentGrazers": 7
+                  },
+                  "c": {
+                    "count": 5,
+                    "meanLocalAlgae": 0.22646768391132355,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.2,
+                    "highRatio": 0.8,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 5,
+                  "meanNearestPreyDistance": 173.0933618609143,
+                  "minimumNearestPreyDistance": 107.80478067099139
+                }
+              },
+              {
+                "frame": 750,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 41001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.20605586469173431,
+                  "maximumAlgae": 0.6970587372779846,
+                  "meanAlgae": 0.459967259919999,
+                  "medianAlgae": 0.4615428149700165,
+                  "standardDeviation": 0.10514706992648787,
+                  "fieldHash": "ba5f225f",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 10,
+                    "meanLocalAlgae": 0.46452413499355316,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 10
+                  },
+                  "m": {
+                    "count": 15,
+                    "meanLocalAlgae": 0.5107481618722279,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 13
+                  },
+                  "c": {
+                    "count": 6,
+                    "meanLocalAlgae": 0.3670204778512319,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 6,
+                  "meanNearestPreyDistance": 204.82704100566812,
+                  "minimumNearestPreyDistance": 183.7856104647425
+                }
+              },
+              {
+                "frame": 1000,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 41001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.24638257920742035,
+                  "maximumAlgae": 0.7885629534721375,
+                  "meanAlgae": 0.5852837284109719,
+                  "medianAlgae": 0.585842490196228,
+                  "standardDeviation": 0.09246506968616995,
+                  "fieldHash": "7ba22a6f",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 12,
+                    "meanLocalAlgae": 0.6288777242104212,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 12
+                  },
+                  "m": {
+                    "count": 17,
+                    "meanLocalAlgae": 0.6217428252977484,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 13
+                  },
+                  "c": {
+                    "count": 3,
+                    "meanLocalAlgae": 0.5229820013046265,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 3,
+                  "meanNearestPreyDistance": 204.92600525260718,
+                  "minimumNearestPreyDistance": 182.38216424742265
+                }
+              },
+              {
+                "frame": 1500,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 41001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.28325632214546204,
+                  "maximumAlgae": 0.8904009461402893,
+                  "meanAlgae": 0.6992916137307554,
+                  "medianAlgae": 0.70548415184021,
+                  "standardDeviation": 0.08256778321246795,
+                  "fieldHash": "f37005ed",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 31,
+                    "meanLocalAlgae": 0.6033292451212483,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 31
+                  },
+                  "m": {
+                    "count": 23,
+                    "meanLocalAlgae": 0.6571356148823447,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 18
+                  },
+                  "c": {
+                    "count": 3,
+                    "meanLocalAlgae": 0.6167374054590861,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 3,
+                  "meanNearestPreyDistance": 132.22406779821588,
+                  "minimumNearestPreyDistance": 110.3645956707752
+                }
+              },
+              {
+                "frame": 2000,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 41001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.22841639816761017,
+                  "maximumAlgae": 0.9692603945732117,
+                  "meanAlgae": 0.7394024000577687,
+                  "medianAlgae": 0.7573888301849365,
+                  "standardDeviation": 0.10991039072325849,
+                  "fieldHash": "378db315",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 76,
+                    "meanLocalAlgae": 0.6374918418495279,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 76
+                  },
+                  "m": {
+                    "count": 45,
+                    "meanLocalAlgae": 0.6837276233567132,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 43
+                  },
+                  "c": {
+                    "count": 1,
+                    "meanLocalAlgae": 0.7220360040664673,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 1,
+                  "meanNearestPreyDistance": 67.96378258516094,
+                  "minimumNearestPreyDistance": 67.96378258516094
+                }
+              }
+            ],
+            "flowMilestones": [
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 120,
+                "tickCount": 7,
+                "cellUpdates": 13377,
+                "algaeRegrowth": 65.35961864222593,
+                "decompositionInput": 8.466862709415754,
+                "grazingRemoved": 3.216350173366882,
+                "totalBiologicalInput": 73.82648135164168,
+                "inputMinusGrazing": 70.6101311782748,
+                "currentTotal": 343.745949935168,
+                "currentMean": 0.1798775248221706
+              },
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 300,
+                "tickCount": 18,
+                "cellUpdates": 34398,
+                "algaeRegrowth": 187.43788975398672,
+                "decompositionInput": 23.28409942887697,
+                "grazingRemoved": 12.749699170984659,
+                "totalBiologicalInput": 210.7219891828637,
+                "inputMinusGrazing": 197.97229001187904,
+                "currentTotal": 472.20831506699324,
+                "currentMean": 0.24710011254159772
+              },
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 500,
+                "tickCount": 31,
+                "cellUpdates": 59241,
+                "algaeRegrowth": 362.7300921119101,
+                "decompositionInput": 41.22415034292122,
+                "grazingRemoved": 23.9338809685754,
+                "totalBiologicalInput": 403.95424245483133,
+                "inputMinusGrazing": 380.0203614862559,
+                "currentTotal": 654.1529611498117,
+                "currentMean": 0.3423092418366362
+              },
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 750,
+                "tickCount": 46,
+                "cellUpdates": 87906,
+                "algaeRegrowth": 591.4107793155183,
+                "decompositionInput": 59.50117460630102,
+                "grazingRemoved": 44.452713681983404,
+                "totalBiologicalInput": 650.9119539218193,
+                "inputMinusGrazing": 606.4592402398359,
+                "currentTotal": 878.997433707118,
+                "currentMean": 0.459967259919999
+              },
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 1000,
+                "tickCount": 62,
+                "cellUpdates": 118482,
+                "algaeRegrowth": 838.5799978916297,
+                "decompositionInput": 75.90383624287549,
+                "grazingRemoved": 66.4573843690889,
+                "totalBiologicalInput": 914.4838341345052,
+                "inputMinusGrazing": 848.0264497654163,
+                "currentTotal": 1118.4772049933672,
+                "currentMean": 0.5852837284109719
+              },
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 1500,
+                "tickCount": 93,
+                "cellUpdates": 177723,
+                "algaeRegrowth": 1106.077339936954,
+                "decompositionInput": 103.97410785374701,
+                "grazingRemoved": 136.36212436250756,
+                "totalBiologicalInput": 1210.051447790701,
+                "inputMinusGrazing": 1073.6893234281936,
+                "currentTotal": 1336.3462738394737,
+                "currentMean": 0.6992916137307554
+              },
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 2000,
+                "tickCount": 125,
+                "cellUpdates": 238875,
+                "algaeRegrowth": 1340.4012092716785,
+                "decompositionInput": 141.01951899673085,
+                "grazingRemoved": 311.93534635888426,
+                "totalBiologicalInput": 1481.4207282684092,
+                "inputMinusGrazing": 1169.485381909525,
+                "currentTotal": 1412.997986510396,
+                "currentMean": 0.7394024000577687
+              }
+            ]
+          },
+          "carnivore": {
+            "maximum": 21,
+            "end": 1,
+            "extinctionFrame": null,
+            "births": 24
+          },
+          "conservation": {
+            "energyPositiveResidualMax": 5.684341886080802e-14,
+            "nutrientPositiveResidualMax": 2.7755575615628914e-17,
+            "energyCreationEvents": 0,
+            "nutrientCreationEvents": 0
+          },
+          "health": {
+            "ok": true,
+            "badCount": 0,
+            "bad": []
+          },
+          "browserErrors": []
+        },
+        {
+          "seed": 43001,
+          "steps": 2000,
+          "variant": "algae-regrowth-0.7",
+          "elapsedMs": 6756.4,
+          "population": {
+            "start": 64,
+            "end": 123,
+            "peak": 126,
+            "firstCapFrame": 1610,
+            "births": 185,
+            "reproductions": 147,
+            "deaths": 126,
+            "deathCauses": {
+              "starvation": 52,
+              "oldAge": 0,
+              "predation": 16,
+              "overcrowding": 58,
+              "other": 0
+            },
+            "byDiet": {
+              "h": {
+                "births": 158,
+                "reproductions": 121,
+                "deaths": 68,
+                "overcrowdingDeaths": 45,
+                "predationDeaths": 7,
+                "starvationDeaths": 16,
+                "oldAgeDeaths": 0,
+                "otherDeaths": 0
+              },
+              "m": {
+                "births": 24,
+                "reproductions": 23,
+                "deaths": 30,
+                "overcrowdingDeaths": 13,
+                "predationDeaths": 5,
+                "starvationDeaths": 12,
+                "oldAgeDeaths": 0,
+                "otherDeaths": 0
+              },
+              "c": {
+                "births": 3,
+                "reproductions": 3,
+                "deaths": 28,
+                "overcrowdingDeaths": 0,
+                "predationDeaths": 4,
+                "starvationDeaths": 24,
+                "oldAgeDeaths": 0,
+                "otherDeaths": 0
+              }
+            },
+            "endDiets": {
+              "h": 112,
+              "m": 11,
+              "c": 0
+            }
+          },
+          "algae": {
+            "initial": {
+              "mode": "patchy-intermediate",
+              "seed": 43001,
+              "cellCount": 1911,
+              "minimumAlgae": 0.02000018022954464,
+              "maximumAlgae": 0.3399994969367981,
+              "meanAlgae": 0.14250000017002606,
+              "medianAlgae": 0.12999999523162842,
+              "standardDeviation": 0.08654581772617116,
+              "fieldHash": "adc64a47",
+              "thresholds": {
+                "lowMax": 0.075,
+                "highMin": 0.185
+              },
+              "ratios": {
+                "low": 0.250130821559393,
+                "medium": 0.49973835688121404,
+                "high": 0.250130821559393
+              },
+              "spatial": {
+                "componentCount": 16,
+                "resourcePatchCount": 15,
+                "byBand": {
+                  "low": {
+                    "components": 7,
+                    "largestCells": 228,
+                    "largestShare": 0.11930926216640503
+                  },
+                  "medium": {
+                    "components": 1,
+                    "largestCells": 955,
+                    "largestShare": 0.49973835688121404
+                  },
+                  "high": {
+                    "components": 8,
+                    "largestCells": 328,
+                    "largestShare": 0.17163788592360021
+                  }
+                }
+              }
+            },
+            "current": {
+              "mode": "patchy-intermediate",
+              "seed": 43001,
+              "cellCount": 1911,
+              "minimumAlgae": 0.24846422672271729,
+              "maximumAlgae": 0.9971520304679871,
+              "meanAlgae": 0.7816925951007272,
+              "medianAlgae": 0.8130391240119934,
+              "standardDeviation": 0.1348659047399945,
+              "fieldHash": "08b5013b",
+              "thresholds": {
+                "lowMax": 0.075,
+                "highMin": 0.185
+              },
+              "ratios": {
+                "low": 0,
+                "medium": 0,
+                "high": 1
+              },
+              "spatial": {
+                "componentCount": 1,
+                "resourcePatchCount": 1,
+                "byBand": {
+                  "low": {
+                    "components": 0,
+                    "largestCells": 0,
+                    "largestShare": 0
+                  },
+                  "medium": {
+                    "components": 0,
+                    "largestCells": 0,
+                    "largestShare": 0
+                  },
+                  "high": {
+                    "components": 1,
+                    "largestCells": 1911,
+                    "largestShare": 1
+                  }
+                }
+              }
+            },
+            "flow": {
+              "enabled": true,
+              "configuredScale": 0.7,
+              "effectiveScale": 0.7,
+              "startedAtFrame": 0,
+              "elapsedFrames": 2000,
+              "tickCount": 125,
+              "cellUpdates": 238875,
+              "algaeRegrowth": 1561.4727475195532,
+              "decompositionInput": 152.29053447068074,
+              "grazingRemoved": 467.0650884092727,
+              "totalBiologicalInput": 1713.763281990234,
+              "inputMinusGrazing": 1246.6981935809613,
+              "currentTotal": 1493.8145492374897,
+              "currentMean": 0.7816925951007272
+            },
+            "spatialMilestones": [
+              {
+                "frame": 120,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 43001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.04441875219345093,
+                  "maximumAlgae": 0.5056151151657104,
+                  "meanAlgae": 0.18071557361923046,
+                  "medianAlgae": 0.16861964762210846,
+                  "standardDeviation": 0.09355433817055414,
+                  "fieldHash": "c0b4065a",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0.12244897959183673,
+                    "medium": 0.4217687074829932,
+                    "high": 0.4557823129251701
+                  },
+                  "spatial": {
+                    "componentCount": 16,
+                    "resourcePatchCount": 10,
+                    "byBand": {
+                      "low": {
+                        "components": 5,
+                        "largestCells": 110,
+                        "largestShare": 0.0575614861329147
+                      },
+                      "medium": {
+                        "components": 6,
+                        "largestCells": 402,
+                        "largestShare": 0.21036106750392464
+                      },
+                      "high": {
+                        "components": 5,
+                        "largestCells": 788,
+                        "largestShare": 0.4123495552066981
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 20,
+                    "meanLocalAlgae": 0.2186849784106016,
+                    "lowRatio": 0.1,
+                    "mediumRatio": 0.4,
+                    "highRatio": 0.5,
+                    "recentGrazers": 8
+                  },
+                  "m": {
+                    "count": 16,
+                    "meanLocalAlgae": 0.2013759659603238,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.5625,
+                    "highRatio": 0.4375,
+                    "recentGrazers": 1
+                  },
+                  "c": {
+                    "count": 27,
+                    "meanLocalAlgae": 0.18539541394070344,
+                    "lowRatio": 0.14814814814814814,
+                    "mediumRatio": 0.37037037037037035,
+                    "highRatio": 0.48148148148148145,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 27,
+                  "meanNearestPreyDistance": 64.99964309864923,
+                  "minimumNearestPreyDistance": 8.812764482869154
+                }
+              },
+              {
+                "frame": 300,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 43001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.08995384722948074,
+                  "maximumAlgae": 0.9982991218566895,
+                  "meanAlgae": 0.24957642483187245,
+                  "medianAlgae": 0.24061383306980133,
+                  "standardDeviation": 0.10472823894562386,
+                  "fieldHash": "c19749a7",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0.3521716378859236,
+                    "high": 0.6478283621140764
+                  },
+                  "spatial": {
+                    "componentCount": 11,
+                    "resourcePatchCount": 3,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 8,
+                        "largestCells": 329,
+                        "largestShare": 0.17216117216117216
+                      },
+                      "high": {
+                        "components": 3,
+                        "largestCells": 1180,
+                        "largestShare": 0.6174777603349032
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 12,
+                    "meanLocalAlgae": 0.45708280242979527,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.16666666666666666,
+                    "highRatio": 0.8333333333333334,
+                    "recentGrazers": 10
+                  },
+                  "m": {
+                    "count": 13,
+                    "meanLocalAlgae": 0.44240863162737626,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.15384615384615385,
+                    "highRatio": 0.8461538461538461,
+                    "recentGrazers": 4
+                  },
+                  "c": {
+                    "count": 12,
+                    "meanLocalAlgae": 0.3092892902592818,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.4166666666666667,
+                    "highRatio": 0.5833333333333334,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 12,
+                  "meanNearestPreyDistance": 94.14400320293917,
+                  "minimumNearestPreyDistance": 8.296303224890721
+                }
+              },
+              {
+                "frame": 500,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 43001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.1376011073589325,
+                  "maximumAlgae": 0.9990801215171814,
+                  "meanAlgae": 0.34661952394861506,
+                  "medianAlgae": 0.3435002565383911,
+                  "standardDeviation": 0.11264883201176634,
+                  "fieldHash": "118233b9",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0.07221350078492936,
+                    "high": 0.9277864992150706
+                  },
+                  "spatial": {
+                    "componentCount": 5,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 4,
+                        "largestCells": 80,
+                        "largestShare": 0.04186289900575615
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1773,
+                        "largestShare": 0.9277864992150706
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 11,
+                    "meanLocalAlgae": 0.5242623375220732,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 10
+                  },
+                  "m": {
+                    "count": 8,
+                    "meanLocalAlgae": 0.5867067873477936,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 4
+                  },
+                  "c": {
+                    "count": 4,
+                    "meanLocalAlgae": 0.222109854221344,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.5,
+                    "highRatio": 0.5,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 4,
+                  "meanNearestPreyDistance": 247.01368480698295,
+                  "minimumNearestPreyDistance": 134.0026271273408
+                }
+              },
+              {
+                "frame": 750,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 43001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.22020499408245087,
+                  "maximumAlgae": 0.9996692538261414,
+                  "meanAlgae": 0.4674170111515084,
+                  "medianAlgae": 0.4738773703575134,
+                  "standardDeviation": 0.11061053920212854,
+                  "fieldHash": "9ae48a45",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 14,
+                    "meanLocalAlgae": 0.6204642121280942,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 14
+                  },
+                  "m": {
+                    "count": 11,
+                    "meanLocalAlgae": 0.6423358510841023,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 8
+                  },
+                  "c": {
+                    "count": 1,
+                    "meanLocalAlgae": 0.2677076756954193,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 1,
+                  "meanNearestPreyDistance": 237.24034048916212,
+                  "minimumNearestPreyDistance": 237.24034048916212
+                }
+              },
+              {
+                "frame": 1000,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 43001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.335578590631485,
+                  "maximumAlgae": 0.9983121752738953,
+                  "meanAlgae": 0.5903689752443494,
+                  "medianAlgae": 0.5963088870048523,
+                  "standardDeviation": 0.09791390738503589,
+                  "fieldHash": "86d50e8a",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 19,
+                    "meanLocalAlgae": 0.5950315045683008,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 19
+                  },
+                  "m": {
+                    "count": 11,
+                    "meanLocalAlgae": 0.7423488606106151,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 10
+                  },
+                  "c": {
+                    "count": 0,
+                    "meanLocalAlgae": 0,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 0,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 0,
+                  "meanNearestPreyDistance": null,
+                  "minimumNearestPreyDistance": null
+                }
+              },
+              {
+                "frame": 1500,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 43001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.2619958519935608,
+                  "maximumAlgae": 0.9870176315307617,
+                  "meanAlgae": 0.7450643662911071,
+                  "medianAlgae": 0.764098584651947,
+                  "standardDeviation": 0.09692956551648964,
+                  "fieldHash": "080dfeb3",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 69,
+                    "meanLocalAlgae": 0.6213575290597003,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 69
+                  },
+                  "m": {
+                    "count": 17,
+                    "meanLocalAlgae": 0.7151836174375871,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 17
+                  },
+                  "c": {
+                    "count": 0,
+                    "meanLocalAlgae": 0,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 0,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 0,
+                  "meanNearestPreyDistance": null,
+                  "minimumNearestPreyDistance": null
+                }
+              },
+              {
+                "frame": 2000,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 43001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.24846422672271729,
+                  "maximumAlgae": 0.9971520304679871,
+                  "meanAlgae": 0.7816925951007272,
+                  "medianAlgae": 0.8130391240119934,
+                  "standardDeviation": 0.1348659047399945,
+                  "fieldHash": "08b5013b",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 112,
+                    "meanLocalAlgae": 0.6729560329445771,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 109
+                  },
+                  "m": {
+                    "count": 11,
+                    "meanLocalAlgae": 0.6976702592589639,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 11
+                  },
+                  "c": {
+                    "count": 0,
+                    "meanLocalAlgae": 0,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 0,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 0,
+                  "meanNearestPreyDistance": null,
+                  "minimumNearestPreyDistance": null
+                }
+              }
+            ],
+            "flowMilestones": [
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 120,
+                "tickCount": 7,
+                "cellUpdates": 13377,
+                "algaeRegrowth": 65.52372631919,
+                "decompositionInput": 8.46519543107898,
+                "grazingRemoved": 3.8902697152666805,
+                "totalBiologicalInput": 73.98892175026899,
+                "inputMinusGrazing": 70.0986520350023,
+                "currentTotal": 345.3474611863494,
+                "currentMean": 0.18071557361923046
+              },
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 300,
+                "tickCount": 18,
+                "cellUpdates": 34398,
+                "algaeRegrowth": 187.8519131723619,
+                "decompositionInput": 23.291918245134617,
+                "grazingRemoved": 13.714866782467968,
+                "totalBiologicalInput": 211.1438314174965,
+                "inputMinusGrazing": 197.42896463502854,
+                "currentTotal": 476.94054785370827,
+                "currentMean": 0.24957642483187245
+              },
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 500,
+                "tickCount": 31,
+                "cellUpdates": 59241,
+                "algaeRegrowth": 362.9714657133925,
+                "decompositionInput": 41.030102317186284,
+                "grazingRemoved": 24.785663695818297,
+                "totalBiologicalInput": 404.00156803057877,
+                "inputMinusGrazing": 379.21590433476047,
+                "currentTotal": 662.3899102658033,
+                "currentMean": 0.34661952394861506
+              },
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 750,
+                "tickCount": 46,
+                "cellUpdates": 87906,
+                "algaeRegrowth": 591.0551283455269,
+                "decompositionInput": 59.04469486913185,
+                "grazingRemoved": 46.402469046590184,
+                "totalBiologicalInput": 650.0998232146587,
+                "inputMinusGrazing": 603.6973541680685,
+                "currentTotal": 893.2339083105326,
+                "currentMean": 0.4674170111515084
+              },
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 1000,
+                "tickCount": 62,
+                "cellUpdates": 118482,
+                "algaeRegrowth": 836.9085706550605,
+                "decompositionInput": 75.2610948542684,
+                "grazingRemoved": 75.88328382719583,
+                "totalBiologicalInput": 912.169665509329,
+                "inputMinusGrazing": 836.2863816821332,
+                "currentTotal": 1128.1951116919518,
+                "currentMean": 0.5903689752443494
+              },
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 1500,
+                "tickCount": 93,
+                "cellUpdates": 177723,
+                "algaeRegrowth": 1241.8051176393544,
+                "decompositionInput": 104.5501523943296,
+                "grazingRemoved": 206.2374007033497,
+                "totalBiologicalInput": 1346.355270033684,
+                "inputMinusGrazing": 1140.1178693303343,
+                "currentTotal": 1423.8180039823055,
+                "currentMean": 0.7450643662911071
+              },
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 2000,
+                "tickCount": 125,
+                "cellUpdates": 238875,
+                "algaeRegrowth": 1561.4727475195532,
+                "decompositionInput": 152.29053447068074,
+                "grazingRemoved": 467.0650884092727,
+                "totalBiologicalInput": 1713.763281990234,
+                "inputMinusGrazing": 1246.6981935809613,
+                "currentTotal": 1493.8145492374897,
+                "currentMean": 0.7816925951007272
+              }
+            ]
+          },
+          "carnivore": {
+            "maximum": 27,
+            "end": 0,
+            "extinctionFrame": 783,
+            "births": 3
+          },
+          "conservation": {
+            "energyPositiveResidualMax": 5.684341886080802e-14,
+            "nutrientPositiveResidualMax": 2.7755575615628914e-17,
+            "energyCreationEvents": 0,
+            "nutrientCreationEvents": 0
+          },
+          "health": {
+            "ok": true,
+            "badCount": 0,
+            "bad": []
+          },
+          "browserErrors": []
+        },
+        {
+          "seed": 51001,
+          "steps": 2000,
+          "variant": "algae-regrowth-0.7",
+          "elapsedMs": 6842.1,
+          "population": {
+            "start": 64,
+            "end": 123,
+            "peak": 125,
+            "firstCapFrame": 1710,
+            "births": 150,
+            "reproductions": 149,
+            "deaths": 91,
+            "deathCauses": {
+              "starvation": 54,
+              "oldAge": 0,
+              "predation": 23,
+              "overcrowding": 14,
+              "other": 0
+            },
+            "byDiet": {
+              "h": {
+                "births": 132,
+                "reproductions": 134,
+                "deaths": 40,
+                "overcrowdingDeaths": 14,
+                "predationDeaths": 5,
+                "starvationDeaths": 21,
+                "oldAgeDeaths": 0,
+                "otherDeaths": 0
+              },
+              "m": {
+                "births": 13,
+                "reproductions": 10,
+                "deaths": 27,
+                "overcrowdingDeaths": 0,
+                "predationDeaths": 7,
+                "starvationDeaths": 20,
+                "oldAgeDeaths": 0,
+                "otherDeaths": 0
+              },
+              "c": {
+                "births": 5,
+                "reproductions": 5,
+                "deaths": 24,
+                "overcrowdingDeaths": 0,
+                "predationDeaths": 11,
+                "starvationDeaths": 13,
+                "oldAgeDeaths": 0,
+                "otherDeaths": 0
+              }
+            },
+            "endDiets": {
+              "h": 111,
+              "m": 12,
+              "c": 0
+            }
+          },
+          "algae": {
+            "initial": {
+              "mode": "patchy-intermediate",
+              "seed": 51001,
+              "cellCount": 1911,
+              "minimumAlgae": 0.02000018022954464,
+              "maximumAlgae": 0.3399994969367981,
+              "meanAlgae": 0.14250000017002606,
+              "medianAlgae": 0.12999999523162842,
+              "standardDeviation": 0.08654581772617116,
+              "fieldHash": "38f9097f",
+              "thresholds": {
+                "lowMax": 0.075,
+                "highMin": 0.185
+              },
+              "ratios": {
+                "low": 0.250130821559393,
+                "medium": 0.49973835688121404,
+                "high": 0.250130821559393
+              },
+              "spatial": {
+                "componentCount": 15,
+                "resourcePatchCount": 13,
+                "byBand": {
+                  "low": {
+                    "components": 8,
+                    "largestCells": 207,
+                    "largestShare": 0.10832025117739404
+                  },
+                  "medium": {
+                    "components": 2,
+                    "largestCells": 936,
+                    "largestShare": 0.4897959183673469
+                  },
+                  "high": {
+                    "components": 5,
+                    "largestCells": 259,
+                    "largestShare": 0.13553113553113552
+                  }
+                }
+              }
+            },
+            "current": {
+              "mode": "patchy-intermediate",
+              "seed": 51001,
+              "cellCount": 1911,
+              "minimumAlgae": 0.47711652517318726,
+              "maximumAlgae": 1,
+              "meanAlgae": 0.8165411290418784,
+              "medianAlgae": 0.8156889081001282,
+              "standardDeviation": 0.073196690190851,
+              "fieldHash": "29990fdb",
+              "thresholds": {
+                "lowMax": 0.075,
+                "highMin": 0.185
+              },
+              "ratios": {
+                "low": 0,
+                "medium": 0,
+                "high": 1
+              },
+              "spatial": {
+                "componentCount": 1,
+                "resourcePatchCount": 1,
+                "byBand": {
+                  "low": {
+                    "components": 0,
+                    "largestCells": 0,
+                    "largestShare": 0
+                  },
+                  "medium": {
+                    "components": 0,
+                    "largestCells": 0,
+                    "largestShare": 0
+                  },
+                  "high": {
+                    "components": 1,
+                    "largestCells": 1911,
+                    "largestShare": 1
+                  }
+                }
+              }
+            },
+            "flow": {
+              "enabled": true,
+              "configuredScale": 0.7,
+              "effectiveScale": 0.7,
+              "startedAtFrame": 0,
+              "elapsedFrames": 2000,
+              "tickCount": 125,
+              "cellUpdates": 238875,
+              "algaeRegrowth": 1286.6222063643656,
+              "decompositionInput": 122.12249207450853,
+              "grazingRemoved": 433.47856597207226,
+              "totalBiologicalInput": 1408.7446984388741,
+              "inputMinusGrazing": 975.2661324668019,
+              "currentTotal": 1560.4100975990295,
+              "currentMean": 0.8165411290418784
+            },
+            "spatialMilestones": [
+              {
+                "frame": 120,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 51001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.04442954435944557,
+                  "maximumAlgae": 0.5725896954536438,
+                  "meanAlgae": 0.1809650987819469,
+                  "medianAlgae": 0.16818644106388092,
+                  "standardDeviation": 0.09455360429476649,
+                  "fieldHash": "4f693f46",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0.12192569335426479,
+                    "medium": 0.42857142857142855,
+                    "high": 0.44950287807430667
+                  },
+                  "spatial": {
+                    "componentCount": 17,
+                    "resourcePatchCount": 12,
+                    "byBand": {
+                      "low": {
+                        "components": 6,
+                        "largestCells": 91,
+                        "largestShare": 0.047619047619047616
+                      },
+                      "medium": {
+                        "components": 5,
+                        "largestCells": 682,
+                        "largestShare": 0.3568812140240712
+                      },
+                      "high": {
+                        "components": 6,
+                        "largestCells": 478,
+                        "largestShare": 0.250130821559393
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 19,
+                    "meanLocalAlgae": 0.22331156405179123,
+                    "lowRatio": 0.10526315789473684,
+                    "mediumRatio": 0.3157894736842105,
+                    "highRatio": 0.5789473684210527,
+                    "recentGrazers": 3
+                  },
+                  "m": {
+                    "count": 26,
+                    "meanLocalAlgae": 0.18941525971660247,
+                    "lowRatio": 0.07692307692307693,
+                    "mediumRatio": 0.46153846153846156,
+                    "highRatio": 0.46153846153846156,
+                    "recentGrazers": 1
+                  },
+                  "c": {
+                    "count": 17,
+                    "meanLocalAlgae": 0.18747885744361317,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.5294117647058824,
+                    "highRatio": 0.47058823529411764,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 17,
+                  "meanNearestPreyDistance": 60.74660868452429,
+                  "minimumNearestPreyDistance": 2.0451371974842902
+                }
+              },
+              {
+                "frame": 300,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 51001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.05507190153002739,
+                  "maximumAlgae": 1,
+                  "meanAlgae": 0.24955917153680968,
+                  "medianAlgae": 0.23678801953792572,
+                  "standardDeviation": 0.10843647877715133,
+                  "fieldHash": "ff9fa492",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0.0010465724751439038,
+                    "medium": 0.3563579277864992,
+                    "high": 0.6425954997383568
+                  },
+                  "spatial": {
+                    "componentCount": 13,
+                    "resourcePatchCount": 5,
+                    "byBand": {
+                      "low": {
+                        "components": 2,
+                        "largestCells": 1,
+                        "largestShare": 0.0005232862375719519
+                      },
+                      "medium": {
+                        "components": 8,
+                        "largestCells": 327,
+                        "largestShare": 0.17111459968602827
+                      },
+                      "high": {
+                        "components": 3,
+                        "largestCells": 1209,
+                        "largestShare": 0.6326530612244898
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 14,
+                    "meanLocalAlgae": 0.4100631321115153,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.2857142857142857,
+                    "highRatio": 0.7142857142857143,
+                    "recentGrazers": 9
+                  },
+                  "m": {
+                    "count": 19,
+                    "meanLocalAlgae": 0.32943469599673625,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.21052631578947367,
+                    "highRatio": 0.7894736842105263,
+                    "recentGrazers": 7
+                  },
+                  "c": {
+                    "count": 9,
+                    "meanLocalAlgae": 0.3100690825117959,
+                    "lowRatio": 0,
+                    "mediumRatio": 0.2222222222222222,
+                    "highRatio": 0.7777777777777778,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 9,
+                  "meanNearestPreyDistance": 64.39111780310513,
+                  "minimumNearestPreyDistance": 36.53088797688588
+                }
+              },
+              {
+                "frame": 500,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 51001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.1371447592973709,
+                  "maximumAlgae": 0.9994096159934998,
+                  "meanAlgae": 0.34693705091327975,
+                  "medianAlgae": 0.3378410339355469,
+                  "standardDeviation": 0.12051869886576201,
+                  "fieldHash": "4433ce72",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0.08424908424908426,
+                    "high": 0.9157509157509157
+                  },
+                  "spatial": {
+                    "componentCount": 8,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 7,
+                        "largestCells": 65,
+                        "largestShare": 0.034013605442176874
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1750,
+                        "largestShare": 0.9157509157509157
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 8,
+                    "meanLocalAlgae": 0.7180162854492664,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 8
+                  },
+                  "m": {
+                    "count": 13,
+                    "meanLocalAlgae": 0.5183208951583276,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 9
+                  },
+                  "c": {
+                    "count": 5,
+                    "meanLocalAlgae": 0.33223134875297544,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 5,
+                  "meanNearestPreyDistance": 177.90411630931663,
+                  "minimumNearestPreyDistance": 45.151399764738784
+                }
+              },
+              {
+                "frame": 750,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 51001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.18852227926254272,
+                  "maximumAlgae": 1,
+                  "meanAlgae": 0.4710384881087837,
+                  "medianAlgae": 0.4689900875091553,
+                  "standardDeviation": 0.12527412861371873,
+                  "fieldHash": "a764e3ac",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 12,
+                    "meanLocalAlgae": 0.8013136809070905,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 11
+                  },
+                  "m": {
+                    "count": 10,
+                    "meanLocalAlgae": 0.6085694640874862,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 6
+                  },
+                  "c": {
+                    "count": 4,
+                    "meanLocalAlgae": 0.5015003457665443,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 4,
+                  "meanNearestPreyDistance": 202.29591084766219,
+                  "minimumNearestPreyDistance": 159.97203278631048
+                }
+              },
+              {
+                "frame": 1000,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 51001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.24516437947750092,
+                  "maximumAlgae": 1,
+                  "meanAlgae": 0.6013189649110936,
+                  "medianAlgae": 0.6035475134849548,
+                  "standardDeviation": 0.11631404026131736,
+                  "fieldHash": "da8cc430",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 22,
+                    "meanLocalAlgae": 0.8892488520253788,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 21
+                  },
+                  "m": {
+                    "count": 7,
+                    "meanLocalAlgae": 0.641764657838004,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 6
+                  },
+                  "c": {
+                    "count": 1,
+                    "meanLocalAlgae": 0.6561330556869507,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 1,
+                  "meanNearestPreyDistance": 151.18273580888058,
+                  "minimumNearestPreyDistance": 151.18273580888058
+                }
+              },
+              {
+                "frame": 1500,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 51001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.3281640410423279,
+                  "maximumAlgae": 0.9999122619628906,
+                  "meanAlgae": 0.7310411321249761,
+                  "medianAlgae": 0.7284420132637024,
+                  "standardDeviation": 0.09750862659778999,
+                  "fieldHash": "8faaaeb4",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 72,
+                    "meanLocalAlgae": 0.9151288519303004,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 71
+                  },
+                  "m": {
+                    "count": 9,
+                    "meanLocalAlgae": 0.6984030273225572,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 8
+                  },
+                  "c": {
+                    "count": 0,
+                    "meanLocalAlgae": 0,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 0,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 0,
+                  "meanNearestPreyDistance": null,
+                  "minimumNearestPreyDistance": null
+                }
+              },
+              {
+                "frame": 2000,
+                "field": {
+                  "mode": "patchy-intermediate",
+                  "seed": 51001,
+                  "cellCount": 1911,
+                  "minimumAlgae": 0.47711652517318726,
+                  "maximumAlgae": 1,
+                  "meanAlgae": 0.8165411290418784,
+                  "medianAlgae": 0.8156889081001282,
+                  "standardDeviation": 0.073196690190851,
+                  "fieldHash": "29990fdb",
+                  "thresholds": {
+                    "lowMax": 0.075,
+                    "highMin": 0.185
+                  },
+                  "ratios": {
+                    "low": 0,
+                    "medium": 0,
+                    "high": 1
+                  },
+                  "spatial": {
+                    "componentCount": 1,
+                    "resourcePatchCount": 1,
+                    "byBand": {
+                      "low": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "medium": {
+                        "components": 0,
+                        "largestCells": 0,
+                        "largestShare": 0
+                      },
+                      "high": {
+                        "components": 1,
+                        "largestCells": 1911,
+                        "largestShare": 1
+                      }
+                    }
+                  }
+                },
+                "byDiet": {
+                  "h": {
+                    "count": 111,
+                    "meanLocalAlgae": 0.9464437177589348,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 107
+                  },
+                  "m": {
+                    "count": 12,
+                    "meanLocalAlgae": 0.8059594184160233,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 1,
+                    "recentGrazers": 10
+                  },
+                  "c": {
+                    "count": 0,
+                    "meanLocalAlgae": 0,
+                    "lowRatio": 0,
+                    "mediumRatio": 0,
+                    "highRatio": 0,
+                    "recentGrazers": 0
+                  }
+                },
+                "carnivorePreyProximity": {
+                  "predators": 0,
+                  "meanNearestPreyDistance": null,
+                  "minimumNearestPreyDistance": null
+                }
+              }
+            ],
+            "flowMilestones": [
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 120,
+                "tickCount": 7,
+                "cellUpdates": 13377,
+                "algaeRegrowth": 65.95561256317421,
+                "decompositionInput": 8.43649760190138,
+                "grazingRemoved": 3.9482900371497287,
+                "totalBiologicalInput": 74.3921101650756,
+                "inputMinusGrazing": 70.44382012792586,
+                "currentTotal": 345.8243037723005,
+                "currentMean": 0.1809650987819469
+              },
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 300,
+                "tickCount": 18,
+                "cellUpdates": 34398,
+                "algaeRegrowth": 188.7881483670463,
+                "decompositionInput": 23.16439644408965,
+                "grazingRemoved": 17.621418600348814,
+                "totalBiologicalInput": 211.95254481113594,
+                "inputMinusGrazing": 194.33112621078712,
+                "currentTotal": 476.9075768068433,
+                "currentMean": 0.24955917153680968
+              },
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 500,
+                "tickCount": 31,
+                "cellUpdates": 59241,
+                "algaeRegrowth": 363.1605617746308,
+                "decompositionInput": 40.7656105473102,
+                "grazingRemoved": 31.456955433512924,
+                "totalBiologicalInput": 403.926172321941,
+                "inputMinusGrazing": 372.4692168884281,
+                "currentTotal": 662.9967042952776,
+                "currentMean": 0.34693705091327975
+              },
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 750,
+                "tickCount": 46,
+                "cellUpdates": 87906,
+                "algaeRegrowth": 588.6630541953525,
+                "decompositionInput": 58.631329263204705,
+                "grazingRemoved": 50.757724358058866,
+                "totalBiologicalInput": 647.2943834585573,
+                "inputMinusGrazing": 596.5366591004984,
+                "currentTotal": 900.1545507758856,
+                "currentMean": 0.4710384881087837
+              },
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 1000,
+                "tickCount": 62,
+                "cellUpdates": 118482,
+                "algaeRegrowth": 829.5207102132321,
+                "decompositionInput": 73.9863929491153,
+                "grazingRemoved": 76.82141662902781,
+                "totalBiologicalInput": 903.5071031623473,
+                "inputMinusGrazing": 826.6856865333195,
+                "currentTotal": 1149.1205419450998,
+                "currentMean": 0.6013189649110936
+              },
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 1500,
+                "tickCount": 93,
+                "cellUpdates": 177723,
+                "algaeRegrowth": 1083.5187388139238,
+                "decompositionInput": 97.69037786907191,
+                "grazingRemoved": 208.6759908040498,
+                "totalBiologicalInput": 1181.2091166829957,
+                "inputMinusGrazing": 972.533125878946,
+                "currentTotal": 1397.0196034908295,
+                "currentMean": 0.7310411321249761
+              },
+              {
+                "enabled": true,
+                "configuredScale": 0.7,
+                "effectiveScale": 0.7,
+                "startedAtFrame": 0,
+                "elapsedFrames": 2000,
+                "tickCount": 125,
+                "cellUpdates": 238875,
+                "algaeRegrowth": 1286.6222063643656,
+                "decompositionInput": 122.12249207450853,
+                "grazingRemoved": 433.47856597207226,
+                "totalBiologicalInput": 1408.7446984388741,
+                "inputMinusGrazing": 975.2661324668019,
+                "currentTotal": 1560.4100975990295,
+                "currentMean": 0.8165411290418784
+              }
+            ]
+          },
+          "carnivore": {
+            "maximum": 19,
+            "end": 0,
+            "extinctionFrame": 1294,
+            "births": 5
+          },
+          "conservation": {
+            "energyPositiveResidualMax": 5.684341886080802e-14,
+            "nutrientPositiveResidualMax": 2.7755575615628914e-17,
+            "energyCreationEvents": 0,
+            "nutrientCreationEvents": 0
+          },
+          "health": {
+            "ok": true,
+            "badCount": 0,
+            "bad": []
+          },
+          "browserErrors": []
+        }
+      ],
+      "aggregate": {
+        "seeds": [
+          41001,
+          43001,
+          51001
+        ],
+        "runs": 3,
+        "meanFinalAlgae": 0.7792120414001248,
+        "meanFinalAlgaeStdDev": 0.10599099521803466,
+        "meanFinalMinimumAlgae": 0.31799905002117157,
+        "meanPopulationEnd": 122.66666666666667,
+        "meanPopulationPeak": 124.33333333333333,
+        "medianFirstCapFrame": 1710,
+        "capReachedRuns": 3,
+        "herbivoreStarvationDeaths": 52,
+        "omnivoreStarvationDeaths": 53,
+        "carnivoreStarvationDeaths": 67,
+        "herbivoreOvercrowdingDeaths": 59,
+        "omnivoreOvercrowdingDeaths": 13,
+        "fieldRegrowth": 4188.496163155597,
+        "decompositionInput": 415.43254554192015,
+        "grazingRemoved": 1212.4790007402294,
+        "carnivoreBirths": 32,
+        "endDiets": {
+          "h": 299,
+          "m": 68,
+          "c": 1
+        },
+        "energyCreationEvents": 0,
+        "nutrientCreationEvents": 0,
+        "browserErrors": 0,
+        "badNumbers": 0
+      }
+    }
+  ],
+  "offComparison": {
+    "seed": 41001,
+    "steps": 2000,
+    "baseHash": "bfd00b9bbdcd97d34dc0af4dcfcd9da819b7bef6463d742ac4b4025e78d9ee48",
+    "currentHash": "bfd00b9bbdcd97d34dc0af4dcfcd9da819b7bef6463d742ac4b4025e78d9ee48",
+    "matches": true
+  },
+  "saveLoad": {
+    "saveVersion": 13,
+    "savedFeature": true,
+    "restoredFeature": true,
+    "defaultEffectiveScale": 0.7,
+    "restoredEffectiveScale": 0.7,
+    "initialHash": "a0ae915b",
+    "beforeSaveHash": "b0336bfe",
+    "afterLoadHash": "b0336bfe",
+    "afterResetHash": "a0ae915b",
+    "loadPreservedField": true,
+    "resetReproducedInitial": true,
+    "legacyCompatibility": {
+      "expectedFieldHash": "40321ac3",
+      "restoredFieldHash": "40321ac3",
+      "fieldPreserved": true,
+      "featureDefaultedOn": true,
+      "effectiveScale": 0.7
+    }
+  },
+  "errors": [],
+  "badNumbers": []
+}
