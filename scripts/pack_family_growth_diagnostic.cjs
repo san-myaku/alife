@@ -141,6 +141,13 @@ function aggregate(results) {
     totalPackBornCapacityCullDeaths: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selectedPackBorn || 0), 0),
     totalLastMatureDietCapacityCullDeaths: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selectedLastMatureOfDiet || 0), 0),
     totalLastMatureLineageCapacityCullDeaths: results.reduce((sum, result) => sum + Number(result.run.capacityCull?.selectedLastMatureOfLineage || 0), 0),
+    totalExactPackSexualAttempts: results.reduce((sum, result) => sum + Number(result.run.packReproductionBottleneck?.sexualAttempts || 0), 0),
+    totalExactPackAsexualAttempts: results.reduce((sum, result) => sum + Number(result.run.packReproductionBottleneck?.asexualAttempts || 0), 0),
+    totalExactPackSameLineageMateAttempts: results.reduce((sum, result) => sum + Number(result.run.packReproductionBottleneck?.sameLineageMateAttempts || 0), 0),
+    totalExactPackLegacyMateAttempts: results.reduce((sum, result) => sum + Number(result.run.packReproductionBottleneck?.legacyMateAttempts || 0), 0),
+    seedsWithExactPackSameLineageMating: results
+      .filter(result => Number(result.run.packReproductionBottleneck?.sameLineageMateAttempts || 0) > 0)
+      .map(result => result.seed),
     totalLaterInheritedBirths: packRows.reduce((sum, pack) => sum + Math.max(0, Number(pack.birthsIntoPack || 0) - 1), 0),
     packsWithRepeatedInheritedBirths: packRows.filter(pack => Number(pack.birthsIntoPack || 0) > 1).length,
     totalActivePackCount: results.reduce((sum, result) => sum + Number(result.activePackCount || 0), 0),
@@ -232,6 +239,11 @@ function markdownReport(data) {
   lines.push(`- totalPackBornCapacityCullDeaths: ${data.aggregate.totalPackBornCapacityCullDeaths}`);
   lines.push(`- totalLastMatureDietCapacityCullDeaths: ${data.aggregate.totalLastMatureDietCapacityCullDeaths}`);
   lines.push(`- totalLastMatureLineageCapacityCullDeaths: ${data.aggregate.totalLastMatureLineageCapacityCullDeaths}`);
+  lines.push(`- totalExactPackSexualAttempts: ${data.aggregate.totalExactPackSexualAttempts}`);
+  lines.push(`- totalExactPackAsexualAttempts: ${data.aggregate.totalExactPackAsexualAttempts}`);
+  lines.push(`- totalExactPackSameLineageMateAttempts: ${data.aggregate.totalExactPackSameLineageMateAttempts}`);
+  lines.push(`- totalExactPackLegacyMateAttempts: ${data.aggregate.totalExactPackLegacyMateAttempts}`);
+  lines.push(`- seedsWithExactPackSameLineageMating: ${data.aggregate.seedsWithExactPackSameLineageMating.join(', ') || 'none'}`);
   lines.push(`- totalLaterInheritedBirths: ${data.aggregate.totalLaterInheritedBirths}`);
   lines.push(`- packsWithRepeatedInheritedBirths: ${data.aggregate.packsWithRepeatedInheritedBirths}`);
   lines.push(`- totalActivePackCount: ${data.aggregate.totalActivePackCount}`);
