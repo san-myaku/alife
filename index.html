@@ -3458,6 +3458,55 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   const PACK_MEMBER_LIFECYCLE_EVENT_LIMIT=2400;
   const PACK_MEMBER_SPATIAL_SAMPLE_LIMIT=6000;
   const packMemberLifecycleTelemetryState={events:[],spatialSamples:[]};
+  function packMemberPreyAvailabilitySnapshot(member){
+    if(!member || !isPackHunter(member)) return null;
+    const scanRadius=predationScanRadius(member);
+    const basePredationIntent=dietIntent(
+      member.genes.diet,
+      Math.max(0,member.reproThreshold*0.95-member.energy)
+    );
+    let validPreyInScan=0;
+    let nearest=null;
+    for(const candidate of organisms){
+      if(!candidate || candidate===member || candidate.dead) continue;
+      const distance=Math.hypot(candidate.x-member.x,candidate.y-member.y);
+      const classification=predationCandidateClassification(member,candidate,'target',distance);
+      if(!classification.valid) continue;
+      if(distance<=scanRadius) validPreyInScan++;
+      if(!nearest || distance<nearest.distance) nearest={candidate,distance};
+    }
+    const target=organismById(member.preyTargetId);
+    const targetDistance=target && !target.dead
+      ? Math.hypot(target.x-member.x,target.y-member.y)
+      : null;
+    if(!nearest){
+      return {
+        scanRadius,
+        validPreyInScan,
+        nearestValidPreyId:null,
+        nearestValidPreyDistance:null,
+        nearestValidPreyWithinScan:false,
+        nearestValidPreyAffordable:null,
+        nearestValidPreyRequiredEnergy:null,
+        nearestValidPreyEnergyMargin:null,
+        currentTargetDistance:targetDistance
+      };
+    }
+    const planning=predictiveHuntingReserveEnabled()
+      ? predictiveHuntPlanning(member,nearest.candidate,basePredationIntent,nearest.distance)
+      : null;
+    return {
+      scanRadius,
+      validPreyInScan,
+      nearestValidPreyId:nearest.candidate.id,
+      nearestValidPreyDistance:nearest.distance,
+      nearestValidPreyWithinScan:nearest.distance<=scanRadius,
+      nearestValidPreyAffordable:planning?.plan?.affordable ?? null,
+      nearestValidPreyRequiredEnergy:planning?.plan?.requiredEnergy ?? null,
+      nearestValidPreyEnergyMargin:planning?.plan?.energyMargin ?? null,
+      currentTargetDistance:targetDistance
+    };
+  }
   function packMemberLifecycleEvent(type,organism,pack,extra={}){
     if(!lineageAwarePackIdentityEnabled() || !organism || !pack) return;
     const birth=telemetry.births.get(organism.id) || null;
@@ -3546,23 +3595,29 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(!lineageAwarePackIdentityEnabled() || !pack || pack.dissolvedFrame!=null) return;
     const members=packIdentityLivingMembers(pack);
     if(!members.length) return;
-    const memberRows=members.map(member=>({
-      id:member.id,
-      parentId:member.parentId ?? telemetry.births.get(member.id)?.parentId ?? null,
-      mateParentId:member.mateParentId ?? telemetry.births.get(member.id)?.mateParentId ?? null,
-      generationDepth:Number(member.generationDepth||0),
-      age:Number(member.age||0),
-      maturityAge:reproductiveMaturityAgeFor(member),
-      mature:hasReachedReproductiveMaturity(member),
-      reproductionReady:hasReachedReproductiveMaturity(member) && Number(member.energy||0)>=Number(member.reproThreshold||0),
-      energy:Number(member.energy||0),
-      reproThreshold:Number(member.reproThreshold||0),
-      x:Number(member.x||0),
-      y:Number(member.y||0),
-      socialRange:packSocialRangeFor(member),
-      preyTargetId:member.preyTargetId ?? null,
-      activelyChasing:!!(member.chaseTimer>0 || member._predationChasingThisStep)
-    }));
+    const memberRows=members.map(member=>{
+      const preyAvailability=telemetryPackFormationEnabled()
+        ? packMemberPreyAvailabilitySnapshot(member)
+        : null;
+      return {
+        id:member.id,
+        parentId:member.parentId ?? telemetry.births.get(member.id)?.parentId ?? null,
+        mateParentId:member.mateParentId ?? telemetry.births.get(member.id)?.mateParentId ?? null,
+        generationDepth:Number(member.generationDepth||0),
+        age:Number(member.age||0),
+        maturityAge:reproductiveMaturityAgeFor(member),
+        mature:hasReachedReproductiveMaturity(member),
+        reproductionReady:hasReachedReproductiveMaturity(member) && Number(member.energy||0)>=Number(member.reproThreshold||0),
+        energy:Number(member.energy||0),
+        reproThreshold:Number(member.reproThreshold||0),
+        x:Number(member.x||0),
+        y:Number(member.y||0),
+        socialRange:packSocialRangeFor(member),
+        preyTargetId:member.preyTargetId ?? null,
+        activelyChasing:!!(member.chaseTimer>0 || member._predationChasingThisStep),
+        ...(preyAvailability || {})
+      };
+    });
     const pairs=[];
     for(let i=0;i<memberRows.length;i++){
       for(let j=i+1;j<memberRows.length;j++){
