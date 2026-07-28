@@ -6697,6 +6697,23 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const value=Number(diagnosticPackSharing.packAttackBase);
     return Number.isFinite(value) ? clamp(value,0.1,2.0) : 0.78;
   }
+  function packAttackCoordinationFor(predator,prey){
+    let mateCount=0;
+    let activePackMateCount=0;
+    if(!predator || !prey || !isPackHunter(predator)){
+      return {mateCount,activePackMateCount,baseMultiplier:1};
+    }
+    forEachOrgNeighbors(prey.x,prey.y,PACK_HELPER_RADIUS,(candidate)=>{
+      if(candidate===predator || !samePackBehaviorIdentity(candidate,predator) || !isPackHunter(candidate)) return;
+      mateCount++;
+      if(lineageAwarePackIdentityEnabled() && sameActivePackMembership(predator,candidate)) activePackMateCount++;
+    });
+    return {
+      mateCount,
+      activePackMateCount,
+      baseMultiplier:diagnosticPackAttackBase() + 0.095*mateCount + 0.125*activePackMateCount
+    };
+  }
   function applyPackPreyDistribution(predator,prey,grossGain,nutrientGain,attackCost,sizeInfo){
     const helpers=(sizeInfo?.eligiblePackHelpers || eligiblePackHelpersFor(predator,prey,'attack')).filter(h=>h && !h.dead);
     const activePackHelpers=lineageAwarePackIdentityEnabled() && !duelExperimentActive
@@ -7330,6 +7347,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       success:!!data.success,
       packProbabilityMultiplier:Number(data.packProbabilityMultiplier||1),
       mates:Number(data.mates||0),
+      activePackMates:Number(data.activePackMates||0),
       basePackMultiplier:Number(data.basePackMultiplier||1),
       rareFactorPack:Number(data.rareFactorPack||1),
       combinedPackMultiplier:Number(data.combinedPackMultiplier||1),
@@ -10433,6 +10451,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         helperBuckets,
         averageChaseBonusMateCount:stat(attacks.map(a=>a.chaseBonusMateCount)).average,
         averageAttackProbabilityMateCount:stat(attacks.map(a=>a.attackProbabilityMateCount)).average,
+        averageActivePackAttackProbabilityMateCount:stat(attacks.map(a=>a.activePackMates)).average,
         averageEligibleHelperCount:stat(attacks.map(a=>a.eligibleHelperCount)).average,
         allExistingCountsAgree:{count:agreementCount,denominator:attacks.length,rate:rate(agreementCount,attacks.length)},
         allExistingCountsMismatch:{count:mismatchCount,denominator:attacks.length,rate:rate(mismatchCount,attacks.length)},
@@ -13414,6 +13433,7 @@ if(Z>0.08){
       let p=clamp(pBase*intent,0,0.74);
       const rawAttackProbability=p;
       let attackProbabilityMateCount=0;
+      let activePackAttackProbabilityMateCount=0;
       let basePackMultiplier=1;
       let rareFactorPack=1;
       let combinedPackMultiplier=1;
@@ -13424,10 +13444,10 @@ if(Z>0.08){
       if(repelHere){ defenseMul*=0.5; p*=0.5; }
       if(isAmbusherPredator(this)){ p*= 1.0*rareFactor('ambusher'); if(this.burstTimer>0) p*=1.22; }
       if(isPackHunter(this)){
-        let mates=0;
-        forEachOrgNeighbors(prey.x,prey.y,76,(o2)=>{ if(o2!==this && samePackBehaviorIdentity(o2,this) && isPackHunter(o2)) mates++; });
-        attackProbabilityMateCount=mates;
-        basePackMultiplier=diagnosticPackAttackBase() + 0.095*mates;
+        const coordination=packAttackCoordinationFor(this,prey);
+        attackProbabilityMateCount=coordination.mateCount;
+        activePackAttackProbabilityMateCount=coordination.activePackMateCount;
+        basePackMultiplier=coordination.baseMultiplier;
         rareFactorPack=rareFactor('pack');
         combinedPackMultiplier=basePackMultiplier * rareFactorPack;
         p*= combinedPackMultiplier;
@@ -13495,6 +13515,7 @@ if(Z>0.08){
         success:predationRoll<p,
         packProbabilityMultiplier:combinedPackMultiplier,
         mates:attackProbabilityMateCount,
+        activePackMates:activePackAttackProbabilityMateCount,
         basePackMultiplier,
         rareFactorPack,
         combinedPackMultiplier,
@@ -27823,6 +27844,31 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           helper:{id:sHelper.id,before:sHelperBefore,after:sHelper.energy},
           event:sEvent,
           telemetry:{...packIdentityTelemetry()}
+        }
+      );
+
+      clear();
+      Object.assign(featureFlags,{persistentPackIdentity:true,persistentLineageRegistry:true,provisionalLineageClassification:true,lineageAwarePackIdentity:true,speciesIdentityV2:true,canonicalSpeciesAppearance:true});
+      const tKiller=make(genesA,{x:100,y:100});
+      const tHelper=make(genesA,{x:104,y:100});
+      const tPrey=make(genesB,{x:108,y:100,eligible:false});
+      createPackIdentity([tKiller,tHelper]);
+      buildSpatialIndex();
+      const tOn=packAttackCoordinationFor(tKiller,tPrey);
+      featureFlags.lineageAwarePackIdentity=false;
+      const tOff=packAttackCoordinationFor(tKiller,tPrey);
+      add('Micro T active pack coordination offsets pair bootstrap penalty only when enabled',
+        tOn.mateCount===1
+          && tOn.activePackMateCount===1
+          && Math.abs(tOn.baseMultiplier-1.0)<=1e-12
+          && tOff.mateCount===1
+          && tOff.activePackMateCount===0
+          && Math.abs(tOff.baseMultiplier-0.875)<=1e-12,
+        {
+          killer:{id:tKiller.id,packId:tKiller.packId,lineageId:tKiller.lineageId},
+          helper:{id:tHelper.id,packId:tHelper.packId,lineageId:tHelper.lineageId},
+          enabled:tOn,
+          disabled:tOff
         }
       );
     }catch(err){
