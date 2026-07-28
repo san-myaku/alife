@@ -3485,6 +3485,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         validPreyInScan,
         nearestValidPreyId:null,
         nearestValidPreyDistance:null,
+        nearestValidPreyDx:null,
+        nearestValidPreyDy:null,
+        nearestValidPreyHeadingAlignment:null,
         nearestValidPreyWithinScan:false,
         nearestValidPreyAffordable:null,
         nearestValidPreyRequiredEnergy:null,
@@ -3495,11 +3498,20 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const planning=predictiveHuntingReserveEnabled()
       ? predictiveHuntPlanning(member,nearest.candidate,basePredationIntent,nearest.distance)
       : null;
+    const nearestDx=nearest.candidate.x-member.x;
+    const nearestDy=nearest.candidate.y-member.y;
+    const speed=Math.hypot(member.vx||0,member.vy||0);
+    const headingAlignment=speed>1e-9 && nearest.distance>1e-9
+      ? clamp(((member.vx||0)*nearestDx+(member.vy||0)*nearestDy)/(speed*nearest.distance),-1,1)
+      : null;
     return {
       scanRadius,
       validPreyInScan,
       nearestValidPreyId:nearest.candidate.id,
       nearestValidPreyDistance:nearest.distance,
+      nearestValidPreyDx:nearestDx,
+      nearestValidPreyDy:nearestDy,
+      nearestValidPreyHeadingAlignment:headingAlignment,
       nearestValidPreyWithinScan:nearest.distance<=scanRadius,
       nearestValidPreyAffordable:planning?.plan?.affordable ?? null,
       nearestValidPreyRequiredEnergy:planning?.plan?.requiredEnergy ?? null,
@@ -3612,6 +3624,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         reproThreshold:Number(member.reproThreshold||0),
         x:Number(member.x||0),
         y:Number(member.y||0),
+        vx:Number(member.vx||0),
+        vy:Number(member.vy||0),
+        speed:Math.hypot(member.vx||0,member.vy||0),
+        heading:Number(member.heading||0),
         socialRange:packSocialRangeFor(member),
         preyTargetId:member.preyTargetId ?? null,
         activelyChasing:!!(member.chaseTimer>0 || member._predationChasingThisStep),
