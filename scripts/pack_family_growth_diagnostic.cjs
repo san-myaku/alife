@@ -131,6 +131,9 @@ function aggregate(results) {
     totalOverflowEnergyTransferred: results.reduce((sum, result) => sum + Number(result.packSummary.overflowEnergyTransferred || 0), 0),
     totalOverflowNutrientTransferred: results.reduce((sum, result) => sum + Number(result.packSummary.overflowNutrientTransferred || 0), 0),
     totalOverflowRecipients: results.reduce((sum, result) => sum + Number(result.packSummary.overflowRecipients || 0), 0),
+    totalSurplusFeedingEvents: results.reduce((sum, result) => sum + Number(result.packSummary.surplusFeedingEvents || 0), 0),
+    totalSurplusEnergyTransferred: results.reduce((sum, result) => sum + Number(result.packSummary.surplusEnergyTransferred || 0), 0),
+    totalSurplusRecipients: results.reduce((sum, result) => sum + Number(result.packSummary.surplusRecipients || 0), 0),
     totalLaterInheritedBirths: packRows.reduce((sum, pack) => sum + Math.max(0, Number(pack.birthsIntoPack || 0) - 1), 0),
     packsWithRepeatedInheritedBirths: packRows.filter(pack => Number(pack.birthsIntoPack || 0) > 1).length,
     totalActivePackCount: results.reduce((sum, result) => sum + Number(result.activePackCount || 0), 0),
@@ -212,6 +215,9 @@ function markdownReport(data) {
   lines.push(`- totalOverflowEnergyTransferred: ${data.aggregate.totalOverflowEnergyTransferred}`);
   lines.push(`- totalOverflowNutrientTransferred: ${data.aggregate.totalOverflowNutrientTransferred}`);
   lines.push(`- totalOverflowRecipients: ${data.aggregate.totalOverflowRecipients}`);
+  lines.push(`- totalSurplusFeedingEvents: ${data.aggregate.totalSurplusFeedingEvents}`);
+  lines.push(`- totalSurplusEnergyTransferred: ${data.aggregate.totalSurplusEnergyTransferred}`);
+  lines.push(`- totalSurplusRecipients: ${data.aggregate.totalSurplusRecipients}`);
   lines.push(`- totalLaterInheritedBirths: ${data.aggregate.totalLaterInheritedBirths}`);
   lines.push(`- packsWithRepeatedInheritedBirths: ${data.aggregate.packsWithRepeatedInheritedBirths}`);
   lines.push(`- totalActivePackCount: ${data.aggregate.totalActivePackCount}`);
