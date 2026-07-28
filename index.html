@@ -8045,6 +8045,16 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const age=Number.isFinite(o.age) ? o.age : Math.max(0, frame-(o.birthFrame ?? frame));
     const ratio=telemetryEnergyRatio(o);
     const target=organismById(o?.preyTargetId);
+    const killer=organismById(o._telemetryKilledByPredatorId);
+    const victimLineageId=o.lineageId==null ? null : String(o.lineageId);
+    const killerLineageId=killer?.lineageId==null ? null : String(killer.lineageId);
+    const killerLineageRelationship=!killer
+      ? null
+      : (!victimLineageId || !killerLineageId
+        ? 'invalid'
+        : (victimLineageId===killerLineageId
+          ? 'same-lineage'
+          : (o.speciesKey===killer.speciesKey ? 'same-species-different-lineage' : 'different-lineage')));
     const targetValid=!!(target && predationCandidateClassification(o,target,'target').valid);
     const ambushStats=telemetryRecentAmbushHoldStats(o,120);
     const predictiveDeath=telemetryRecordPredictiveHuntDeath(o,target);
@@ -8076,6 +8086,13 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       currentDietClass:rec.currentDietClass,
       role:o.role || 'other',
       cause:causeKey || 'other',
+      killerId:killer?.id ?? null,
+      killerDiet:killer ? telemetryDiet(killer) : null,
+      killerRole:killer ? normalizeRole(killer.role) : null,
+      killerSocialMode:killer?.socialMode ?? null,
+      killerLineageId,
+      victimLineageId,
+      killerLineageRelationship,
       age,
       energy:Number(o.energy||0),
       energyRatio:ratio,
@@ -9776,6 +9793,27 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     });
     const deathStateByCause={};
     for(const k of Object.keys(deathGroups)) deathStateByCause[k]=finishDeathGroup(deathGroups[k]);
+    const predationDeathKillers={
+      total:deathGroups.predation.length,
+      byDiet:{h:0,m:0,c:0,unknown:0},
+      byLineageRelationship:{
+        sameLineage:0,
+        sameSpeciesDifferentLineage:0,
+        differentLineage:0,
+        invalid:0,
+        unknown:0
+      }
+    };
+    for(const death of deathGroups.predation){
+      const dietKey=['h','m','c'].includes(death.killerDiet) ? death.killerDiet : 'unknown';
+      predationDeathKillers.byDiet[dietKey]++;
+      const relationshipKey=death.killerLineageRelationship==='same-lineage' ? 'sameLineage'
+        : death.killerLineageRelationship==='same-species-different-lineage' ? 'sameSpeciesDifferentLineage'
+        : death.killerLineageRelationship==='different-lineage' ? 'differentLineage'
+        : death.killerLineageRelationship==='invalid' ? 'invalid'
+        : 'unknown';
+      predationDeathKillers.byLineageRelationship[relationshipKey]++;
+    }
     const origins=telemetry.birthOrigins.filter(r=>r.frame>=cutoff);
     const carnivoreOrigins=origins.filter(r=>r.childDiet==='c');
     const byParent={h:0,m:0,c:0};
@@ -9821,6 +9859,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         reproduced:life.filter(r=>r.reproduced).length
       },
       carnivoreDeathStateByCause:deathStateByCause,
+      carnivorePredationDeathKillers:predationDeathKillers,
       carnivoreChildren:{
         total:carnivoreOrigins.length,
         fromHerbivoreParent:byParent.h||0,
