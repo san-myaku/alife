@@ -5551,6 +5551,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         currentSocialMode:o.socialMode || 'solitary',
         parentId:birth?.parentId ?? o.parentId ?? null,
         mateParentId:birth?.mateParentId ?? o.mateParentId ?? null,
+        birthPackId:birth?.packId ?? null,
+        bornIntoPack:birth?.packId != null,
         parentBirthDiet:birth?.parentBirthDiet ?? null,
         generationDepth:telemetryLineageDepth(o,birth),
         clutch:birth?.clutch ?? null,
@@ -8055,6 +8057,17 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         : (victimLineageId===killerLineageId
           ? 'same-lineage'
           : (o.speciesKey===killer.speciesKey ? 'same-species-different-lineage' : 'different-lineage')));
+    const victimPackId=persistentPackIdentityEnabled() && o.packId!=null ? String(o.packId) : null;
+    const victimPack=victimPackId ? activePackById(victimPackId) : null;
+    const livingPackAllies=[];
+    if(victimPack){
+      for(const ally of organisms){
+        if(!ally || ally===o || ally.dead || String(ally.packId ?? '')!==victimPackId) continue;
+        if(!packRecordMatchesOrganism(victimPack,ally)) continue;
+        livingPackAllies.push(ally);
+      }
+    }
+    const nearbyPackAllies=livingPackAllies.filter(ally=>Math.hypot(ally.x-o.x,ally.y-o.y)<=82);
     const targetValid=!!(target && predationCandidateClassification(o,target,'target').valid);
     const ambushStats=telemetryRecentAmbushHoldStats(o,120);
     const predictiveDeath=telemetryRecordPredictiveHuntDeath(o,target);
@@ -8093,6 +8106,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       killerLineageId,
       victimLineageId,
       killerLineageRelationship,
+      victimPackId,
+      livingPackAllyCount:livingPackAllies.length,
+      nearbyPackAllyCount:nearbyPackAllies.length,
+      nearbyMaturePackAllyCount:nearbyPackAllies.filter(hasReachedReproductiveMaturity).length,
+      nearbyReproductionReadyPackAllyCount:nearbyPackAllies.filter(canParticipateInReproduction).length,
       age,
       energy:Number(o.energy||0),
       energyRatio:ratio,
@@ -9024,7 +9042,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(r.firstSuccessFrame!=null && r.firstSuccessFrame>=cutoff) return true;
       return r.deathFrame==null;
     });
-    const nums=arr=>arr.map(Number).filter(Number.isFinite);
+    const nums=arr=>arr
+      .filter(value=>value!=null && value!=='')
+      .map(Number)
+      .filter(Number.isFinite);
     const avg=arr=>{ const a=nums(arr); return a.length ? a.reduce((x,y)=>x+y,0)/a.length : null; };
     const med=arr=>{
       const a=nums(arr).sort((x,y)=>x-y);
@@ -9073,6 +9094,75 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       }
       return samples ? total/samples : null;
     };
+    const cohortSummary=rows=>{
+      const cohortFailures=telemetryBlankPredationFailureCounts();
+      const cohortFailureEvents=telemetryBlankPredationFailureCounts();
+      const cohortFailureOrganisms=telemetryBlankPredationFailureCounts();
+      const cohortDeathsBeforeSuccess={
+        starvation:0,
+        predation:0,
+        overcrowding:0,
+        oldAge:0,
+        other:0
+      };
+      for(const r of rows){
+        for(const key of TELEMETRY_PREDATION_FAILURE_KEYS){
+          const n=Number(r.failureCounts?.[key] || 0);
+          cohortFailureEvents[key]+=n;
+          if(n>0) cohortFailureOrganisms[key]++;
+        }
+        if(!r.succeededPredation){
+          const dominant=r.dominantFailureReason || telemetryDominantPredationFailure(r);
+          if(cohortFailures[dominant]==null) cohortFailures[dominant]=0;
+          cohortFailures[dominant]++;
+          if(r.deathFrame!=null){
+            const cause=Object.hasOwn(cohortDeathsBeforeSuccess,r.deathCause) ? r.deathCause : 'other';
+            cohortDeathsBeforeSuccess[cause]++;
+          }
+        }
+      }
+      const cohortSuccesses=rows.filter(r=>r.succeededPredation);
+      return {
+        observed:rows.length,
+        alive:rows.filter(r=>r.deathFrame==null).length,
+        hadPotentialPreyInSense:rows.filter(r=>r.hadPotentialPreyInSense).length,
+        hadValidPreyInSense:rows.filter(r=>r.hadValidPreyInSense).length,
+        acquiredTarget:rows.filter(r=>r.acquiredTarget).length,
+        startedChase:rows.filter(r=>r.startedChase).length,
+        reachedContact:rows.filter(r=>r.reachedContact).length,
+        attemptedAttack:rows.filter(r=>r.attemptedAttack).length,
+        succeededPredation:cohortSuccesses.length,
+        reachedReproductionThresholdAfterPredation:rows.filter(r=>r.reachedReproductionThresholdAfterPredation).length,
+        reproducedAfterPredation:rows.filter(r=>r.reproducedAfterPredation).length,
+        failureEvents:cohortFailureEvents,
+        failureOrganisms:cohortFailureOrganisms,
+        dominantFailureReasons:cohortFailures,
+        deathsBeforeFirstPredation:cohortDeathsBeforeSuccess,
+        averageBirthEnergy:avg(rows.map(r=>r.birthEnergy)),
+        averageFirstContactEnergy:avg(rows.map(r=>r.firstContactEnergy)),
+        averageFirstSuccessEnergyBefore:avg(rows.map(r=>r.firstSuccessEnergyBefore)),
+        averageFirstSuccessEnergyAfter:avg(rows.map(r=>r.firstSuccessEnergyAfter)),
+        averageFirstSuccessSteps:avg(rows.map(r=>r.firstSuccessSteps)),
+        medianFirstSuccessSteps:med(rows.map(r=>r.firstSuccessSteps))
+      };
+    };
+    const generationGroups=new Map();
+    for(const r of records){
+      const key=r.initial ? 'initial' : `generation${Math.max(1,Math.floor(Number(r.generationDepth)||1))}`;
+      if(!generationGroups.has(key)) generationGroups.set(key,[]);
+      generationGroups.get(key).push(r);
+    }
+    const generationOrder=key=>key==='initial' ? -1 : Number(key.slice('generation'.length))||0;
+    const byGeneration=Object.fromEntries(
+      [...generationGroups.entries()]
+        .sort((a,b)=>generationOrder(a[0])-generationOrder(b[0]))
+        .map(([key,rows])=>[key,cohortSummary(rows)])
+    );
+    const byOrigin={
+      initial:cohortSummary(records.filter(r=>r.initial)),
+      packBorn:cohortSummary(records.filter(r=>!r.initial && r.bornIntoPack)),
+      nonPackBorn:cohortSummary(records.filter(r=>!r.initial && !r.bornIntoPack))
+    };
     return {
       frame,
       windowFrames:wf,
@@ -9109,6 +9199,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       lifetimeFailureOrganisms,
       dominantFailureReasons,
       deathBeforeFirstPredation,
+      byGeneration,
+      byOrigin,
       ambush:{
         ambusherRecords:ambushers.length,
         ambushHoldSteps:sum(r=>r.ambushHoldSteps),
@@ -9804,6 +9896,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         unknown:0
       }
     };
+    const packPredationDeaths={
+      total:deathGroups.predation.filter(death=>death.victimPackId!=null).length,
+      withLivingPackAlly:deathGroups.predation.filter(death=>death.victimPackId!=null && death.livingPackAllyCount>0).length,
+      withNearbyPackAlly:deathGroups.predation.filter(death=>death.victimPackId!=null && death.nearbyPackAllyCount>0).length,
+      withNearbyMaturePackAlly:deathGroups.predation.filter(death=>death.victimPackId!=null && death.nearbyMaturePackAllyCount>0).length,
+      withNearbyReproductionReadyPackAlly:deathGroups.predation.filter(death=>death.victimPackId!=null && death.nearbyReproductionReadyPackAllyCount>0).length,
+      averageLivingPackAllies:avg(deathGroups.predation.filter(death=>death.victimPackId!=null).map(death=>death.livingPackAllyCount)),
+      averageNearbyPackAllies:avg(deathGroups.predation.filter(death=>death.victimPackId!=null).map(death=>death.nearbyPackAllyCount))
+    };
     for(const death of deathGroups.predation){
       const dietKey=['h','m','c'].includes(death.killerDiet) ? death.killerDiet : 'unknown';
       predationDeathKillers.byDiet[dietKey]++;
@@ -9860,6 +9961,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       },
       carnivoreDeathStateByCause:deathStateByCause,
       carnivorePredationDeathKillers:predationDeathKillers,
+      carnivorePackPredationDeaths:packPredationDeaths,
       carnivoreChildren:{
         total:carnivoreOrigins.length,
         fromHerbivoreParent:byParent.h||0,
