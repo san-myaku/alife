@@ -99,6 +99,9 @@ function aggregate(results) {
   const packRows = results.flatMap(result => result.packs.map(pack => ({ seed: result.seed, ...pack })));
   const maxSizes = packRows.map(pack => Number(pack.maximumLivingMembers || 0));
   const packMemberRows = results.flatMap(result => (result.packMemberLifecycle?.members || []).map(member => ({ seed: result.seed, ...member })));
+  const spatialPackRows = results.flatMap(result => (result.packMemberLifecycle?.spatialPacks || []).map(pack => ({ seed: result.seed, ...pack })));
+  const totalPairObservations = spatialPackRows.reduce((sum, pack) => sum + Number(pack.pairObservations || 0), 0);
+  const totalParentChildPairObservations = spatialPackRows.reduce((sum, pack) => sum + Number(pack.parentChildPairObservations || 0), 0);
   return {
     seeds: results.map(result => result.seed),
     steps,
@@ -133,6 +136,22 @@ function aggregate(results) {
     totalBornPackMembersMaturedBeforeDeath: results.reduce((sum, result) => sum + Number(result.packMemberLifecycle?.bornMaturedBeforeDeath || 0), 0),
     totalBornPackMembersReproduced: results.reduce((sum, result) => sum + Number(result.packMemberLifecycle?.bornReproduced || 0), 0),
     totalBornPackMembersWithPredationSuccess: results.reduce((sum, result) => sum + Number(result.packMemberLifecycle?.bornPredationSuccess || 0), 0),
+    totalPackSpatialSamples: results.reduce((sum, result) => sum + Number(result.packMemberLifecycle?.spatialSampleCount || 0), 0),
+    totalPackPairObservations: totalPairObservations,
+    totalPackMatureOverlapSamples: spatialPackRows.reduce((sum, pack) => sum + Number(pack.matureOverlapSamples || 0), 0),
+    totalPackReproductionReadyOverlapSamples: spatialPackRows.reduce((sum, pack) => sum + Number(pack.reproductionReadyOverlapSamples || 0), 0),
+    packPairsWithinMutualSocialRangeRate: totalPairObservations
+      ? spatialPackRows.reduce((sum, pack) => sum + Number(pack.withinMutualSocialRangePairs || 0), 0) / totalPairObservations
+      : null,
+    packPairsWithinHelperRadiusRate: totalPairObservations
+      ? spatialPackRows.reduce((sum, pack) => sum + Number(pack.withinHelperRadiusPairs || 0), 0) / totalPairObservations
+      : null,
+    parentChildPairsWithinMutualSocialRangeRate: totalParentChildPairObservations
+      ? spatialPackRows.reduce((sum, pack) => sum + Number(pack.parentChildWithinMutualSocialRange || 0), 0) / totalParentChildPairObservations
+      : null,
+    parentChildPairsWithinHelperRadiusRate: totalParentChildPairObservations
+      ? spatialPackRows.reduce((sum, pack) => sum + Number(pack.parentChildWithinHelperRadius || 0), 0) / totalParentChildPairObservations
+      : null,
     maximumPackSizeEver: maxSizes.length ? Math.max(...maxSizes) : 0,
     maximumPackGenerationDepth:packMemberRows.reduce((max,member)=>Math.max(max,Number(member.generationDepth||0)),0),
     averageMaximumPackSize: average(maxSizes),
@@ -145,7 +164,8 @@ function aggregate(results) {
     nutrientCreationEvents: results.reduce((sum, result) => sum + result.nutrientCreationEvents, 0),
     badNumberCount: results.reduce((sum, result) => sum + result.badNumberCount, 0),
     roundTripOk: results.every(result => result.roundTrip?.ok === true),
-    packRows
+    packRows,
+    spatialPackRows
   };
 }
 
@@ -192,6 +212,14 @@ function markdownReport(data) {
   lines.push(`- totalBornPackMembersMaturedBeforeDeath: ${data.aggregate.totalBornPackMembersMaturedBeforeDeath}`);
   lines.push(`- totalBornPackMembersReproduced: ${data.aggregate.totalBornPackMembersReproduced}`);
   lines.push(`- totalBornPackMembersWithPredationSuccess: ${data.aggregate.totalBornPackMembersWithPredationSuccess}`);
+  lines.push(`- totalPackSpatialSamples: ${data.aggregate.totalPackSpatialSamples}`);
+  lines.push(`- totalPackPairObservations: ${data.aggregate.totalPackPairObservations}`);
+  lines.push(`- totalPackMatureOverlapSamples: ${data.aggregate.totalPackMatureOverlapSamples}`);
+  lines.push(`- totalPackReproductionReadyOverlapSamples: ${data.aggregate.totalPackReproductionReadyOverlapSamples}`);
+  lines.push(`- packPairsWithinMutualSocialRangeRate: ${data.aggregate.packPairsWithinMutualSocialRangeRate}`);
+  lines.push(`- packPairsWithinHelperRadiusRate: ${data.aggregate.packPairsWithinHelperRadiusRate}`);
+  lines.push(`- parentChildPairsWithinMutualSocialRangeRate: ${data.aggregate.parentChildPairsWithinMutualSocialRangeRate}`);
+  lines.push(`- parentChildPairsWithinHelperRadiusRate: ${data.aggregate.parentChildPairsWithinHelperRadiusRate}`);
   lines.push(`- invariants: lineageMismatch=${data.aggregate.lineageMismatchMembers}, mixedLineage=${data.aggregate.mixedLineagePacks}, missingIdentity=${data.aggregate.missingRecordIdentityPacks}`);
   lines.push(`- conservation: energyCreation=${data.aggregate.energyCreationEvents}, nutrientCreation=${data.aggregate.nutrientCreationEvents}`);
   lines.push(`- badNumbers: ${data.aggregate.badNumberCount}`);
@@ -230,6 +258,14 @@ function markdownReport(data) {
   lines.push('| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
   for (const pack of data.aggregate.packRows) {
     lines.push(`| ${pack.seed} | ${pack.id} | ${pack.lineageId || ''} | ${pack.createdFrame} | ${pack.dissolvedFrame ?? ''} | ${pack.maximumLivingMembers} | ${pack.totalMembersEver} | ${pack.joins} | ${pack.birthsIntoPack} | ${pack.leaves} | ${pack.deaths} | ${pack.currentLivingMembers} |`);
+  }
+  lines.push('');
+  lines.push('## Active Pack Spatial Cohesion');
+  lines.push('');
+  lines.push('| seed | packId | samples | multiMember | matureOverlap | reproductionReadyOverlap | pairObservations | avgDistance | socialRangeRate | helperRadiusRate | sameTargetPairs | differentTargetPairs | parentChildPairs | parentChildSocialRate | parentChildHelperRate |');
+  lines.push('| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
+  for (const pack of data.aggregate.spatialPackRows) {
+    lines.push(`| ${pack.seed} | ${pack.packId} | ${pack.samples} | ${pack.multiMemberSamples} | ${pack.matureOverlapSamples} | ${pack.reproductionReadyOverlapSamples} | ${pack.pairObservations} | ${pack.averageDistance ?? ''} | ${pack.withinMutualSocialRangeRate ?? ''} | ${pack.withinHelperRadiusRate ?? ''} | ${pack.sameTargetPairs} | ${pack.differentTargetPairs} | ${pack.parentChildPairObservations} | ${pack.parentChildWithinMutualSocialRangeRate ?? ''} | ${pack.parentChildWithinHelperRadiusRate ?? ''} |`);
   }
   lines.push('');
   lines.push('## Pack Member Lifecycle');

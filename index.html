@@ -3446,7 +3446,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     }
   };
   const PACK_MEMBER_LIFECYCLE_EVENT_LIMIT=2400;
-  const packMemberLifecycleTelemetryState={events:[]};
+  const PACK_MEMBER_SPATIAL_SAMPLE_LIMIT=6000;
+  const packMemberLifecycleTelemetryState={events:[],spatialSamples:[]};
   function packMemberLifecycleEvent(type,organism,pack,extra={}){
     if(!lineageAwarePackIdentityEnabled() || !organism || !pack) return;
     const birth=telemetry.births.get(organism.id) || null;
@@ -3531,8 +3532,77 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       );
     }
   }
+  function packMemberSpatialSample(pack){
+    if(!lineageAwarePackIdentityEnabled() || !pack || pack.dissolvedFrame!=null) return;
+    const members=packIdentityLivingMembers(pack);
+    if(!members.length) return;
+    const memberRows=members.map(member=>({
+      id:member.id,
+      parentId:member.parentId ?? telemetry.births.get(member.id)?.parentId ?? null,
+      mateParentId:member.mateParentId ?? telemetry.births.get(member.id)?.mateParentId ?? null,
+      generationDepth:Number(member.generationDepth||0),
+      age:Number(member.age||0),
+      maturityAge:reproductiveMaturityAgeFor(member),
+      mature:hasReachedReproductiveMaturity(member),
+      reproductionReady:hasReachedReproductiveMaturity(member) && Number(member.energy||0)>=Number(member.reproThreshold||0),
+      energy:Number(member.energy||0),
+      reproThreshold:Number(member.reproThreshold||0),
+      x:Number(member.x||0),
+      y:Number(member.y||0),
+      socialRange:packSocialRangeFor(member),
+      preyTargetId:member.preyTargetId ?? null,
+      activelyChasing:!!(member.chaseTimer>0 || member._predationChasingThisStep)
+    }));
+    const pairs=[];
+    for(let i=0;i<memberRows.length;i++){
+      for(let j=i+1;j<memberRows.length;j++){
+        const a=memberRows[i], b=memberRows[j];
+        const distance=Math.hypot(b.x-a.x,b.y-a.y);
+        const parentChild=a.parentId===b.id || b.parentId===a.id || a.mateParentId===b.id || b.mateParentId===a.id;
+        const bothTargeting=a.preyTargetId!=null && b.preyTargetId!=null;
+        pairs.push({
+          aId:a.id,
+          bId:b.id,
+          parentChild,
+          distance,
+          withinMutualSocialRange:distance<=Math.min(a.socialRange,b.socialRange),
+          withinHelperRadius:distance<=76,
+          bothMature:a.mature && b.mature,
+          bothReproductionReady:a.reproductionReady && b.reproductionReady,
+          targetState:bothTargeting
+            ? (a.preyTargetId===b.preyTargetId ? 'same' : 'different')
+            : (a.preyTargetId==null && b.preyTargetId==null ? 'both-targetless' : 'one-targetless'),
+          eitherActivelyChasing:a.activelyChasing || b.activelyChasing
+        });
+      }
+    }
+    const targetIds=[...new Set(memberRows.map(member=>member.preyTargetId).filter(id=>id!=null))];
+    packMemberLifecycleTelemetryState.spatialSamples.push({
+      frame,
+      packId:pack.id,
+      memberCount:memberRows.length,
+      matureMemberCount:memberRows.filter(member=>member.mature).length,
+      reproductionReadyMemberCount:memberRows.filter(member=>member.reproductionReady).length,
+      targetingMemberCount:memberRows.filter(member=>member.preyTargetId!=null).length,
+      activelyChasingMemberCount:memberRows.filter(member=>member.activelyChasing).length,
+      uniqueTargetCount:targetIds.length,
+      members:memberRows,
+      pairs
+    });
+    if(packMemberLifecycleTelemetryState.spatialSamples.length>PACK_MEMBER_SPATIAL_SAMPLE_LIMIT){
+      packMemberLifecycleTelemetryState.spatialSamples.splice(
+        0,
+        packMemberLifecycleTelemetryState.spatialSamples.length-PACK_MEMBER_SPATIAL_SAMPLE_LIMIT
+      );
+    }
+  }
   function packMemberLifecycleSummary(){
     const events=packMemberLifecycleTelemetryState.events.map(event=>({...event}));
+    const spatialSamples=packMemberLifecycleTelemetryState.spatialSamples.map(sample=>({
+      ...sample,
+      members:sample.members.map(member=>({...member})),
+      pairs:sample.pairs.map(pair=>({...pair}))
+    }));
     const members=new Map();
     const packs=new Map();
     const deathCauses={starvation:0,predation:0,oldAge:0,overcrowding:0,other:0};
@@ -3632,8 +3702,72 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(member.reproducedFrame!=null) bornReproduced++;
       if(member.firstPredationFrame!=null) bornPredationSuccess++;
     }
+    const spatialByPack=new Map();
+    for(const sample of spatialSamples){
+      const row=spatialByPack.get(sample.packId) || {
+        packId:sample.packId,
+        samples:0,
+        multiMemberSamples:0,
+        matureOverlapSamples:0,
+        reproductionReadyOverlapSamples:0,
+        pairObservations:0,
+        distanceSum:0,
+        maximumDistance:0,
+        withinMutualSocialRangePairs:0,
+        withinHelperRadiusPairs:0,
+        sameTargetPairs:0,
+        differentTargetPairs:0,
+        oneTargetlessPairs:0,
+        bothTargetlessPairs:0,
+        parentChildPairObservations:0,
+        parentChildDistanceSum:0,
+        parentChildMaximumDistance:0,
+        parentChildWithinMutualSocialRange:0,
+        parentChildWithinHelperRadius:0,
+        parentChildMatureOverlap:0,
+        parentChildReproductionReadyOverlap:0,
+        parentChildSameTarget:0,
+        parentChildDifferentTarget:0
+      };
+      spatialByPack.set(sample.packId,row);
+      row.samples++;
+      if(sample.memberCount>=2) row.multiMemberSamples++;
+      if(sample.matureMemberCount>=2) row.matureOverlapSamples++;
+      if(sample.reproductionReadyMemberCount>=2) row.reproductionReadyOverlapSamples++;
+      for(const pair of sample.pairs){
+        row.pairObservations++;
+        row.distanceSum+=pair.distance;
+        row.maximumDistance=Math.max(row.maximumDistance,pair.distance);
+        if(pair.withinMutualSocialRange) row.withinMutualSocialRangePairs++;
+        if(pair.withinHelperRadius) row.withinHelperRadiusPairs++;
+        if(pair.targetState==='same') row.sameTargetPairs++;
+        if(pair.targetState==='different') row.differentTargetPairs++;
+        if(pair.targetState==='one-targetless') row.oneTargetlessPairs++;
+        if(pair.targetState==='both-targetless') row.bothTargetlessPairs++;
+        if(!pair.parentChild) continue;
+        row.parentChildPairObservations++;
+        row.parentChildDistanceSum+=pair.distance;
+        row.parentChildMaximumDistance=Math.max(row.parentChildMaximumDistance,pair.distance);
+        if(pair.withinMutualSocialRange) row.parentChildWithinMutualSocialRange++;
+        if(pair.withinHelperRadius) row.parentChildWithinHelperRadius++;
+        if(pair.bothMature) row.parentChildMatureOverlap++;
+        if(pair.bothReproductionReady) row.parentChildReproductionReadyOverlap++;
+        if(pair.targetState==='same') row.parentChildSameTarget++;
+        if(pair.targetState==='different') row.parentChildDifferentTarget++;
+      }
+    }
+    const spatialPacks=Array.from(spatialByPack.values()).map(row=>({
+      ...row,
+      averageDistance:row.pairObservations ? row.distanceSum/row.pairObservations : null,
+      withinMutualSocialRangeRate:row.pairObservations ? row.withinMutualSocialRangePairs/row.pairObservations : null,
+      withinHelperRadiusRate:row.pairObservations ? row.withinHelperRadiusPairs/row.pairObservations : null,
+      parentChildAverageDistance:row.parentChildPairObservations ? row.parentChildDistanceSum/row.parentChildPairObservations : null,
+      parentChildWithinMutualSocialRangeRate:row.parentChildPairObservations ? row.parentChildWithinMutualSocialRange/row.parentChildPairObservations : null,
+      parentChildWithinHelperRadiusRate:row.parentChildPairObservations ? row.parentChildWithinHelperRadius/row.parentChildPairObservations : null
+    })).sort((a,b)=>String(a.packId).localeCompare(String(b.packId)));
     return {
       eventCount:events.length,
+      spatialSampleCount:spatialSamples.length,
       packCount:packs.size,
       memberCount:memberRows.length,
       bornMembers,
@@ -3650,8 +3784,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         deaths:pack.deaths,
         reproductions:pack.reproductions
       })),
+      spatialPacks,
       members:memberRows,
-      events
+      events,
+      spatialSamples
     };
   }
   function telemetryPush(event){
@@ -3740,6 +3876,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     packIdentityState.nextPackId=1;
     packIdentityState.packs={};
     packMemberLifecycleTelemetryState.events.length=0;
+    packMemberLifecycleTelemetryState.spatialSamples.length=0;
     Object.assign(packIdentityState.telemetry,{
       packsCreated:0,
       packsDissolved:0,
@@ -4630,6 +4767,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       packIdentityRefreshPack(pack);
       if(pack.dissolvedFrame==null){
         pack.memberFramesTotal=Number(pack.memberFramesTotal||0)+Number(pack.currentLivingMembers||0)*interval;
+        packMemberSpatialSample(pack);
       }
     }
   }
