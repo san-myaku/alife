@@ -2065,6 +2065,63 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
       result.blockedSameSpeciesDifferentLineageCount++;
     }
   }
+  function packMateOpportunitySnapshot(parent,searchRadius){
+    if(!lineageAwarePackIdentityEnabled() || !parent?.packId) return null;
+    const radius=Math.max(0,Number(searchRadius)||0);
+    const snapshot={
+      packId:String(parent.packId),
+      searchRadius:radius,
+      living:0,
+      mature:0,
+      ready:0,
+      livingWithinRadius:0,
+      matureWithinRadius:0,
+      readyWithinRadius:0,
+      nearestLivingDistance:null,
+      nearestMatureDistance:null,
+      nearestReadyDistance:null,
+      nearestMatureId:null,
+      nearestMatureEnergy:null,
+      nearestMatureReproThreshold:null,
+      nearestMaturePairActualClutch:null,
+      nearestMaturePairMinimumChildEnergy:null,
+      nearestMaturePairDistributableEnergy:null
+    };
+    for(const candidate of organisms){
+      if(!candidate || candidate===parent || candidate.dead) continue;
+      if(String(candidate.packId ?? '')!==snapshot.packId) continue;
+      if(!samePackBiologicalIdentity(parent,candidate)) continue;
+      const distance=Math.hypot(
+        Number(candidate.x||0)-Number(parent.x||0),
+        Number(candidate.y||0)-Number(parent.y||0)
+      );
+      snapshot.living++;
+      snapshot.nearestLivingDistance=snapshot.nearestLivingDistance==null
+        ? distance
+        : Math.min(snapshot.nearestLivingDistance,distance);
+      if(distance<=radius) snapshot.livingWithinRadius++;
+      if(!canParticipateInReproduction(candidate)) continue;
+      snapshot.mature++;
+      if(snapshot.nearestMatureDistance==null || distance<snapshot.nearestMatureDistance){
+        const plan=planLifeHistoryReproduction(parent,candidate);
+        snapshot.nearestMatureDistance=distance;
+        snapshot.nearestMatureId=candidate.id ?? null;
+        snapshot.nearestMatureEnergy=Number(candidate.energy||0);
+        snapshot.nearestMatureReproThreshold=effectiveReproThresholdFor(candidate);
+        snapshot.nearestMaturePairActualClutch=plan.actualClutch;
+        snapshot.nearestMaturePairMinimumChildEnergy=plan.minimumChildEnergy;
+        snapshot.nearestMaturePairDistributableEnergy=plan.distributableEnergy;
+      }
+      if(distance<=radius) snapshot.matureWithinRadius++;
+      if(!canReproduceNow(candidate)) continue;
+      snapshot.ready++;
+      snapshot.nearestReadyDistance=snapshot.nearestReadyDistance==null
+        ? distance
+        : Math.min(snapshot.nearestReadyDistance,distance);
+      if(distance<=radius) snapshot.readyWithinRadius++;
+    }
+    return snapshot;
+  }
   function recordLineageMateSelectionTelemetry(parent,result){
     if(!lineageAwareMateSelectionEnabled()) return null;
     lineageMateSelectionTelemetryState.attempts++;
@@ -2118,6 +2175,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
       legacyMateId:result.legacyMateId ?? null,
       legacyMateLineageId:result.legacyMateLineageId ?? null,
       legacyMateSpeciesKey:result.legacyMateSpeciesKey ?? null,
+      packMateOpportunity:packMateOpportunitySnapshot(parent,result.searchRadius),
       selectionWouldDifferFromLegacy:!!result.selectionWouldDifferFromLegacy,
       reproduced:false,
       birthCount:0
@@ -2219,6 +2277,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
       blockedCandidateCount:isolationScan.blockedCandidateCount,
       blockedSameSpeciesDifferentLineageCount:isolationScan.blockedSameSpeciesDifferentLineageCount,
       blockedRelationshipCounts:{...blockedRelationshipCounts},
+      searchRadius:Math.sqrt(bestLimit),
       selectedDistanceSquared,
       sameLineageMateId:sameLineageMate?.id ?? null,
       sameLineageMateLineageId:sameLineageMate?.lineageId ?? null,
@@ -3518,6 +3577,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         member.birthEnergy=event.birthEnergy;
         member.minimumViableBirthEnergy=event.minimumViableBirthEnergy;
         member.maturityAge=event.maturityAge;
+      }
+      if(event.type==='birth-plan'){
+        member.desiredClutch=event.desiredClutch;
+        member.affordableClutch=event.affordableClutch;
+        member.actualClutch=event.actualClutch;
+        member.plannedChildEnergyEach=event.plannedChildEnergyEach;
+        member.minimumViableBirthEnergy=event.minimumViableBirthEnergy;
+        member.parentEnergyBefore=event.parentEnergyBefore;
+        member.mateEnergyBefore=event.mateEnergyBefore;
       }
       if(event.type==='reproduced'){
         member.reproducedFrame=event.frame;
@@ -8230,6 +8298,20 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       deathCause:null
     };
     telemetry.births.set(child.id, rec);
+    if(lineageAwarePackIdentityEnabled() && child.packId){
+      const pack=activePackById(child.packId);
+      if(pack){
+        packMemberLifecycleEvent('birth-plan',child,pack,{
+          desiredClutch:rec.desiredClutch ?? null,
+          affordableClutch:rec.affordableClutch ?? null,
+          actualClutch:rec.actualClutch ?? clutch,
+          plannedChildEnergyEach:rec.plannedChildEnergyEach ?? null,
+          minimumViableBirthEnergy:rec.minimumViableBirthEnergy ?? null,
+          parentEnergyBefore:rec.parentEnergyBefore ?? null,
+          mateEnergyBefore:rec.mateEnergyBefore ?? null
+        });
+      }
+    }
     telemetry.birthOrigins.push({
       frame,
       parentId:rec.parentId,
