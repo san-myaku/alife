@@ -3386,6 +3386,206 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       packInheritedClutchChildren:0
     }
   };
+  const PACK_MEMBER_LIFECYCLE_EVENT_LIMIT=2400;
+  const packMemberLifecycleTelemetryState={events:[]};
+  function packMemberLifecycleEvent(type,organism,pack,extra={}){
+    if(!lineageAwarePackIdentityEnabled() || !organism || !pack) return;
+    const birth=telemetry.births.get(organism.id) || null;
+    const maturityAge=reproductiveMaturityAgeFor(organism);
+    const maxEnergy=organismMaxEnergy(organism);
+    const born=!!birth || organism.lineageInitial===false;
+    const birthEnergy=birth?.birthEnergy ?? (born ? Number(organism.energy||0) : null);
+    const minimumViableBirthEnergy=birth?.minimumViableBirthEnergyAdjusted
+      ?? birth?.minimumViableBirthEnergy
+      ?? (born ? minimumViableBirthEnergyForGenes(organism.genes) : null);
+    const carnivoreLife=telemetry.carnivoreLife.get(organism.id) || null;
+    const predationLife=telemetry.predationIndividuals.get(organism.id) || null;
+    const packAttackAttempts=telemetry.packFormation.attackAttempts.filter(
+      attempt=>attempt.predatorId===organism.id
+    );
+    packMemberLifecycleTelemetryState.events.push({
+      frame,
+      type,
+      packId:pack.id,
+      packCreatedFrame:Number(pack.createdFrame||0),
+      packSizeBefore:packIdentityLivingMembers(pack).length,
+      organismId:organism.id,
+      founder:organism.id===pack.founderId,
+      born,
+      parentId:organism.parentId ?? birth?.parentId ?? null,
+      mateParentId:organism.mateParentId ?? birth?.mateParentId ?? null,
+      generationDepth:Number(organism.generationDepth ?? birth?.generationDepth ?? 0),
+      lineageId:organism.lineageId ?? null,
+      speciesKey:organism.speciesKey ?? null,
+      age:Number(organism.age||0),
+      birthFrame:organism.birthFrame ?? birth?.frame ?? null,
+      maturityAge:Number.isFinite(maturityAge) ? maturityAge : null,
+      reachedMaturity:hasReachedReproductiveMaturity(organism),
+      energy:Number(organism.energy||0),
+      maxEnergy:Number(maxEnergy||0),
+      energyRatio:maxEnergy>0 ? Number(organism.energy||0)/maxEnergy : null,
+      reproThreshold:Number(organism.reproThreshold||0),
+      birthEnergy,
+      minimumViableBirthEnergy,
+      desiredClutch:birth?.desiredClutch ?? (born ? desiredClutchFromGenes(organism.genes) : null),
+      actualClutch:birth?.actualClutch ?? birth?.clutch ?? null,
+      firstPredationFrame:birth?.firstPredationFrame ?? organism._telemetryLastPredationSuccessFrame ?? null,
+      reproducedFrame:birth?.reproducedFrame ?? null,
+      hadValidPreyInSense:!!carnivoreLife?.hadValidPreyInSense,
+      validPreySenseCount:Number(carnivoreLife?.validPreySenseCount||0),
+      targetCount:Number(carnivoreLife?.targetCount||0),
+      chaseCount:Number(carnivoreLife?.chaseCount||0),
+      contactCount:Number(carnivoreLife?.contactCount||0),
+      attackCount:Number(carnivoreLife?.attackCount||0),
+      predationSuccessCount:Number(carnivoreLife?.predationSuccessCount||0),
+      firstValidPreyFrame:predationLife?.firstValidPreyFrame ?? carnivoreLife?.firstValidPreyFrame ?? null,
+      firstTargetFrame:predationLife?.firstTargetFrame ?? carnivoreLife?.firstTargetFrame ?? null,
+      firstChaseFrame:predationLife?.firstChaseFrame ?? carnivoreLife?.firstChaseFrame ?? null,
+      firstContactFrame:predationLife?.firstContactFrame ?? carnivoreLife?.firstContactFrame ?? null,
+      firstAttackFrame:predationLife?.firstAttackFrame ?? carnivoreLife?.firstAttackFrame ?? null,
+      predationDominantFailure:predationLife?.dominantFailureReason ?? null,
+      predationFailureCounts:predationLife?.failureCounts ? {...predationLife.failureCounts} : null,
+      packAttackAttemptCount:packAttackAttempts.length,
+      packAttackAttemptsWithHelper:packAttackAttempts.filter(attempt=>attempt.eligibleHelperCount>0).length,
+      packAttackMaxHelperCount:packAttackAttempts.reduce(
+        (max,attempt)=>Math.max(max,Number(attempt.eligibleHelperCount||0)),
+        0
+      ),
+      packAttackAttempts:packAttackAttempts.map(attempt=>({
+        frame:attempt.frame,
+        preyId:attempt.preyId,
+        eligibleHelperCount:attempt.eligibleHelperCount,
+        rawAttackProbability:attempt.rawAttackProbability,
+        finalAttackProbability:attempt.finalAttackProbability,
+        predationRoll:attempt.predationRoll,
+        success:attempt.success,
+        sizeSuccessMul:attempt.sizeSuccessMul,
+        defenseMul:attempt.defenseMul,
+        groupMul:attempt.groupMul
+      })),
+      ...extra
+    });
+    if(packMemberLifecycleTelemetryState.events.length>PACK_MEMBER_LIFECYCLE_EVENT_LIMIT){
+      packMemberLifecycleTelemetryState.events.splice(
+        0,
+        packMemberLifecycleTelemetryState.events.length-PACK_MEMBER_LIFECYCLE_EVENT_LIMIT
+      );
+    }
+  }
+  function packMemberLifecycleSummary(){
+    const events=packMemberLifecycleTelemetryState.events.map(event=>({...event}));
+    const members=new Map();
+    const packs=new Map();
+    const deathCauses={starvation:0,predation:0,oldAge:0,overcrowding:0,other:0};
+    let bornMembers=0;
+    let bornDeaths=0;
+    let bornMaturedBeforeDeath=0;
+    let bornReproduced=0;
+    let bornPredationSuccess=0;
+    for(const event of events){
+      const pack=packs.get(event.packId) || {
+        packId:event.packId,
+        createdFrame:event.packCreatedFrame,
+        members:new Set(),
+        joins:0,
+        deaths:0,
+        reproductions:0
+      };
+      packs.set(event.packId,pack);
+      pack.members.add(event.organismId);
+      if(event.type==='join') pack.joins++;
+      if(event.type==='death') pack.deaths++;
+      if(event.type==='reproduced') pack.reproductions++;
+      const key=event.packId+':'+event.organismId;
+      const member=members.get(key) || {
+        packId:event.packId,
+        organismId:event.organismId,
+        founder:!!event.founder,
+        born:!!event.born,
+        parentId:event.parentId,
+        generationDepth:event.generationDepth,
+        joinFrame:null,
+        deathFrame:null,
+        deathCause:null,
+        reachedMaturity:false,
+        firstPredationFrame:null,
+        reproducedFrame:null
+      };
+      members.set(key,member);
+      if(event.type==='join'){
+        member.joinFrame=event.frame;
+        member.joinReason=event.reason ?? null;
+        member.birthEnergy=event.birthEnergy;
+        member.minimumViableBirthEnergy=event.minimumViableBirthEnergy;
+        member.maturityAge=event.maturityAge;
+      }
+      if(event.type==='reproduced'){
+        member.reproducedFrame=event.frame;
+        member.energyBeforeReproduction=event.energyBeforeReproduction ?? null;
+        member.energyAfterReproduction=event.energyAfterReproduction ?? event.energy;
+      }
+      if(event.firstPredationFrame!=null) member.firstPredationFrame=event.firstPredationFrame;
+      if(event.reachedMaturity) member.reachedMaturity=true;
+      if(event.type==='death'){
+        member.deathFrame=event.frame;
+        member.deathCause=event.deathCause || 'other';
+        member.ageAtDeath=event.age;
+        member.energyAtDeath=event.energy;
+        member.reachedMaturity=!!event.reachedMaturity;
+        member.hadValidPreyInSense=!!event.hadValidPreyInSense;
+        member.validPreySenseCount=event.validPreySenseCount;
+        member.targetCount=event.targetCount;
+        member.chaseCount=event.chaseCount;
+        member.contactCount=event.contactCount;
+        member.attackCount=event.attackCount;
+        member.predationSuccessCount=event.predationSuccessCount;
+        member.firstValidPreyFrame=event.firstValidPreyFrame;
+        member.firstTargetFrame=event.firstTargetFrame;
+        member.firstChaseFrame=event.firstChaseFrame;
+        member.firstContactFrame=event.firstContactFrame;
+        member.firstAttackFrame=event.firstAttackFrame;
+        member.predationDominantFailure=event.predationDominantFailure;
+        member.predationFailureCounts=event.predationFailureCounts;
+        member.packAttackAttemptCount=event.packAttackAttemptCount;
+        member.packAttackAttemptsWithHelper=event.packAttackAttemptsWithHelper;
+        member.packAttackMaxHelperCount=event.packAttackMaxHelperCount;
+        member.packAttackAttempts=event.packAttackAttempts;
+        deathCauses[member.deathCause]=(deathCauses[member.deathCause]||0)+1;
+      }
+    }
+    const memberRows=Array.from(members.values()).sort(
+      (a,b)=>Number(a.joinFrame||0)-Number(b.joinFrame||0) || a.organismId-b.organismId
+    );
+    for(const member of memberRows){
+      if(!member.born) continue;
+      bornMembers++;
+      if(member.deathFrame!=null) bornDeaths++;
+      if(member.deathFrame!=null && member.reachedMaturity) bornMaturedBeforeDeath++;
+      if(member.reproducedFrame!=null) bornReproduced++;
+      if(member.firstPredationFrame!=null) bornPredationSuccess++;
+    }
+    return {
+      eventCount:events.length,
+      packCount:packs.size,
+      memberCount:memberRows.length,
+      bornMembers,
+      bornDeaths,
+      bornMaturedBeforeDeath,
+      bornReproduced,
+      bornPredationSuccess,
+      deathCauses,
+      packs:Array.from(packs.values()).map(pack=>({
+        packId:pack.packId,
+        createdFrame:pack.createdFrame,
+        memberCount:pack.members.size,
+        joins:pack.joins,
+        deaths:pack.deaths,
+        reproductions:pack.reproductions
+      })),
+      members:memberRows,
+      events
+    };
+  }
   function telemetryPush(event){
     telemetry.events.push({frame, ...event});
     if(telemetry.events.length>TELEMETRY_EVENT_LIMIT) telemetry.events.splice(0, telemetry.events.length-TELEMETRY_EVENT_LIMIT+1000);
@@ -3471,6 +3671,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function resetPackIdentityState(){
     packIdentityState.nextPackId=1;
     packIdentityState.packs={};
+    packMemberLifecycleTelemetryState.events.length=0;
     Object.assign(packIdentityState.telemetry,{
       packsCreated:0,
       packsDissolved:0,
@@ -3556,6 +3757,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const ai=packBiologicalIdentityForOrganism(a);
     const bi=packBiologicalIdentityForOrganism(b);
     return !!(ai && bi && ai.mode===bi.mode && ai.key===bi.key);
+  }
+  // Keep the legacy loose biological grouping while switching its identity source.
+  function samePackBehaviorIdentity(a,b){
+    if(!a || !b) return false;
+    if(lineageAwarePackIdentityEnabled()) return samePackBiologicalIdentity(a,b);
+    return packIdentitySpeciesKey(a)===packIdentitySpeciesKey(b);
   }
   function packIdentityApplyRecord(pack,identity){
     if(!pack || !identity) return null;
@@ -3772,6 +3979,13 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         energyRatio:telemetryEnergyRatio(organism),
         maturityRatio:packReproductionMaturityRatio(organism),
         ...extra
+      });
+    }
+    if(gate==='reproduced'){
+      packMemberLifecycleEvent('reproduced',organism,pack,{
+        births:Number(extra.births||0),
+        energyBeforeReproduction:organism._telemetryLastReproductionEnergyBefore ?? null,
+        energyAfterReproduction:organism._telemetryLastReproductionEnergyAfter ?? Number(organism.energy||0)
       });
     }
     return row;
@@ -4000,6 +4214,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         if(childSpecies && packSpecies && childSpecies!==packSpecies) packIdentityTelemetry().packSameLineageCrossSpeciesInheritedBirths++;
       }
     }
+    packMemberLifecycleEvent('join',organism,pack,{
+      reason:options.reason || 'join',
+      inheritedFromParent:!!options.inheritedFromParent,
+      inheritedFromMate:!!options.inheritedFromMate,
+      packSizeAfter:packIdentityLivingMembers(pack).length
+    });
     return true;
   }
   function leavePackIdentity(organism,reason='leave'){
@@ -4031,6 +4251,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     organism.packAgeAtDeath=organism.packJoinFrame==null ? null : Math.max(0,frame-Number(organism.packJoinFrame));
     organism.packMembershipDuration=organism.packAgeAtDeath;
     if(!pack || pack.dissolvedFrame!=null) return false;
+    packMemberLifecycleEvent('death',organism,pack,{
+      deathCause:telemetryDeathCauseKey(organism.deathCause),
+      membershipDuration:organism.packMembershipDuration
+    });
     pack.memberIds=packIdentitySanitizeMemberIds((pack.memberIds||[]).filter(id=>Number(id)!==organism.id));
     pack.deaths=Number(pack.deaths||0)+1;
     pack.lastActiveFrame=frame;
@@ -6179,7 +6403,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(!predationUsesPackHelpers(predator) || !prey || !Number.isFinite(Number(prey.x)) || !Number.isFinite(Number(prey.y))) return helpers;
     forEachOrgNeighbors(prey.x,prey.y,PACK_HELPER_RADIUS,(helper)=>{
       if(!helper || helper===predator || helper===prey || helper.dead || !helper.genes) return;
-      if(helper.speciesKey!==predator.speciesKey) return;
+      if(!samePackBehaviorIdentity(helper,predator)) return;
       if(!isPackHunter(helper)) return;
       helpers.push(helper);
     });
@@ -6494,7 +6718,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const visit=(o,dPred,dPrey)=>{
       if(!o || o===predator || !isPackHunter(o)) return;
       if(o.dead) return;
-      const sameSpecies=o.speciesKey===predator.speciesKey;
+      const sameSpecies=samePackBehaviorIdentity(o,predator);
       if(sameSpecies) counts.livingPackSameSpeciesWorld++;
       else counts.livingPackDifferentSpeciesWorld++;
       if(!sameSpecies) return;
@@ -6528,11 +6752,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     }
     counts.nearbyDistinctTargetCount=targetSet.size;
     forEachOrgNeighbors(predator.x,predator.y,80,(o)=>{
-      if(o!==predator && o.speciesKey===predator.speciesKey && isPackHunter(o)) counts.existingChaseBonusMateCount++;
+      if(o!==predator && samePackBehaviorIdentity(o,predator) && isPackHunter(o)) counts.existingChaseBonusMateCount++;
     });
     if(prey){
       forEachOrgNeighbors(prey.x,prey.y,PACK_HELPER_RADIUS,(o2)=>{
-        if(o2!==predator && o2.speciesKey===predator.speciesKey && isPackHunter(o2)) counts.existingAttackProbabilityMateCount++;
+        if(o2!==predator && samePackBehaviorIdentity(o2,predator) && isPackHunter(o2)) counts.existingAttackProbabilityMateCount++;
       });
       const eligible=eligiblePackHelpersFor(predator,prey,'attack');
       counts.existingEligibleHelperCount=eligible.length;
@@ -6863,7 +7087,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         if(nearestSiblingDistance==null || d<nearestSiblingDistance){ nearestSiblingDistance=d; nearestSibling=sib; }
       }
       for(const mate of organisms){
-        if(!mate || mate===o || mate.dead || mate.speciesKey!==o.speciesKey || !isPackHunter(mate)) continue;
+        if(!mate || mate===o || mate.dead || !samePackBehaviorIdentity(mate,o) || !isPackHunter(mate)) continue;
         const d=Math.hypot(mate.x-o.x,mate.y-o.y);
         if(nearestSameSpeciesPackDistance==null || d<nearestSameSpeciesPackDistance){ nearestSameSpeciesPackDistance=d; nearestSameSpeciesPack=mate; }
       }
@@ -7019,6 +7243,13 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(prey===predator){ base.reason='self'; return base; }
     if(prey.dead){ base.reason='dead'; return base; }
     if((prey.protect||0)>0){ base.reason='protected'; return base; }
+    if(lineageAwarePackIdentityEnabled()
+      && samePackBehaviorIdentity(prey,predator)
+      && organisms.length>18
+    ){
+      base.reason='sameLineage';
+      return base;
+    }
     if(prey.speciesKey===predator.speciesKey && organisms.length>18){ base.reason='sameSpecies'; return base; }
     base.dietCompatible=true;
     if(preySize < minPreySize){
@@ -7037,7 +7268,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   }
   function scanPredationNeighborhood(predator, radius, context='target'){
     const rows=[];
-    const otherReasons={protected:0,sameSpecies:0,dead:0,self:0,dietIncompatible:0,missing:0,other:0};
+    const otherReasons={protected:0,sameSpecies:0,sameLineage:0,dead:0,self:0,dietIncompatible:0,missing:0,other:0};
     let observedOrganisms=0,dietCompatiblePrey=0,tooLargeRejected=0,tooSmallRejected=0,otherRejected=0,validPrey=0;
     let nearestDiet=null,nearestValid=null,nearestTooLarge=null;
     let slight=0,moderate=0,far=0,within05=0,within10=0,over25=0;
@@ -11652,9 +11883,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           fleeW += w;
           predators++;
         }
-        const sameSpecies = o.speciesKey===this.speciesKey;
-        if(!sameSpecies) return;
         const matePackHunter = isPackHunter(o);
+        const sameSocialIdentity=(packHunter && matePackHunter)
+          ? samePackBehaviorIdentity(this,o)
+          : o.speciesKey===this.speciesKey;
+        if(!sameSocialIdentity) return;
         if(!canUseGroupStrategy(o.genes) && !(packHunter && matePackHunter)) return;
         if(packHunter && matePackHunter && o.preyTargetId){
           const matePrey = organismById(o.preyTargetId);
@@ -11820,7 +12053,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         telemetryRecordPredationScan(this,{
           potential:scan.dietCompatiblePrey,
           sizeBlocked:scan.tooLargeRejected,
-          sameSpeciesExcluded:scan.otherReasons?.sameSpecies || 0,
+          sameSpeciesExcluded:Number(scan.otherReasons?.sameSpecies || 0)+Number(scan.otherReasons?.sameLineage || 0),
           valid:scan.validPrey
         });
         telemetryRecordPredationSizeScan(this,scan);
@@ -11914,7 +12147,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       let packBonus=1;
       if(isPackHunter(this)){
         let mates=0;
-        forEachOrgNeighbors(this.x,this.y,80,(o)=>{ if(o!==this && o.speciesKey===this.speciesKey && isPackHunter(o)) mates++; });
+        forEachOrgNeighbors(this.x,this.y,80,(o)=>{ if(o!==this && samePackBehaviorIdentity(o,this) && isPackHunter(o)) mates++; });
         packBonus += Math.min(0.28, mates*0.06);
       }
       if(ambush && d<this.senseR*0.50) this.burstTimer=Math.max(this.burstTimer,20);
@@ -12675,7 +12908,7 @@ if(Z>0.08){
       if(isAmbusherPredator(this)){ p*= 1.0*rareFactor('ambusher'); if(this.burstTimer>0) p*=1.22; }
       if(isPackHunter(this)){
         let mates=0;
-        forEachOrgNeighbors(prey.x,prey.y,76,(o2)=>{ if(o2!==this && o2.speciesKey===this.speciesKey && isPackHunter(o2)) mates++; });
+        forEachOrgNeighbors(prey.x,prey.y,76,(o2)=>{ if(o2!==this && samePackBehaviorIdentity(o2,this) && isPackHunter(o2)) mates++; });
         attackProbabilityMateCount=mates;
         basePackMultiplier=diagnosticPackAttackBase() + 0.095*mates;
         rareFactorPack=rareFactor('pack');
@@ -21127,8 +21360,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const diedBeforeMaturity=birth?.diedBeforeMaturity===true || (birth?.deathFrame!=null && birth?.reachedMaturity==null);
     if(diedBeforeMaturity && birth?.deathCause==='starvation') metric.juvenileStarvationDeaths++;
     if(diedBeforeMaturity && birth?.deathCause==='predation') metric.juvenilePredationDeaths++;
-    const firstPredation=Number(birth?.firstPredationFrame);
-    const maturityFrame=Number(birth?.reachedMaturity);
+    const firstPredation=birth?.firstPredationFrame==null ? null : Number(birth.firstPredationFrame);
+    const maturityFrame=birth?.reachedMaturity==null ? null : Number(birth.reachedMaturity);
     if(Number.isFinite(firstPredation) && (!Number.isFinite(maturityFrame) || firstPredation<=maturityFrame)){
       metric.juvenilePredationSuccesses++;
       metric.juvenileFeedingSuccesses++;
@@ -23033,6 +23266,31 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
 
       const repro=runLifeHistoryReproducibilityMicroTest({seed:41001,steps:120,enabled:true,juvenileDevelopment:true});
       add('Micro G juvenile reproducibility', repro.ok, {seed:repro.seed,steps:repro.steps,juvenileDevelopment:repro.juvenileDevelopment});
+
+      const nullPredationMetric=juvenileDevelopmentMetricBlank();
+      juvenileDevelopmentAddBirth(nullPredationMetric,{
+        generationDepth:1,
+        firstPredationFrame:null,
+        reachedMaturity:50,
+        frame:0
+      });
+      const realPredationMetric=juvenileDevelopmentMetricBlank();
+      juvenileDevelopmentAddBirth(realPredationMetric,{
+        generationDepth:1,
+        firstPredationFrame:40,
+        reachedMaturity:50,
+        frame:0
+      });
+      add('Micro H null predation frame is not success',
+        nullPredationMetric.juvenilePredationSuccesses===0
+          && nullPredationMetric.juvenileFeedingSuccesses===0
+          && realPredationMetric.juvenilePredationSuccesses===1
+          && realPredationMetric.juvenileFeedingSuccesses===1,
+        {
+          nullPredationSuccesses:nullPredationMetric.juvenilePredationSuccesses,
+          realPredationSuccesses:realPredationMetric.juvenilePredationSuccesses
+        }
+      );
     } finally {
       featureFlags.evolvableLifeHistory=oldLife;
       featureFlags.juvenileDevelopment=oldJuvenile;
@@ -26888,6 +27146,91 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           && Number(packIdentityTelemetry().packInheritedClutchChildren||0)===2,
         {inherited:[mInherited1,mInherited2],pack:mPack,children:[{id:mChild1.id,packId:mChild1.packId},{id:mChild2.id,packId:mChild2.packId}],telemetry:{...packIdentityTelemetry()}}
       );
+
+      clear();
+      Object.assign(featureFlags,{persistentPackIdentity:true,persistentLineageRegistry:true,provisionalLineageClassification:true,lineageAwarePackIdentity:true,speciesIdentityV2:true,canonicalSpeciesAppearance:true});
+      const nDriftGenes=findSameEcotypeDifferentSpeciesGenes(genesA);
+      const nParent=make(genesA,{x:100,y:100});
+      const nChild=nDriftGenes ? make(nDriftGenes,{x:104,y:100,born:true,parentSpeciesKey:nParent.speciesKey}) : null;
+      if(nChild) classifyChildLineageAtBirth(nChild,nParent,null);
+      const nPrey=make(genesB,{x:108,y:100,eligible:false});
+      if(nChild) createPackIdentity([nParent,nChild]);
+      buildSpatialIndex();
+      const nHelpers=predationEligiblePackHelpers(nParent,nPrey,'micro-n');
+      add('Micro N same-lineage different-species member is pack helper',
+        !!nDriftGenes
+          && !!nChild
+          && nParent.lineageId===nChild.lineageId
+          && nParent.speciesKey!==nChild.speciesKey
+          && nHelpers.some(helper=>helper.id===nChild.id)
+          && samePackBehaviorIdentity(nParent,nChild),
+        {
+          driftFound:!!nDriftGenes,
+          parent:{id:nParent.id,lineageId:nParent.lineageId,speciesKey:nParent.speciesKey,packId:nParent.packId},
+          child:nChild ? {id:nChild.id,lineageId:nChild.lineageId,speciesKey:nChild.speciesKey,packId:nChild.packId} : null,
+          helperIds:nHelpers.map(helper=>helper.id)
+        }
+      );
+
+      clear();
+      Object.assign(featureFlags,{persistentPackIdentity:true,persistentLineageRegistry:true,provisionalLineageClassification:true,lineageAwarePackIdentity:true,speciesIdentityV2:true,canonicalSpeciesAppearance:true});
+      const oParent=make(genesA,{x:100,y:100});
+      const oOther=make(genesA,{x:104,y:100});
+      cloneEstablishedLineage(oOther,'o-other');
+      const oPrey=make(genesB,{x:108,y:100,eligible:false});
+      buildSpatialIndex();
+      const oHelpers=predationEligiblePackHelpers(oParent,oPrey,'micro-o');
+      add('Micro O same-species different-lineage member is not pack helper',
+        oParent.speciesKey===oOther.speciesKey
+          && oParent.lineageId!==oOther.lineageId
+          && !oHelpers.some(helper=>helper.id===oOther.id)
+          && !samePackBehaviorIdentity(oParent,oOther),
+        {
+          parent:{id:oParent.id,lineageId:oParent.lineageId,speciesKey:oParent.speciesKey},
+          other:{id:oOther.id,lineageId:oOther.lineageId,speciesKey:oOther.speciesKey},
+          helperIds:oHelpers.map(helper=>helper.id)
+        }
+      );
+
+      featureFlags.lineageAwarePackIdentity=false;
+      const pHelpers=predationEligiblePackHelpers(oParent,oPrey,'micro-p');
+      add('Micro P feature OFF preserves legacy species pack helper',
+        pHelpers.some(helper=>helper.id===oOther.id)
+          && samePackBehaviorIdentity(oParent,oOther),
+        {
+          parent:{id:oParent.id,lineageId:oParent.lineageId,speciesKey:oParent.speciesKey},
+          other:{id:oOther.id,lineageId:oOther.lineageId,speciesKey:oOther.speciesKey},
+          helperIds:pHelpers.map(helper=>helper.id)
+        }
+      );
+
+      clear();
+      Object.assign(featureFlags,{persistentPackIdentity:true,persistentLineageRegistry:true,provisionalLineageClassification:true,lineageAwarePackIdentity:true,speciesIdentityV2:true,canonicalSpeciesAppearance:true});
+      const qDriftGenes=findSameEcotypeDifferentSpeciesGenes(genesA);
+      const qParent=make(genesA,{x:100,y:100});
+      const qChild=qDriftGenes ? make(qDriftGenes,{x:104,y:100,born:true,parentSpeciesKey:qParent.speciesKey}) : null;
+      if(qChild) classifyChildLineageAtBirth(qChild,qParent,null);
+      qParent.protect=0;
+      if(qChild) qChild.protect=0;
+      for(let i=0;i<17;i++) make(genesB,{x:300+i*2,y:300,eligible:false});
+      const qOn=qChild ? predationCandidateClassification(qChild,qParent,'micro-q') : null;
+      featureFlags.lineageAwarePackIdentity=false;
+      const qOff=qChild ? predationCandidateClassification(qChild,qParent,'micro-q-off') : null;
+      add('Micro Q same-lineage different-species pack members do not predate each other',
+        !!qChild
+          && qParent.lineageId===qChild.lineageId
+          && qParent.speciesKey!==qChild.speciesKey
+          && qOn?.valid===false
+          && qOn?.reason==='sameLineage'
+          && qOff?.valid===true,
+        {
+          population:organisms.length,
+          parent:{id:qParent.id,lineageId:qParent.lineageId,speciesKey:qParent.speciesKey},
+          child:qChild ? {id:qChild.id,lineageId:qChild.lineageId,speciesKey:qChild.speciesKey} : null,
+          enabled:qOn,
+          disabled:qOff
+        }
+      );
     }catch(err){
       add('Lineage-aware pack identity micro exception',false,{message:String(err?.message || err),stack:String(err?.stack || '')});
     }finally{
@@ -27354,6 +27697,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     packReproductionBottleneckSummary(){
       return packReproductionBottleneckSummary();
+    },
+    packMemberLifecycleSummary(){
+      return packMemberLifecycleSummary();
     },
     capturePackIdentityState(){
       return capturePackIdentityState();

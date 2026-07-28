@@ -27,6 +27,12 @@ const steps = Math.max(1, Number(process.env.ALIFE_STEPS || 2000));
 const outputDir = process.env.ALIFE_PACK_FAMILY_OUTPUT_DIR || path.join('artifacts', 'pack_family_growth_20260728');
 const outputJson = path.join(outputDir, 'pack_family_growth_results.json');
 const outputMarkdown = path.join(outputDir, 'pack_family_growth_summary.md');
+const shareFraction = Math.max(0, Math.min(0.95, Number(process.env.ALIFE_PACK_SHARE_FRACTION || 0)));
+const targetConsensus = String(process.env.ALIFE_PACK_TARGET_CONSENSUS || '').toLowerCase() === 'true';
+const packAttackBase = Math.max(0.1, Math.min(2, Number(process.env.ALIFE_PACK_ATTACK_BASE || 0.78)));
+const variant = process.env.ALIFE_PACK_VARIANT || 'pack-family-growth';
+const lineageAwarePackIdentity = String(process.env.ALIFE_LINEAGE_AWARE_PACK_IDENTITY || 'true').toLowerCase() !== 'false';
+const includeModelState = String(process.env.ALIFE_INCLUDE_MODEL_STATE || '').toLowerCase() === 'true';
 const viewport = { width: 1280, height: 720 };
 
 function average(rows) {
@@ -71,6 +77,8 @@ function compactRun(seed, payload) {
     elapsedMs: run.elapsedMs,
     packSummary,
     packTelemetry: telemetry,
+    packMemberLifecycle: payload.packMemberLifecycle,
+    juvenileDevelopment: payload.juvenileDevelopment,
     packs,
     maxPackSizeEver,
     packsAtLeast3: packs.filter(pack => Number(pack.maximumLivingMembers || 0) >= 3).map(pack => pack.id),
@@ -90,6 +98,7 @@ function compactRun(seed, payload) {
 function aggregate(results) {
   const packRows = results.flatMap(result => result.packs.map(pack => ({ seed: result.seed, ...pack })));
   const maxSizes = packRows.map(pack => Number(pack.maximumLivingMembers || 0));
+  const packMemberRows = results.flatMap(result => (result.packMemberLifecycle?.members || []).map(member => ({ seed: result.seed, ...member })));
   return {
     seeds: results.map(result => result.seed),
     steps,
@@ -118,7 +127,14 @@ function aggregate(results) {
     totalLaterInheritedBirths: packRows.reduce((sum, pack) => sum + Math.max(0, Number(pack.birthsIntoPack || 0) - 1), 0),
     packsWithRepeatedInheritedBirths: packRows.filter(pack => Number(pack.birthsIntoPack || 0) > 1).length,
     totalActivePackCount: results.reduce((sum, result) => sum + Number(result.activePackCount || 0), 0),
+    totalPackMembers: results.reduce((sum, result) => sum + Number(result.packMemberLifecycle?.memberCount || 0), 0),
+    totalBornPackMembers: results.reduce((sum, result) => sum + Number(result.packMemberLifecycle?.bornMembers || 0), 0),
+    totalBornPackMemberDeaths: results.reduce((sum, result) => sum + Number(result.packMemberLifecycle?.bornDeaths || 0), 0),
+    totalBornPackMembersMaturedBeforeDeath: results.reduce((sum, result) => sum + Number(result.packMemberLifecycle?.bornMaturedBeforeDeath || 0), 0),
+    totalBornPackMembersReproduced: results.reduce((sum, result) => sum + Number(result.packMemberLifecycle?.bornReproduced || 0), 0),
+    totalBornPackMembersWithPredationSuccess: results.reduce((sum, result) => sum + Number(result.packMemberLifecycle?.bornPredationSuccess || 0), 0),
     maximumPackSizeEver: maxSizes.length ? Math.max(...maxSizes) : 0,
+    maximumPackGenerationDepth:packMemberRows.reduce((max,member)=>Math.max(max,Number(member.generationDepth||0)),0),
     averageMaximumPackSize: average(maxSizes),
     packsAtLeast3Count: packRows.filter(pack => Number(pack.maximumLivingMembers || 0) >= 3).length,
     seedsWithPackAtLeast3: results.filter(result => result.maxPackSizeEver >= 3).map(result => result.seed),
@@ -139,7 +155,13 @@ function markdownReport(data) {
   lines.push('');
   lines.push(`- seeds: ${data.aggregate.seeds.join(', ')}`);
   lines.push(`- steps: ${data.aggregate.steps}`);
+  lines.push(`- variant: ${data.variant}`);
+  lines.push(`- shareFraction: ${data.shareFraction}`);
+  lines.push(`- targetConsensus: ${data.targetConsensus}`);
+  lines.push(`- packAttackBase: ${data.packAttackBase}`);
+  lines.push(`- lineageAwarePackIdentity: ${data.lineageAwarePackIdentity}`);
   lines.push(`- maximumPackSizeEver: ${data.aggregate.maximumPackSizeEver}`);
+  lines.push(`- maximumPackGenerationDepth: ${data.aggregate.maximumPackGenerationDepth}`);
   lines.push(`- seedsWithPackAtLeast3: ${data.aggregate.seedsWithPackAtLeast3.join(', ') || 'none'}`);
   lines.push(`- totalPacksCreated: ${data.aggregate.totalPacksCreated}`);
   lines.push(`- totalPackJoins: ${data.aggregate.totalPackJoins}`);
@@ -165,6 +187,11 @@ function markdownReport(data) {
   lines.push(`- totalLaterInheritedBirths: ${data.aggregate.totalLaterInheritedBirths}`);
   lines.push(`- packsWithRepeatedInheritedBirths: ${data.aggregate.packsWithRepeatedInheritedBirths}`);
   lines.push(`- totalActivePackCount: ${data.aggregate.totalActivePackCount}`);
+  lines.push(`- totalBornPackMembers: ${data.aggregate.totalBornPackMembers}`);
+  lines.push(`- totalBornPackMemberDeaths: ${data.aggregate.totalBornPackMemberDeaths}`);
+  lines.push(`- totalBornPackMembersMaturedBeforeDeath: ${data.aggregate.totalBornPackMembersMaturedBeforeDeath}`);
+  lines.push(`- totalBornPackMembersReproduced: ${data.aggregate.totalBornPackMembersReproduced}`);
+  lines.push(`- totalBornPackMembersWithPredationSuccess: ${data.aggregate.totalBornPackMembersWithPredationSuccess}`);
   lines.push(`- invariants: lineageMismatch=${data.aggregate.lineageMismatchMembers}, mixedLineage=${data.aggregate.mixedLineagePacks}, missingIdentity=${data.aggregate.missingRecordIdentityPacks}`);
   lines.push(`- conservation: energyCreation=${data.aggregate.energyCreationEvents}, nutrientCreation=${data.aggregate.nutrientCreationEvents}`);
   lines.push(`- badNumbers: ${data.aggregate.badNumberCount}`);
@@ -204,6 +231,16 @@ function markdownReport(data) {
   for (const pack of data.aggregate.packRows) {
     lines.push(`| ${pack.seed} | ${pack.id} | ${pack.lineageId || ''} | ${pack.createdFrame} | ${pack.dissolvedFrame ?? ''} | ${pack.maximumLivingMembers} | ${pack.totalMembersEver} | ${pack.joins} | ${pack.birthsIntoPack} | ${pack.leaves} | ${pack.deaths} | ${pack.currentLivingMembers} |`);
   }
+  lines.push('');
+  lines.push('## Pack Member Lifecycle');
+  lines.push('');
+  lines.push('| seed | packId | organismId | founder | born | joinFrame | joinReason | birthEnergy | minimumBirthEnergy | maturityAge | deathFrame | deathCause | ageAtDeath | matured | validPrey | targets | chases | contacts | attacks | predationSuccess | reproducedFrame |');
+  lines.push('| --- | --- | ---: | --- | --- | ---: | --- | ---: | ---: | ---: | ---: | --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |');
+  for (const result of data.results) {
+    for (const member of result.packMemberLifecycle?.members || []) {
+      lines.push(`| ${result.seed} | ${member.packId} | ${member.organismId} | ${member.founder ? 'yes' : 'no'} | ${member.born ? 'yes' : 'no'} | ${member.joinFrame ?? ''} | ${member.joinReason ?? ''} | ${member.birthEnergy ?? ''} | ${member.minimumViableBirthEnergy ?? ''} | ${member.maturityAge ?? ''} | ${member.deathFrame ?? ''} | ${member.deathCause ?? ''} | ${member.ageAtDeath ?? ''} | ${member.reachedMaturity ? 'yes' : 'no'} | ${member.validPreySenseCount ?? ''} | ${member.targetCount ?? ''} | ${member.chaseCount ?? ''} | ${member.contactCount ?? ''} | ${member.attackCount ?? ''} | ${member.predationSuccessCount ?? ''} | ${member.reproducedFrame ?? ''} |`);
+    }
+  }
   return lines.join('\n') + '\n';
 }
 
@@ -236,7 +273,7 @@ async function bootPage(browser, initSeed = null) {
 async function runSeed(browser, seed) {
   const boot = await bootPage(browser, seed);
   try {
-    const payload = await boot.page.evaluate(({ seed, steps }) => {
+    const payload = await boot.page.evaluate(({ seed, steps, shareFraction, targetConsensus, packAttackBase, variant, lineageAwarePackIdentity, includeModelState }) => {
       const flags = {
         evolvableLifeHistory: true,
         juvenileDevelopment: true,
@@ -248,7 +285,7 @@ async function runSeed(browser, seed) {
         provisionalLineageClassification: true,
         lineageAwareMateSelection: true,
         lineageReproductiveIsolation: false,
-        lineageAwarePackIdentity: true,
+        lineageAwarePackIdentity,
         eventKeyedVisualRng: true
       };
       const d = window.__alifeDebug;
@@ -256,23 +293,39 @@ async function runSeed(browser, seed) {
         seed,
         steps,
         restoreAfterRun: false,
-        variant: 'pack-family-growth',
-        shareFraction: 0,
-        targetConsensus: false,
-        packAttackBase: 0.78,
+        variant,
+        shareFraction,
+        targetConsensus,
+        packAttackBase,
         packHuntTelemetry: true,
+        includeModelState,
         ...flags
       });
       d.setPersistentLineageRegistry(true);
       d.setProvisionalLineageClassification(true);
       d.setPersistentPackIdentity(true);
-      d.setLineageAwarePackIdentity(true);
+      d.setLineageAwarePackIdentity(lineageAwarePackIdentity);
       const packState = d.capturePackIdentityState();
       const packSummary = d.packIdentitySummary();
+      const packMemberLifecycle = d.packMemberLifecycleSummary?.() || {
+        eventCount:0,
+        packCount:0,
+        memberCount:0,
+        bornMembers:0,
+        bornDeaths:0,
+        bornMaturedBeforeDeath:0,
+        bornReproduced:0,
+        bornPredationSuccess:0,
+        deathCauses:{},
+        packs:[],
+        members:[],
+        events:[]
+      };
+      const juvenileDevelopment = d.juvenileDevelopmentSummary();
       const roundTrip = d.roundTripSave();
       const packStateAfterRoundTrip = d.capturePackIdentityState();
-      return { run, packState, packSummary, roundTrip, packStateAfterRoundTrip };
-    }, { seed, steps });
+      return { run, packState, packSummary, packMemberLifecycle, juvenileDevelopment, roundTrip, packStateAfterRoundTrip };
+    }, { seed, steps, shareFraction, targetConsensus, packAttackBase, variant, lineageAwarePackIdentity, includeModelState });
     return { ...compactRun(seed, payload), browserErrors: boot.errors };
   } finally {
     await boot.page.close();
@@ -284,6 +337,14 @@ async function runMicros(browser) {
   try {
     return {
       ...(await boot.page.evaluate(() => ({
+        speciesIdentityV2: window.__alifeDebug.runSpeciesIdentityV2MicroTests(),
+        canonicalAppearance: window.__alifeDebug.runCanonicalSpeciesAppearanceMicroTests(),
+        persistentLineage: window.__alifeDebug.runPersistentLineageRegistryMicroTests(),
+        provisionalLineage: window.__alifeDebug.runProvisionalLineageClassificationMicroTests(),
+        lineageAwareMateSelection: window.__alifeDebug.runLineageAwareMateSelectionMicroTests(),
+        eventKeyedVisualRng: window.__alifeDebug.runEventKeyedVisualRngMicroTests(),
+        juvenileDevelopment: window.__alifeDebug.runJuvenileDevelopmentMicroTests(),
+        persistentPackIdentity: window.__alifeDebug.runPersistentPackIdentityMicroTests(),
         lineageAwarePackIdentity: window.__alifeDebug.runLineageAwarePackIdentityMicroTests(),
         packReproductionBottleneck: window.__alifeDebug.runPackReproductionBottleneckMicroTests(),
         roundTrip: window.__alifeDebug.roundTripSave()
@@ -293,6 +354,24 @@ async function runMicros(browser) {
   } finally {
     await boot.page.close();
   }
+}
+
+const requiredMicroKeys = [
+  'speciesIdentityV2',
+  'canonicalAppearance',
+  'persistentLineage',
+  'provisionalLineage',
+  'lineageAwareMateSelection',
+  'eventKeyedVisualRng',
+  'juvenileDevelopment',
+  'persistentPackIdentity',
+  'lineageAwarePackIdentity',
+  'packReproductionBottleneck',
+  'roundTrip'
+];
+
+function requiredMicrosPassed(micro) {
+  return requiredMicroKeys.every(key => micro[key]?.ok === true);
 }
 
 (async () => {
@@ -309,6 +388,12 @@ async function runMicros(browser) {
       htmlFile,
       seeds,
       steps,
+      variant,
+      shareFraction,
+      targetConsensus,
+      packAttackBase,
+      lineageAwarePackIdentity,
+      includeModelState,
       micro,
       results,
       aggregate: aggregate(results)
@@ -318,15 +403,15 @@ async function runMicros(browser) {
     console.log(JSON.stringify({
       outputJson,
       outputMarkdown,
-      microOk: micro.lineageAwarePackIdentity?.ok === true && micro.packReproductionBottleneck?.ok === true && micro.roundTrip?.ok === true,
+      microOk: requiredMicrosPassed(micro),
       aggregate: data.aggregate
     }, null, 2));
-    const ok = micro.lineageAwarePackIdentity?.ok === true
-      && micro.packReproductionBottleneck?.ok === true
-      && micro.roundTrip?.ok === true
+    const ok = requiredMicrosPassed(micro)
       && data.aggregate.maximumPackSizeEver >= 3
       && data.aggregate.totalPackInheritedBirths > 0
-      && (data.aggregate.totalLineageFamilyNeighborJoins > 0 || data.aggregate.totalInheritedClutchEvents > 0)
+      && (data.aggregate.totalLineageFamilyNeighborJoins > 0
+        || data.aggregate.totalInheritedClutchEvents > 0
+        || data.aggregate.totalLaterInheritedBirths > 0)
       && data.aggregate.lineageMismatchMembers === 0
       && data.aggregate.mixedLineagePacks === 0
       && data.aggregate.missingRecordIdentityPacks === 0
