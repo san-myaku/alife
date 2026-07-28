@@ -3577,6 +3577,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       rejectionReasons:{},
       actualPackAllyUses:0,
       sameLineageCrossSpeciesCooperations:0,
+      observedActualPackTargetSwitches:0,
       targetSwitches:0,
       retentionSteps:0,
       completedRetentionEpisodes:0,
@@ -3661,6 +3662,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       rejectionReasons:{},
       actualPackAllyUses:0,
       sameLineageCrossSpeciesCooperations:0,
+      observedActualPackTargetSwitches:0,
       targetSwitches:0,
       retentionSteps:0,
       completedRetentionEpisodes:0,
@@ -3688,6 +3690,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       rejectionReasons:{...(t.rejectionReasons||{})},
       actualPackAllyUses:Number(t.actualPackAllyUses||0),
       sameLineageCrossSpeciesCooperations:Number(t.sameLineageCrossSpeciesCooperations||0),
+      observedActualPackTargetSwitches:Number(t.observedActualPackTargetSwitches||0),
       targetSwitches:Number(t.targetSwitches||0),
       retentionSteps:Number(t.retentionSteps||0),
       completedRetentionEpisodes:Number(t.completedRetentionEpisodes||0),
@@ -4416,6 +4419,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     t.actualPackAllyUses++;
     if(a.speciesKey!==b.speciesKey) t.sameLineageCrossSpeciesCooperations++;
     return true;
+  }
+  function telemetryNoteActualPackTargetSwitch(predator){
+    if(!persistentPackIdentityEnabled() || !predator?.packId) return;
+    const pack=activePackById(predator.packId);
+    if(!pack || !packRecordMatchesOrganism(pack,predator,{recordTelemetry:false,reason:'target-switch-telemetry'})) return;
+    telemetry.packCooperativeTargeting.observedActualPackTargetSwitches++;
   }
   function packIdentityApplyRecord(pack,identity){
     if(!pack || !identity) return null;
@@ -13737,9 +13746,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
             && bestDistance<=currentDistance*cfg.clearlyBetterDistanceScale
           : reassessmentBestScore>=currentScore+0.20 && bestDistance<=currentDistance*0.90;
         if(muchCloser || clearlyBetter){
+          const switchedFromSharedTarget=this.packSharedTargetId===previousPreyId;
           telemetryEndChaseEpisode(this,'targetChanged',prey);
           telemetryRecordTargetReassessment(this,true);
-          if(packCooperativeTargetingEnabled()) telemetry.packCooperativeTargeting.targetSwitches++;
+          telemetryNoteActualPackTargetSwitch(this);
+          if(packCooperativeTargetingEnabled() && switchedFromSharedTarget) telemetry.packCooperativeTargeting.targetSwitches++;
           clearPackCooperativeTargetState(this,'target-reassessment-switch',false);
           clearChaseCommitment(this,'target-changed');
           prey=reassessmentBest;
@@ -29849,6 +29860,48 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
           && zFollower.packSharedTargetId==null
           && zFollower.preyTargetId==null,
         {sharedBeforeLeave:zSharedBeforeLeave,after:{packId:zFollower.packId,sharedTargetId:zFollower.packSharedTargetId,targetId:zFollower.preyTargetId}}
+      );
+
+      clear();
+      Object.assign(featureFlags,{persistentPackIdentity:true,persistentLineageRegistry:true,provisionalLineageClassification:true,lineageAwarePackIdentity:true,packCooperativeTargeting:true,speciesIdentityV2:true,canonicalSpeciesAppearance:true});
+      const abLeader=make(genesA,{x:104,y:100});
+      const abFollower=make(genesA,{x:100,y:100});
+      const abPrey=make(genesB,{x:112,y:100,eligible:false});
+      abPrey.protect=0;
+      createPackIdentity([abLeader,abFollower]);
+      abLeader.preyTargetId=abPrey.id;
+      abLeader.chaseTimer=80;
+      buildSpatialIndex();
+      abFollower.socialSteer();
+      const abIds={leader:abLeader.id,follower:abFollower.id,prey:abPrey.id,packId:abFollower.packId};
+      const abSaved=capture();
+      restore(abSaved);
+      const abLoadedLeader=organismById(abIds.leader);
+      const abLoadedFollower=organismById(abIds.follower);
+      const abLoadedPrey=organismById(abIds.prey);
+      add('Micro AB save/load preserves active Pack shared target state',
+        !!abLoadedLeader
+          && !!abLoadedFollower
+          && !!abLoadedPrey
+          && abLoadedFollower.packId===abIds.packId
+          && abLoadedFollower.packSharedTargetId===abIds.prey
+          && abLoadedFollower.preyTargetId===abIds.prey
+          && actualPackHuntAlly(abLoadedFollower,abLoadedLeader)
+          && packSharedTargetValidity(abLoadedFollower,abLoadedPrey,abLoadedLeader).valid,
+        {ids:abIds,loaded:{packId:abLoadedFollower?.packId,sharedTargetId:abLoadedFollower?.packSharedTargetId,targetId:abLoadedFollower?.preyTargetId,sourceId:abLoadedFollower?.packSharedTargetSourceId}}
+      );
+
+      if(abLoadedLeader && abLoadedFollower){
+        abLoadedLeader.dead=true;
+        packIdentityHandleDeath(abLoadedLeader);
+        frame+=CONFIG.ecology.packIdentity.cooperativeTargeting.supportGraceSteps+1;
+        maintainPackSharedTarget(abLoadedFollower);
+      }
+      add('Micro AC source death releases unsupported shared target after grace',
+        !!abLoadedFollower
+          && abLoadedFollower.packSharedTargetId==null
+          && abLoadedFollower.preyTargetId==null,
+        {follower:{sharedTargetId:abLoadedFollower?.packSharedTargetId,targetId:abLoadedFollower?.preyTargetId},leaderDead:!!abLoadedLeader?.dead}
       );
 
       clear();
