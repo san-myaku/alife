@@ -220,6 +220,9 @@
     <div class="row">
       <button id="perf-btn" class="btn" style="width:100%">⚙ 軽量モード: OFF</button>
     </div>
+    <div class="row">
+      <button id="world-shape-btn" class="btn on" style="width:100%" type="button" aria-label="池の形" aria-pressed="true" title="切り替えると現在の生態系がリセットされます">◯ 池: 丸</button>
+    </div>
     <div id="role-legend" class="legend" style="display:none; flex-wrap:wrap; margin-top:-4px; margin-bottom:6px">
       <span class="dot amb"></span><span class="hint">待ち伏せ</span>
       <span class="dot purs"></span><span class="hint">高速追跡</span>
@@ -337,7 +340,7 @@
   const DPR_CAP = IS_MOBILE_VIEW ? 1.12 : 1.35;
   const TAU=Math.PI*2; const rnd=(a,b)=>Math.random()*(b-a)+a; const clamp=(x,a,b)=>Math.max(a,Math.min(b,x)); const clamp01=(x)=>clamp(x,0,1); const lerp=(a,b,t)=>a+(b-a)*t; const sigmoid=x=>1/(1+Math.exp(-x));
   const WORLD_VERSION=2;
-  const DEFAULT_WORLD_SHAPE='rectangle';
+  const DEFAULT_WORLD_SHAPE='circle';
   const WORLD_GEOMETRY_SPECS=Object.freeze({
     rectangle:Object.freeze({shape:'rectangle',width:872,height:688,radius:null}),
     circle:Object.freeze({shape:'circle',width:888,height:888,radius:444})
@@ -498,7 +501,16 @@
     camera.x=worldGeometry.centerX;
     camera.y=worldGeometry.centerY;
     camera.initialized=false;
+    syncWorldShapeButton();
     return {...worldGeometry};
+  }
+  function syncWorldShapeButton(){
+    const btn=$('world-shape-btn');
+    if(!btn) return;
+    const circle=isCircleWorld();
+    btn.textContent=circle ? '◯ 池: 丸' : '▭ 池: 四角';
+    btn.classList.toggle('on',circle);
+    btn.setAttribute('aria-pressed',String(circle));
   }
   function fitCamera(){
     Object.assign(camera,getFitCamera(),{initialized:true});
@@ -18445,6 +18457,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   function pause(){ if(!running) return; running=false; $('start-btn').disabled=false; $('pause-btn').disabled=true; log('⏸ 一時停止'); }
   function reset(){
     running=false;
+    $('start-btn').disabled=false;
+    $('pause-btn').disabled=true;
     frame=0;
     resetWorldBoundaryTelemetry();
     generation=1;
@@ -18516,6 +18530,14 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   $('start-btn').addEventListener('click', start);
   $('pause-btn').addEventListener('click', pause);
   $('reset-btn').addEventListener('click', reset);
+  $('world-shape-btn').addEventListener('click', ()=>{
+    const next=isCircleWorld() ? 'rectangle' : 'circle';
+    const nextLabel=next==='circle' ? '丸' : '四角';
+    if(!confirm(`池を${nextLabel}に切り替えると、現在の生態系がリセットされます。切り替えますか？`)) return;
+    configureWorldShape(next);
+    reset();
+    showToast('season',`池を${nextLabel}に切り替えました`);
+  });
 
   const modelUi={water:false,extinct:false,evolution:false,generation:false,species:false,dayNight:false};
   function updateModel(){ inModelUpdate=true; for(const k of Object.keys(modelUi)) modelUi[k]=false; if((frame & 31)===0) autoAdjustGrid(); const steps = Math.min(4, Math.max(1, Math.floor(ui.speed))); const __budgetMs=12; const __t0=performance.now();
@@ -32338,6 +32360,7 @@ organisms.push(u);
       updateWaterStatus();
       refreshSpeciesStats();
       initDevPanel();
+      syncWorldShapeButton();
       $('start-btn').disabled=false; 
       $('pause-btn').disabled=true; 
       initChallenges(); 
