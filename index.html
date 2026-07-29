@@ -1152,6 +1152,46 @@
     step(){ this.t--; }
     draw(ctx){ const k=Math.max(0,this.t/(28+10*this.scale)); ctx.save(); ctx.translate(this.x,this.y); ctx.globalCompositeOperation='lighter'; ctx.strokeStyle=`${this.color}${(0.7*this.alphaMul*k).toFixed(3)})`; ctx.lineWidth=1.5+1.5*this.scale*k; for(let i=0;i<this.rays;i++){ const a=i*(TAU/this.rays); const L=8+18*this.scale*k; ctx.beginPath(); ctx.moveTo(Math.cos(a)*2,Math.sin(a)*2); ctx.lineTo(Math.cos(a)*L,Math.sin(a)*L); ctx.stroke(); } ctx.restore(); } }
 
+  class BirthBloom{
+    constructor(org){
+      this.x=org.x;
+      this.y=org.y;
+      this.hue=Number.isFinite(org.hue) ? org.hue : (org._symbol?.outlineHue ?? 190);
+      this.r=clamp((org.size||5)*1.35,5,11);
+      this.phase=hash01(`birth-bloom:${frame}:${org.id}`)*TAU;
+      this.motes=renderPerf.low ? 2 : 4;
+      this.t=42;
+      this.maxT=this.t;
+    }
+    step(){ this.t--; }
+    draw(ctx){
+      const p=clamp(1-this.t/this.maxT,0,1);
+      const envelope=Math.sin(Math.PI*p);
+      if(envelope<=0) return;
+      const ringR=this.r*(0.78+1.05*p);
+      ctx.save();
+      ctx.translate(this.x,this.y);
+      ctx.globalCompositeOperation='lighter';
+      const glow=ctx.createRadialGradient(0,0,0,0,0,this.r*(1.20+0.45*p));
+      glow.addColorStop(0,`hsla(${this.hue},92%,88%,${(0.12*envelope).toFixed(3)})`);
+      glow.addColorStop(0.58,`hsla(${(this.hue+24)%360},82%,68%,${(0.055*envelope).toFixed(3)})`);
+      glow.addColorStop(1,'rgba(0,0,0,0)');
+      ctx.fillStyle=glow;
+      ctx.beginPath(); ctx.arc(0,0,this.r*(1.20+0.45*p),0,TAU); ctx.fill();
+      ctx.strokeStyle=`hsla(${this.hue},94%,88%,${(0.24*envelope).toFixed(3)})`;
+      ctx.lineWidth=0.75+0.45*envelope;
+      ctx.beginPath(); ctx.arc(0,0,ringR,0,TAU); ctx.stroke();
+      for(let i=0;i<this.motes;i++){
+        const a=this.phase+(i/this.motes)*TAU;
+        const d=this.r*(0.45+0.72*p);
+        const mr=Math.max(0.65,this.r*0.095)*(0.85+0.25*envelope);
+        ctx.fillStyle=`hsla(${(this.hue+36+i*13)%360},96%,91%,${(0.30*envelope).toFixed(3)})`;
+        ctx.beginPath(); ctx.arc(Math.cos(a)*d,Math.sin(a)*d,mr,0,TAU); ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
   class RingEffect{
     constructor(x,y,opts={}){
       this.x=x; this.y=y; this.t=opts.t||48; this.maxT=this.t; this.r0=opts.r0||4; this.r1=opts.r1||42; this.color=opts.color||'rgba(120,224,150,'; this.width=opts.width||1.4;
@@ -17904,7 +17944,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         }
       }
       // 新生児反映
-      if(newborn.length){ organisms.push(...newborn); newborn.length=0; }
+      if(newborn.length){
+        for(const child of newborn) sparks.push(new BirthBloom(child));
+        organisms.push(...newborn);
+        newborn.length=0;
+      }
       // 人口制限
       applyEmergencyCapacityCull();
       // 餌の自然供給
