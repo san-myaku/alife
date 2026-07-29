@@ -336,11 +336,133 @@
   const IS_MOBILE_VIEW = window.matchMedia && window.matchMedia('(max-width: 700px)').matches;
   const DPR_CAP = IS_MOBILE_VIEW ? 1.12 : 1.35;
   const TAU=Math.PI*2; const rnd=(a,b)=>Math.random()*(b-a)+a; const clamp=(x,a,b)=>Math.max(a,Math.min(b,x)); const clamp01=(x)=>clamp(x,0,1); const lerp=(a,b,t)=>a+(b-a)*t; const sigmoid=x=>1/(1+Math.exp(-x));
-  const WORLD_VERSION=1;
-  const WORLD_W=872;
-  const WORLD_H=688;
+  const WORLD_VERSION=2;
+  const DEFAULT_WORLD_SHAPE='rectangle';
+  const WORLD_GEOMETRY_SPECS=Object.freeze({
+    rectangle:Object.freeze({shape:'rectangle',width:872,height:688,radius:null}),
+    circle:Object.freeze({shape:'circle',width:888,height:888,radius:444})
+  });
+  function normalizeWorldShape(shape){
+    const value=String(shape ?? DEFAULT_WORLD_SHAPE).trim().toLowerCase();
+    if(!Object.prototype.hasOwnProperty.call(WORLD_GEOMETRY_SPECS,value)) throw new RangeError(`Unknown world shape: ${shape}`);
+    return value;
+  }
+  function makeWorldGeometry(shape){
+    const spec=WORLD_GEOMETRY_SPECS[normalizeWorldShape(shape)];
+    return {
+      shape:spec.shape,
+      width:spec.width,
+      height:spec.height,
+      centerX:spec.width*0.5,
+      centerY:spec.height*0.5,
+      radius:spec.radius
+    };
+  }
+  let worldGeometry=makeWorldGeometry(DEFAULT_WORLD_SHAPE);
+  let WORLD_W=worldGeometry.width;
+  let WORLD_H=worldGeometry.height;
   // W/H remain model-only compatibility aliases. View layout must use VIEW_W/VIEW_H.
-  const W=WORLD_W, H=WORLD_H;
+  let W=WORLD_W, H=WORLD_H;
+  function isCircleWorld(){ return worldGeometry.shape==='circle'; }
+  function isInsideWorld(x,y,margin=0){
+    const m=Math.max(0,Number(margin)||0);
+    if(!Number.isFinite(x) || !Number.isFinite(y)) return false;
+    if(!isCircleWorld()) return x>=m && x<=W-m && y>=m && y<=H-m;
+    const r=Math.max(0,worldGeometry.radius-m);
+    const dx=x-worldGeometry.centerX,dy=y-worldGeometry.centerY;
+    return dx*dx+dy*dy<=r*r;
+  }
+  function worldBoundaryDistance(x,y){
+    if(!Number.isFinite(x) || !Number.isFinite(y)) return -Infinity;
+    if(!isCircleWorld()) return Math.min(x,y,W-x,H-y);
+    return worldGeometry.radius-Math.hypot(x-worldGeometry.centerX,y-worldGeometry.centerY);
+  }
+  function clampPointToWorld(x,y,margin=0){
+    const m=Math.max(0,Number(margin)||0);
+    if(!isCircleWorld()) return {x:clamp(Number(x),m,W-m),y:clamp(Number(y),m,H-m)};
+    const cx=worldGeometry.centerX,cy=worldGeometry.centerY;
+    const px=Number.isFinite(Number(x)) ? Number(x) : cx;
+    const py=Number.isFinite(Number(y)) ? Number(y) : cy;
+    const dx=px-cx,dy=py-cy;
+    const d=Math.hypot(dx,dy);
+    const limit=Math.max(0,worldGeometry.radius-m);
+    if(d<=limit) return {x:px,y:py};
+    if(d<=1e-12) return {x:cx,y:cy};
+    const safeLimit=Math.max(0,limit-1e-6);
+    const k=safeLimit/d;
+    return {x:cx+dx*k,y:cy+dy*k};
+  }
+  function randomPointInWorld(margin=0,rng=Math.random){
+    const m=Math.max(0,Number(margin)||0);
+    if(!isCircleWorld()){
+      return {x:rng()*(W-2*m)+m,y:rng()*(H-2*m)+m};
+    }
+    const theta=TAU*rng();
+    const radius=Math.max(0,worldGeometry.radius-m)*Math.sqrt(rng());
+    return {
+      x:worldGeometry.centerX+Math.cos(theta)*radius,
+      y:worldGeometry.centerY+Math.sin(theta)*radius
+    };
+  }
+  function reflectVelocityAtBoundary(entity,margin=0,restitution=0.5,minimumNormalSpeed=0){
+    if(!entity) return false;
+    const m=Math.max(0,Number(margin)||0);
+    const bounce=clamp(Number(restitution)||0,0,1);
+    if(!isCircleWorld()){
+      let collided=false;
+      if(entity.x<m){ entity.x=m; entity.vx*=-bounce; collided=true; }
+      if(entity.x>W-m){ entity.x=W-m; entity.vx*=-bounce; collided=true; }
+      if(entity.y<m){ entity.y=m; entity.vy*=-bounce; collided=true; }
+      if(entity.y>H-m){ entity.y=H-m; entity.vy*=-bounce; collided=true; }
+      return collided;
+    }
+    const cx=worldGeometry.centerX,cy=worldGeometry.centerY;
+    const dx=entity.x-cx,dy=entity.y-cy;
+    const d=Math.hypot(dx,dy);
+    const limit=Math.max(0,worldGeometry.radius-m);
+    if(d<=limit) return false;
+    const nx=d>1e-12 ? dx/d : 1;
+    const ny=d>1e-12 ? dy/d : 0;
+    const safeLimit=Math.max(0,limit-1e-6);
+    entity.x=cx+nx*safeLimit;
+    entity.y=cy+ny*safeLimit;
+    const vx=Number(entity.vx)||0,vy=Number(entity.vy)||0;
+    const outward=vx*nx+vy*ny;
+    if(outward>0){
+      const reflected=Math.max(outward,Math.max(0,Number(minimumNormalSpeed)||0));
+      entity.vx=vx-(1+bounce)*reflected*nx;
+      entity.vy=vy-(1+bounce)*reflected*ny;
+    }
+    return true;
+  }
+  function clipSegmentToWorld(x1,y1,x2,y2,margin=0){
+    if(!isCircleWorld()){
+      return {x1:Number(x1),y1:Number(y1),x2:Number(x2),y2:Number(y2)};
+    }
+    const cx=worldGeometry.centerX,cy=worldGeometry.centerY;
+    const r=Math.max(0,worldGeometry.radius-Math.max(0,Number(margin)||0));
+    const ax=Number(x1)-cx,ay=Number(y1)-cy;
+    const dx=Number(x2)-Number(x1),dy=Number(y2)-Number(y1);
+    const a=dx*dx+dy*dy;
+    if(a<=1e-12){
+      const p=clampPointToWorld(x1,y1,margin);
+      return isInsideWorld(p.x,p.y,margin) ? {x1:p.x,y1:p.y,x2:p.x,y2:p.y} : null;
+    }
+    const b=2*(ax*dx+ay*dy);
+    const c=ax*ax+ay*ay-r*r;
+    const disc=b*b-4*a*c;
+    if(disc<0) return null;
+    const root=Math.sqrt(disc);
+    const enter=(-b-root)/(2*a),exit=(-b+root)/(2*a);
+    const from=Math.max(0,enter),to=Math.min(1,exit);
+    if(to<from) return null;
+    return {
+      x1:Number(x1)+dx*from,
+      y1:Number(y1)+dy*from,
+      x2:Number(x1)+dx*to,
+      y2:Number(y1)+dy*to
+    };
+  }
   let VIEW_W=0,VIEW_H=0,DPR=1;
   const camera={x:WORLD_W*0.5,y:WORLD_H*0.5,zoom:1,minZoom:1,maxZoom:6,initialized:false};
   function getFitCamera(){
@@ -365,7 +487,18 @@
   }
   function isScreenPointInWorld(x,y){
     const p=screenToWorld(x,y);
-    return p.x>=0 && p.x<=WORLD_W && p.y>=0 && p.y<=WORLD_H;
+    return isInsideWorld(p.x,p.y,0);
+  }
+  function configureWorldShape(shape){
+    worldGeometry=makeWorldGeometry(shape);
+    WORLD_W=worldGeometry.width;
+    WORLD_H=worldGeometry.height;
+    W=WORLD_W;
+    H=WORLD_H;
+    camera.x=worldGeometry.centerX;
+    camera.y=worldGeometry.centerY;
+    camera.initialized=false;
+    return {...worldGeometry};
   }
   function fitCamera(){
     Object.assign(camera,getFitCamera(),{initialized:true});
@@ -808,6 +941,205 @@
 
   // ===== Toast =====
   let frame=0, inModelUpdate=false;
+  const worldBoundaryTelemetry={
+    sampledFrames:0,
+    organismSamples:0,
+    radialBandOccupancy:[0,0,0,0,0],
+    collisions:0,
+    rapidCollisions:0,
+    collisionIndividuals:new Set(),
+    rapidCollisionIndividuals:new Set(),
+    lastCollisionFrame:new Map(),
+    pendingReturn:new Map(),
+    contactsEvaluated:0,
+    contactsReturnedInside:0,
+    births:0,
+    shorelineBirths:0,
+    deaths:0,
+    shorelineDeaths:0,
+    predationDeaths:0,
+    shorelinePredationDeaths:0,
+    longShorelineIndividuals:new Set(),
+    longTangentialIndividuals:new Set(),
+    residency:new Map(),
+    outsideManualToolActions:0
+  };
+  function resetWorldBoundaryTelemetry(){
+    worldBoundaryTelemetry.sampledFrames=0;
+    worldBoundaryTelemetry.organismSamples=0;
+    worldBoundaryTelemetry.radialBandOccupancy.fill(0);
+    worldBoundaryTelemetry.collisions=0;
+    worldBoundaryTelemetry.rapidCollisions=0;
+    worldBoundaryTelemetry.collisionIndividuals.clear();
+    worldBoundaryTelemetry.rapidCollisionIndividuals.clear();
+    worldBoundaryTelemetry.lastCollisionFrame.clear();
+    worldBoundaryTelemetry.pendingReturn.clear();
+    worldBoundaryTelemetry.contactsEvaluated=0;
+    worldBoundaryTelemetry.contactsReturnedInside=0;
+    worldBoundaryTelemetry.births=0;
+    worldBoundaryTelemetry.shorelineBirths=0;
+    worldBoundaryTelemetry.deaths=0;
+    worldBoundaryTelemetry.shorelineDeaths=0;
+    worldBoundaryTelemetry.predationDeaths=0;
+    worldBoundaryTelemetry.shorelinePredationDeaths=0;
+    worldBoundaryTelemetry.longShorelineIndividuals.clear();
+    worldBoundaryTelemetry.longTangentialIndividuals.clear();
+    worldBoundaryTelemetry.residency.clear();
+    worldBoundaryTelemetry.outsideManualToolActions=0;
+  }
+  function worldRadialBand(x,y){
+    let q=0;
+    if(isCircleWorld()){
+      q=Math.hypot(x-worldGeometry.centerX,y-worldGeometry.centerY)/Math.max(1e-9,worldGeometry.radius);
+    }else{
+      const nx=Math.abs(x-worldGeometry.centerX)/Math.max(1e-9,W*0.5);
+      const ny=Math.abs(y-worldGeometry.centerY)/Math.max(1e-9,H*0.5);
+      q=Math.max(nx,ny);
+    }
+    return Math.min(4,Math.max(0,Math.floor(clamp01(q*q)*5)));
+  }
+  function isShorelinePoint(x,y){ return worldRadialBand(x,y)===4; }
+  function shorelineDepth(){
+    if(isCircleWorld()) return worldGeometry.radius*(1-Math.sqrt(0.8));
+    return Math.min(W,H)*0.5*(1-Math.sqrt(0.8));
+  }
+  function recordWorldBoundaryCollision(entity){
+    if(!entity || entity.id==null) return;
+    const id=entity.id;
+    const previous=worldBoundaryTelemetry.lastCollisionFrame.get(id);
+    worldBoundaryTelemetry.collisions++;
+    worldBoundaryTelemetry.collisionIndividuals.add(id);
+    if(previous!=null && frame-previous<=8){
+      worldBoundaryTelemetry.rapidCollisions++;
+      worldBoundaryTelemetry.rapidCollisionIndividuals.add(id);
+    }
+    worldBoundaryTelemetry.lastCollisionFrame.set(id,frame);
+    worldBoundaryTelemetry.pendingReturn.set(id,{frame});
+  }
+  function recordWorldBoundaryBirth(child){
+    if(!child) return;
+    worldBoundaryTelemetry.births++;
+    if(isShorelinePoint(child.x,child.y)) worldBoundaryTelemetry.shorelineBirths++;
+  }
+  function recordWorldBoundaryDeath(entity,cause){
+    if(!entity) return;
+    const shoreline=isShorelinePoint(entity.x,entity.y);
+    worldBoundaryTelemetry.deaths++;
+    if(shoreline) worldBoundaryTelemetry.shorelineDeaths++;
+    if(cause==='捕食'){
+      worldBoundaryTelemetry.predationDeaths++;
+      if(shoreline) worldBoundaryTelemetry.shorelinePredationDeaths++;
+    }
+  }
+  function sampleWorldBoundaryTelemetry(){
+    worldBoundaryTelemetry.sampledFrames++;
+    const livingIds=new Set();
+    const inwardDepth=shorelineDepth();
+    for(const o of organisms){
+      if(!o || o.dead) continue;
+      livingIds.add(o.id);
+      const band=worldRadialBand(o.x,o.y);
+      worldBoundaryTelemetry.radialBandOccupancy[band]++;
+      worldBoundaryTelemetry.organismSamples++;
+      const near=band===4;
+      let tangential=false;
+      if(near && isCircleWorld()){
+        const dx=o.x-worldGeometry.centerX,dy=o.y-worldGeometry.centerY;
+        const d=Math.hypot(dx,dy)||1;
+        const nx=dx/d,ny=dy/d;
+        const radial=Math.abs((o.vx||0)*nx+(o.vy||0)*ny);
+        const tangent=Math.abs(-(o.vx||0)*ny+(o.vy||0)*nx);
+        tangential=Math.hypot(o.vx||0,o.vy||0)>0.03 && tangent>radial*1.5;
+      }
+      const row=worldBoundaryTelemetry.residency.get(o.id) || {near:0,tangent:0};
+      row.near=near ? row.near+1 : 0;
+      row.tangent=near && tangential ? row.tangent+1 : 0;
+      worldBoundaryTelemetry.residency.set(o.id,row);
+      if(row.near>=180) worldBoundaryTelemetry.longShorelineIndividuals.add(o.id);
+      if(row.tangent>=120) worldBoundaryTelemetry.longTangentialIndividuals.add(o.id);
+      const pending=worldBoundaryTelemetry.pendingReturn.get(o.id);
+      if(pending){
+        if(worldBoundaryDistance(o.x,o.y)>=inwardDepth){
+          worldBoundaryTelemetry.contactsEvaluated++;
+          worldBoundaryTelemetry.contactsReturnedInside++;
+          worldBoundaryTelemetry.pendingReturn.delete(o.id);
+        }else if(frame-pending.frame>120){
+          worldBoundaryTelemetry.contactsEvaluated++;
+          worldBoundaryTelemetry.pendingReturn.delete(o.id);
+        }
+      }
+    }
+    for(const id of worldBoundaryTelemetry.residency.keys()){
+      if(!livingIds.has(id)) worldBoundaryTelemetry.residency.delete(id);
+    }
+    for(const [id,pending] of worldBoundaryTelemetry.pendingReturn){
+      if(!livingIds.has(id) || frame-pending.frame>120){
+        worldBoundaryTelemetry.contactsEvaluated++;
+        worldBoundaryTelemetry.pendingReturn.delete(id);
+      }
+    }
+  }
+  function worldLeakSummary(){
+    const outside=(rows,marginOf)=>rows.reduce((n,row)=>n+(!isInsideWorld(row.x,row.y,Math.max(0,marginOf(row)||0))?1:0),0);
+    const outsideMembranes=membranes.reduce((n,m)=>n+(
+      !isInsideWorld(m.x1,m.y1,(m.width||0)*0.5)
+      || !isInsideWorld(m.x2,m.y2,(m.width||0)*0.5)
+      ? 1 : 0
+    ),0);
+    const outsideEffects=effects.reduce((n,e)=>n+(!isInsideWorld(e.x,e.y,e.r||0)?1:0),0);
+    const outsideCurrents=waterCurrents.reduce((n,e)=>n+(!isInsideWorld(e.x,e.y,e.r||0)?1:0),0);
+    return {
+      organisms:outside(organisms,o=>o.size||0),
+      food:outside(food,f=>f.r||0),
+      plankton:outside(plankton,()=>0),
+      corpses:outside(corpses,c=>c.radius||0),
+      detritusParticles:outside(food.filter(f=>f.type==='detritus'),f=>f.r||0),
+      effects:outsideEffects,
+      waterCurrents:outsideCurrents,
+      membranes:outsideMembranes,
+      field:window.env?.fieldLeakSummary ? window.env.fieldLeakSummary() : null,
+      manualToolActions:worldBoundaryTelemetry.outsideManualToolActions
+    };
+  }
+  function worldBoundarySummary(){
+    const totalSamples=worldBoundaryTelemetry.organismSamples;
+    const bandAverage=worldBoundaryTelemetry.radialBandOccupancy.map(value=>worldBoundaryTelemetry.sampledFrames ? value/worldBoundaryTelemetry.sampledFrames : 0);
+    return {
+      sampledFrames:worldBoundaryTelemetry.sampledFrames,
+      organismSamples:totalSamples,
+      radialBands:{
+        equalAreaBands:5,
+        occupancySteps:worldBoundaryTelemetry.radialBandOccupancy.slice(),
+        averageLivingCount:bandAverage,
+        outerBandResidenceRate:totalSamples ? worldBoundaryTelemetry.radialBandOccupancy[4]/totalSamples : 0
+      },
+      collisions:{
+        total:worldBoundaryTelemetry.collisions,
+        individuals:worldBoundaryTelemetry.collisionIndividuals.size,
+        rapidRepeatEvents:worldBoundaryTelemetry.rapidCollisions,
+        rapidRepeatIndividuals:worldBoundaryTelemetry.rapidCollisionIndividuals.size,
+        contactsEvaluated:worldBoundaryTelemetry.contactsEvaluated,
+        returnedInside:worldBoundaryTelemetry.contactsReturnedInside,
+        returnedInsideRate:worldBoundaryTelemetry.contactsEvaluated ? worldBoundaryTelemetry.contactsReturnedInside/worldBoundaryTelemetry.contactsEvaluated : 1
+      },
+      shoreline:{
+        births:worldBoundaryTelemetry.shorelineBirths,
+        birthRate:worldBoundaryTelemetry.births ? worldBoundaryTelemetry.shorelineBirths/worldBoundaryTelemetry.births : 0,
+        deaths:worldBoundaryTelemetry.shorelineDeaths,
+        deathRate:worldBoundaryTelemetry.deaths ? worldBoundaryTelemetry.shorelineDeaths/worldBoundaryTelemetry.deaths : 0,
+        predationDeaths:worldBoundaryTelemetry.shorelinePredationDeaths,
+        predationRate:worldBoundaryTelemetry.predationDeaths ? worldBoundaryTelemetry.shorelinePredationDeaths/worldBoundaryTelemetry.predationDeaths : 0,
+        longResidenceIndividuals:worldBoundaryTelemetry.longShorelineIndividuals.size,
+        longTangentialIndividuals:worldBoundaryTelemetry.longTangentialIndividuals.size
+      },
+      totals:{
+        births:worldBoundaryTelemetry.births,
+        deaths:worldBoundaryTelemetry.deaths,
+        predationDeaths:worldBoundaryTelemetry.predationDeaths
+      },
+      leaks:worldLeakSummary()
+    };
+  }
   const toastsEl = $('toasts');
   const recentToast = new Map();
   const toastQueue = [];
@@ -978,8 +1310,9 @@
   step(){
     if(this.type!=='detritus') return true;
     this.t -= 1;
-    this.x=clamp(this.x+this.vx,4,W-4);
-    this.y=clamp(this.y+this.vy,4,H-4);
+    const p=clampPointToWorld(this.x+this.vx,this.y+this.vy,4);
+    this.x=p.x;
+    this.y=p.y;
     this.vx*=0.992; this.vy*=0.992;
     this.r*=0.9997;
     if(this.t<=0 || this.r<0.55){
@@ -1036,7 +1369,8 @@
     for(let i=0;i<count && liveDetritus<DETRITUS_PARTICLE_CAP;i++){
       const a=Math.random()*TAU;
       const d=rnd(Math.max(1,c.radius*0.35), Math.max(3,c.radius*1.75));
-      const f=new Food(clamp(c.x+Math.cos(a)*d,6,W-6), clamp(c.y+Math.sin(a)*d,6,H-6), 'detritus', {eventKey:`corpse-detritus:${frame}:${Math.round(c.x*100)}:${Math.round(c.y*100)}:${i}`});
+      const point=clampPointToWorld(c.x+Math.cos(a)*d,c.y+Math.sin(a)*d,6);
+      const f=new Food(point.x,point.y,'detritus', {eventKey:`corpse-detritus:${frame}:${Math.round(c.x*100)}:${Math.round(c.y*100)}:${i}`});
       const push=rnd(0.04,0.22);
       f.vx+=Math.cos(a)*push;
       f.vy+=Math.sin(a)*push;
@@ -1052,7 +1386,7 @@
     }
     return made;
   }
-  class Corpse{ constructor(x,y,energy,opts={}){ this.x=x; this.y=y; this.energy=energy; this.radius=Math.min(10, 2 + energy*0.05); this.t=900; if(eventKeyedVisualRngEnabled()){ const rng=visualRngForKey(opts.eventKey || `corpse:${frame}:${Math.round(x*100)}:${Math.round(y*100)}:${Math.round(energy*100)}`); this.wob=rng()*TAU; this.decayPulse=rng()*TAU; } else { this.wob=Math.random()*TAU; this.decayPulse=Math.random()*TAU; } }
+  class Corpse{ constructor(x,y,energy,opts={}){ this.energy=energy; this.radius=Math.min(10, 2 + energy*0.05); const point=isCircleWorld()?clampPointToWorld(x,y,this.radius):{x,y}; this.x=point.x; this.y=point.y; this.t=900; if(eventKeyedVisualRngEnabled()){ const rng=visualRngForKey(opts.eventKey || `corpse:${frame}:${Math.round(x*100)}:${Math.round(y*100)}:${Math.round(energy*100)}`); this.wob=rng()*TAU; this.decayPulse=rng()*TAU; } else { this.wob=Math.random()*TAU; this.decayPulse=Math.random()*TAU; } }
     step(){
       this.t -= (1 + (worldEvent.corpseDecayExtra||0));
       this.wob+=0.03; this.decayPulse+=0.018; this.energy*=0.999;
@@ -1096,8 +1430,9 @@
     } }
   class Plankton{
     constructor(opts={}){
-      this.x=rnd(8,W-8);
-      this.y=rnd(8,H-8);
+      const point=randomPointInWorld(8,Math.random);
+      this.x=point.x;
+      this.y=point.y;
       this.vx=rnd(-0.08,0.08);
       this.vy=rnd(-0.08,0.08);
       this.t=rnd(1800,3600);
@@ -1116,10 +1451,14 @@
       this.y+=this.vy;
       this.spin+=0.015;
       this.fade=Math.min(1,this.fade+0.035);
-      if(this.x<6){ this.x=6; this.vx=Math.abs(this.vx)||0.04; }
-      if(this.x>W-6){ this.x=W-6; this.vx=-(Math.abs(this.vx)||0.04); }
-      if(this.y<6){ this.y=6; this.vy=Math.abs(this.vy)||0.04; }
-      if(this.y>H-6){ this.y=H-6; this.vy=-(Math.abs(this.vy)||0.04); }
+      if(!isCircleWorld()){
+        if(this.x<6){ this.x=6; this.vx=Math.abs(this.vx)||0.04; }
+        if(this.x>W-6){ this.x=W-6; this.vx=-(Math.abs(this.vx)||0.04); }
+        if(this.y<6){ this.y=6; this.vy=Math.abs(this.vy)||0.04; }
+        if(this.y>H-6){ this.y=H-6; this.vy=-(Math.abs(this.vy)||0.04); }
+      }else{
+        reflectVelocityAtBoundary(this,6,1,0.04);
+      }
       if(--this.t<=0){
         this.t=rnd(1800,3600);
         this.vx=clamp(this.vx+rnd(-0.025,0.025),-0.09,0.09);
@@ -3296,6 +3635,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     const oldRandom=Math.random;
     const oldFlags={...featureFlags};
     const oldNextId=NEXT_ID;
+    const oldWorldShape=worldGeometry.shape;
     const oldWorldSeedForVisuals=currentWorldSeedForVisuals;
     const seed=Number(opts.seed ?? 41001);
     const nextRandomCount=Math.max(0,Math.min(32,Number(opts.nextRandomCount ?? 8)|0));
@@ -9422,6 +9762,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   }
   function telemetryRecordBirth(parent, child, index=0, clutch=1, meta=null){
     if(!child) return;
+    recordWorldBoundaryBirth(child);
     child.birthFrame = frame;
     child.lineageInitial=false;
     const parentDiet=telemetryDiet(parent);
@@ -12913,6 +13254,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function recordDeath(o, cause){
     if(!o || o.__deathRecorded) return;
     o.__deathRecorded=true;
+    recordWorldBoundaryDeath(o,cause || o.deathCause || '不明');
     telemetry.totalDeaths++;
     o.deathCause=cause || o.deathCause || '不明';
     recordAction(o, `死亡：${o.deathCause}`);
@@ -13141,8 +13483,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     for(const r of rings) r.draw(ctx);
   }
   function addMembraneStroke(x,y,px,py){
-    if(Math.hypot(x-px,y-py)<6) return;
-    membranes.push(new MembraneSegment(px,py,x,y,'wall'));
+    const segment=isCircleWorld() ? clipSegmentToWorld(px,py,x,y,9) : {x1:px,y1:py,x2:x,y2:y};
+    if(!segment || Math.hypot(segment.x2-segment.x1,segment.y2-segment.y1)<6) return;
+    membranes.push(new MembraneSegment(segment.x1,segment.y1,segment.x2,segment.y2,'wall'));
     if(membranes.length>CONFIG.rendering.maxMembranes) membranes.splice(0,membranes.length-CONFIG.rendering.maxMembranes);
   }
   function averageActualClutchForSpeciesKey(key){
@@ -14367,8 +14710,7 @@ if(Z>0.08){
         this.vy=0;
       } else if(sp>maxSp){ const k=maxSp/sp; this.vx*=k; this.vy*=k; }
       if(!microStationary){ this.x+=this.vx; this.y+=this.vy; }
-      if(this.x<this.size){this.x=this.size; this.vx*=-0.5} if(this.x>W-this.size){this.x=W-this.size; this.vx*=-0.5}
-      if(this.y<this.size){this.y=this.size; this.vy*=-0.5} if(this.y>H-this.size){this.y=H-this.size; this.vy*=-0.5}
+      if(reflectVelocityAtBoundary(this,this.size,0.5)) recordWorldBoundaryCollision(this);
 
       // Body direction follows actual movement slowly; joints carry most of the animation.
       const actualSp=Math.hypot(this.vx,this.vy);
@@ -15007,9 +15349,14 @@ if(Z>0.08){
         }
         if(evolvableLifeHistoryEnabled()) normalizeLifeHistoryGenes(g,true);
         const childSpread = adaptationProfilesFromGenes(this.genes, this.flags, this.morphologyTopology, this.role).includes('colonyBuilder') ? 8 : 20;
+        const birthPoint=clampPointToWorld(
+          this.x+rnd(-childSpread,childSpread),
+          this.y+rnd(-childSpread,childSpread),
+          10
+        );
         const c=new Organism(
-          clamp(this.x+rnd(-childSpread,childSpread),10,W-10),
-          clamp(this.y+rnd(-childSpread,childSpread),10,H-10),
+          birthPoint.x,
+          birthPoint.y,
           g,
           true,
           this.speciesKey,
@@ -15045,6 +15392,11 @@ if(Z>0.08){
           recordRareTraitDiscovery(c);
           if(!speciesIdentityV2Enabled()) registerSpeciesStats(c);
 }catch(_){ /* ignore */ }
+        if(isCircleWorld()){
+          const safeBirthPoint=clampPointToWorld(c.x,c.y,c.size);
+          c.x=safeBirthPoint.x;
+          c.y=safeBirthPoint.y;
+        }
         assignInheritedLineageFoundation(c,this,mate);
         ensureReproductiveFamilyPackIdentity(this,mate,c);
         if(c._wasNewSpecies) announceNewSpecies(c);
@@ -15378,6 +15730,13 @@ if(Z>0.08){
     senseCostMul:1, predSuccessMul:1
   };
   // ===== Environment grid (algae/cold/oxygen) + dot visualization =====
+  function isEnvironmentCellActive(cx,cy,cellSize=CONFIG.environment.cellSize){
+    const x=Number(cx),y=Number(cy),size=Math.max(1,Number(cellSize)||CONFIG.environment.cellSize);
+    const width=Math.max(1,Math.ceil(W/size)),height=Math.max(1,Math.ceil(H/size));
+    if(!Number.isInteger(x) || !Number.isInteger(y) || x<0 || y<0 || x>=width || y>=height) return false;
+    if(!isCircleWorld()) return true;
+    return isInsideWorld((x+0.5)*size,(y+0.5)*size,0);
+  }
   
 const env = (function(){
   // ---- Settings ----
@@ -15385,6 +15744,9 @@ const env = (function(){
   const ALGAE_VISUAL_SUBDIV = CONFIG.environment.algaeVisualSubdiv;
   let scarW = 0, scarH = 0;
   let fields = null;      // Float32Array per type
+  let activeMask = null;  // 1 only for model-active environment cells
+  let activeCells = [];
+  let activeMaskShape = null;
   let corpseGrid = null;  // Uint16 counts per cell
   let plankGrid = null;   // Uint16 counts per cell (plankton)
   let bioGrid = null;     // Uint16 counts per cell (organisms)
@@ -15454,7 +15816,7 @@ const env = (function(){
     if(!sprite) sprite = makeSprite();
     const w = Math.max(1, Math.ceil(W/cell));
     const h = Math.max(1, Math.ceil(H/cell));
-    if(!fields || w!==ew || h!==eh){
+    if(!fields || w!==ew || h!==eh || activeMaskShape!==worldGeometry.shape){
       ew=w; eh=h;
       fields = {
         algae: new Float32Array(ew*eh),   // N: nutrient (0..1)
@@ -15466,15 +15828,36 @@ const env = (function(){
       plankGrid = new Uint16Array(ew*eh);
       bioGrid   = new Uint16Array(ew*eh);
       scavGrid  = new Uint16Array(ew*eh);
+      activeMask = new Uint8Array(ew*eh);
+      activeCells = [];
+      for(let y=0;y<eh;y++){
+        for(let x=0;x<ew;x++){
+          const i=y*ew+x;
+          if(isEnvironmentCellActive(x,y,cell)){
+            activeMask[i]=1;
+            activeCells.push(i);
+          }
+        }
+      }
+      activeMaskShape=worldGeometry.shape;
       scarW = ew * ALGAE_VISUAL_SUBDIV;
       scarH = eh * ALGAE_VISUAL_SUBDIV;
       grazeScar = new Float32Array(scarW*scarH);
 
       // A fixed world grid is created only for a new/reset model.
-      fields.algae.fill(CONFIG.environment.initialization.legacyUniformAlgae);
-      fields.cold.fill(0.25);
-      fields.oxygen.fill(0.75);
-      fields.detritus.fill(0.05);
+      if(!isCircleWorld()){
+        fields.algae.fill(CONFIG.environment.initialization.legacyUniformAlgae);
+        fields.cold.fill(0.25);
+        fields.oxygen.fill(0.75);
+        fields.detritus.fill(0.05);
+      }else{
+        for(const i of activeCells){
+          fields.algae[i]=CONFIG.environment.initialization.legacyUniformAlgae;
+          fields.cold[i]=0.25;
+          fields.oxygen[i]=0.75;
+          fields.detritus[i]=0.05;
+        }
+      }
       _avgN=CONFIG.environment.initialization.legacyUniformAlgae; _avgO=0.75; _avgD=0.05; _avgC=0.25;
 
       pxCanvas = document.createElement('canvas'); pxCanvas.width=ew; pxCanvas.height=eh; pxCtx = pxCanvas.getContext('2d', { willReadFrequently: true });
@@ -15485,10 +15868,23 @@ const env = (function(){
   }
   function resetAll(){
     if(!fields) return;
-    fields.algae.fill(CONFIG.environment.initialization.legacyUniformAlgae);
-    fields.cold.fill(0.25);
-    fields.oxygen.fill(0.75);
-    fields.detritus.fill(0.05);
+    fields.algae.fill(0);
+    fields.cold.fill(0);
+    fields.oxygen.fill(0);
+    fields.detritus.fill(0);
+    if(!isCircleWorld()){
+      fields.algae.fill(CONFIG.environment.initialization.legacyUniformAlgae);
+      fields.cold.fill(0.25);
+      fields.oxygen.fill(0.75);
+      fields.detritus.fill(0.05);
+    }else{
+      for(const i of activeCells){
+        fields.algae[i]=CONFIG.environment.initialization.legacyUniformAlgae;
+        fields.cold[i]=0.25;
+        fields.oxygen[i]=0.75;
+        fields.detritus[i]=0.05;
+      }
+    }
     if(corpseGrid) corpseGrid.fill(0);
     if(plankGrid) plankGrid.fill(0);
     if(bioGrid) bioGrid.fill(0);
@@ -15512,7 +15908,12 @@ const env = (function(){
   function algaeFlowSummary(){
     ensure();
     let currentTotal=0;
-    for(let i=0;i<fields.algae.length;i++) currentTotal+=fields.algae[i]||0;
+    if(!isCircleWorld()){
+      for(let i=0;i<fields.algae.length;i++) currentTotal+=fields.algae[i]||0;
+    }else{
+      for(const i of activeCells) currentTotal+=fields.algae[i]||0;
+    }
+    const currentCount=isCircleWorld() ? activeCells.length : fields.algae.length;
     const elapsedFrames=Math.max(0,(Number(frame)||0)-algaeFlow.startedAtFrame);
     return {
       enabled:resourceLimitedAlgaeRegrowthEnabled(),
@@ -15528,17 +15929,27 @@ const env = (function(){
       totalBiologicalInput:algaeFlow.algaeRegrowth+algaeFlow.decompositionInput,
       inputMinusGrazing:algaeFlow.algaeRegrowth+algaeFlow.decompositionInput-algaeFlow.grazingRemoved,
       currentTotal,
-      currentMean:fields.algae.length ? currentTotal/fields.algae.length : 0
+      currentMean:currentCount ? currentTotal/currentCount : 0
     };
   }
   function refreshFieldAverages(){
-    const len=Math.max(1,fields?.algae?.length || 0);
+    const indices=isCircleWorld() ? activeCells : null;
+    const len=Math.max(1,indices ? indices.length : (fields?.algae?.length || 0));
     let sumN=0,sumO=0,sumD=0,sumC=0;
-    for(let i=0;i<len;i++){
-      sumN+=fields.algae[i]||0;
-      sumO+=fields.oxygen[i]||0;
-      sumD+=fields.detritus[i]||0;
-      sumC+=fields.cold[i]||0;
+    if(!indices){
+      for(let i=0;i<len;i++){
+        sumN+=fields.algae[i]||0;
+        sumO+=fields.oxygen[i]||0;
+        sumD+=fields.detritus[i]||0;
+        sumC+=fields.cold[i]||0;
+      }
+    }else{
+      for(const i of indices){
+        sumN+=fields.algae[i]||0;
+        sumO+=fields.oxygen[i]||0;
+        sumD+=fields.detritus[i]||0;
+        sumC+=fields.cold[i]||0;
+      }
     }
     _avgN=sumN/len; _avgO=sumO/len; _avgD=sumD/len; _avgC=sumC/len;
   }
@@ -15589,6 +16000,7 @@ const env = (function(){
       }
     }
     const order=raw.map((value,index)=>({value,index}))
+      .filter(row=>!isCircleWorld() || !!activeMask[row.index])
       .sort((a,b)=>a.value-b.value || a.index-b.index);
     const n=Math.max(1,order.length);
     for(let rank=0;rank<order.length;rank++){
@@ -15609,7 +16021,10 @@ const env = (function(){
     let hash=2166136261>>>0;
     const bytes=new Uint8Array(4);
     const view=new DataView(bytes.buffer);
-    for(let i=0;i<fields.algae.length;i++){
+    const indices=isCircleWorld() ? activeCells : null;
+    const count=indices ? indices.length : fields.algae.length;
+    for(let n=0;n<count;n++){
+      const i=indices ? indices[n] : n;
       view.setFloat32(0,fields.algae[i],true);
       for(let j=0;j<4;j++){
         hash^=bytes[j];
@@ -15622,19 +16037,23 @@ const env = (function(){
     ensure();
     const cfg=CONFIG.environment.initialization;
     const values=fields.algae;
-    const len=values.length;
-    const band=new Uint8Array(len);
+    const fieldLen=values.length;
+    const len=isCircleWorld() ? activeCells.length : fieldLen;
+    const band=new Uint8Array(fieldLen);
     const counts=[0,0,0];
-    for(let i=0;i<len;i++){
+    const indices=isCircleWorld() ? activeCells : null;
+    for(let n=0;n<len;n++){
+      const i=indices ? indices[n] : n;
       const label=values[i]<cfg.lowThreshold ? 0 : (values[i]<cfg.highThreshold ? 1 : 2);
       band[i]=label;
       counts[label]++;
     }
-    const visited=new Uint8Array(len);
-    const queue=new Int32Array(Math.max(1,len));
+    const visited=new Uint8Array(fieldLen);
+    const queue=new Int32Array(Math.max(1,fieldLen));
     const components=[0,0,0];
     const largest=[0,0,0];
-    for(let start=0;start<len;start++){
+    for(let n=0;n<len;n++){
+      const start=indices ? indices[n] : n;
       if(visited[start]) continue;
       const label=band[start];
       components[label]++;
@@ -15652,7 +16071,7 @@ const env = (function(){
           y<eh-1 ? current+ew : -1
         ];
         for(const next of neighbors){
-          if(next<0 || visited[next] || band[next]!==label) continue;
+          if(next<0 || visited[next] || (isCircleWorld() && !activeMask[next]) || band[next]!==label) continue;
           visited[next]=1;
           queue[tail++]=next;
         }
@@ -15723,12 +16142,16 @@ const env = (function(){
   function idx(x,y){ return y*ew + x; }
   function scarIdx(x,y){ return y*scarW + x; }
   function clamp01(x){ return x<0?0:(x>1?1:x); }
+  function isActiveIndex(i){ return !isCircleWorld() || !!activeMask?.[i]; }
   function valueAt(type,x,y){
     ensure();
     if(!fields[type]) return 0;
+    if(isCircleWorld() && !isInsideWorld(x,y,0)) return 0;
     const cx = Math.min(ew-1, Math.max(0, (x/cell)|0));
     const cy = Math.min(eh-1, Math.max(0, (y/cell)|0));
-    return fields[type][idx(cx,cy)] || 0;
+    const i=idx(cx,cy);
+    if(!isActiveIndex(i)) return 0;
+    return fields[type][i] || 0;
   }
   function applyLocal(type,x,y,amt,sign=1,radius=1){
     ensure();
@@ -15744,6 +16167,7 @@ const env = (function(){
         if(d>radius+0.01) continue;
         const w = d<0.01 ? 1.0 : (d<1.1 ? 0.46 : 0.22);
         const i=idx(xx,yy);
+        if(!isActiveIndex(i)) continue;
         const delta=sign*mag*w;
         fields[type][i]=clamp01(fields[type][i] + delta);
         if(type==='algae' && Math.abs(delta)>0.004) markAlgaeDirtyIndex(i);
@@ -15766,6 +16190,7 @@ const env = (function(){
         const dist=Math.hypot(wx-x,wy-y);
         if(dist>range) continue;
         const i=idx(xx,yy);
+        if(!isActiveIndex(i)) continue;
         const v=fields.algae[i] || 0;
         const detritusPenalty=0.22*(fields.detritus[i]||0);
         const score=v*(0.72 + 0.28*(1-dist/range)) - detritusPenalty;
@@ -15795,6 +16220,7 @@ const env = (function(){
         if(d>grazeR+0.01) continue;
         const w = d<0.01 ? 1.0 : clamp(1 - d/(grazeR+0.001),0.16,0.62);
         const i=idx(xx,yy);
+        if(!isActiveIndex(i)) continue;
         const avail=Math.max(0, fields.algae[i] - 0.035);
         if(avail<=0) continue;
         cells.push({i,w,avail});
@@ -15849,9 +16275,14 @@ const env = (function(){
       const ey = Math.min(eh-1, (sy/ALGAE_VISUAL_SUBDIV)|0);
       for(let sx=0; sx<scarW; sx++){
         const ex = Math.min(ew-1, (sx/ALGAE_VISUAL_SUBDIV)|0);
-        const parent = fields.algae[idx(ex,ey)] || 0;
         const i=scarIdx(sx,sy);
         const before=grazeScar[i]||0;
+        if(!isActiveIndex(idx(ex,ey))){
+          if(before!==0) markAlgaeDirtyCell(ex,ey);
+          grazeScar[i]=0;
+          continue;
+        }
+        const parent = fields.algae[idx(ex,ey)] || 0;
         const after=clamp01(before*fade - recoverBase*(0.35 + 0.65*parent));
         if(Math.abs(after-before)>0.010 || (before>0.030)!==(after>0.030)) markAlgaeDirtyCell(ex,ey);
         grazeScar[i]=after;
@@ -15876,6 +16307,7 @@ const env = (function(){
           if(dd<=rad*rad){
             const k = 1 - Math.sqrt(dd)/(rad+0.001);
             const ii = idx(xx,yy);
+            if(!isActiveIndex(ii)) continue;
 if(p.type==='oxygen'){
   // reinterpret "oxygen" patches as dirty / low-oxygen zones
   const vv = k*k*1.0;
@@ -15894,6 +16326,21 @@ if(p.type==='oxygen'){
 
   // ---- Diffusion/decay helpers ----
   function diffuseOne(arr, a=0.06, decay=0.006){
+    if(isCircleWorld()){
+      const out = new Float32Array(arr.length);
+      for(const i of activeCells){
+        const x=i%ew,y=(i/ew)|0;
+        let sum=arr[i],n=1;
+        if(x>0 && activeMask[i-1]){ sum+=arr[i-1]; n++; }
+        if(x<ew-1 && activeMask[i+1]){ sum+=arr[i+1]; n++; }
+        if(y>0 && activeMask[i-ew]){ sum+=arr[i-ew]; n++; }
+        if(y<eh-1 && activeMask[i+ew]){ sum+=arr[i+ew]; n++; }
+        const avg=sum/n;
+        out[i]=clamp01(arr[i]+a*(avg-arr[i])-decay);
+      }
+      arr.set(out);
+      return;
+    }
     const out = new Float32Array(arr.length);
     for(let y=0;y<eh;y++){
       for(let x=0;x<ew;x++){
@@ -15926,17 +16373,20 @@ if(p.type==='oxygen'){
     for(const c of corpses){
       const cx = Math.min(ew-1, Math.max(0, (c.x/cell)|0));
       const cy = Math.min(eh-1, Math.max(0, (c.y/cell)|0));
-      corpseGrid[idx(cx,cy)]++;
+      const i=idx(cx,cy);
+      if(isActiveIndex(i)) corpseGrid[i]++;
     }
     for(const p of plankton){
       const cx = Math.min(ew-1, Math.max(0, (p.x/cell)|0));
       const cy = Math.min(eh-1, Math.max(0, (p.y/cell)|0));
-      plankGrid[idx(cx,cy)]++;
+      const i=idx(cx,cy);
+      if(isActiveIndex(i)) plankGrid[i]++;
     }
     for(const o of organisms){
       const cx = Math.min(ew-1, Math.max(0, (o.x/cell)|0));
       const cy = Math.min(eh-1, Math.max(0, (o.y/cell)|0));
       const i = idx(cx,cy);
+      if(!isActiveIndex(i)) continue;
       bioGrid[i]++;
       if(o.role==='scav') scavGrid[i]++;
     }
@@ -15950,6 +16400,7 @@ if(p.type==='oxygen'){
     let tickAlgaeRegrowth=0;
     let tickDecompositionInput=0;
     for(let i=0;i<len;i++){
+      if(!isActiveIndex(i)) continue;
       let N = fields.algae[i];
       let C = fields.cold[i];    // coldness
       let O = fields.oxygen[i];  // oxygen
@@ -16023,7 +16474,7 @@ if(p.type==='oxygen'){
       fields.cold[i]=C;
     }
     algaeFlow.tickCount++;
-    algaeFlow.cellUpdates+=len;
+    algaeFlow.cellUpdates+=isCircleWorld() ? activeCells.length : len;
     algaeFlow.algaeRegrowth+=tickAlgaeRegrowth;
     algaeFlow.decompositionInput+=tickDecompositionInput;
     fadeGrazeScars(L);
@@ -16042,8 +16493,13 @@ if(p.type==='oxygen'){
 
     // averages for HUD/logic
     let sN=0, sD=0, sO=0, sC=0;
-    for(let i=0;i<len;i++){ sN+=fields.algae[i]; sD+=fields.detritus[i]; sO+=fields.oxygen[i]; sC+=fields.cold[i]; }
-    _avgN = sN/len; _avgD = sD/len; _avgO = sO/len; _avgC = sC/len;
+    if(!isCircleWorld()){
+      for(let i=0;i<len;i++){ sN+=fields.algae[i]; sD+=fields.detritus[i]; sO+=fields.oxygen[i]; sC+=fields.cold[i]; }
+    }else{
+      for(const i of activeCells){ sN+=fields.algae[i]; sD+=fields.detritus[i]; sO+=fields.oxygen[i]; sC+=fields.cold[i]; }
+    }
+    const averageCount=Math.max(1,isCircleWorld() ? activeCells.length : len);
+    _avgN = sN/averageCount; _avgD = sD/averageCount; _avgO = sO/averageCount; _avgC = sC/averageCount;
 
     lastPaint = -999;
   }
@@ -16078,19 +16534,28 @@ if(p.type==='oxygen'){
       const moveKey=`${key}:move:${frame}`;
       d.x+=(dotVisualRandom(type,moveKey,0)-0.5)*0.6;
       d.y+=(dotVisualRandom(type,moveKey,1)-0.5)*0.6;
-      if(d.t<=0 || d.x<0 || d.x>W || d.y<0 || d.y>H) arr.splice(i,1);
+      if(d.t<=0 || !isInsideWorld(d.x,d.y,0)) arr.splice(i,1);
     }
     let need = cap - arr.length; let tries=0;
     while(need>0 && tries<cap*6){
       const sample=tries;
       tries++;
       const key=`spawn:${frame}:${sample}`;
-      const cx=(dotVisualRandom(type,key,0)*ew)|0, cy=(dotVisualRandom(type,key,1)*eh)|0;
+      let cx,cy;
+      if(!isCircleWorld()){
+        cx=(dotVisualRandom(type,key,0)*ew)|0;
+        cy=(dotVisualRandom(type,key,1)*eh)|0;
+      }else{
+        const i=activeCells[(dotVisualRandom(type,key,0)*activeCells.length)|0];
+        cx=i%ew;
+        cy=(i/ew)|0;
+      }
       const v=fields[type][idx(cx,cy)];
       if(v>Th_on[type]){
         const dotKey=`cell:${frame}:${cx}:${cy}:${sample}`;
-        const x=(cx+dotVisualRandom(type,dotKey,0))*cell, y=(cy+dotVisualRandom(type,dotKey,1))*cell;
-        arr.push({x,y,t: 200 + (v*200)|0, v, key:dotKey});
+        const rawX=(cx+dotVisualRandom(type,dotKey,0))*cell,rawY=(cy+dotVisualRandom(type,dotKey,1))*cell;
+        const p=isCircleWorld() ? clampPointToWorld(rawX,rawY,0) : {x:rawX,y:rawY};
+        arr.push({x:p.x,y:p.y,t: 200 + (v*200)|0, v, key:dotKey});
         need--;
       }
     }
@@ -16102,16 +16567,25 @@ if(p.type==='oxygen'){
     for(let i=arr.length-1;i>=0;--i){
       const d=arr[i]; d.t--;
       d.x+=(dotRandom()-0.5)*0.6; d.y+=(dotRandom()-0.5)*0.6;
-      if(d.t<=0 || d.x<0 || d.x>W || d.y<0 || d.y>H) arr.splice(i,1);
+      if(d.t<=0 || !isInsideWorld(d.x,d.y,0)) arr.splice(i,1);
     }
     let need = cap - arr.length; let tries=0;
     while(need>0 && tries<cap*6){
       tries++;
-      const cx=(dotRandom()*ew)|0, cy=(dotRandom()*eh)|0;
+      let cx,cy;
+      if(!isCircleWorld()){
+        cx=(dotRandom()*ew)|0;
+        cy=(dotRandom()*eh)|0;
+      }else{
+        const i=activeCells[(dotRandom()*activeCells.length)|0];
+        cx=i%ew;
+        cy=(i/ew)|0;
+      }
       const v=fields[type][idx(cx,cy)];
       if(v>Th_on[type]){
-        const x=(cx+dotRandom())*cell, y=(cy+dotRandom())*cell;
-        arr.push({x,y,t: 200 + (v*200)|0, v});
+        const rawX=(cx+dotRandom())*cell,rawY=(cy+dotRandom())*cell;
+        const p=isCircleWorld() ? clampPointToWorld(rawX,rawY,0) : {x:rawX,y:rawY};
+        arr.push({x:p.x,y:p.y,t: 200 + (v*200)|0, v});
         need--;
       }
     }
@@ -16198,6 +16672,7 @@ if(p.type==='oxygen'){
     };
     const paintCell=(x,y)=>{
       const i=idx(x,y);
+      if(!isActiveIndex(i)) return;
       const n=fields.algae[i] || 0;
       const baseEdible=clamp01((n-0.12)/0.62);
       if(baseEdible<0.030 && !grazeScar) return;
@@ -16421,7 +16896,7 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
   }
   function algaeStats(){
     ensure();
-    const values=Array.from(fields.algae || []);
+    const values=isCircleWorld() ? activeCells.map(i=>fields.algae[i]||0) : Array.from(fields.algae || []);
     const n=values.length;
     if(!n) return {count:0,mean:0,median:0,variance:0,stdDev:0,min:0,max:0};
     values.sort((a,b)=>a-b);
@@ -16442,7 +16917,9 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
       for(let dx=-rr;dx<=rr;dx++){
         const xx=cx+dx; if(xx<0||xx>=ew) continue;
         if(Math.hypot(dx,dy)>rr+0.01) continue;
-        values.push(fields.algae[idx(xx,yy)] || 0);
+        const i=idx(xx,yy);
+        if(!isActiveIndex(i)) continue;
+        values.push(fields.algae[i] || 0);
       }
     }
     if(!values.length) return {count:0,mean:0,median:0,variance:0,stdDev:0,min:0,max:0};
@@ -16479,7 +16956,7 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
       const src=Array.isArray(state.fields[key]) ? state.fields[key] : [];
       const dst=fields[key];
       if(src.length!==dst.length) throw new Error(`セーブの環境field長が不正です: ${key}`);
-      for(let i=0;i<dst.length;i++) dst[i]=clamp01(Number(src[i])||0);
+      for(let i=0;i<dst.length;i++) dst[i]=isActiveIndex(i) ? clamp01(Number(src[i])||0) : 0;
     }
     if(Array.isArray(state.grazeScar) && grazeScar){
       if(state.grazeScar.length!==grazeScar.length) throw new Error('セーブの藻食痕field長が不正です');
@@ -16505,6 +16982,23 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
     lastPaint=-999;
     return true;
   }
+  function fieldLeakSummary(){
+    ensure();
+    let outsideNonZero=0;
+    const byField={algae:0,cold:0,oxygen:0,detritus:0};
+    if(isCircleWorld()){
+      for(let i=0;i<activeMask.length;i++){
+        if(activeMask[i]) continue;
+        for(const key of Object.keys(byField)){
+          if(Math.abs(Number(fields[key][i])||0)>1e-12){
+            byField[key]++;
+            outsideNonZero++;
+          }
+        }
+      }
+    }
+    return {outsideNonZero,byField,activeCellCount:isCircleWorld()?activeCells.length:ew*eh,inactiveCellCount:isCircleWorld()?ew*eh-activeCells.length:0};
+  }
 
   return {
   ensure, seedFromPatches, tickFields, draw,
@@ -16518,13 +17012,25 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
   getAverages: ()=>averages(),
   algaeStats: ()=>algaeStats(),
   currentAlgaeSummary: ()=>currentAlgaeSummary(),
+  fieldLeakSummary: ()=>fieldLeakSummary(),
   algaeFlowSummary: ()=>algaeFlowSummary(),
   initializationSummary: ()=>initializationSummary(),
   localAlgaeStats: (x,y,radius)=>localAlgaeStats(x,y,radius),
   captureState: ()=>captureState(),
   restoreState: (state)=>restoreState(state),
   semanticSnapshot: ()=>averages(),
-  gridSummary: ()=>({width:ew,height:eh,cellSize:cell,cellCount:ew*eh,worldWidth:WORLD_W,worldHeight:WORLD_H}),
+  gridSummary: ()=>({
+    width:ew,
+    height:eh,
+    cellSize:cell,
+    cellCount:ew*eh,
+    activeCellCount:isCircleWorld() ? activeCells.length : ew*eh,
+    inactiveCellCount:isCircleWorld() ? ew*eh-activeCells.length : 0,
+    approximateActiveArea:(isCircleWorld() ? activeCells.length : ew*eh)*cell*cell,
+    worldShape:worldGeometry.shape,
+    worldWidth:WORLD_W,
+    worldHeight:WORLD_H
+  }),
   usesGpu: ()=>!!gpuReady,
   algaeLayerSummary: ()=>({
     full: algaeRenderStats.full,
@@ -16539,9 +17045,19 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
     const pts=[]; let tries=0;
     while(pts.length<n && tries<n*24){
       tries++;
-      const cx=(Math.random()*ew)|0, cy=(Math.random()*eh)|0;
-      const v=fields.algae[idx(cx,cy)];
-      if(v>Th_on.algae){ pts.push({x:(cx+Math.random())*cell, y:(cy+Math.random())*cell}); }
+      if(!isCircleWorld()){
+        const cx=(Math.random()*ew)|0, cy=(Math.random()*eh)|0;
+        const v=fields.algae[idx(cx,cy)];
+        if(v>Th_on.algae){ pts.push({x:(cx+Math.random())*cell, y:(cy+Math.random())*cell}); }
+      }else{
+        const i=activeCells[(Math.random()*activeCells.length)|0];
+        const cx=i%ew,cy=(i/ew)|0;
+        const v=fields.algae[i];
+        if(v>Th_on.algae){
+          const p=clampPointToWorld((cx+Math.random())*cell,(cy+Math.random())*cell,0);
+          pts.push(p);
+        }
+      }
     }
     return pts;
   },
@@ -16550,9 +17066,19 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
     const pts=[]; let tries=0;
     while(pts.length<n && tries<n*24){
       tries++;
-      const cx=(Math.random()*ew)|0, cy=(Math.random()*eh)|0;
-      const v=fields.detritus[idx(cx,cy)];
-      if(v>0.25){ pts.push({x:(cx+Math.random())*cell, y:(cy+Math.random())*cell}); }
+      if(!isCircleWorld()){
+        const cx=(Math.random()*ew)|0, cy=(Math.random()*eh)|0;
+        const v=fields.detritus[idx(cx,cy)];
+        if(v>0.25){ pts.push({x:(cx+Math.random())*cell, y:(cy+Math.random())*cell}); }
+      }else{
+        const i=activeCells[(Math.random()*activeCells.length)|0];
+        const cx=i%ew,cy=(i/ew)|0;
+        const v=fields.detritus[i];
+        if(v>0.25){
+          const p=clampPointToWorld((cx+Math.random())*cell,(cy+Math.random())*cell,0);
+          pts.push(p);
+        }
+      }
     }
     return pts;
   },
@@ -16561,14 +17087,27 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
     const cfg=CONFIG.ecology.plankton;
     while(pts.length<n && tries<n*34){
       tries++;
-      const cx=(Math.random()*ew)|0, cy=(Math.random()*eh)|0;
-      const i=idx(cx,cy);
+      let cx,cy,i;
+      if(!isCircleWorld()){
+        cx=(Math.random()*ew)|0;
+        cy=(Math.random()*eh)|0;
+        i=idx(cx,cy);
+      }else{
+        i=activeCells[(Math.random()*activeCells.length)|0];
+        cx=i%ew;
+        cy=(i/ew)|0;
+      }
       const d=fields.detritus[i] || 0;
       const o=fields.oxygen[i] || 0;
       const oxygenGate=clamp01((o - cfg.oxygenMin) / Math.max(0.001, 1 - cfg.oxygenMin));
       const source=d*oxygenGate;
       if(d>cfg.detritusSpawnThreshold && oxygenGate>0.04 && Math.random()<clamp(source*4.2,0.04,0.92)){
-        pts.push({x:(cx+Math.random())*cell, y:(cy+Math.random())*cell, source, detritus:d, oxygen:o});
+        if(!isCircleWorld()){
+          pts.push({x:(cx+Math.random())*cell, y:(cy+Math.random())*cell, source, detritus:d, oxygen:o});
+        }else{
+          const p=clampPointToWorld((cx+Math.random())*cell,(cy+Math.random())*cell,0);
+          pts.push({...p,source,detritus:d,oxygen:o});
+        }
       }
     }
     return pts;
@@ -16647,14 +17186,46 @@ function triggerEvent(type){
     worldEvent.startSnapshot = eventSnapshot();
     if(type==='cold'){
       // place a local cold patch
-      worldEvent.mx = rnd(0.25*W, 0.75*W); worldEvent.my = rnd(0.25*H, 0.75*H);
-      worldEvent.rx = Math.min(W,H) * 0.28; worldEvent.ry = Math.min(W,H) * 0.22; worldEvent.rot = Math.random()*Math.PI; worldEvent.dx = rnd(-0.15,0.15); worldEvent.dy = rnd(-0.10,0.10);
+      if(!isCircleWorld()){
+        worldEvent.mx=rnd(0.25*W,0.75*W);
+        worldEvent.my=rnd(0.25*H,0.75*H);
+        worldEvent.rx=Math.min(W,H)*0.28;
+        worldEvent.ry=Math.min(W,H)*0.22;
+        worldEvent.rot=Math.random()*Math.PI;
+        worldEvent.dx=rnd(-0.15,0.15);
+        worldEvent.dy=rnd(-0.10,0.10);
+      }else{
+        worldEvent.rx=Math.min(W,H)*0.28;
+        worldEvent.ry=Math.min(W,H)*0.22;
+        const point=randomPointInWorld(Math.max(worldEvent.rx,worldEvent.ry),Math.random);
+        worldEvent.mx=point.x;
+        worldEvent.my=point.y;
+        worldEvent.rot=Math.random()*Math.PI;
+        worldEvent.dx=rnd(-0.15,0.15);
+        worldEvent.dy=rnd(-0.10,0.10);
+      }
       Object.assign(worldEvent, {t:600, maxT:600, speedMul:0.85, metaMul:0.9, planktonCapBonus:-10, algaeFactor:0.35, corpseDecayExtra:0.15, veilColor:'rgba(80,110,160,0.18)', predSuccessMul:0.9, reproMul:1, reproT:0});
       showToast('event','寒冷化。移動と捕食が鈍り、藻の伸びも弱まる。省エネでゆっくり動く個体に有利に働くだろう。',{x:worldEvent.mx,y:worldEvent.my});
     } else if(type==='bloom'){
       // place a local bloom patch
-      worldEvent.mx = rnd(0.25*W, 0.75*W); worldEvent.my = rnd(0.25*H, 0.75*H);
-      worldEvent.rx = Math.min(W,H) * 0.26; worldEvent.ry = Math.min(W,H) * 0.20; worldEvent.rot = Math.random()*Math.PI; worldEvent.dx = rnd(-0.12,0.12); worldEvent.dy = rnd(-0.08,0.08);
+      if(!isCircleWorld()){
+        worldEvent.mx=rnd(0.25*W,0.75*W);
+        worldEvent.my=rnd(0.25*H,0.75*H);
+        worldEvent.rx=Math.min(W,H)*0.26;
+        worldEvent.ry=Math.min(W,H)*0.20;
+        worldEvent.rot=Math.random()*Math.PI;
+        worldEvent.dx=rnd(-0.12,0.12);
+        worldEvent.dy=rnd(-0.08,0.08);
+      }else{
+        worldEvent.rx=Math.min(W,H)*0.26;
+        worldEvent.ry=Math.min(W,H)*0.20;
+        const point=randomPointInWorld(Math.max(worldEvent.rx,worldEvent.ry),Math.random);
+        worldEvent.mx=point.x;
+        worldEvent.my=point.y;
+        worldEvent.rot=Math.random()*Math.PI;
+        worldEvent.dx=rnd(-0.12,0.12);
+        worldEvent.dy=rnd(-0.08,0.08);
+      }
       Object.assign(worldEvent, {t:500, maxT:500, speedMul:1.08, metaMul:1.18, planktonCapBonus:30, algaeFactor:1.0, corpseDecayExtra:0, veilColor:'rgba(120,200,120,0.12)', predSuccessMul:1.05, reproMul:1.2, reproT:300});
       showToast('event','ブルーム。藻とプランクトンが増え、繁殖も少し進みやすい。草食と濾過食に追い風だろう。',{x:worldEvent.mx,y:worldEvent.my});
     } else if(type==='drought'){
@@ -16665,7 +17236,15 @@ function triggerEvent(type){
   }
   function tickEvent(){
     if(worldEvent.t>0){
-      if(worldEvent.mx!=null){ worldEvent.mx = clamp(worldEvent.mx + (worldEvent.dx||0), 0, W); worldEvent.my = clamp(worldEvent.my + (worldEvent.dy||0), 0, H); }
+      if(worldEvent.mx!=null){
+        const point=clampPointToWorld(
+          worldEvent.mx+(worldEvent.dx||0),
+          worldEvent.my+(worldEvent.dy||0),
+          isCircleWorld()?Math.max(worldEvent.rx||0,worldEvent.ry||0):0
+        );
+        worldEvent.mx=point.x;
+        worldEvent.my=point.y;
+      }
       worldEvent.t--;
       if(worldEvent.t<=0){
         reportEventEnd(worldEvent.type, worldEvent.startSnapshot);
@@ -16910,6 +17489,28 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
     ctx.restore();
 
   }
+  function traceWorldBoundaryPath(target,margin=0){
+    const m=Math.max(0,Number(margin)||0);
+    target.beginPath();
+    if(isCircleWorld()){
+      target.arc(worldGeometry.centerX,worldGeometry.centerY,Math.max(0,worldGeometry.radius-m),0,TAU);
+    }else{
+      target.rect(m,m,Math.max(0,W-2*m),Math.max(0,H-2*m));
+    }
+  }
+  function drawWorldBoundaryShore(){
+    if(!isCircleWorld()) return;
+    ctx.save();
+    traceWorldBoundaryPath(ctx,1.5);
+    ctx.strokeStyle='rgba(35,24,18,0.92)';
+    ctx.lineWidth=10;
+    ctx.stroke();
+    traceWorldBoundaryPath(ctx,2);
+    ctx.strokeStyle='rgba(140,176,128,0.54)';
+    ctx.lineWidth=3;
+    ctx.stroke();
+    ctx.restore();
+  }
   function drawHUD(){
     try {
       const text = `個体数 ${organisms.length}｜現存種数 ${new Set(organisms.map(o=>o.speciesKey)).size}`;
@@ -16986,11 +17587,34 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
   document.addEventListener('click',e=>{ if(!toolMenu.contains(e.target) && e.target!==toolBtn) closeMenu(); });
 
   const effects=[];
-  function addEffect(type,x,y){ const e={ type, x, y, r: (type==='repel'? 90: 100), t: (type==='mutagen'? 420: 300), maxT: (type==='mutagen'? 420:300) }; effects.push(e); log((type==='repel'?'💨 煙':'☢ 変異')+' フィールドを展開'); }
+  function addEffect(type,x,y){
+    if(!isInsideWorld(x,y,0)) return false;
+    const baseRadius=type==='repel'?90:100;
+    const radius=isCircleWorld() ? Math.max(0,Math.min(baseRadius,worldBoundaryDistance(x,y))) : baseRadius;
+    const e={ type, x, y, r:radius, t:(type==='mutagen'?420:300), maxT:(type==='mutagen'?420:300) };
+    effects.push(e);
+    log((type==='repel'?'💨 煙':'☢ 変異')+' フィールドを展開');
+    return true;
+  }
   function canvasScreenPoint(ev){ const r=view.getBoundingClientRect(); return {x:ev.clientX-r.left,y:ev.clientY-r.top}; }
   function canvasPoint(ev){ const p=canvasScreenPoint(ev); return screenToWorld(p.x,p.y); }
-  function addFoodAt(x,y,n=8){ for(let i=0;i<n;i++){ const t=Math.random()<0.8?'small':'big'; food.push(new Food(clamp(x+rnd(-40,40),8,W-8), clamp(y+rnd(-40,40),8,H-8), t)); } recordFoodSupply('manualFood',n); log('＋ エサを追加'); }
-  function applyToolAt(x,y){ if(ui.tool==='food') addFoodAt(x,y,8); else if(ui.tool==='repel'||ui.tool==='mutagen') addEffect(ui.tool,x,y); }
+  function addFoodAt(x,y,n=8){
+    if(!isInsideWorld(x,y,0)) return false;
+    for(let i=0;i<n;i++){
+      const t=Math.random()<0.8?'small':'big';
+      const point=clampPointToWorld(x+rnd(-40,40),y+rnd(-40,40),8);
+      food.push(new Food(point.x,point.y,t));
+    }
+    recordFoodSupply('manualFood',n);
+    log('＋ エサを追加');
+    return true;
+  }
+  function applyToolAt(x,y){
+    if(!isInsideWorld(x,y,0)) return false;
+    if(ui.tool==='food') return addFoodAt(x,y,8);
+    if(ui.tool==='repel'||ui.tool==='mutagen') return addEffect(ui.tool,x,y);
+    return false;
+  }
   let pointerStroke=null;
   let pendingCanvasTap=null;
   let pinchGesture=null;
@@ -17034,6 +17658,7 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
     if(activeCanvasPointers.size>=2){ beginPinch(); return; }
     const p=screenToWorld(screen.x,screen.y);
     if(ui.tool==='membrane'){
+      if(!isInsideWorld(p.x,p.y,0)) return;
       pointerStroke={pointerId:ev.pointerId,tool:ui.tool,x:p.x,y:p.y,lastX:p.x,lastY:p.y,moved:false};
       return;
     }
@@ -17100,7 +17725,21 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
     if(!selectedOrganism || selectedOrganism.dead){ selectOrganism(null); return; }
     focusCameraOn(selectedOrganism.x,selectedOrganism.y,Math.max(camera.zoom,getFitCamera().zoom*2.2));
   });
-  function defaultToolAction(){ if(ui.tool==='food'){ for(let i=0;i<16;i++){ const t=Math.random()<0.8?'small':'big'; food.push(new Food(rnd(8,W-8), rnd(8,H-8), t)); } log('＋ エサを広域追加'); } else if(ui.tool==='membrane'){ addMembraneStroke(W*0.45,H*0.48,W*0.58,H*0.54); } else addEffect(ui.tool, W*0.6, H*0.5); }
+  function defaultToolAction(){
+    if(ui.tool==='food'){
+      for(let i=0;i<16;i++){
+        const t=Math.random()<0.8?'small':'big';
+        const point=randomPointInWorld(8,Math.random);
+        food.push(new Food(point.x,point.y,t));
+      }
+      log('＋ エサを広域追加');
+    }else if(ui.tool==='membrane'){
+      addMembraneStroke(W*0.45,H*0.48,W*0.58,H*0.54);
+    }else{
+      const point=clampPointToWorld(W*0.6,H*0.5,100);
+      addEffect(ui.tool,point.x,point.y);
+    }
+  }
 
   // ===== Species Cards (rich avatar) =====
   function stars01(x){ const s=Math.round(clamp(x,0,1)*5); return '★★★★★'.slice(0,s)+'<span style="opacity:.25">'+ '★★★★★'.slice(s)+'</span>'; }
@@ -17417,7 +18056,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   organisms.length=0;
   const baseline = Math.max(0, (n|0) - 10 - INITIAL_TOPOLOGY_SEEDS.length);
   for(let i=0;i<baseline;i++){
-    const o = new Organism(rnd(20,W-20), rnd(20,H-20));
+    const point=randomPointInWorld(20,Math.random);
+    const o = new Organism(point.x,point.y);
     settleStarter(o);
     organisms.push(o);
   }
@@ -17425,17 +18065,30 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   const familyCount = 10;
   for(let f=0; f<familyCount; f++){
     const g = geneSet(); g.formSeed=(f+0.001)/familyCount;
-    const o = new Organism(rnd(20,W-20), rnd(20,H-20), g);
+    const point=randomPointInWorld(20,Math.random);
+    const o = new Organism(point.x,point.y,g);
     settleStarter(o);
     organisms.push(o);
   }
   for(const seed of INITIAL_TOPOLOGY_SEEDS){
-    const o = new Organism(rnd(20,W-20), rnd(20,H-20), initialGenesForTopology(seed.topology));
+    const point=randomPointInWorld(20,Math.random);
+    const o = new Organism(point.x,point.y,initialGenesForTopology(seed.topology));
     settleStarter(o);
     organisms.push(o);
   }
 }
-  function addFood(nSmall=10, nBig=2, source='wildFood'){ for(let i=0;i<nSmall;i++){ food.push(new Food(rnd(8,W-8), rnd(8,H-8),'small')); } for(let i=0;i<nBig;i++){ food.push(new Food(rnd(8,W-8), rnd(8,H-8),'big')); } recordFoodSupply(source, nSmall+nBig); if(food.length>120) food.splice(0, food.length-120); }
+  function addFood(nSmall=10, nBig=2, source='wildFood'){
+    for(let i=0;i<nSmall;i++){
+      const point=randomPointInWorld(8,Math.random);
+      food.push(new Food(point.x,point.y,'small'));
+    }
+    for(let i=0;i<nBig;i++){
+      const point=randomPointInWorld(8,Math.random);
+      food.push(new Food(point.x,point.y,'big'));
+    }
+    recordFoodSupply(source,nSmall+nBig);
+    if(food.length>120) food.splice(0,food.length-120);
+  }
   function averageLivingEnergy(){
     if(!organisms.length) return 0;
     let sum=0;
@@ -17793,6 +18446,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   function reset(){
     running=false;
     frame=0;
+    resetWorldBoundaryTelemetry();
     generation=1;
     newborn.length=0;
     food.length=0;
@@ -17898,8 +18552,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const pts = (window.env && window.env.samplePlanktonSource) ? window.env.samplePlanktonSource(n) : [];
     for(let i=0;i<pts.length;i++){
       const q = new Plankton({eventKey:`plankton-spawn:${frame}:${i}:${Math.round(pts[i].x*100)}:${Math.round(pts[i].y*100)}`});
-      q.x=clamp(pts[i].x,8,W-8);
-      q.y=clamp(pts[i].y,8,H-8);
+      const point=clampPointToWorld(pts[i].x,pts[i].y,8);
+      q.x=point.x;
+      q.y=point.y;
       if(window.env){
         if(window.env.sinkDetritusAt) window.env.sinkDetritusAt(q.x,q.y,planktonCfg.detritusCost);
         if(window.env.sinkOxygenAt) window.env.sinkOxygenAt(q.x,q.y,planktonCfg.oxygenCost);
@@ -17919,7 +18574,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       const algaeMorsels = Math.max(0, Math.round(3*prodMul*CONFIG.ecology.wildFoodSpawnScale - 0.35 + Math.random()*0.70));
       const pts = algaeMorsels>0 ? window.env.sampleAlgae(algaeMorsels) : [];
       for(const q of pts){
-        food.push(new Food(clamp(q.x,8,W-8), clamp(q.y,8,H-8), 'algae'));
+        const point=clampPointToWorld(q.x,q.y,8);
+        food.push(new Food(point.x,point.y,'algae'));
         window.env.sinkAlgaeAt(q.x,q.y,0.010);
       }
       recordFoodSupply('wildAlgaeParticle',pts.length);
@@ -17927,7 +18583,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       const detritusMorsels = 0;
       const pts = detritusMorsels>0 && window.env.sampleDetritus ? window.env.sampleDetritus(detritusMorsels) : [];
       for(const q of pts){
-        food.push(new Food(clamp(q.x,8,W-8), clamp(q.y,8,H-8), 'detritus', {eventKey:`wild-detritus:${frame}:${Math.round(q.x*100)}:${Math.round(q.y*100)}`}));
+        const point=clampPointToWorld(q.x,q.y,8);
+        food.push(new Food(point.x,point.y,'detritus', {eventKey:`wild-detritus:${frame}:${Math.round(q.x*100)}:${Math.round(q.y*100)}`}));
         if(window.env.sinkDetritusAt) window.env.sinkDetritusAt(q.x,q.y,0.018);
       }
       recordFoodSupply('wildDetritusParticle',pts.length);
@@ -17968,6 +18625,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       telemetryMarkPredationNutritionSurvival();
       telemetryMarkFeedingPredationProgress();
       telemetryUpdateCarnivorePopulationState();
+      sampleWorldBoundaryTelemetry();
       telemetrySampleFrame();
     }
     inModelUpdate=false;
@@ -20579,17 +21237,23 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     if(m==='cursor' && devLastCursor){
       const a=(index/count)*TAU;
       const r=8+Math.sqrt(index)*9;
-      return {x:clamp(devLastCursor.x+Math.cos(a)*r,12,W-12), y:clamp(devLastCursor.y+Math.sin(a)*r,12,H-12)};
+      return clampPointToWorld(devLastCursor.x+Math.cos(a)*r,devLastCursor.y+Math.sin(a)*r,12);
     }
     if(m==='center' || m==='cursor'){
       const a=(index/count)*TAU;
       const r=10+Math.sqrt(index)*11;
-      return {x:clamp(W*0.5+Math.cos(a)*r,12,W-12), y:clamp(H*0.5+Math.sin(a)*r,12,H-12)};
+      return clampPointToWorld(W*0.5+Math.cos(a)*r,H*0.5+Math.sin(a)*r,12);
     }
     if((m==='nearprey' || m==='nearvalidprey' || m==='nearoversizedprey') && probe){
-      return devFindPreyPlacement(m,probe,index,count);
+      const placement=devFindPreyPlacement(m,probe,index,count);
+      if(placement?.ok){
+        const point=clampPointToWorld(placement.x,placement.y,12);
+        placement.x=point.x;
+        placement.y=point.y;
+      }
+      return placement;
     }
-    return {x:rnd(18,W-18), y:rnd(18,H-18)};
+    return randomPointInWorld(18,Math.random);
   }
   function devApplyAgeAndEnergy(o,ageMode,energyMode){
     const age=String(ageMode||'mature').toLowerCase();
@@ -21815,8 +22479,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     ctx.fillRect(0,0,VIEW_W,VIEW_H);
     ctx.save();
     applyWorldTransform();
-    ctx.beginPath();
-    ctx.rect(0,0,WORLD_W,WORLD_H);
+    traceWorldBoundaryPath(ctx,0);
     ctx.clip();
     drawBackground();
     // レイヤー順：パッチ -> エフェクト -> 餌/死骸/プランクトン -> 個体 -> スパーク -> HUD -> 右下HUD
@@ -21843,6 +22506,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     for(let i=sparks.length-1;i>=0;--i){ const s=sparks[i]; s.step(); s.draw(ctx); if(s.t<=0) sparks.splice(i,1); }
     drawPredationSizeOverlay();
     drawSelectionWorldOverlay();
+    drawWorldBoundaryShore();
     ctx.restore();
     ctx.setTransform(DPR,0,0,DPR,0,0);
     drawSelectionScreenOverlay();
@@ -21992,6 +22656,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const oldDiagnosticAlgaeRegrowthScale=diagnosticAlgaeRegrowthScale;
     const startedAt=performance.now();
     try{
+      if(opts.worldShape!=null) configureWorldShape(opts.worldShape);
       currentWorldSeedForVisuals=seed;
       if(opts.environmentInitializationMode!=null){
         environmentInitializationMode=normalizeEnvironmentInitializationMode(opts.environmentInitializationMode);
@@ -22072,6 +22737,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         seed,
         steps,
         frame,
+        world:{...worldGeometry},
         nextId:NEXT_ID,
         elapsedMs:Number((performance.now()-startedAt).toFixed(2)),
         maxCarnivores:lineage.extinction.maxCarnivores,
@@ -22108,6 +22774,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         capacityCull,
         environmentInitialization:initialEnvironment,
         environmentCurrent:window.env?.currentAlgaeSummary ? window.env.currentAlgaeSummary() : null,
+        worldBoundary:worldBoundarySummary(),
         algaeRegrowth:{
           initial:initialAlgaeRegrowth,
           milestones:algaeRegrowthMilestones,
@@ -22137,7 +22804,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       Math.random=oldRandom;
       Object.assign(diagnosticPackSharing,oldPackSharing);
       currentWorldSeedForVisuals=oldWorldSeedForVisuals;
-      if(restoreAfterRun && saved){ restore(saved); NEXT_ID=oldNextId; }
+      if(restoreAfterRun && saved){
+        configureWorldShape(oldWorldShape);
+        restore(saved);
+        NEXT_ID=oldNextId;
+      }
       else if(NEXT_ID<oldNextId) NEXT_ID=oldNextId;
       environmentInitializationMode=oldEnvironmentInitializationMode;
       environmentInitializationSeed=oldEnvironmentInitializationSeed;
@@ -30438,8 +31109,12 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     worldGeometry(){
       return {
         worldVersion:WORLD_VERSION,
+        worldShape:worldGeometry.shape,
         worldWidth:WORLD_W,
         worldHeight:WORLD_H,
+        centerX:worldGeometry.centerX,
+        centerY:worldGeometry.centerY,
+        radius:worldGeometry.radius,
         viewWidth:VIEW_W,
         viewHeight:VIEW_H,
         dpr:DPR,
@@ -30451,6 +31126,17 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     worldToScreen(x,y){ return worldToScreen(Number(x),Number(y)); },
     screenToWorld(x,y){ return screenToWorld(Number(x),Number(y)); },
     fitCamera(){ return fitCamera(); },
+    setWorldShape(shape,options={}){
+      const geometry=configureWorldShape(shape);
+      if(options?.reset!==false) reset();
+      else fitCamera();
+      return {...geometry,camera:{...camera},environment:window.env?.gridSummary ? window.env.gridSummary() : null};
+    },
+    isInsideWorld(x,y,margin=0){ return isInsideWorld(Number(x),Number(y),Number(margin)||0); },
+    clampPointToWorld(x,y,margin=0){ return clampPointToWorld(Number(x),Number(y),Number(margin)||0); },
+    worldBoundaryDistance(x,y){ return worldBoundaryDistance(Number(x),Number(y)); },
+    worldBoundarySummary(){ return worldBoundarySummary(); },
+    worldLeakSummary(){ return worldLeakSummary(); },
     focusCamera(x,y,zoom=camera.zoom){ return focusCameraOn(Number(x),Number(y),Number(zoom)); },
     zoomCameraAt(x,y,zoom){ return zoomCameraAt(Number(x),Number(y),Number(zoom)); },
     panCameraByScreen(dx,dy){
@@ -31184,6 +31870,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     resetSimulation(options={}){
       const opts=options || {};
+      if(opts.worldShape!=null) configureWorldShape(opts.worldShape);
       if(opts.mode!=null || opts.seed!=null){
         this.setEnvironmentInitialization({mode:opts.mode ?? environmentInitializationMode,seed:opts.seed ?? environmentInitializationSeed});
       }
@@ -31219,7 +31906,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     forcePopulation(n=120){
       const target=Math.max(1,Math.min(180,Number(n)||120));
       while(organisms.length<target){
-        const o=new Organism(rnd(20,W-20),rnd(20,H-20));
+        const point=randomPointInWorld(20,Math.random);
+        const o=new Organism(point.x,point.y);
         settleStarter(o);
         organisms.push(o);
       }
@@ -31237,10 +31925,18 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       const ok=restore(data);
       const after=window.env?.currentAlgaeSummary ? window.env.currentAlgaeSummary() : null;
       return {
-        ok:ok && decoded.worldVersion===WORLD_VERSION && decoded.worldWidth===WORLD_W && decoded.worldHeight===WORLD_H && before?.fieldHash===after?.fieldHash,
+        ok:ok
+          && decoded.worldVersion===WORLD_VERSION
+          && decoded.worldShape===worldGeometry.shape
+          && decoded.worldWidth===WORLD_W
+          && decoded.worldHeight===WORLD_H
+          && decoded.worldRadius===worldGeometry.radius
+          && before?.fieldHash===after?.fieldHash,
         worldVersion:decoded.worldVersion,
+        worldShape:decoded.worldShape,
         worldWidth:decoded.worldWidth,
         worldHeight:decoded.worldHeight,
+        worldRadius:decoded.worldRadius,
         organisms:organisms.length,
         extinctRecords:extinctRecords.length,
         algaeFieldHashBefore:before?.fieldHash ?? null,
@@ -31268,8 +31964,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     for(let i=0;i<target;i++){
       const p=new Plankton({eventKey:`plankton:initial:${i}`});
       if(pts[i]){
-        p.x=clamp(pts[i].x,8,W-8);
-        p.y=clamp(pts[i].y,8,H-8);
+        const point=clampPointToWorld(pts[i].x,pts[i].y,8);
+        p.x=point.x;
+        p.y=point.y;
       }
       p.fade=1;
       plankton.push(p);
@@ -31287,7 +31984,14 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const saveLineageAwarePackIdentity=lineageAwarePackIdentityEnabled();
     const saveResourceLimitedAlgaeRegrowth=resourceLimitedAlgaeRegrowthEnabled();
     const activeEnvironmentInitialization=window.env?.initializationSummary ? window.env.initializationSummary() : null;
-    const state={v:14,worldVersion:WORLD_VERSION,worldWidth:WORLD_W,worldHeight:WORLD_H,frame,generation,dayNight:{phase:dayNight.phase},worldEvent,eco,
+    const state={
+      v:15,
+      worldVersion:WORLD_VERSION,
+      worldShape:worldGeometry.shape,
+      worldWidth:WORLD_W,
+      worldHeight:WORLD_H,
+      worldRadius:worldGeometry.radius,
+      frame,generation,dayNight:{phase:dayNight.phase},worldEvent,eco,
       environmentInitialization:{
         mode:normalizeEnvironmentInitializationMode(activeEnvironmentInitialization?.mode || environmentInitializationMode),
         seed:normalizeEnvironmentInitializationSeed(activeEnvironmentInitialization?.seed ?? environmentInitializationSeed)
@@ -31334,8 +32038,14 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     try{
       if(!s.startsWith('ALIFE2:')) throw new Error('ヘッダー不正');
       const body=s.split(':',2)[1]; const state=JSON.parse(decodeURIComponent(escape(atob(body))));
-      if(state.worldVersion!==WORLD_VERSION || state.worldWidth!==WORLD_W || state.worldHeight!==WORLD_H){
-        throw new Error('このセーブは旧世界形式のため読み込めません');
+      if(state.worldVersion!==WORLD_VERSION){
+        throw new Error('このセーブは旧worldVersionのため読み込めません');
+      }
+      if(state.worldShape!==worldGeometry.shape
+        || state.worldWidth!==WORLD_W
+        || state.worldHeight!==WORLD_H
+        || state.worldRadius!==worldGeometry.radius){
+        throw new Error(`このセーブの世界形式（${state.worldShape || '旧形式'}）は現在の${worldGeometry.shape}世界と一致しません`);
       }
       if(state.features && typeof state.features==='object'){
         if(state.features.evolvableLifeHistory!=null) featureFlags.evolvableLifeHistory=!!state.features.evolvableLifeHistory;
@@ -31368,6 +32078,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       clearSymbolSpriteCache();
       resetLineageRegistry();
       running=false;
+      resetWorldBoundaryTelemetry();
       food.length=0; corpses.length=0; plankton.length=0; patches.length=0; organisms.length=0; newborn.length=0; sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0; calls.length=0; speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear(); selectOrganism(null); fitCamera(); resetPackIdentityState();
       resetFoodWebStats();
       (state.patches||[]).forEach(p=>patches.push(new Patch(p.type,p.x,p.y,p.r)));
