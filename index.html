@@ -12,7 +12,10 @@
   body{ margin:0; font-family: system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; color:var(--text);
     background: radial-gradient(1000px 600px at 20% -10%, #26326866, transparent 60%), linear-gradient(135deg,var(--bg1) 0%,var(--bg2) 100%); overflow:hidden; transition: background 0.6s ease; }
   .wrap{ display:grid; grid-template-columns: 1fr 360px; gap:16px; height:100%; padding:16px; }
+  .world-shell{ position:relative; min-width:0; min-height:0; overflow:hidden; border-radius:12px; background:#01040d; }
   #viewport{ width:100%; height:100%; display:block; border-radius:12px; background:#020617; box-shadow: inset 0 0 0 1px #0b132b; touch-action:none; }
+  .camera-controls{ position:absolute; right:10px; bottom:10px; z-index:8; display:flex; gap:7px; pointer-events:none; }
+  .camera-controls .btn{ min-height:42px; padding:8px 11px; background:rgba(7,16,34,.82); backdrop-filter:blur(4px); pointer-events:auto; }
   .panel{ height:100%; overflow:auto; background:var(--panel); border:1px solid var(--panel-border); border-radius:14px; padding:14px; backdrop-filter: blur(6px); }
   h1{font-size:1.05rem; letter-spacing:.02em; margin:2px 0 10px; font-weight:700}
   .row{display:flex; gap:10px; margin:10px 0; flex-wrap:wrap}
@@ -49,7 +52,9 @@
   @media (max-width:980px){
     body{ overflow:auto; overscroll-behavior:none; }
     .wrap{ height:auto; min-height:100dvh; grid-template-columns:1fr; grid-template-rows:minmax(68dvh,72dvh) auto; gap:8px; padding:8px; }
-    #viewport{ border-radius:8px; }
+    .world-shell,#viewport{ border-radius:8px; }
+    .camera-controls{ right:8px; bottom:8px; }
+    .camera-controls .btn{ min-width:72px; min-height:46px; padding:9px 10px; }
     .panel{ height:auto; max-height:none; padding:10px; border-radius:10px; }
     .btn{ min-height:44px; padding:10px 8px; }
     .log{height:18vh}
@@ -181,7 +186,13 @@
 <div id="fps-hud" aria-live="off">FPS --</div>
 <div id="toasts" class="toasts"></div>
 <div class="wrap">
-  <canvas id="viewport"></canvas>
+  <div class="world-shell">
+    <canvas id="viewport"></canvas>
+    <div class="camera-controls" aria-label="カメラ操作">
+      <button id="camera-fit-btn" class="btn" type="button">全景</button>
+      <button id="camera-focus-btn" class="btn" type="button" disabled>選択へ</button>
+    </div>
+  </div>
   <aside class="panel">
     <h1>記号生命進化シミュレーター</h1>
     <div class="row grid2">
@@ -324,10 +335,79 @@
   const ctx = view.getContext('2d', { alpha:false });
   const IS_MOBILE_VIEW = window.matchMedia && window.matchMedia('(max-width: 700px)').matches;
   const DPR_CAP = IS_MOBILE_VIEW ? 1.12 : 1.35;
-  let W=0,H=0; const DPR=Math.min(DPR_CAP, Math.max(1, window.devicePixelRatio||1));
-  function resize(){ const r=view.getBoundingClientRect(); W=r.width; H=r.height; view.width=Math.round(W*DPR); view.height=Math.round(H*DPR); ctx.setTransform(DPR,0,0,DPR,0,0); if(window.env) window.env.ensure(); }
-  window.addEventListener('resize',resize,{passive:true}); resize();
   const TAU=Math.PI*2; const rnd=(a,b)=>Math.random()*(b-a)+a; const clamp=(x,a,b)=>Math.max(a,Math.min(b,x)); const clamp01=(x)=>clamp(x,0,1); const lerp=(a,b,t)=>a+(b-a)*t; const sigmoid=x=>1/(1+Math.exp(-x));
+  const WORLD_VERSION=1;
+  const WORLD_W=872;
+  const WORLD_H=688;
+  // W/H remain model-only compatibility aliases. View layout must use VIEW_W/VIEW_H.
+  const W=WORLD_W, H=WORLD_H;
+  let VIEW_W=0,VIEW_H=0,DPR=1;
+  const camera={x:WORLD_W*0.5,y:WORLD_H*0.5,zoom:1,minZoom:1,maxZoom:6,initialized:false};
+  function getFitCamera(){
+    const zoom=Math.max(0.0001,Math.min(VIEW_W/WORLD_W,VIEW_H/WORLD_H));
+    return {x:WORLD_W*0.5,y:WORLD_H*0.5,zoom};
+  }
+  function clampCamera(){
+    const fit=getFitCamera();
+    camera.minZoom=fit.zoom;
+    camera.maxZoom=Math.max(2.5,fit.zoom*8);
+    camera.zoom=clamp(Number(camera.zoom)||fit.zoom,camera.minZoom,camera.maxZoom);
+    const halfW=VIEW_W/(2*camera.zoom), halfH=VIEW_H/(2*camera.zoom);
+    camera.x=halfW>=WORLD_W*0.5 ? WORLD_W*0.5 : clamp(camera.x,halfW,WORLD_W-halfW);
+    camera.y=halfH>=WORLD_H*0.5 ? WORLD_H*0.5 : clamp(camera.y,halfH,WORLD_H-halfH);
+    return camera;
+  }
+  function worldToScreen(x,y){
+    return {x:(x-camera.x)*camera.zoom+VIEW_W*0.5,y:(y-camera.y)*camera.zoom+VIEW_H*0.5};
+  }
+  function screenToWorld(x,y){
+    return {x:(x-VIEW_W*0.5)/camera.zoom+camera.x,y:(y-VIEW_H*0.5)/camera.zoom+camera.y};
+  }
+  function isScreenPointInWorld(x,y){
+    const p=screenToWorld(x,y);
+    return p.x>=0 && p.x<=WORLD_W && p.y>=0 && p.y<=WORLD_H;
+  }
+  function fitCamera(){
+    Object.assign(camera,getFitCamera(),{initialized:true});
+    clampCamera();
+    return {...camera};
+  }
+  function focusCameraOn(x,y,zoom=camera.zoom){
+    camera.x=Number(x); camera.y=Number(y); camera.zoom=Number(zoom);
+    camera.initialized=true;
+    clampCamera();
+    return {...camera};
+  }
+  function zoomCameraAt(screenX,screenY,nextZoom){
+    const anchor=screenToWorld(screenX,screenY);
+    camera.zoom=nextZoom;
+    clampCamera();
+    const after=screenToWorld(screenX,screenY);
+    camera.x+=anchor.x-after.x;
+    camera.y+=anchor.y-after.y;
+    camera.initialized=true;
+    clampCamera();
+    return {...camera};
+  }
+  function applyWorldTransform(){
+    ctx.setTransform(
+      DPR*camera.zoom,0,0,DPR*camera.zoom,
+      DPR*(VIEW_W*0.5-camera.x*camera.zoom),
+      DPR*(VIEW_H*0.5-camera.y*camera.zoom)
+    );
+  }
+  function resize(){
+    const r=view.getBoundingClientRect();
+    VIEW_W=Math.max(1,r.width);
+    VIEW_H=Math.max(1,r.height);
+    DPR=Math.min(DPR_CAP,Math.max(1,window.devicePixelRatio||1));
+    view.width=Math.round(VIEW_W*DPR);
+    view.height=Math.round(VIEW_H*DPR);
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    if(!camera.initialized) fitCamera();
+    else clampCamera();
+  }
+  window.addEventListener('resize',resize,{passive:true}); resize();
   const hash01 = (s)=>{ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h>>>0)/2**32; };
 
   // ===== Design config =====
@@ -358,7 +438,7 @@
     }),
     organism: Object.freeze({
       movementSpeedScale: 0.25,
-      maxSizeScale: IS_MOBILE_VIEW ? 2.0 * 0.7 : 2.0
+      maxSizeScale: 2.0
     }),
     lifeHistory: Object.freeze({
       lifeHistoryCapacityReproThresholdScale: 0,
@@ -762,7 +842,7 @@
   }
   function flushToasts(){ if(!toastsEl) return; while(toastQueue.length){ const {type,text,target}=toastQueue.shift(); const el=document.createElement('div'); el.className='toast '+type; el.textContent=text; toastsEl.appendChild(el); if(toastTargetPoint(target)) activeToastPointers.push({el,type,target}); requestAnimationFrame(()=>el.classList.add('show')); const duration=(type==='cycle'||type==='event'||type==='season')?4200:(type==='species'?2600:1400); setTimeout(()=>{ el.classList.remove('show'); setTimeout(()=>{ dropToastPointer(el); el.remove(); },200); },duration); while(toastsEl.children.length>3){ const first=toastsEl.firstChild; dropToastPointer(first); toastsEl.removeChild(first); } } }
   function drawToastTargetLines(){
-    if(!activeToastPointers.length || !toastsEl || !W || !H) return;
+    if(!activeToastPointers.length || !toastsEl || !VIEW_W || !VIEW_H) return;
     const viewRect=view.getBoundingClientRect();
     ctx.save();
     ctx.lineWidth=1.15;
@@ -774,10 +854,11 @@
       const target=toastTargetPoint(item.target);
       if(!target) continue;
       const r=item.el.getBoundingClientRect();
-      const sx=clamp(r.left + r.width*0.5 - viewRect.left, 0, W);
-      const sy=clamp(r.bottom - viewRect.top, 0, H);
-      const tx=clamp(target.x, 0, W);
-      const ty=clamp(target.y, 0, H);
+      const sx=clamp(r.left + r.width*0.5 - viewRect.left, 0, VIEW_W);
+      const sy=clamp(r.bottom - viewRect.top, 0, VIEW_H);
+      const targetScreen=worldToScreen(target.x,target.y);
+      const tx=clamp(targetScreen.x, 0, VIEW_W);
+      const ty=clamp(targetScreen.y, 0, VIEW_H);
       if(Math.hypot(tx-sx,ty-sy)<8) continue;
       ctx.strokeStyle=toastPointerColor(item.type);
       ctx.beginPath();
@@ -1094,7 +1175,7 @@
       this.x=x; this.y=y; this.scale=clamp(scale,0.55,2.1); this.hue=hue;
       this.t=34+Math.round(8*this.scale); this.maxT=this.t;
       this.blobs=[];
-      const n=renderPerf.low ? 4 : 6;
+      const n=6;
       if(eventKeyedVisualRngEnabled()){
         const baseKey=opts.eventKey || `predation-bloom:${frame}:${Math.round(x*100)}:${Math.round(y*100)}:${Math.round(scale*1000)}:${Math.round(hue)}`;
         for(let i=0;i<n;i++){
@@ -1240,7 +1321,7 @@
     if(eventKeyedVisualRngEnabled()){
       const eventKey=opts.eventKey || `predation:${frame}:${predator?.id ?? 'none'}:${prey.id ?? 'unknown'}`;
       const away=predator ? Math.atan2(prey.y-predator.y, prey.x-predator.x) : visualRngForKey(`${eventKey}:away`)()*TAU;
-      const defaultCount=Math.max(8, Math.min(renderPerf.low ? 24 : 34, Math.round(9 + prey.size*0.9 + (nodes?nodes.length*2.2:0) + scale*6)));
+      const defaultCount=Math.max(8, Math.min(34, Math.round(9 + prey.size*0.9 + (nodes?nodes.length*2.2:0) + scale*6)));
       const overrideCount=Number(opts.particleCountOverride);
       const count=Number.isFinite(overrideCount) ? Math.max(0,Math.floor(overrideCount)) : defaultCount;
       for(let i=0;i<count;i++){
@@ -1265,7 +1346,7 @@
       return;
     }
     const away=predator ? Math.atan2(prey.y-predator.y, prey.x-predator.x) : Math.random()*TAU;
-    const count=Math.max(8, Math.min(renderPerf.low ? 24 : 34, Math.round(9 + prey.size*0.9 + (nodes?nodes.length*2.2:0) + scale*6)));
+    const count=Math.max(8, Math.min(34, Math.round(9 + prey.size*0.9 + (nodes?nodes.length*2.2:0) + scale*6)));
     for(let i=0;i<count;i++){
       const n=nodes ? nodes[i%nodes.length] : null;
       const lx=n ? n.x*rnd(0.45,0.95) : Math.cos(Math.random()*TAU)*prey.size*rnd(0.05,0.85);
@@ -12959,6 +13040,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function selectOrganism(o){
     selectedOrganism=o||null;
     selectedDeadAt=0;
+    const focusBtn=$('camera-focus-btn');
+    if(focusBtn) focusBtn.disabled=!selectedOrganism;
   }
   function pushRing(x,y,opts){
     rings.push(new RingEffect(x,y,opts));
@@ -13100,7 +13183,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       `危険：${dangerLabel(o)}`
     ];
   }
-  function drawSelectionOverlay(){
+  function drawSelectionWorldOverlay(){
     const o=selectedOrganism;
     if(!o) return;
     if(o.dead && selectedDeadAt && frame-selectedDeadAt>180){ selectOrganism(null); return; }
@@ -13109,28 +13192,38 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     ctx.save();
     ctx.beginPath(); ctx.arc(o.x,o.y,r,0,TAU);
     ctx.strokeStyle=`hsla(${hue},92%,86%,${o.dead?0.24:0.48})`;
-    ctx.lineWidth=1.5;
+    ctx.lineWidth=1.5/camera.zoom;
     ctx.stroke();
     ctx.beginPath(); ctx.arc(o.x,o.y,r+4,0,TAU);
     ctx.strokeStyle=`hsla(${hue},82%,76%,${o.dead?0.12:0.20})`;
-    ctx.lineWidth=1;
+    ctx.lineWidth=1/camera.zoom;
     ctx.stroke();
-    const cardW=Math.min(IS_MOBILE_VIEW?236:300, W-16);
+    ctx.restore();
+  }
+  function drawSelectionScreenOverlay(){
+    const o=selectedOrganism;
+    if(!o) return;
+    const hue=o.hue||o._symbol?.outlineHue||190;
+    const worldR=Math.max(12,(o.personalSpaceR||o.size)*1.55);
+    const screen=worldToScreen(o.x,o.y);
+    const screenR=Math.max(12,worldR*camera.zoom);
+    ctx.save();
+    const cardW=Math.min(IS_MOBILE_VIEW?236:300, VIEW_W-16);
     const lines=selectedCardLines(o);
     if(o.dead){
       const statusIdx=lines.findIndex(line=>line.startsWith('状態：'));
       if(statusIdx>=0) lines[statusIdx]='状態：死亡 / 死骸化';
     }
     const lineH=IS_MOBILE_VIEW?13:15;
-    const cardH=14 + lines.length*lineH;
-    const prefRight=o.x < W*0.56;
-    let cx=prefRight ? o.x+r+24 : o.x-r-24-cardW;
-    let cy=o.y-cardH*0.52;
-    cx=clamp(cx,8,W-cardW-8);
-    cy=clamp(cy,8,H-cardH-8);
+    const cardH=Math.min(VIEW_H-16,14 + lines.length*lineH);
+    const prefRight=screen.x < VIEW_W*0.56;
+    let cx=prefRight ? screen.x+screenR+20 : screen.x-screenR-20-cardW;
+    let cy=screen.y-cardH*0.52;
+    cx=clamp(cx,8,VIEW_W-cardW-8);
+    cy=clamp(cy,8,VIEW_H-cardH-8);
     const ax=prefRight?cx:cx+cardW;
-    const ay=clamp(o.y,cy+12,cy+cardH-12);
-    ctx.beginPath(); ctx.moveTo(o.x + (prefRight?r:-r), o.y); ctx.lineTo(ax,ay);
+    const ay=clamp(screen.y,cy+12,cy+cardH-12);
+    ctx.beginPath(); ctx.moveTo(screen.x + (prefRight?screenR:-screenR), screen.y); ctx.lineTo(ax,ay);
     ctx.strokeStyle=`hsla(${hue},86%,82%,0.32)`;
     ctx.lineWidth=1;
     ctx.stroke();
@@ -15322,10 +15415,6 @@ const env = (function(){
     const w = Math.max(1, Math.ceil(W/cell));
     const h = Math.max(1, Math.ceil(H/cell));
     if(!fields || w!==ew || h!==eh){
-      const oldFields = fields;
-      const oldEw = ew, oldEh = eh;
-      const oldScar = grazeScar;
-      const oldScarW = scarW, oldScarH = scarH;
       ew=w; eh=h;
       fields = {
         algae: new Float32Array(ew*eh),   // N: nutrient (0..1)
@@ -15341,27 +15430,11 @@ const env = (function(){
       scarH = eh * ALGAE_VISUAL_SUBDIV;
       grazeScar = new Float32Array(scarW*scarH);
 
-      // Baseline world state for new cells; existing cells are copied below on resize.
+      // A fixed world grid is created only for a new/reset model.
       fields.algae.fill(CONFIG.environment.initialization.legacyUniformAlgae);
       fields.cold.fill(0.25);
       fields.oxygen.fill(0.75);
       fields.detritus.fill(0.05);
-      if(oldFields && oldEw>0 && oldEh>0){
-        const copyW=Math.min(oldEw,ew), copyH=Math.min(oldEh,eh);
-        for(const type of CONFIG.environment.fieldTypes){
-          const src=oldFields[type], dst=fields[type];
-          if(!src || !dst) continue;
-          for(let y=0;y<copyH;y++){
-            dst.set(src.subarray(y*oldEw,y*oldEw+copyW), y*ew);
-          }
-        }
-        if(oldScar && oldScarW>0 && oldScarH>0){
-          const copySW=Math.min(oldScarW,scarW), copySH=Math.min(oldScarH,scarH);
-          for(let y=0;y<copySH;y++){
-            grazeScar.set(oldScar.subarray(y*oldScarW,y*oldScarW+copySW), y*scarW);
-          }
-        }
-      }
       _avgN=CONFIG.environment.initialization.legacyUniformAlgae; _avgO=0.75; _avgD=0.05; _avgC=0.25;
 
       pxCanvas = document.createElement('canvas'); pxCanvas.width=ew; pxCanvas.height=eh; pxCtx = pxCanvas.getContext('2d', { willReadFrequently: true });
@@ -16358,20 +16431,19 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
   function restoreState(state){
     ensure();
     if(!state || !state.fields) return false;
+    if(Number(state.ew)!==ew || Number(state.eh)!==eh || Number(state.cell)!==cell){
+      throw new Error('セーブの環境グリッド寸法が固定世界と一致しません');
+    }
     const keys=['algae','cold','oxygen','detritus'];
     for(const key of keys){
       const src=Array.isArray(state.fields[key]) ? state.fields[key] : [];
       const dst=fields[key];
-      const n=Math.min(dst.length,src.length);
-      for(let i=0;i<n;i++) dst[i]=clamp01(Number(src[i])||0);
-      for(let i=n;i<dst.length;i++){
-        dst[i]=key==='algae'?CONFIG.environment.initialization.legacyUniformAlgae:(key==='cold'?0.25:(key==='oxygen'?0.75:0.05));
-      }
+      if(src.length!==dst.length) throw new Error(`セーブの環境field長が不正です: ${key}`);
+      for(let i=0;i<dst.length;i++) dst[i]=clamp01(Number(src[i])||0);
     }
     if(Array.isArray(state.grazeScar) && grazeScar){
-      const n=Math.min(grazeScar.length,state.grazeScar.length);
-      for(let i=0;i<n;i++) grazeScar[i]=clamp01(Number(state.grazeScar[i])||0);
-      for(let i=n;i<grazeScar.length;i++) grazeScar[i]=0;
+      if(state.grazeScar.length!==grazeScar.length) throw new Error('セーブの藻食痕field長が不正です');
+      for(let i=0;i<grazeScar.length;i++) grazeScar[i]=clamp01(Number(state.grazeScar[i])||0);
     }
     refreshFieldAverages();
     resetAlgaeFlow();
@@ -16412,6 +16484,7 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
   captureState: ()=>captureState(),
   restoreState: (state)=>restoreState(state),
   semanticSnapshot: ()=>averages(),
+  gridSummary: ()=>({width:ew,height:eh,cellSize:cell,cellCount:ew*eh,worldWidth:WORLD_W,worldHeight:WORLD_H}),
   usesGpu: ()=>!!gpuReady,
   algaeLayerSummary: ()=>({
     full: algaeRenderStats.full,
@@ -16695,8 +16768,9 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
   const season=()=> 0.6 + 0.6*Math.max(0, Math.sin(frame/3000*TAU));
   const parallax = { stars:[], blobs:[] };
   function initParallax(){
-    const starN = renderPerf.mobile ? 70 : 110;
-    const blobN = renderPerf.mobile ? 10 : 18;
+    // Keep visual initialization RNG consumption identical across device classes.
+    const starN = 110;
+    const blobN = 18;
     if(eventKeyedVisualRngEnabled()){
       parallax.stars.length=0; for(let i=0;i<starN;i++){ const rng=visualRngForKey(`parallax:star:${i}`); parallax.stars.push({x:rng(), y:rng(), z:visualRange(rng,0.2,1)}); }
       parallax.blobs.length=0; for(let i=0;i<blobN;i++){ const rng=visualRngForKey(`parallax:blob:${i}`); parallax.blobs.push({x:rng(), y:rng(), r:visualRange(rng,40,160), z:visualRange(rng,0.3,0.9)}); }
@@ -16732,7 +16806,7 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
     ctx.save();
     ctx.font='700 12px system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif';
     ctx.textAlign='right'; ctx.textBaseline='top';
-    const pad=6, tx=W-8, ty=8, m=ctx.measureText(text), bw=m.width+pad*2, bh=19;
+    const pad=6, tx=VIEW_W-8, ty=8, m=ctx.measureText(text), bw=m.width+pad*2, bh=19;
     ctx.fillStyle='rgba(8,16,34,0.58)';
     ctx.strokeStyle=`rgba(${meta.rgb[0]},${meta.rgb[1]},${meta.rgb[2]},0.48)`;
     ctx.lineWidth=1;
@@ -16744,7 +16818,6 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
 
   function drawBackground(){
     // base
-    ctx.setTransform(DPR,0,0,DPR,0,0);
     ctx.globalCompositeOperation='source-over';
     const s=season();
     const night = clamp01(dayNight.night ?? (dayNight.isNight ? 1 : 0));
@@ -16803,7 +16876,7 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
       ctx.save();
       ctx.font='12px system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif';
       ctx.textAlign='right'; ctx.textBaseline='bottom';
-      const pad=6; const tx=W-8, ty=H-6;
+      const pad=6; const tx=VIEW_W-8, ty=VIEW_H-6;
       const m=ctx.measureText(text); const bw=m.width+pad*2, bh=18; const x=tx-bw, y=ty-bh;
       ctx.fillStyle='rgba(10,18,41,0.40)'; ctx.strokeStyle='rgba(27,37,80,0.6)'; ctx.lineWidth=1;
       if(ctx.roundRect){ ctx.beginPath(); ctx.roundRect(x,y,bw,bh,8); ctx.fill(); ctx.stroke(); }
@@ -16874,43 +16947,119 @@ function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillSt
 
   const effects=[];
   function addEffect(type,x,y){ const e={ type, x, y, r: (type==='repel'? 90: 100), t: (type==='mutagen'? 420: 300), maxT: (type==='mutagen'? 420:300) }; effects.push(e); log((type==='repel'?'💨 煙':'☢ 変異')+' フィールドを展開'); }
-  function canvasPoint(ev){ const r=view.getBoundingClientRect(); return {x:ev.clientX-r.left,y:ev.clientY-r.top}; }
+  function canvasScreenPoint(ev){ const r=view.getBoundingClientRect(); return {x:ev.clientX-r.left,y:ev.clientY-r.top}; }
+  function canvasPoint(ev){ const p=canvasScreenPoint(ev); return screenToWorld(p.x,p.y); }
   function addFoodAt(x,y,n=8){ for(let i=0;i<n;i++){ const t=Math.random()<0.8?'small':'big'; food.push(new Food(clamp(x+rnd(-40,40),8,W-8), clamp(y+rnd(-40,40),8,H-8), t)); } recordFoodSupply('manualFood',n); log('＋ エサを追加'); }
   function applyToolAt(x,y){ if(ui.tool==='food') addFoodAt(x,y,8); else if(ui.tool==='repel'||ui.tool==='mutagen') addEffect(ui.tool,x,y); }
   let pointerStroke=null;
-  view.addEventListener('pointerdown',ev=>{
-    ev.preventDefault();
-    const p=canvasPoint(ev);
-    if(ui.tool==='membrane'){
-      pointerStroke={tool:ui.tool,x:p.x,y:p.y,lastX:p.x,lastY:p.y,moved:false};
-      try{ view.setPointerCapture(ev.pointerId); }catch(_){}
-      return;
-    }
-    const hit=nearestOrganismAt(p.x,p.y,IS_MOBILE_VIEW?48:36);
-    if(hit){ selectOrganism(hit); recordAction(hit,'観察された'); return; }
-    selectOrganism(null);
-    applyToolAt(p.x,p.y);
-  });
-  view.addEventListener('pointermove',ev=>{
-    if(!pointerStroke) return;
-    ev.preventDefault();
-    const p=canvasPoint(ev);
-    const d=Math.hypot(p.x-pointerStroke.lastX,p.y-pointerStroke.lastY);
-    if(d<5) return;
-    pointerStroke.moved=true;
-    if(pointerStroke.tool==='membrane') addMembraneStroke(p.x,p.y,pointerStroke.lastX,pointerStroke.lastY);
-    pointerStroke.lastX=p.x; pointerStroke.lastY=p.y;
-  });
-  function endPointerStroke(ev){
-    if(!pointerStroke) return;
-    if(!pointerStroke.moved && pointerStroke.tool==='membrane'){
-      pushRing(pointerStroke.x,pointerStroke.y,{r0:4,r1:20,color:'rgba(120,224,150,',t:38,width:1.2});
-    }
-    try{ view.releasePointerCapture(ev.pointerId); }catch(_){}
+  let pendingCanvasTap=null;
+  let pinchGesture=null;
+  const activeCanvasPointers=new Map();
+  function pointerPair(){
+    const values=[...activeCanvasPointers.values()];
+    return values.length>=2 ? values.slice(0,2) : null;
+  }
+  function pairMetrics(pair){
+    const a=pair[0],b=pair[1];
+    return {mid:{x:(a.x+b.x)*0.5,y:(a.y+b.y)*0.5},distance:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y))};
+  }
+  function beginPinch(){
+    const pair=pointerPair();
+    if(!pair) return;
+    const m=pairMetrics(pair);
+    pinchGesture={lastMid:m.mid,lastDistance:m.distance};
+    pendingCanvasTap=null;
     pointerStroke=null;
   }
-  view.addEventListener('pointerup',endPointerStroke);
-  view.addEventListener('pointercancel',endPointerStroke);
+  function updatePinch(){
+    const pair=pointerPair();
+    if(!pair || !pinchGesture) return;
+    const next=pairMetrics(pair);
+    const anchor=screenToWorld(pinchGesture.lastMid.x,pinchGesture.lastMid.y);
+    camera.zoom*=next.distance/pinchGesture.lastDistance;
+    clampCamera();
+    const after=screenToWorld(next.mid.x,next.mid.y);
+    camera.x+=anchor.x-after.x;
+    camera.y+=anchor.y-after.y;
+    camera.initialized=true;
+    clampCamera();
+    pinchGesture.lastMid=next.mid;
+    pinchGesture.lastDistance=next.distance;
+  }
+  view.addEventListener('pointerdown',ev=>{
+    ev.preventDefault();
+    const screen=canvasScreenPoint(ev);
+    activeCanvasPointers.set(ev.pointerId,screen);
+    try{ view.setPointerCapture(ev.pointerId); }catch(_){}
+    if(activeCanvasPointers.size>=2){ beginPinch(); return; }
+    const p=screenToWorld(screen.x,screen.y);
+    if(ui.tool==='membrane'){
+      pointerStroke={pointerId:ev.pointerId,tool:ui.tool,x:p.x,y:p.y,lastX:p.x,lastY:p.y,moved:false};
+      return;
+    }
+    pendingCanvasTap={pointerId:ev.pointerId,startX:screen.x,startY:screen.y,lastX:screen.x,lastY:screen.y,moved:false};
+  });
+  view.addEventListener('pointermove',ev=>{
+    if(!activeCanvasPointers.has(ev.pointerId)) return;
+    ev.preventDefault();
+    const screen=canvasScreenPoint(ev);
+    activeCanvasPointers.set(ev.pointerId,screen);
+    if(activeCanvasPointers.size>=2){ if(!pinchGesture) beginPinch(); updatePinch(); return; }
+    if(pointerStroke && pointerStroke.pointerId===ev.pointerId){
+      const p=screenToWorld(screen.x,screen.y);
+      const d=Math.hypot(p.x-pointerStroke.lastX,p.y-pointerStroke.lastY);
+      if(d<5/camera.zoom) return;
+      pointerStroke.moved=true;
+      addMembraneStroke(p.x,p.y,pointerStroke.lastX,pointerStroke.lastY);
+      pointerStroke.lastX=p.x; pointerStroke.lastY=p.y;
+      return;
+    }
+    if(!pendingCanvasTap || pendingCanvasTap.pointerId!==ev.pointerId) return;
+    const dx=screen.x-pendingCanvasTap.lastX,dy=screen.y-pendingCanvasTap.lastY;
+    if(!pendingCanvasTap.moved && Math.hypot(screen.x-pendingCanvasTap.startX,screen.y-pendingCanvasTap.startY)>=6) pendingCanvasTap.moved=true;
+    if(pendingCanvasTap.moved){
+      camera.x-=dx/camera.zoom;
+      camera.y-=dy/camera.zoom;
+      camera.initialized=true;
+      clampCamera();
+    }
+    pendingCanvasTap.lastX=screen.x;
+    pendingCanvasTap.lastY=screen.y;
+  });
+  function endCanvasPointer(ev){
+    const screen=activeCanvasPointers.get(ev.pointerId) || canvasScreenPoint(ev);
+    const wasPinching=!!pinchGesture;
+    activeCanvasPointers.delete(ev.pointerId);
+    if(activeCanvasPointers.size<2) pinchGesture=null;
+    if(pointerStroke && pointerStroke.pointerId===ev.pointerId){
+      if(!pointerStroke.moved && pointerStroke.tool==='membrane' && isScreenPointInWorld(screen.x,screen.y)){
+      pushRing(pointerStroke.x,pointerStroke.y,{r0:4,r1:20,color:'rgba(120,224,150,',t:38,width:1.2});
+      }
+      pointerStroke=null;
+    } else if(!wasPinching && pendingCanvasTap && pendingCanvasTap.pointerId===ev.pointerId && !pendingCanvasTap.moved){
+      if(isScreenPointInWorld(screen.x,screen.y)){
+        const p=screenToWorld(screen.x,screen.y);
+        const hitRadius=Math.max(IS_MOBILE_VIEW?18:14,(IS_MOBILE_VIEW?34:26)/camera.zoom);
+        const hit=nearestOrganismAt(p.x,p.y,hitRadius);
+        if(hit) selectOrganism(hit);
+        else { selectOrganism(null); applyToolAt(p.x,p.y); }
+      }
+    }
+    try{ view.releasePointerCapture(ev.pointerId); }catch(_){}
+    if(pendingCanvasTap?.pointerId===ev.pointerId) pendingCanvasTap=null;
+  }
+  view.addEventListener('pointerup',endCanvasPointer);
+  view.addEventListener('pointercancel',endCanvasPointer);
+  view.addEventListener('wheel',ev=>{
+    ev.preventDefault();
+    const p=canvasScreenPoint(ev);
+    zoomCameraAt(p.x,p.y,camera.zoom*Math.exp(-ev.deltaY*0.0015));
+  },{passive:false});
+  $('camera-fit-btn').addEventListener('click',()=>fitCamera());
+  $('camera-focus-btn').addEventListener('click',()=>{
+    if(!selectedOrganism || selectedOrganism.dead){ selectOrganism(null); return; }
+    focusCameraOn(selectedOrganism.x,selectedOrganism.y,Math.max(camera.zoom,getFitCamera().zoom*2.2));
+  });
   function defaultToolAction(){ if(ui.tool==='food'){ for(let i=0;i<16;i++){ const t=Math.random()<0.8?'small':'big'; food.push(new Food(rnd(8,W-8), rnd(8,H-8), t)); } log('＋ エサを広域追加'); } else if(ui.tool==='membrane'){ addMembraneStroke(W*0.45,H*0.48,W*0.58,H*0.54); } else addEffect(ui.tool, W*0.6, H*0.5); }
 
   // ===== Species Cards (rich avatar) =====
@@ -17624,8 +17773,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     extinctRecords.length=0;
     discoveredRareTraits.clear();
     evolutionMilestones.clear();
-    selectedOrganism=null;
-    selectedDeadAt=0;
+    selectOrganism(null);
+    fitCamera();
     lastWaterStatusKey='';
     lastCapacityKey='';
     resetFoodWebStats();
@@ -21616,6 +21765,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   }
 
   function draw(){
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle='#01040d';
+    ctx.fillRect(0,0,VIEW_W,VIEW_H);
+    ctx.save();
+    applyWorldTransform();
+    ctx.beginPath();
+    ctx.rect(0,0,WORLD_W,WORLD_H);
+    ctx.clip();
     drawBackground();
     // レイヤー順：パッチ -> エフェクト -> 餌/死骸/プランクトン -> 個体 -> スパーク -> HUD -> 右下HUD
     // patches hidden; environment is visualized as dots
@@ -21640,9 +21798,13 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     for(let i=predationBlooms.length-1;i>=0;--i){ const b=predationBlooms[i]; b.step(); b.draw(ctx); if(b.t<=0) predationBlooms.splice(i,1); }
     for(let i=sparks.length-1;i>=0;--i){ const s=sparks[i]; s.step(); s.draw(ctx); if(s.t<=0) sparks.splice(i,1); }
     drawPredationSizeOverlay();
-    drawSelectionOverlay();
+    drawSelectionWorldOverlay();
+    ctx.restore();
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    drawSelectionScreenOverlay();
     drawObservationLabel();
     drawHUD();
+    drawToastTargetLines();
     if(phyDirty || frame - lastPhyDrawFrame >= 12){
       drawPhy();
       lastPhyDrawFrame = frame;
@@ -21936,7 +22098,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       environmentInitializationMode=oldEnvironmentInitializationMode;
       environmentInitializationSeed=oldEnvironmentInitializationSeed;
       diagnosticAlgaeRegrowthScale=oldDiagnosticAlgaeRegrowthScale;
-      Object.assign(featureFlags,oldFeatureFlags);
+      if(!opts.preserveFeatureFlagsAfterRun) Object.assign(featureFlags,oldFeatureFlags);
     }
   }
   function runCarnivoreLineageMicroTests(){
@@ -30229,6 +30391,49 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   }
 
   window.__alifeDebug = {
+    worldGeometry(){
+      return {
+        worldVersion:WORLD_VERSION,
+        worldWidth:WORLD_W,
+        worldHeight:WORLD_H,
+        viewWidth:VIEW_W,
+        viewHeight:VIEW_H,
+        dpr:DPR,
+        camera:{...camera},
+        environment:window.env?.gridSummary ? window.env.gridSummary() : null,
+        spatialGrid:{cellSize:GS,width:GW,height:GH}
+      };
+    },
+    worldToScreen(x,y){ return worldToScreen(Number(x),Number(y)); },
+    screenToWorld(x,y){ return screenToWorld(Number(x),Number(y)); },
+    fitCamera(){ return fitCamera(); },
+    focusCamera(x,y,zoom=camera.zoom){ return focusCameraOn(Number(x),Number(y),Number(zoom)); },
+    zoomCameraAt(x,y,zoom){ return zoomCameraAt(Number(x),Number(y),Number(zoom)); },
+    panCameraByScreen(dx,dy){
+      camera.x-=Number(dx||0)/camera.zoom;
+      camera.y-=Number(dy||0)/camera.zoom;
+      camera.initialized=true;
+      clampCamera();
+      return {...camera};
+    },
+    selectOrganismById(id){
+      const o=organismById(Number(id));
+      selectOrganism(o);
+      return o ? {id:o.id,x:o.x,y:o.y,dead:!!o.dead} : null;
+    },
+    clearSelection(){ selectOrganism(null); return true; },
+    selectedOrganism(){ const o=selectedOrganism; return o ? {id:o.id,x:o.x,y:o.y,dead:!!o.dead} : null; },
+    setTool(name){ setTool(String(name)); return ui.tool; },
+    interactionState(){
+      return {
+        selected:this.selectedOrganism(),
+        food:food.map(f=>({x:f.x,y:f.y,type:f.type})),
+        effects:effects.map(e=>({x:e.x,y:e.y,type:e.type,r:e.r,t:e.t})),
+        membranes:membranes.map(m=>({x1:m.x1,y1:m.y1,x2:m.x2,y2:m.y2,t:m.t})),
+        rings:rings.map(r=>({x:r.x,y:r.y,r0:r.r0,r1:r.r1,t:r.t}))
+      };
+    },
+    comparableModelState(){ return visualRngComparableModelState(); },
     counts(){
       return { organisms:organisms.length, food:food.length, detritusParticles:countDetritusParticles(), plankton:plankton.length, sparks:sparks.length, rings:rings.length, predationBlooms:predationBlooms.length, membranes:membranes.length, corpses:corpses.length, species:new Set(organisms.map(o=>o.speciesKey)).size };
     },
@@ -30679,9 +30884,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       return capture();
     },
     restoreSaveData(data){
-      restore(String(data || ''));
+      const ok=restore(String(data || ''));
       return {
+        ok,
         counts:this.counts(),
+        world:this.worldGeometry(),
         environmentInitialization:window.env?.initializationSummary ? window.env.initializationSummary() : null
       };
     },
@@ -30982,10 +31189,14 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     roundTripSave(){
       const before=window.env?.currentAlgaeSummary ? window.env.currentAlgaeSummary() : null;
       const data=capture();
-      restore(data);
+      const decoded=JSON.parse(decodeURIComponent(escape(atob(data.split(':',2)[1]))));
+      const ok=restore(data);
       const after=window.env?.currentAlgaeSummary ? window.env.currentAlgaeSummary() : null;
       return {
-        ok:before?.fieldHash===after?.fieldHash,
+        ok:ok && decoded.worldVersion===WORLD_VERSION && decoded.worldWidth===WORLD_W && decoded.worldHeight===WORLD_H && before?.fieldHash===after?.fieldHash,
+        worldVersion:decoded.worldVersion,
+        worldWidth:decoded.worldWidth,
+        worldHeight:decoded.worldHeight,
         organisms:organisms.length,
         extinctRecords:extinctRecords.length,
         algaeFieldHashBefore:before?.fieldHash ?? null,
@@ -31032,7 +31243,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const saveLineageAwarePackIdentity=lineageAwarePackIdentityEnabled();
     const saveResourceLimitedAlgaeRegrowth=resourceLimitedAlgaeRegrowthEnabled();
     const activeEnvironmentInitialization=window.env?.initializationSummary ? window.env.initializationSummary() : null;
-    const state={v:saveResourceLimitedAlgaeRegrowth ? 13 : (packCooperativeTargetingEnabled() ? 12 : (saveProvisionalLineagePromotion ? 11 : (saveLineageAwarePackIdentity ? 10 : (saveLineageReproductiveIsolation ? 9 : (saveLineageAwareMateSelection ? 8 : (saveProvisionalLineageClassification ? 7 : (saveLineageRegistry ? 6 : 5))))))),frame,generation,dayNight:{phase:dayNight.phase},worldEvent,eco,
+    const state={v:14,worldVersion:WORLD_VERSION,worldWidth:WORLD_W,worldHeight:WORLD_H,frame,generation,dayNight:{phase:dayNight.phase},worldEvent,eco,
       environmentInitialization:{
         mode:normalizeEnvironmentInitializationMode(activeEnvironmentInitialization?.mode || environmentInitializationMode),
         seed:normalizeEnvironmentInitializationSeed(activeEnvironmentInitialization?.seed ?? environmentInitializationSeed)
@@ -31079,6 +31290,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     try{
       if(!s.startsWith('ALIFE2:')) throw new Error('ヘッダー不正');
       const body=s.split(':',2)[1]; const state=JSON.parse(decodeURIComponent(escape(atob(body))));
+      if(state.worldVersion!==WORLD_VERSION || state.worldWidth!==WORLD_W || state.worldHeight!==WORLD_H){
+        throw new Error('このセーブは旧世界形式のため読み込めません');
+      }
       if(state.features && typeof state.features==='object'){
         if(state.features.evolvableLifeHistory!=null) featureFlags.evolvableLifeHistory=!!state.features.evolvableLifeHistory;
         if(state.features.juvenileDevelopment!=null) featureFlags.juvenileDevelopment=!!state.features.juvenileDevelopment;
@@ -31110,7 +31324,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       clearSymbolSpriteCache();
       resetLineageRegistry();
       running=false;
-      food.length=0; corpses.length=0; plankton.length=0; patches.length=0; organisms.length=0; newborn.length=0; sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0; calls.length=0; speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear(); selectedOrganism=null; selectedDeadAt=0; resetPackIdentityState();
+      food.length=0; corpses.length=0; plankton.length=0; patches.length=0; organisms.length=0; newborn.length=0; sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0; calls.length=0; speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0; discoveredRareTraits.clear(); evolutionMilestones.clear(); selectOrganism(null); fitCamera(); resetPackIdentityState();
       resetFoodWebStats();
       (state.patches||[]).forEach(p=>patches.push(new Patch(p.type,p.x,p.y,p.r)));
       if(window.env && state.envState && window.env.restoreState){
@@ -31219,6 +31433,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         u.lastAction = o.lastAction || u.lastAction || 'ロードされた';
         u.recalcPhenotype();
         applyDevelopmentPhenotype(u);
+        // Phenotype/adaptation recomputation may raise newborn protection; the saved
+        // runtime countdown is authoritative for a round trip.
+        if(o.protect!=null) u.protect=o.protect;
         u.role=normalizeRole(o.role ?? u.role);
         if(o.socialMode!=null) u.socialMode=o.socialMode;
         if(o.sociality!=null){
@@ -31267,7 +31484,8 @@ organisms.push(u);
       telemetrySampleFrame(true);
       reportMix(); rebuildSpeciesCards(); renderExtinctRecords(); updateWaterStatus();
       showToast('season','✔ ロード完了');
-    }catch(e){ alert('ロード失敗: '+(e?.message||e)); }
+      return true;
+    }catch(e){ alert('ロード失敗: '+(e?.message||e)); return false; }
   }
   function buildCodexBrief(){
     const species = new Set(organisms.map(o=>o.speciesKey));
