@@ -1,0 +1,238 @@
+{
+  "generatedAt": "2026-07-29T00:41:26.622Z",
+  "selection": {
+    "expectedId": 1,
+    "selected": {
+      "id": 1,
+      "x": 790.7997865991151,
+      "y": 595.3958953234932,
+      "dead": false
+    },
+    "matches": true
+  },
+  "food": {
+    "requestedWorld": {
+      "x": 152,
+      "y": 366
+    },
+    "createdCount": 8,
+    "maximumDistance": 44.97534972030324,
+    "mapped": true
+  },
+  "letterbox": {
+    "worldTopScreenY": 173.17746559633028,
+    "point": {
+      "x": 187,
+      "y": 60.61211295871559
+    },
+    "before": 20,
+    "after": 20,
+    "ignored": true
+  },
+  "repel": {
+    "requestedWorld": {
+      "x": 398,
+      "y": 514
+    },
+    "actual": {
+      "x": 398,
+      "y": 514,
+      "type": "repel",
+      "r": 90,
+      "t": 300
+    },
+    "error": 0
+  },
+  "mutagen": {
+    "requestedWorld": {
+      "x": 480,
+      "y": 218
+    },
+    "actual": {
+      "x": 480,
+      "y": 218.00000000000006,
+      "type": "mutagen",
+      "r": 100,
+      "t": 420
+    },
+    "error": 5.684341886080802e-14
+  },
+  "membrane": {
+    "requestedStartWorld": {
+      "x": 210,
+      "y": 220
+    },
+    "requestedEndWorld": {
+      "x": 330,
+      "y": 286
+    },
+    "actual": {
+      "x1": 210,
+      "y1": 220,
+      "x2": 330,
+      "y2": 286.00000000000006,
+      "t": 820
+    },
+    "endpointError": 5.684341886080802e-14
+  },
+  "pan": {
+    "before": {
+      "x": 436,
+      "y": 344,
+      "zoom": 0.9435779816513762,
+      "minZoom": 0.4288990825688073,
+      "maxZoom": 3.4311926605504586,
+      "initialized": true
+    },
+    "after": {
+      "x": 514.424890617404,
+      "y": 339.89639037433153,
+      "zoom": 0.9435779816513762,
+      "minZoom": 0.4288990825688073,
+      "maxZoom": 3.4311926605504586,
+      "initialized": true
+    },
+    "changed": true,
+    "modelToolLeak": false
+  },
+  "pinch": {
+    "before": {
+      "x": 436,
+      "y": 344,
+      "zoom": 0.4288990825688073,
+      "minZoom": 0.4288990825688073,
+      "maxZoom": 3.4311926605504586,
+      "initialized": true
+    },
+    "after": {
+      "x": 436,
+      "y": 344,
+      "zoom": 0.7658912188728699,
+      "minZoom": 0.4288990825688073,
+      "maxZoom": 3.4311926605504586,
+      "initialized": true
+    },
+    "zoomed": true
+  },
+  "mapping": {
+    "world": {
+      "x": 643.25,
+      "y": 511.75
+    },
+    "screen": {
+      "x": 345.7309551114023,
+      "y": 449.19700196592396
+    },
+    "roundTrip": {
+      "x": 643.25,
+      "y": 511.75
+    },
+    "error": 0
+  },
+  "saveLoad": {
+    "worldVersion": 1,
+    "worldWidth": 872,
+    "worldHeight": 688,
+    "loadResult": {
+      "ok": true,
+      "counts": {
+        "organisms": 47,
+        "food": 104,
+        "detritusParticles": 99,
+        "plankton": 91,
+        "sparks": 0,
+        "rings": 0,
+        "predationBlooms": 0,
+        "membranes": 0,
+        "corpses": 19,
+        "species": 44
+      },
+      "world": {
+        "worldVersion": 1,
+        "worldWidth": 872,
+        "worldHeight": 688,
+        "viewWidth": 374,
+        "viewHeight": 641.4375,
+        "dpr": 1,
+        "camera": {
+          "x": 436,
+          "y": 344,
+          "zoom": 0.4288990825688073,
+          "minZoom": 0.4288990825688073,
+          "maxZoom": 3.4311926605504586,
+          "initialized": true
+        },
+        "environment": {
+          "width": 49,
+          "height": 39,
+          "cellSize": 18,
+          "cellCount": 1911,
+          "worldWidth": 872,
+          "worldHeight": 688
+        },
+        "spatialGrid": {
+          "cellSize": 48,
+          "width": 19,
+          "height": 15
+        }
+      },
+      "environmentInitialization": {
+        "mode": "patchy-intermediate",
+        "seed": 45001,
+        "cellCount": 1911,
+        "minimumAlgae": 0.02000018022954464,
+        "maximumAlgae": 0.3399994969367981,
+        "meanAlgae": 0.14250000017002606,
+        "medianAlgae": 0.12999999523162842,
+        "standardDeviation": 0.08654581772617116,
+        "fieldHash": "8b7f3243",
+        "thresholds": {
+          "lowMax": 0.075,
+          "highMin": 0.185
+        },
+        "ratios": {
+          "low": 0.250130821559393,
+          "medium": 0.49973835688121404,
+          "high": 0.250130821559393
+        },
+        "spatial": {
+          "componentCount": 12,
+          "resourcePatchCount": 9,
+          "byBand": {
+            "low": {
+              "components": 5,
+              "largestCells": 433,
+              "largestShare": 0.22658294086865516
+            },
+            "medium": {
+              "components": 3,
+              "largestCells": 623,
+              "largestShare": 0.326007326007326
+            },
+            "high": {
+              "components": 4,
+              "largestCells": 329,
+              "largestShare": 0.17216117216117216
+            }
+          }
+        }
+      }
+    },
+    "savedModelHash": "a5f382e8ffc78589b0e926373c9ceee9f42bb1897e19be59078a0eac8005903d",
+    "loadedModelHash": "a5f382e8ffc78589b0e926373c9ceee9f42bb1897e19be59078a0eac8005903d",
+    "modelRoundTripMatches": true,
+    "firstModelDiff": null,
+    "cameraAfterLoad": {
+      "x": 436,
+      "y": 344,
+      "zoom": 0.4288990825688073,
+      "minZoom": 0.4288990825688073,
+      "maxZoom": 3.4311926605504586,
+      "initialized": true
+    },
+    "oldSaveRejected": true,
+    "oldSaveMessage": "ロード失敗: このセーブは旧世界形式のため読み込めません"
+  },
+  "errors": [],
+  "badNumbers": []
+}

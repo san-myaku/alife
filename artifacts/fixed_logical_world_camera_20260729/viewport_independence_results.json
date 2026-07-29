@@ -1,0 +1,833 @@
+{
+  "generatedAt": "2026-07-29T00:35:28.347Z",
+  "baseCommit": "ee359044fa3024bc13075d6aa9a0ee274eb966a8",
+  "seed": 41001,
+  "steps": 600,
+  "canonicalWorld": {
+    "width": 872,
+    "height": 688
+  },
+  "rows": [
+    {
+      "viewport": {
+        "label": "mobile_portrait",
+        "width": 390,
+        "height": 844
+      },
+      "geometry": {
+        "worldVersion": 1,
+        "worldWidth": 872,
+        "worldHeight": 688,
+        "viewWidth": 374,
+        "viewHeight": 641.4375,
+        "dpr": 1,
+        "camera": {
+          "x": 436,
+          "y": 344,
+          "zoom": 0.4288990825688073,
+          "minZoom": 0.4288990825688073,
+          "maxZoom": 3.4311926605504586,
+          "initialized": true
+        },
+        "environment": {
+          "width": 49,
+          "height": 39,
+          "cellSize": 18,
+          "cellCount": 1911,
+          "worldWidth": 872,
+          "worldHeight": 688
+        },
+        "spatialGrid": {
+          "cellSize": 58,
+          "width": 16,
+          "height": 12
+        }
+      },
+      "hashes": {
+        "full": "7e4fa1708ed2befbe0738d14aec3cd540fbee10249fc3c0c3bfa9640bae7dc7a",
+        "organisms": "11c809a2505494d155192b5f9c26e23a6bdf70c8f2044ec56996d1e27b73a6af",
+        "environment": "c0f6328371e2ddf3fdfeec11bee36e3f311371362159e3617b923156ca22c9dd",
+        "resources": "0fa6dae3df3cc4ead2d2080ae522b7ca77c4015260565491762a9f2591e18e59",
+        "pack": "73e9e534d0831a3376c75cf4e97045f10ee66395fbeaa229196638364ff9fd29",
+        "lineage": "b5d23445c782095cae5bb3d38cde7a7ef5ab1b0007a468d96c936c5d05a27e4d",
+        "species": "acab33ca2fde44a4743b39b4070b8e5de0632fdd608595e1a7f48fbbff449000"
+      },
+      "environment": {
+        "mode": "patchy-intermediate",
+        "seed": 41001,
+        "cellCount": 1911,
+        "minimumAlgae": 0.1374739706516266,
+        "maximumAlgae": 0.6440240144729614,
+        "meanAlgae": 0.3888994629301369,
+        "medianAlgae": 0.38822445273399353,
+        "standardDeviation": 0.10824873207508096,
+        "fieldHash": "e5248938",
+        "thresholds": {
+          "lowMax": 0.075,
+          "highMin": 0.185
+        },
+        "ratios": {
+          "low": 0,
+          "medium": 0.0015698587127158557,
+          "high": 0.9984301412872841
+        },
+        "spatial": {
+          "componentCount": 4,
+          "resourcePatchCount": 1,
+          "byBand": {
+            "low": {
+              "components": 0,
+              "largestCells": 0,
+              "largestShare": 0
+            },
+            "medium": {
+              "components": 3,
+              "largestCells": 1,
+              "largestShare": 0.0005232862375719519
+            },
+            "high": {
+              "components": 1,
+              "largestCells": 1908,
+              "largestShare": 0.9984301412872841
+            }
+          }
+        }
+      },
+      "population": {
+        "frame": 600,
+        "windowFrames": 660,
+        "startPopulation": 64,
+        "endPopulation": 29,
+        "peakPopulation": 64,
+        "populationCap": 120,
+        "firstPopulationCapFrame": null,
+        "startDiets": {
+          "h": 23,
+          "m": 21,
+          "c": 20
+        },
+        "endDiets": {
+          "h": 10,
+          "m": 14,
+          "c": 5
+        },
+        "endAverageStoreNByDiet": {
+          "h": 0.32639518804771994,
+          "m": 0.18491679919670997,
+          "c": 0.16320499877262643
+        },
+        "byDiet": {
+          "h": {
+            "births": 2,
+            "reproductions": 0,
+            "deaths": 15,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 3,
+            "starvationDeaths": 12,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          },
+          "m": {
+            "births": 8,
+            "reproductions": 10,
+            "deaths": 15,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 2,
+            "starvationDeaths": 13,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          },
+          "c": {
+            "births": 6,
+            "reproductions": 4,
+            "deaths": 21,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 5,
+            "starvationDeaths": 16,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          }
+        },
+        "births": 16,
+        "deaths": 51,
+        "reproductions": 14,
+        "deathCauses": {
+          "starvation": 41,
+          "oldAge": 0,
+          "predation": 10,
+          "overcrowding": 0,
+          "other": 0
+        },
+        "newborn": {
+          "births": 16,
+          "survived60": 14,
+          "survived180": 10,
+          "survived240": 5,
+          "deathsWithin60": 0,
+          "deathsWithin180": 0,
+          "deathsWithin240": 2,
+          "overcrowdingDeathsWithin60": 0,
+          "overcrowdingDeathsWithin180": 0,
+          "overcrowdingDeathsWithin240": 0,
+          "survivalRateByDiet": {
+            "h": {
+              "eligible60": 2,
+              "survived60": 2,
+              "rate60": 1,
+              "eligible180": 2,
+              "survived180": 2,
+              "rate180": 1,
+              "eligible240": 1,
+              "survived240": 1,
+              "rate240": 1
+            },
+            "m": {
+              "eligible60": 6,
+              "survived60": 6,
+              "rate60": 1,
+              "eligible180": 3,
+              "survived180": 3,
+              "rate180": 1,
+              "eligible240": 1,
+              "survived240": 1,
+              "rate240": 1
+            },
+            "c": {
+              "eligible60": 6,
+              "survived60": 6,
+              "rate60": 1,
+              "eligible180": 5,
+              "survived180": 5,
+              "rate180": 1,
+              "eligible240": 5,
+              "survived240": 3,
+              "rate240": 0.6
+            }
+          }
+        }
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "label": "tablet_portrait",
+        "width": 768,
+        "height": 1024
+      },
+      "geometry": {
+        "worldVersion": 1,
+        "worldWidth": 872,
+        "worldHeight": 688,
+        "viewWidth": 752,
+        "viewHeight": 737.265625,
+        "dpr": 1,
+        "camera": {
+          "x": 436,
+          "y": 344,
+          "zoom": 0.8623853211009175,
+          "minZoom": 0.8623853211009175,
+          "maxZoom": 6.89908256880734,
+          "initialized": true
+        },
+        "environment": {
+          "width": 49,
+          "height": 39,
+          "cellSize": 18,
+          "cellCount": 1911,
+          "worldWidth": 872,
+          "worldHeight": 688
+        },
+        "spatialGrid": {
+          "cellSize": 58,
+          "width": 16,
+          "height": 12
+        }
+      },
+      "hashes": {
+        "full": "7e4fa1708ed2befbe0738d14aec3cd540fbee10249fc3c0c3bfa9640bae7dc7a",
+        "organisms": "11c809a2505494d155192b5f9c26e23a6bdf70c8f2044ec56996d1e27b73a6af",
+        "environment": "c0f6328371e2ddf3fdfeec11bee36e3f311371362159e3617b923156ca22c9dd",
+        "resources": "0fa6dae3df3cc4ead2d2080ae522b7ca77c4015260565491762a9f2591e18e59",
+        "pack": "73e9e534d0831a3376c75cf4e97045f10ee66395fbeaa229196638364ff9fd29",
+        "lineage": "b5d23445c782095cae5bb3d38cde7a7ef5ab1b0007a468d96c936c5d05a27e4d",
+        "species": "acab33ca2fde44a4743b39b4070b8e5de0632fdd608595e1a7f48fbbff449000"
+      },
+      "environment": {
+        "mode": "patchy-intermediate",
+        "seed": 41001,
+        "cellCount": 1911,
+        "minimumAlgae": 0.1374739706516266,
+        "maximumAlgae": 0.6440240144729614,
+        "meanAlgae": 0.3888994629301369,
+        "medianAlgae": 0.38822445273399353,
+        "standardDeviation": 0.10824873207508096,
+        "fieldHash": "e5248938",
+        "thresholds": {
+          "lowMax": 0.075,
+          "highMin": 0.185
+        },
+        "ratios": {
+          "low": 0,
+          "medium": 0.0015698587127158557,
+          "high": 0.9984301412872841
+        },
+        "spatial": {
+          "componentCount": 4,
+          "resourcePatchCount": 1,
+          "byBand": {
+            "low": {
+              "components": 0,
+              "largestCells": 0,
+              "largestShare": 0
+            },
+            "medium": {
+              "components": 3,
+              "largestCells": 1,
+              "largestShare": 0.0005232862375719519
+            },
+            "high": {
+              "components": 1,
+              "largestCells": 1908,
+              "largestShare": 0.9984301412872841
+            }
+          }
+        }
+      },
+      "population": {
+        "frame": 600,
+        "windowFrames": 660,
+        "startPopulation": 64,
+        "endPopulation": 29,
+        "peakPopulation": 64,
+        "populationCap": 120,
+        "firstPopulationCapFrame": null,
+        "startDiets": {
+          "h": 23,
+          "m": 21,
+          "c": 20
+        },
+        "endDiets": {
+          "h": 10,
+          "m": 14,
+          "c": 5
+        },
+        "endAverageStoreNByDiet": {
+          "h": 0.32639518804771994,
+          "m": 0.18491679919670997,
+          "c": 0.16320499877262643
+        },
+        "byDiet": {
+          "h": {
+            "births": 2,
+            "reproductions": 0,
+            "deaths": 15,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 3,
+            "starvationDeaths": 12,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          },
+          "m": {
+            "births": 8,
+            "reproductions": 10,
+            "deaths": 15,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 2,
+            "starvationDeaths": 13,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          },
+          "c": {
+            "births": 6,
+            "reproductions": 4,
+            "deaths": 21,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 5,
+            "starvationDeaths": 16,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          }
+        },
+        "births": 16,
+        "deaths": 51,
+        "reproductions": 14,
+        "deathCauses": {
+          "starvation": 41,
+          "oldAge": 0,
+          "predation": 10,
+          "overcrowding": 0,
+          "other": 0
+        },
+        "newborn": {
+          "births": 16,
+          "survived60": 14,
+          "survived180": 10,
+          "survived240": 5,
+          "deathsWithin60": 0,
+          "deathsWithin180": 0,
+          "deathsWithin240": 2,
+          "overcrowdingDeathsWithin60": 0,
+          "overcrowdingDeathsWithin180": 0,
+          "overcrowdingDeathsWithin240": 0,
+          "survivalRateByDiet": {
+            "h": {
+              "eligible60": 2,
+              "survived60": 2,
+              "rate60": 1,
+              "eligible180": 2,
+              "survived180": 2,
+              "rate180": 1,
+              "eligible240": 1,
+              "survived240": 1,
+              "rate240": 1
+            },
+            "m": {
+              "eligible60": 6,
+              "survived60": 6,
+              "rate60": 1,
+              "eligible180": 3,
+              "survived180": 3,
+              "rate180": 1,
+              "eligible240": 1,
+              "survived240": 1,
+              "rate240": 1
+            },
+            "c": {
+              "eligible60": 6,
+              "survived60": 6,
+              "rate60": 1,
+              "eligible180": 5,
+              "survived180": 5,
+              "rate180": 1,
+              "eligible240": 5,
+              "survived240": 3,
+              "rate240": 0.6
+            }
+          }
+        }
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "label": "desktop",
+        "width": 1365,
+        "height": 768
+      },
+      "geometry": {
+        "worldVersion": 1,
+        "worldWidth": 872,
+        "worldHeight": 688,
+        "viewWidth": 957,
+        "viewHeight": 736,
+        "dpr": 1,
+        "camera": {
+          "x": 436,
+          "y": 344,
+          "zoom": 1.069767441860465,
+          "minZoom": 1.069767441860465,
+          "maxZoom": 8.55813953488372,
+          "initialized": true
+        },
+        "environment": {
+          "width": 49,
+          "height": 39,
+          "cellSize": 18,
+          "cellCount": 1911,
+          "worldWidth": 872,
+          "worldHeight": 688
+        },
+        "spatialGrid": {
+          "cellSize": 58,
+          "width": 16,
+          "height": 12
+        }
+      },
+      "hashes": {
+        "full": "7e4fa1708ed2befbe0738d14aec3cd540fbee10249fc3c0c3bfa9640bae7dc7a",
+        "organisms": "11c809a2505494d155192b5f9c26e23a6bdf70c8f2044ec56996d1e27b73a6af",
+        "environment": "c0f6328371e2ddf3fdfeec11bee36e3f311371362159e3617b923156ca22c9dd",
+        "resources": "0fa6dae3df3cc4ead2d2080ae522b7ca77c4015260565491762a9f2591e18e59",
+        "pack": "73e9e534d0831a3376c75cf4e97045f10ee66395fbeaa229196638364ff9fd29",
+        "lineage": "b5d23445c782095cae5bb3d38cde7a7ef5ab1b0007a468d96c936c5d05a27e4d",
+        "species": "acab33ca2fde44a4743b39b4070b8e5de0632fdd608595e1a7f48fbbff449000"
+      },
+      "environment": {
+        "mode": "patchy-intermediate",
+        "seed": 41001,
+        "cellCount": 1911,
+        "minimumAlgae": 0.1374739706516266,
+        "maximumAlgae": 0.6440240144729614,
+        "meanAlgae": 0.3888994629301369,
+        "medianAlgae": 0.38822445273399353,
+        "standardDeviation": 0.10824873207508096,
+        "fieldHash": "e5248938",
+        "thresholds": {
+          "lowMax": 0.075,
+          "highMin": 0.185
+        },
+        "ratios": {
+          "low": 0,
+          "medium": 0.0015698587127158557,
+          "high": 0.9984301412872841
+        },
+        "spatial": {
+          "componentCount": 4,
+          "resourcePatchCount": 1,
+          "byBand": {
+            "low": {
+              "components": 0,
+              "largestCells": 0,
+              "largestShare": 0
+            },
+            "medium": {
+              "components": 3,
+              "largestCells": 1,
+              "largestShare": 0.0005232862375719519
+            },
+            "high": {
+              "components": 1,
+              "largestCells": 1908,
+              "largestShare": 0.9984301412872841
+            }
+          }
+        }
+      },
+      "population": {
+        "frame": 600,
+        "windowFrames": 660,
+        "startPopulation": 64,
+        "endPopulation": 29,
+        "peakPopulation": 64,
+        "populationCap": 120,
+        "firstPopulationCapFrame": null,
+        "startDiets": {
+          "h": 23,
+          "m": 21,
+          "c": 20
+        },
+        "endDiets": {
+          "h": 10,
+          "m": 14,
+          "c": 5
+        },
+        "endAverageStoreNByDiet": {
+          "h": 0.32639518804771994,
+          "m": 0.18491679919670997,
+          "c": 0.16320499877262643
+        },
+        "byDiet": {
+          "h": {
+            "births": 2,
+            "reproductions": 0,
+            "deaths": 15,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 3,
+            "starvationDeaths": 12,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          },
+          "m": {
+            "births": 8,
+            "reproductions": 10,
+            "deaths": 15,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 2,
+            "starvationDeaths": 13,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          },
+          "c": {
+            "births": 6,
+            "reproductions": 4,
+            "deaths": 21,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 5,
+            "starvationDeaths": 16,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          }
+        },
+        "births": 16,
+        "deaths": 51,
+        "reproductions": 14,
+        "deathCauses": {
+          "starvation": 41,
+          "oldAge": 0,
+          "predation": 10,
+          "overcrowding": 0,
+          "other": 0
+        },
+        "newborn": {
+          "births": 16,
+          "survived60": 14,
+          "survived180": 10,
+          "survived240": 5,
+          "deathsWithin60": 0,
+          "deathsWithin180": 0,
+          "deathsWithin240": 2,
+          "overcrowdingDeathsWithin60": 0,
+          "overcrowdingDeathsWithin180": 0,
+          "overcrowdingDeathsWithin240": 0,
+          "survivalRateByDiet": {
+            "h": {
+              "eligible60": 2,
+              "survived60": 2,
+              "rate60": 1,
+              "eligible180": 2,
+              "survived180": 2,
+              "rate180": 1,
+              "eligible240": 1,
+              "survived240": 1,
+              "rate240": 1
+            },
+            "m": {
+              "eligible60": 6,
+              "survived60": 6,
+              "rate60": 1,
+              "eligible180": 3,
+              "survived180": 3,
+              "rate180": 1,
+              "eligible240": 1,
+              "survived240": 1,
+              "rate240": 1
+            },
+            "c": {
+              "eligible60": 6,
+              "survived60": 6,
+              "rate60": 1,
+              "eligible180": 5,
+              "survived180": 5,
+              "rate180": 1,
+              "eligible240": 5,
+              "survived240": 3,
+              "rate240": 0.6
+            }
+          }
+        }
+      },
+      "errors": []
+    },
+    {
+      "viewport": {
+        "label": "large_desktop",
+        "width": 1920,
+        "height": 1080
+      },
+      "geometry": {
+        "worldVersion": 1,
+        "worldWidth": 872,
+        "worldHeight": 688,
+        "viewWidth": 1512,
+        "viewHeight": 1048,
+        "dpr": 1,
+        "camera": {
+          "x": 436,
+          "y": 344,
+          "zoom": 1.5232558139534884,
+          "minZoom": 1.5232558139534884,
+          "maxZoom": 12.186046511627907,
+          "initialized": true
+        },
+        "environment": {
+          "width": 49,
+          "height": 39,
+          "cellSize": 18,
+          "cellCount": 1911,
+          "worldWidth": 872,
+          "worldHeight": 688
+        },
+        "spatialGrid": {
+          "cellSize": 58,
+          "width": 16,
+          "height": 12
+        }
+      },
+      "hashes": {
+        "full": "7e4fa1708ed2befbe0738d14aec3cd540fbee10249fc3c0c3bfa9640bae7dc7a",
+        "organisms": "11c809a2505494d155192b5f9c26e23a6bdf70c8f2044ec56996d1e27b73a6af",
+        "environment": "c0f6328371e2ddf3fdfeec11bee36e3f311371362159e3617b923156ca22c9dd",
+        "resources": "0fa6dae3df3cc4ead2d2080ae522b7ca77c4015260565491762a9f2591e18e59",
+        "pack": "73e9e534d0831a3376c75cf4e97045f10ee66395fbeaa229196638364ff9fd29",
+        "lineage": "b5d23445c782095cae5bb3d38cde7a7ef5ab1b0007a468d96c936c5d05a27e4d",
+        "species": "acab33ca2fde44a4743b39b4070b8e5de0632fdd608595e1a7f48fbbff449000"
+      },
+      "environment": {
+        "mode": "patchy-intermediate",
+        "seed": 41001,
+        "cellCount": 1911,
+        "minimumAlgae": 0.1374739706516266,
+        "maximumAlgae": 0.6440240144729614,
+        "meanAlgae": 0.3888994629301369,
+        "medianAlgae": 0.38822445273399353,
+        "standardDeviation": 0.10824873207508096,
+        "fieldHash": "e5248938",
+        "thresholds": {
+          "lowMax": 0.075,
+          "highMin": 0.185
+        },
+        "ratios": {
+          "low": 0,
+          "medium": 0.0015698587127158557,
+          "high": 0.9984301412872841
+        },
+        "spatial": {
+          "componentCount": 4,
+          "resourcePatchCount": 1,
+          "byBand": {
+            "low": {
+              "components": 0,
+              "largestCells": 0,
+              "largestShare": 0
+            },
+            "medium": {
+              "components": 3,
+              "largestCells": 1,
+              "largestShare": 0.0005232862375719519
+            },
+            "high": {
+              "components": 1,
+              "largestCells": 1908,
+              "largestShare": 0.9984301412872841
+            }
+          }
+        }
+      },
+      "population": {
+        "frame": 600,
+        "windowFrames": 660,
+        "startPopulation": 64,
+        "endPopulation": 29,
+        "peakPopulation": 64,
+        "populationCap": 120,
+        "firstPopulationCapFrame": null,
+        "startDiets": {
+          "h": 23,
+          "m": 21,
+          "c": 20
+        },
+        "endDiets": {
+          "h": 10,
+          "m": 14,
+          "c": 5
+        },
+        "endAverageStoreNByDiet": {
+          "h": 0.32639518804771994,
+          "m": 0.18491679919670997,
+          "c": 0.16320499877262643
+        },
+        "byDiet": {
+          "h": {
+            "births": 2,
+            "reproductions": 0,
+            "deaths": 15,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 3,
+            "starvationDeaths": 12,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          },
+          "m": {
+            "births": 8,
+            "reproductions": 10,
+            "deaths": 15,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 2,
+            "starvationDeaths": 13,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          },
+          "c": {
+            "births": 6,
+            "reproductions": 4,
+            "deaths": 21,
+            "overcrowdingDeaths": 0,
+            "predationDeaths": 5,
+            "starvationDeaths": 16,
+            "oldAgeDeaths": 0,
+            "otherDeaths": 0
+          }
+        },
+        "births": 16,
+        "deaths": 51,
+        "reproductions": 14,
+        "deathCauses": {
+          "starvation": 41,
+          "oldAge": 0,
+          "predation": 10,
+          "overcrowding": 0,
+          "other": 0
+        },
+        "newborn": {
+          "births": 16,
+          "survived60": 14,
+          "survived180": 10,
+          "survived240": 5,
+          "deathsWithin60": 0,
+          "deathsWithin180": 0,
+          "deathsWithin240": 2,
+          "overcrowdingDeathsWithin60": 0,
+          "overcrowdingDeathsWithin180": 0,
+          "overcrowdingDeathsWithin240": 0,
+          "survivalRateByDiet": {
+            "h": {
+              "eligible60": 2,
+              "survived60": 2,
+              "rate60": 1,
+              "eligible180": 2,
+              "survived180": 2,
+              "rate180": 1,
+              "eligible240": 1,
+              "survived240": 1,
+              "rate240": 1
+            },
+            "m": {
+              "eligible60": 6,
+              "survived60": 6,
+              "rate60": 1,
+              "eligible180": 3,
+              "survived180": 3,
+              "rate180": 1,
+              "eligible240": 1,
+              "survived240": 1,
+              "rate240": 1
+            },
+            "c": {
+              "eligible60": 6,
+              "survived60": 6,
+              "rate60": 1,
+              "eligible180": 5,
+              "survived180": 5,
+              "rate180": 1,
+              "eligible240": 5,
+              "survived240": 3,
+              "rate240": 0.6
+            }
+          }
+        }
+      },
+      "errors": []
+    }
+  ],
+  "allViewportModelHashesMatch": true,
+  "canonicalCompatibility": {
+    "viewport": {
+      "label": "canonical_reference",
+      "width": 1280,
+      "height": 720
+    },
+    "baselineHash": "7e4fa1708ed2befbe0738d14aec3cd540fbee10249fc3c0c3bfa9640bae7dc7a",
+    "currentHash": "7e4fa1708ed2befbe0738d14aec3cd540fbee10249fc3c0c3bfa9640bae7dc7a",
+    "matches": true,
+    "baselineErrors": [],
+    "currentErrors": []
+  },
+  "cameraInvariance": {
+    "controlHash": "8a0f24dd7640d8a1088fc14a70160eab3dc9fb00becb82175897e0569a8842c0",
+    "operatedHash": "8a0f24dd7640d8a1088fc14a70160eab3dc9fb00becb82175897e0569a8842c0",
+    "matches": true,
+    "controlErrors": [],
+    "operatedErrors": []
+  },
+  "badNumbers": []
+}

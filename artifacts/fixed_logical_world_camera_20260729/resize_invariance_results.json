@@ -1,0 +1,111 @@
+{
+  "generatedAt": "2026-07-29T00:35:40.449Z",
+  "seed": 43001,
+  "steps": 600,
+  "sequence": [
+    {
+      "width": 390,
+      "height": 844
+    },
+    {
+      "width": 768,
+      "height": 1024
+    },
+    {
+      "width": 1920,
+      "height": 1080
+    },
+    {
+      "width": 1365,
+      "height": 768
+    }
+  ],
+  "controlHash": "49247d71501d95b492d41855b4c6adfca5c840df43b22cf8b65e20997a27dd98",
+  "resizedHash": "49247d71501d95b492d41855b4c6adfca5c840df43b22cf8b65e20997a27dd98",
+  "matches": true,
+  "categoryHashes": {
+    "control": {
+      "full": "49247d71501d95b492d41855b4c6adfca5c840df43b22cf8b65e20997a27dd98",
+      "organisms": "b1d2baef2e29765c74ff37c870cd25f02874366c3a7ccbf067e932ece94c4ac7",
+      "environment": "402ce00506bee162c3d262ce03ef9fc62e45ac3a23c265589af240eee1bce0e2",
+      "resources": "de8cb25e06fcb0465cb040aa96dd281a9efd0b7c858fd61ff0ca464cbab22a1f",
+      "pack": "acb8f8ee31f23cd526127da0c89aab9cecd0a280efe72b40c15690be3844417f",
+      "lineage": "c22147938a42dfa3cc8f43ff11ca934e78a0353b1249f17d8a3d2a6dbeb33eff",
+      "species": "a284fb07469ce6c6e76806656c9d638359cf9d7fa7ba22c409d62d7fb8d03c97"
+    },
+    "resized": {
+      "full": "49247d71501d95b492d41855b4c6adfca5c840df43b22cf8b65e20997a27dd98",
+      "organisms": "b1d2baef2e29765c74ff37c870cd25f02874366c3a7ccbf067e932ece94c4ac7",
+      "environment": "402ce00506bee162c3d262ce03ef9fc62e45ac3a23c265589af240eee1bce0e2",
+      "resources": "de8cb25e06fcb0465cb040aa96dd281a9efd0b7c858fd61ff0ca464cbab22a1f",
+      "pack": "acb8f8ee31f23cd526127da0c89aab9cecd0a280efe72b40c15690be3844417f",
+      "lineage": "c22147938a42dfa3cc8f43ff11ca934e78a0353b1249f17d8a3d2a6dbeb33eff",
+      "species": "a284fb07469ce6c6e76806656c9d638359cf9d7fa7ba22c409d62d7fb8d03c97"
+    }
+  },
+  "geometry": {
+    "control": {
+      "worldVersion": 1,
+      "worldWidth": 872,
+      "worldHeight": 688,
+      "viewWidth": 957,
+      "viewHeight": 736,
+      "dpr": 1,
+      "camera": {
+        "x": 436,
+        "y": 344,
+        "zoom": 1.069767441860465,
+        "minZoom": 1.069767441860465,
+        "maxZoom": 8.55813953488372,
+        "initialized": true
+      },
+      "environment": {
+        "width": 49,
+        "height": 39,
+        "cellSize": 18,
+        "cellCount": 1911,
+        "worldWidth": 872,
+        "worldHeight": 688
+      },
+      "spatialGrid": {
+        "cellSize": 62,
+        "width": 15,
+        "height": 12
+      }
+    },
+    "resized": {
+      "worldVersion": 1,
+      "worldWidth": 872,
+      "worldHeight": 688,
+      "viewWidth": 957,
+      "viewHeight": 736,
+      "dpr": 1,
+      "camera": {
+        "x": 436,
+        "y": 344,
+        "zoom": 1.5232558139534884,
+        "minZoom": 1.069767441860465,
+        "maxZoom": 8.55813953488372,
+        "initialized": true
+      },
+      "environment": {
+        "width": 49,
+        "height": 39,
+        "cellSize": 18,
+        "cellCount": 1911,
+        "worldWidth": 872,
+        "worldHeight": 688
+      },
+      "spatialGrid": {
+        "cellSize": 62,
+        "width": 15,
+        "height": 12
+      }
+    }
+  },
+  "errors": {
+    "control": [],
+    "resized": []
+  },
+  "badNumbers": []
+}
