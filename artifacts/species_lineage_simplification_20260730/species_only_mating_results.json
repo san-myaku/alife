@@ -1,0 +1,497 @@
+{
+  "schemaVersion": 1,
+  "rule": "Sexual reproduction requires exact speciesKey equality; lineageId is ignored.",
+  "micro": {
+    "ok": true,
+    "results": [
+      {
+        "id": "A",
+        "name": "same speciesKey and same lineage can mate",
+        "ok": true,
+        "details": {
+          "selection": {
+            "mateId": 2,
+            "mode": "same-species",
+            "noMateReason": null,
+            "speciesCandidateCount": 1,
+            "sameLineageCandidateCount": 1,
+            "differentSpeciesSameLineageRejected": 0
+          }
+        }
+      },
+      {
+        "id": "B",
+        "name": "same speciesKey and different lineage can mate",
+        "ok": true,
+        "details": {
+          "selection": {
+            "mateId": 2,
+            "mode": "same-species",
+            "noMateReason": null,
+            "speciesCandidateCount": 1,
+            "sameLineageCandidateCount": 0,
+            "differentSpeciesSameLineageRejected": 0
+          }
+        }
+      },
+      {
+        "id": "C",
+        "name": "different speciesKey and same lineage cannot mate",
+        "ok": true,
+        "details": {
+          "selection": {
+            "mateId": null,
+            "mode": "none",
+            "noMateReason": "no-candidate",
+            "speciesCandidateCount": 0,
+            "sameLineageCandidateCount": 0,
+            "differentSpeciesSameLineageRejected": 1
+          }
+        }
+      },
+      {
+        "id": "D",
+        "name": "different speciesKey and different lineage cannot mate",
+        "ok": true,
+        "details": {
+          "selection": {
+            "mateId": null,
+            "mode": "none",
+            "noMateReason": "no-candidate",
+            "speciesCandidateCount": 0,
+            "sameLineageCandidateCount": 0,
+            "differentSpeciesSameLineageRejected": 0
+          }
+        }
+      },
+      {
+        "id": "E",
+        "name": "no same-species mate preserves asexual reproduction",
+        "ok": true,
+        "details": {
+          "births": 1,
+          "mateParentIds": [
+            null
+          ]
+        }
+      }
+    ]
+  },
+  "runs": [
+    {
+      "seed": 41001,
+      "population": {
+        "ending": 123,
+        "births": 227,
+        "deaths": 168,
+        "sexualBirths": 34,
+        "asexualBirths": 193,
+        "sexualBirthRate": 0.14977973568281938,
+        "asexualBirthRate": 0.8502202643171806
+      },
+      "mating": {
+        "successfulSexualAttempts": 18,
+        "successfulAsexualAttempts": 155,
+        "crossSpeciesSexualBirths": 0,
+        "sameSpeciesDifferentLineageBirths": 5,
+        "differentSpeciesSameLineageSexualBirths": 0,
+        "differentSpeciesSameLineageRejected": 44
+      },
+      "species": {
+        "count": 58,
+        "singletonCount": 32,
+        "lineageCounts": {
+          "S2|G0000013E0R0|Dherbivore|Rother|Ssolitary|Tring|M1221|Aspines|X----": 1,
+          "S2|G0000013E0R0|Dherbivore|Rother|Ssolitary|Tsingle|M1221|Anone|X----": 1,
+          "S2|G0000014E0R0|Dherbivore|Rother|Ssolitary|Tsingle|M1221|Anone|X----": 1,
+          "S2|G0001013E0R0|Dherbivore|Rother|Ssolitary|Tcluster|M1111|Anone|X----": 1,
+          "S2|G0001013E0R0|Dherbivore|Rother|Ssolitary|Tsingle|M1011|Anone|X----": 1,
+          "S2|G0203004E1R2|Dcarnivore|Rother|Ssolitary|Tcluster|M2221|Acyst|X----": 1,
+          "S2|G0230006E0R0|Dherbivore|Rother|Ssolitary|Tmesh|M1212|AcolonyBuilder+tentacle|X----": 1,
+          "S2|G0230006E0R0|Dherbivore|Rother|Ssolitary|Tmesh|M2222|AcolonyBuilder+tentacle|X----": 1,
+          "S2|G0230006E0R0|Dherbivore|Rother|Ssolitary|Tmesh|M2222|Atentacle+toxin|X----": 1,
+          "S2|G0230007E0R0|Dherbivore|Rother|Ssolitary|Tmesh|M1112|AcolonyBuilder+tentacle|X----": 1,
+          "S2|G0230007E0R0|Dherbivore|Rother|Ssolitary|Tmesh|M1112|Atentacle+toxin|X----": 1,
+          "S2|G0230007E0R0|Dherbivore|Rother|Ssolitary|Tmesh|M1113|AcolonyBuilder+tentacle|X----": 1,
+          "S2|G0230007E0R0|Dherbivore|Rother|Ssolitary|Tmesh|M1113|Atentacle+toxin|X----": 1,
+          "S2|G0230007E0R0|Dherbivore|Rother|Ssolitary|Tmesh|M1212|AcolonyBuilder+tentacle|X----": 1,
+          "S2|G0230007E0R0|Dherbivore|Rother|Ssolitary|Tmesh|M1212|Atentacle+toxin|X----": 1,
+          "S2|G0230007E0R0|Dherbivore|Rother|Ssolitary|Tmesh|M1213|AcolonyBuilder+tentacle|X----": 1,
+          "S2|G0230007E0R0|Dherbivore|Rother|Ssolitary|Tmesh|M1213|Atentacle+toxin|X----": 1,
+          "S2|G0330016E0R0|Dherbivore|Rother|Ssolitary|Tmesh|M1112|Atentacle+toxin|X----": 1,
+          "S2|G0330016E0R0|Dherbivore|Rother|Ssolitary|Tmesh|M1122|Atentacle+toxin|X----": 1,
+          "S2|G0330016E0R0|Dherbivore|Rother|Ssolitary|Tmesh|M1123|Atentacle+toxin|X----": 1,
+          "S2|G1012115E0R0|Domnivore|Rscav|Scluster|Tring|M2222|AcolonyBuilder|X----": 1,
+          "S2|G1020115E0R1|Dherbivore|Rfilter|Sdefense-school|Tring|M1112|Atentacle+toxin|X----": 1,
+          "S2|G1020115E0R1|Dherbivore|Rfilter|Sdefense-school|Tring|M2112|Atentacle+toxin|X----": 1,
+          "S2|G1030115E0R1|Dherbivore|Rfilter|Sdefense-school|Tring|M2222|Atentacle+toxin|X----": 1,
+          "S2|G1110115E0R0|Dherbivore|Rother|Sdefense-school|Tcluster|M3331|AcolonyBuilder|X----": 1,
+          "S2|G1120115E0R0|Dherbivore|Rother|Sdefense-school|Tcluster|M3321|AcolonyBuilder|X----": 1,
+          "S2|G1120115E0R0|Dherbivore|Rother|Sdefense-school|Tcluster|M3322|AcolonyBuilder|X----": 1,
+          "S2|G1120115E0R0|Dherbivore|Rother|Sdefense-school|Tcluster|M3332|AcolonyBuilder|X----": 1,
+          "S2|G1120115E0R0|Dherbivore|Rother|Sdefense-school|Tradial|M3322|Aspines|X----": 1,
+          "S2|G1120115E0R1|Dherbivore|Rfilter|Sdefense-school|Tring|M1222|Atentacle+toxin|X----": 1,
+          "S2|G1120116E0R1|Dherbivore|Rfilter|Sdefense-school|Tring|M2212|Atentacle+toxin|X----": 1,
+          "S2|G1121115E0R0|Dherbivore|Rother|Sdefense-school|Tamoeba|M3222|Aspines|X----": 1,
+          "S2|G1130115E0R1|Dherbivore|Rfilter|Sdefense-school|Tring|M1222|Atentacle+toxin|X----": 1,
+          "S2|G1130116E0R1|Dherbivore|Rfilter|Sdefense-school|Tring|M1222|Atentacle+toxin|X----": 1,
+          "S2|G1130116E0R1|Dherbivore|Rfilter|Sdefense-school|Tring|M2122|Atentacle+toxin|X----": 1,
+          "S2|G1211115E0R1|Domnivore|Rscav|Scluster|Tring|M2122|AadhesiveMat+toxin|X----": 1,
+          "S2|G1300113E0R0|Dherbivore|Rother|Ssolitary|Tchain|M0001|Acyst|X----": 1,
+          "S2|G1300113E0R0|Dherbivore|Rother|Ssolitary|Tsingle|M0101|Acyst|X----": 1,
+          "S2|G2030116E1R0|Dherbivore|Rfilter|Sdefense-school|Tring|M2113|Atentacle+toxin|X----": 1,
+          "S2|G2030116E1R0|Dherbivore|Rfilter|Sdefense-school|Tring|M2123|Atentacle+toxin|X----": 1,
+          "S2|G2030116E2R0|Dherbivore|Rfilter|Sdefense-school|Tring|M2123|Atentacle+toxin|X----": 1,
+          "S2|G2030126E1R0|Dherbivore|Rfilter|Sdefense-school|Tbranch|M2222|Atentacle+toxin|X----": 1,
+          "S2|G2030126E1R0|Dherbivore|Rfilter|Sdefense-school|Tring|M2222|Atentacle+toxin|X----": 1,
+          "S2|G2030126E2R0|Dherbivore|Rfilter|Sdefense-school|Tbranch|M2222|Atentacle+toxin|X----": 1,
+          "S2|G2030126E2R0|Dherbivore|Rfilter|Sdefense-school|Tring|M2212|Atentacle+toxin|X----": 1,
+          "S2|G2030126E2R0|Dherbivore|Rfilter|Sdefense-school|Tring|M2222|Atentacle+toxin|X----": 1,
+          "S2|G2030127E1R0|Dherbivore|Rfilter|Sdefense-school|Tbranch|M2222|Atentacle+toxin|X----": 1,
+          "S2|G2030127E1R0|Dherbivore|Rfilter|Sdefense-school|Tring|M2222|Atentacle+toxin|X----": 1,
+          "S2|G2030127E2R0|Dherbivore|Rfilter|Sdefense-school|Tring|M2222|Atentacle+toxin|X----": 1,
+          "S2|G2030226E1R0|Dherbivore|Rfilter|Sdefense-school|Tbranch|M2113|Atentacle+toxin|X----": 1,
+          "S2|G2030227E2R0|Dherbivore|Rfilter|Sdefense-school|Tbranch|M2113|Atentacle+toxin|X----": 1,
+          "S2|G3010224E0R0|Dherbivore|Rother|Sschool|Tchain|M0011|Anone|X----": 1,
+          "S2|G3011224E0R0|Dherbivore|Rother|Sschool|Tchain|M0111|Anone|X----": 1,
+          "S2|G3011224E0R0|Dherbivore|Rother|Sschool|Tchain|M0112|Anone|X----": 1,
+          "S2|G3110224E0R0|Dherbivore|Rother|Sschool|Tchain|M0001|Anone|X----": 1,
+          "S2|G3111224E0R0|Dherbivore|Rother|Sschool|Tchain|M0012|Anone|X----": 1,
+          "S2|G3121225E0R1|Dherbivore|Rfilter|Sdefense-school|Tchain|M3221|AfilterFan+toxin|X----": 1,
+          "S2|G3121225E0R1|Dherbivore|Rfilter|Sdefense-school|Tchain|M3222|AfilterFan+toxin|X----": 1
+        }
+      },
+      "lineage": {
+        "provisional": 56,
+        "established": 68,
+        "promoted": 4,
+        "validation": {
+          "ok": true,
+          "violationCount": 0,
+          "counts": {
+            "missingLineageIdOrganismIds": 0,
+            "missingRecordLineageIds": 0,
+            "emptyCanonicalAppearanceKeyOrganismIds": 0,
+            "invalidSpeciesStatusRecordIds": 0,
+            "danglingParentLineageIds": 0,
+            "duplicateLineageIds": 0,
+            "nanLineageGenerationOrganismIds": 0,
+            "negativeLineageGenerationOrganismIds": 0,
+            "emptyRecordCanonicalAppearanceKeyIds": 0,
+            "ecotypeMismatchOrganismIds": 0,
+            "canonicalAppearanceKeyMismatchLineageIds": 0,
+            "basicAppearanceMismatchLineageIds": 0,
+            "normalizedGeometryMismatchLineageIds": 0,
+            "topologyMismatchLineageIds": 0,
+            "provisionalFounderInvariantIds": 0
+          },
+          "details": {
+            "missingLineageIdOrganismIds": [],
+            "missingRecordLineageIds": [],
+            "emptyCanonicalAppearanceKeyOrganismIds": [],
+            "invalidSpeciesStatusRecordIds": [],
+            "danglingParentLineageIds": [],
+            "duplicateLineageIds": [],
+            "nanLineageGenerationOrganismIds": [],
+            "negativeLineageGenerationOrganismIds": [],
+            "emptyRecordCanonicalAppearanceKeyIds": [],
+            "ecotypeMismatchOrganismIds": [],
+            "canonicalAppearanceKeyMismatchLineageIds": [],
+            "basicAppearanceMismatchLineageIds": [],
+            "normalizedGeometryMismatchLineageIds": [],
+            "topologyMismatchLineageIds": [],
+            "provisionalFounderInvariantIds": []
+          }
+        }
+      },
+      "health": {
+        "badNumbers": 0,
+        "energyCreationEvents": 0,
+        "nutrientCreationEvents": 0,
+        "browserErrors": [],
+        "roundTrip": {
+          "ok": true,
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "worldRadius": 444,
+          "organisms": 123,
+          "extinctRecords": 14,
+          "algaeFieldHashBefore": "390f51a8",
+          "algaeFieldHashAfter": "390f51a8"
+        }
+      }
+    },
+    {
+      "seed": 43001,
+      "population": {
+        "ending": 123,
+        "births": 195,
+        "deaths": 136,
+        "sexualBirths": 59,
+        "asexualBirths": 136,
+        "sexualBirthRate": 0.30256410256410254,
+        "asexualBirthRate": 0.6974358974358974
+      },
+      "mating": {
+        "successfulSexualAttempts": 33,
+        "successfulAsexualAttempts": 123,
+        "crossSpeciesSexualBirths": 0,
+        "sameSpeciesDifferentLineageBirths": 17,
+        "differentSpeciesSameLineageSexualBirths": 0,
+        "differentSpeciesSameLineageRejected": 8
+      },
+      "species": {
+        "count": 46,
+        "singletonCount": 29,
+        "lineageCounts": {
+          "S2|G0000002E0R0|Dherbivore|Rfilter|Scluster|Tamoeba|M0101|AsessileFarmer+toxin|X----": 1,
+          "S2|G0000002E0R0|Dherbivore|Rfilter|Scluster|Tradial|M0101|AsessileFarmer+toxin|X----": 1,
+          "S2|G0000002E0R0|Dherbivore|Rfilter|Scluster|Tring|M0101|AsessileFarmer+toxin|X----": 1,
+          "S2|G0000002E0R0|Dherbivore|Rfilter|Ssolitary|Tmesh|M0101|AsessileFarmer+toxin|X----": 1,
+          "S2|G0000003E0R0|Dherbivore|Rfilter|Scluster|Tradial|M0100|AsessileFarmer+toxin|X----": 1,
+          "S2|G0000012E0R0|Dherbivore|Rfilter|Scluster|Tamoeba|M0000|AsessileFarmer+toxin|X----": 1,
+          "S2|G0000012E0R0|Dherbivore|Rfilter|Scluster|Tchain|M0000|AsessileFarmer+toxin|X----": 1,
+          "S2|G0000012E0R0|Dherbivore|Rfilter|Scluster|Tcluster|M0000|AsessileFarmer+toxin|X----": 1,
+          "S2|G0000012E0R0|Dherbivore|Rfilter|Scluster|Tmesh|M0000|AsessileFarmer+toxin|X----": 1,
+          "S2|G0000012E0R0|Dherbivore|Rfilter|Scluster|Tradial|M0000|AsessileFarmer+toxin|X----": 1,
+          "S2|G0000012E0R0|Dherbivore|Rfilter|Scluster|Tring|M0000|AsessileFarmer+toxin|X----": 1,
+          "S2|G0000013E0R0|Dherbivore|Rfilter|Scluster|Tbranch|M0000|AsessileFarmer+toxin|X----": 1,
+          "S2|G0000013E0R0|Dherbivore|Rfilter|Scluster|Tmesh|M0000|AsessileFarmer+toxin|X----": 1,
+          "S2|G0000013E0R0|Dherbivore|Rfilter|Scluster|Tradial|M0000|AsessileFarmer+toxin|X----": 1,
+          "S2|G0000013E0R0|Dherbivore|Rfilter|Scluster|Tsingle|M0000|AsessileFarmer+toxin|X----": 1,
+          "S2|G0001013E0R0|Dherbivore|Rfilter|Scluster|Tamoeba|M0100|AsessileFarmer+toxin|X----": 1,
+          "S2|G0001013E0R0|Dherbivore|Rfilter|Scluster|Tbranch|M0100|AsessileFarmer+toxin|X----": 1,
+          "S2|G0001013E0R0|Dherbivore|Rfilter|Scluster|Tchain|M0100|AsessileFarmer+toxin|X----": 1,
+          "S2|G0001013E0R0|Dherbivore|Rfilter|Scluster|Tchain|M0101|AsessileFarmer+toxin|X----": 1,
+          "S2|G0001013E0R0|Dherbivore|Rfilter|Scluster|Tcluster|M0100|AsessileFarmer+toxin|X----": 1,
+          "S2|G0001013E0R0|Dherbivore|Rfilter|Scluster|Tradial|M0100|AsessileFarmer+toxin|X----": 1,
+          "S2|G0001013E0R0|Dherbivore|Rfilter|Scluster|Tradial|M0101|AsessileFarmer+toxin|X----": 1,
+          "S2|G0001013E0R0|Dherbivore|Rfilter|Scluster|Tsingle|M0100|AsessileFarmer+toxin|X----": 1,
+          "S2|G0220005E2R0|Dherbivore|Rother|Ssolitary|Tbranch|M0012|AcolonyBuilder+spines|X----": 1,
+          "S2|G0330006E2R0|Dherbivore|Rother|Ssolitary|Tmesh|M0002|Atentacle+toxin|X----": 1,
+          "S2|G1121115E0R1|Dherbivore|Rfilter|Sdefense-school|Tmesh|M2122|AadhesiveMat+toxin|X----": 1,
+          "S2|G1121115E0R1|Domnivore|Rscav|Scluster|Tmesh|M2122|Anone|X----": 1,
+          "S2|G1121115E0R1|Domnivore|Rscav|Sdefense-school|Tmesh|M2122|AadhesiveMat+toxin|X----": 1,
+          "S2|G1211115E0R1|Domnivore|Rscav|Sdefense-school|Tring|M2122|Atoxin|X----": 1,
+          "S2|G1330106E2R0|Dherbivore|Rother|Ssolitary|Tmesh|M0102|Atentacle+toxin|X----": 1,
+          "S2|G2010224E0R0|Dherbivore|Rother|Sdefense-school|Tchain|M0101|Anone|X----": 1,
+          "S2|G2010224E0R0|Dherbivore|Rother|Sschool|Tchain|M0101|Anone|X----": 1,
+          "S2|G2010224E1R0|Dherbivore|Rother|Sdefense-school|Tchain|M0102|Anone|X----": 1,
+          "S2|G2010224E1R0|Dherbivore|Rother|Sschool|Tchain|M0101|Anone|X----": 1,
+          "S2|G2120115E2R2|Dherbivore|Rfilter|Sdefense-school|Tring|M3232|AfilterFan+toxin|X----": 1,
+          "S2|G2120125E2R2|Dherbivore|Rfilter|Sdefense-school|Tring|M3232|AfilterFan+toxin|X----": 1,
+          "S2|G3010224E0R0|Dherbivore|Rother|Sschool|Tchain|M0011|Anone|X----": 1,
+          "S2|G3010224E1R0|Dherbivore|Rother|Sdefense-school|Tchain|M0011|Anone|X----": 1,
+          "S2|G3010224E1R0|Dherbivore|Rother|Sschool|Tchain|M0011|Anone|X----": 1,
+          "S2|G3110224E0R0|Dherbivore|Rfilter|Sdefense-school|Tchain|M1222|AfilterFan+toxin|X----": 1,
+          "S2|G3120225E0R0|Dherbivore|Rfilter|Sdefense-school|Tmesh|M1221|AfilterFan+toxin|X----": 1,
+          "S2|G3210225E0R0|Dherbivore|Rother|Sdefense-school|Tchain|M1112|Anone|X----": 1,
+          "S2|G3210225E0R1|Dherbivore|Rother|Sdefense-school|Tchain|M1112|Anone|X----": 1,
+          "S2|G3220225E0R0|Dherbivore|Rother|Sdefense-school|Tmesh|M1112|Anone|X----": 1,
+          "S2|G3220225E0R0|Dherbivore|Rother|Sdefense-school|Tmesh|M1122|Anone|X----": 1,
+          "S2|G3220225E0R0|Dherbivore|Rother|Ssolitary|Tmesh|M1122|Anone|X----": 1
+        }
+      },
+      "lineage": {
+        "provisional": 80,
+        "established": 66,
+        "promoted": 2,
+        "validation": {
+          "ok": true,
+          "violationCount": 0,
+          "counts": {
+            "missingLineageIdOrganismIds": 0,
+            "missingRecordLineageIds": 0,
+            "emptyCanonicalAppearanceKeyOrganismIds": 0,
+            "invalidSpeciesStatusRecordIds": 0,
+            "danglingParentLineageIds": 0,
+            "duplicateLineageIds": 0,
+            "nanLineageGenerationOrganismIds": 0,
+            "negativeLineageGenerationOrganismIds": 0,
+            "emptyRecordCanonicalAppearanceKeyIds": 0,
+            "ecotypeMismatchOrganismIds": 0,
+            "canonicalAppearanceKeyMismatchLineageIds": 0,
+            "basicAppearanceMismatchLineageIds": 0,
+            "normalizedGeometryMismatchLineageIds": 0,
+            "topologyMismatchLineageIds": 0,
+            "provisionalFounderInvariantIds": 0
+          },
+          "details": {
+            "missingLineageIdOrganismIds": [],
+            "missingRecordLineageIds": [],
+            "emptyCanonicalAppearanceKeyOrganismIds": [],
+            "invalidSpeciesStatusRecordIds": [],
+            "danglingParentLineageIds": [],
+            "duplicateLineageIds": [],
+            "nanLineageGenerationOrganismIds": [],
+            "negativeLineageGenerationOrganismIds": [],
+            "emptyRecordCanonicalAppearanceKeyIds": [],
+            "ecotypeMismatchOrganismIds": [],
+            "canonicalAppearanceKeyMismatchLineageIds": [],
+            "basicAppearanceMismatchLineageIds": [],
+            "normalizedGeometryMismatchLineageIds": [],
+            "topologyMismatchLineageIds": [],
+            "provisionalFounderInvariantIds": []
+          }
+        }
+      },
+      "health": {
+        "badNumbers": 0,
+        "energyCreationEvents": 0,
+        "nutrientCreationEvents": 0,
+        "browserErrors": [],
+        "roundTrip": {
+          "ok": true,
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "worldRadius": 444,
+          "organisms": 123,
+          "extinctRecords": 14,
+          "algaeFieldHashBefore": "9745492d",
+          "algaeFieldHashAfter": "9745492d"
+        }
+      }
+    },
+    {
+      "seed": 45001,
+      "population": {
+        "ending": 121,
+        "births": 208,
+        "deaths": 151,
+        "sexualBirths": 56,
+        "asexualBirths": 152,
+        "sexualBirthRate": 0.2692307692307692,
+        "asexualBirthRate": 0.7307692307692307
+      },
+      "mating": {
+        "successfulSexualAttempts": 56,
+        "successfulAsexualAttempts": 151,
+        "crossSpeciesSexualBirths": 0,
+        "sameSpeciesDifferentLineageBirths": 5,
+        "differentSpeciesSameLineageSexualBirths": 0,
+        "differentSpeciesSameLineageRejected": 25
+      },
+      "species": {
+        "count": 42,
+        "singletonCount": 27,
+        "lineageCounts": {
+          "S2|G0110014E0R0|Dherbivore|Rfilter|Sdefense-school|Tring|M0002|AsessileFarmer+toxin|X----": 1,
+          "S2|G0111014E0R0|Dherbivore|Rfilter|Sdefense-school|Tradial|M0111|AsessileFarmer+toxin|X----": 1,
+          "S2|G0111015E0R0|Dherbivore|Rfilter|Sdefense-school|Tradial|M0111|AsessileFarmer+toxin|X----": 1,
+          "S2|G0211014E0R0|Dherbivore|Rother|Sdefense-school|Tring|M0011|AsessileFarmer+toxin|X----": 1,
+          "S2|G0221015E0R0|Domnivore|Rscav|Scluster|Tmesh|M3222|AcolonyBuilder+toxin|X----": 1,
+          "S2|G1100113E0R0|Dherbivore|Rfilter|Sdefense-school|Tcluster|M3211|AcolonyBuilder+toxin|X----": 1,
+          "S2|G1100113E0R0|Dherbivore|Rfilter|Sdefense-school|Tcluster|M3220|AcolonyBuilder+toxin|X----": 1,
+          "S2|G1100113E0R0|Dherbivore|Rfilter|Sdefense-school|Tcluster|M3221|AcolonyBuilder+toxin|X----": 1,
+          "S2|G1110114E0R0|Dherbivore|Rfilter|Scluster|Tbranch|M0011|AfilterFan+toxin|X----": 1,
+          "S2|G1110114E1R0|Dherbivore|Rfilter|Scluster|Tbranch|M0011|AfilterFan+toxin|X----": 1,
+          "S2|G1110114E1R0|Dherbivore|Rfilter|Scluster|Tchain|M0011|AfilterFan+toxin|X----": 1,
+          "S2|G1110114E1R0|Dherbivore|Rfilter|Scluster|Tcluster|M0011|AsessileFarmer+toxin|X----": 1,
+          "S2|G1110114E2R0|Dherbivore|Rother|Sdefense-school|Tcluster|M3331|AcolonyBuilder+spines|X----": 1,
+          "S2|G1110115E0R0|Dherbivore|Rfilter|Sdefense-school|Tring|M0002|AsessileFarmer+toxin|X----": 1,
+          "S2|G1111114E0R0|Dherbivore|Rfilter|Scluster|Tchain|M0101|AfilterFan+toxin|X----": 1,
+          "S2|G1111114E0R0|Dherbivore|Rfilter|Scluster|Tradial|M0102|AfilterFan+toxin|X----": 1,
+          "S2|G1111114E0R0|Dherbivore|Rfilter|Scluster|Tring|M0102|AfilterFan+toxin|X----": 1,
+          "S2|G1111114E0R0|Dherbivore|Rfilter|Scluster|Tsingle|M0001|AsessileFarmer+toxin|X----": 1,
+          "S2|G1111114E0R0|Dherbivore|Rfilter|Sdefense-school|Tcluster|M0002|AsessileFarmer+toxin|X----": 1,
+          "S2|G1111114E1R0|Dherbivore|Rfilter|Scluster|Tamoeba|M0102|AfilterFan+toxin|X----": 1,
+          "S2|G1111114E1R0|Dherbivore|Rfilter|Scluster|Tamoeba|M0102|AsessileFarmer+toxin|X----": 1,
+          "S2|G1111114E1R0|Dherbivore|Rfilter|Scluster|Tbranch|M0101|AsessileFarmer+toxin|X----": 1,
+          "S2|G1111114E1R0|Dherbivore|Rfilter|Scluster|Tbranch|M0102|AfilterFan+toxin|X----": 1,
+          "S2|G1111114E1R0|Dherbivore|Rfilter|Scluster|Tchain|M0102|AfilterFan+toxin|X----": 1,
+          "S2|G1111114E1R0|Dherbivore|Rfilter|Scluster|Tcluster|M0101|AfilterFan+toxin|X----": 1,
+          "S2|G1111114E1R0|Dherbivore|Rfilter|Scluster|Tsingle|M0101|AsessileFarmer+toxin|X----": 1,
+          "S2|G1111114E1R0|Dherbivore|Rfilter|Scluster|Tsingle|M0102|AsessileFarmer+toxin|X----": 1,
+          "S2|G1111114E2R0|Dherbivore|Rother|Sdefense-school|Tcluster|M3331|AcolonyBuilder+spines|X----": 1,
+          "S2|G1200113E0R0|Dherbivore|Rother|Sdefense-school|Tcluster|M3121|AcolonyBuilder+toxin|X----": 1,
+          "S2|G1200113E0R0|Dherbivore|Rother|Sdefense-school|Tcluster|M3221|AcolonyBuilder+toxin|X----": 1,
+          "S2|G1210114E2R0|Dherbivore|Rother|Sdefense-school|Tcluster|M3221|AcolonyBuilder+spines|X----": 1,
+          "S2|G1211114E2R0|Dherbivore|Rother|Sdefense-school|Tcluster|M3231|AcolonyBuilder+spines|X----": 1,
+          "S2|G2020225E0R0|Dherbivore|Rother|Sdefense-school|Tbranch|M3322|Atentacle|X----": 1,
+          "S2|G2020225E0R0|Dherbivore|Rother|Sdefense-school|Tbranch|M3332|Atentacle|X----": 1,
+          "S2|G2030226E0R0|Dherbivore|Rother|Sdefense-school|Tbranch|M3222|Atentacle|X----": 1,
+          "S2|G2120225E0R0|Dherbivore|Rother|Sdefense-school|Tbranch|M3222|Atentacle|X----": 1,
+          "S2|G3020225E0R0|Dherbivore|Rfilter|Sdefense-school|Tbranch|M3232|AfilterFan+toxin|X----": 1,
+          "S2|G3020225E0R0|Dherbivore|Rfilter|Sdefense-school|Tchain|M3231|AfilterFan+toxin|X----": 1,
+          "S2|G3020225E0R0|Dherbivore|Rfilter|Sdefense-school|Tcluster|M3231|AcolonyBuilder+toxin|X----": 1,
+          "S2|G3020225E0R0|Dherbivore|Rfilter|Sdefense-school|Tcluster|M3232|AcolonyBuilder+toxin|X----": 1,
+          "S2|G3020225E1R0|Dherbivore|Rfilter|Sdefense-school|Tchain|M3231|AfilterFan+toxin|X----": 1,
+          "S2|G3021225E0R0|Dherbivore|Rfilter|Sdefense-school|Tcluster|M3222|AcolonyBuilder+toxin|X----": 1
+        }
+      },
+      "lineage": {
+        "provisional": 65,
+        "established": 66,
+        "promoted": 2,
+        "validation": {
+          "ok": true,
+          "violationCount": 0,
+          "counts": {
+            "missingLineageIdOrganismIds": 0,
+            "missingRecordLineageIds": 0,
+            "emptyCanonicalAppearanceKeyOrganismIds": 0,
+            "invalidSpeciesStatusRecordIds": 0,
+            "danglingParentLineageIds": 0,
+            "duplicateLineageIds": 0,
+            "nanLineageGenerationOrganismIds": 0,
+            "negativeLineageGenerationOrganismIds": 0,
+            "emptyRecordCanonicalAppearanceKeyIds": 0,
+            "ecotypeMismatchOrganismIds": 0,
+            "canonicalAppearanceKeyMismatchLineageIds": 0,
+            "basicAppearanceMismatchLineageIds": 0,
+            "normalizedGeometryMismatchLineageIds": 0,
+            "topologyMismatchLineageIds": 0,
+            "provisionalFounderInvariantIds": 0
+          },
+          "details": {
+            "missingLineageIdOrganismIds": [],
+            "missingRecordLineageIds": [],
+            "emptyCanonicalAppearanceKeyOrganismIds": [],
+            "invalidSpeciesStatusRecordIds": [],
+            "danglingParentLineageIds": [],
+            "duplicateLineageIds": [],
+            "nanLineageGenerationOrganismIds": [],
+            "negativeLineageGenerationOrganismIds": [],
+            "emptyRecordCanonicalAppearanceKeyIds": [],
+            "ecotypeMismatchOrganismIds": [],
+            "canonicalAppearanceKeyMismatchLineageIds": [],
+            "basicAppearanceMismatchLineageIds": [],
+            "normalizedGeometryMismatchLineageIds": [],
+            "topologyMismatchLineageIds": [],
+            "provisionalFounderInvariantIds": []
+          }
+        }
+      },
+      "health": {
+        "badNumbers": 0,
+        "energyCreationEvents": 0,
+        "nutrientCreationEvents": 0,
+        "browserErrors": [],
+        "roundTrip": {
+          "ok": true,
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "worldRadius": 444,
+          "organisms": 121,
+          "extinctRecords": 14,
+          "algaeFieldHashBefore": "891e9402",
+          "algaeFieldHashAfter": "891e9402"
+        }
+      }
+    }
+  ],
+  "aggregate": {
+    "sexualBirths": 149,
+    "asexualBirths": 481,
+    "crossSpeciesSexualBirths": 0,
+    "sameSpeciesDifferentLineageBirths": 27,
+    "differentSpeciesSameLineageSexualBirths": 0,
+    "differentSpeciesSameLineageRejected": 77
+  }
+}
