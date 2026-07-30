@@ -568,6 +568,7 @@
       persistentLineageRegistry: false,
       provisionalLineageClassification: false,
       provisionalLineagePromotion: false,
+      // Deprecated compatibility metadata. Lineage never controls mating or Pack identity.
       lineageAwareMateSelection: false,
       lineageReproductiveIsolation: false,
       lineageAwarePackIdentity: false,
@@ -693,9 +694,6 @@
         leaveGraceSteps: 72,
         minimumFormationMembers: 2,
         allowParentInheritance: true,
-        allowReproductivePackFormation: true,
-        requireSameSpeciesForFormation: true,
-        requireSameSpeciesForJoining: true,
         keepSingleMemberPack: true,
         cooperativeTargeting: Object.freeze({
           maximumSharedTargetDistanceScale: 1.25,
@@ -807,22 +805,19 @@
       && !!featureFlags.provisionalLineagePromotion;
   }
   function lineageAwareMateSelectionEnabled(){
-    return persistentLineageRegistryEnabled()
-      && provisionalLineageClassificationEnabled()
-      && !!featureFlags.lineageAwareMateSelection;
+    // Old saves and diagnostic callers may still carry this flag. It is metadata only.
+    return false;
   }
   function lineageReproductiveIsolationEnabled(){
-    return lineageAwareMateSelectionEnabled()
-      && !!featureFlags.lineageReproductiveIsolation;
+    // Reproductive compatibility is exclusively speciesKey equality.
+    return false;
   }
   function lineageAwarePackIdentityEnabled(){
-    return persistentPackIdentityEnabled()
-      && persistentLineageRegistryEnabled()
-      && provisionalLineageClassificationEnabled()
-      && !!featureFlags.lineageAwarePackIdentity;
+    // Pack identity is exclusively speciesKey; lineage fields are historical metadata.
+    return false;
   }
   function packCooperativeTargetingEnabled(){
-    return lineageAwarePackIdentityEnabled()
+    return persistentPackIdentityEnabled()
       && !!featureFlags.packCooperativeTargeting;
   }
   function resourceLimitedAlgaeRegrowthEnabled(){
@@ -2010,6 +2005,25 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   function speciesKeyForOrganism(organism){
     return speciesKey(organism?.genes || {},organism?.flags || {});
   }
+  function organismSpeciesKey(organism){
+    return organism?.speciesKey == null ? '' : String(organism.speciesKey);
+  }
+  function sameSpecies(a,b){
+    const aKey=organismSpeciesKey(a);
+    const bKey=organismSpeciesKey(b);
+    return !!a && !!b && !!aKey && aKey===bKey;
+  }
+  function canSexuallyMate(parent,candidate){
+    return !!(
+      parent
+      && candidate
+      && parent!==candidate
+      && !parent.dead
+      && !candidate.dead
+      && canReproduceNow(candidate)
+      && sameSpecies(parent,candidate)
+    );
+  }
   function canonicalAppearanceIdentityKey(organism){
     if(organism?.canonicalAppearanceKey) return String(organism.canonicalAppearanceKey);
     if(organism?.lineageId) return String(organism.lineageId);
@@ -2511,6 +2525,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     sameLineageCandidateFound:0,
     sameLineageMateSelected:0,
     sameLineageCrossSpeciesKeySelected:0,
+    differentSpeciesSameLineageRejected:0,
     legacyMateFallback:0,
     noMateFound:0,
     // Successful reproduction counters are attempt counts, not born-individual counts.
@@ -2646,7 +2661,7 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     }
   }
   function packMateOpportunitySnapshot(parent,searchRadius){
-    if(!lineageAwarePackIdentityEnabled() || !parent?.packId) return null;
+    if(!persistentPackIdentityEnabled() || !parent?.packId) return null;
     const radius=Math.max(0,Number(searchRadius)||0);
     const snapshot={
       packId:String(parent.packId),
@@ -2703,45 +2718,29 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     return snapshot;
   }
   function recordLineageMateSelectionTelemetry(parent,result){
-    if(!lineageAwareMateSelectionEnabled()) return null;
+    // Compatibility name retained for diagnostic consumers; events now describe
+    // speciesKey-only mate selection and never influence the selection itself.
     lineageMateSelectionTelemetryState.attempts++;
     if(result.sameLineageCandidateCount>0) lineageMateSelectionTelemetryState.sameLineageCandidateFound++;
-    if(result.mode==='same-lineage'){
-      lineageMateSelectionTelemetryState.sameLineageMateSelected++;
-      if(result.mate && result.mate.speciesKey!==parent?.speciesKey) lineageMateSelectionTelemetryState.sameLineageCrossSpeciesKeySelected++;
-    } else if(result.mode==='legacy-species-fallback'){
+    lineageMateSelectionTelemetryState.differentSpeciesSameLineageRejected+=Number(result.differentSpeciesSameLineageRejected || 0);
+    if(result.mode==='same-species'){
       lineageMateSelectionTelemetryState.legacyMateFallback++;
+      if(result.mate && String(result.mate.lineageId ?? '')===String(parent?.lineageId ?? '')){
+        lineageMateSelectionTelemetryState.sameLineageMateSelected++;
+      }
     } else {
       lineageMateSelectionTelemetryState.noMateFound++;
-    }
-    if(result.reproductiveIsolationEnabled){
-      lineageReproductiveIsolationTelemetryState.attempts++;
-      if(result.mode==='same-lineage') lineageReproductiveIsolationTelemetryState.sameLineageMateSelected++;
-      else if(result.noMateReason==='reproductive-isolation') lineageReproductiveIsolationTelemetryState.asexualByIsolation++;
-      else if(result.noMateReason==='invalid-parent-lineage') lineageReproductiveIsolationTelemetryState.asexualInvalidParentLineage++;
-      else lineageReproductiveIsolationTelemetryState.asexualNoCandidate++;
-      lineageReproductiveIsolationTelemetryState.blockedDifferentLineageCandidates+=Number(result.blockedCandidateCount || 0);
-      if(Number(result.blockedCandidateCount || 0)>0) lineageReproductiveIsolationTelemetryState.attemptsWithBlockedCandidates++;
-      lineageReproductiveIsolationTelemetryState.blockedSameSpeciesDifferentLineage+=Number(result.blockedSameSpeciesDifferentLineageCount || 0);
-      const counts=result.blockedRelationshipCounts || {};
-      lineageReproductiveIsolationTelemetryState.blockedEstablishedEstablished+=Number(counts.establishedEstablished || 0);
-      lineageReproductiveIsolationTelemetryState.blockedProvisionalParent+=Number(counts.provisionalParent || 0);
-      lineageReproductiveIsolationTelemetryState.blockedParentProvisional+=Number(counts.parentProvisional || 0);
-      lineageReproductiveIsolationTelemetryState.blockedProvisionalSiblings+=Number(counts.provisionalSiblings || 0);
-      lineageReproductiveIsolationTelemetryState.blockedProvisionalUnrelated+=Number(counts.provisionalUnrelated || 0);
-      lineageReproductiveIsolationTelemetryState.blockedFailedLineage+=Number(counts.failedLineage || 0);
-      lineageReproductiveIsolationTelemetryState.blockedInvalidLineage+=Number(counts.invalidLineage || 0);
-      lineageReproductiveIsolationTelemetryState.blockedOtherDifferentLineage+=Number(counts.other || 0);
     }
     const event={
       frame,
       parentId:parent?.id ?? null,
       mateId:result.mate?.id ?? null,
       mode:result.mode,
-      reproductiveIsolationEnabled:!!result.reproductiveIsolationEnabled,
+      reproductiveIsolationEnabled:false,
       noMateReason:result.noMateReason ?? null,
       blockedCandidateCount:Number(result.blockedCandidateCount || 0),
       blockedSameSpeciesDifferentLineageCount:Number(result.blockedSameSpeciesDifferentLineageCount || 0),
+      differentSpeciesSameLineageRejected:Number(result.differentSpeciesSameLineageRejected || 0),
       blockedRelationshipCounts:{...(result.blockedRelationshipCounts || blankLineageIsolationRelationshipCounts())},
       parentLineageId:parent?.lineageId ?? null,
       mateLineageId:result.mate?.lineageId ?? null,
@@ -2769,19 +2768,13 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   function recordLineageMateSelectionSuccessfulReproduction(selection,birthCount=0){
     if(!selection || !selection.telemetryRecorded) return;
     const mate=selection.mate || null;
-    if(selection.mode==='same-lineage'){
-      lineageMateSelectionTelemetryState.successfulSameLineageReproductions++;
-      if(mate && mate.speciesKey!==selection.parentSpeciesKey) lineageMateSelectionTelemetryState.successfulSameLineageCrossSpeciesKeyReproductions++;
-    } else if(selection.mode==='legacy-species-fallback'){
+    if(selection.mode==='same-species'){
       lineageMateSelectionTelemetryState.successfulLegacyFallbackReproductions++;
+      if(mate && String(mate.lineageId ?? '')===String(selection.parentLineageId ?? '')){
+        lineageMateSelectionTelemetryState.successfulSameLineageReproductions++;
+      }
     } else if(selection.mode==='none'){
       lineageMateSelectionTelemetryState.successfulAsexualReproductions++;
-    }
-    if(selection.reproductiveIsolationEnabled){
-      if(selection.mode==='same-lineage') lineageReproductiveIsolationTelemetryState.successfulSameLineageSexualAttempts++;
-      else if(selection.noMateReason==='reproductive-isolation') lineageReproductiveIsolationTelemetryState.successfulAsexualIsolationAttempts++;
-      else if(selection.noMateReason==='invalid-parent-lineage') lineageReproductiveIsolationTelemetryState.successfulAsexualInvalidLineageAttempts++;
-      else lineageReproductiveIsolationTelemetryState.successfulAsexualNoCandidateAttempts++;
     }
     if(selection.telemetryEvent){
       selection.telemetryEvent.reproduced=true;
@@ -2791,84 +2784,59 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
   function selectMateForReproduction(parent,radius,options={}){
     const r=Number(radius);
     const bestLimit=Number.isFinite(r) && r>0 ? r*r : 0;
-    let sameLineageMate=null;
-    let sameLineageBestD2=bestLimit;
+    let mate=null;
+    let bestD2=bestLimit;
     let sameLineageCandidateCount=0;
-    let legacyMate=null;
-    let legacyBestD2=bestLimit;
-    let legacyCandidateCount=0;
-    const lineageAware=lineageAwareMateSelectionEnabled();
-    const reproductiveIsolation=lineageReproductiveIsolationEnabled();
-    const parentLineageValid=!reproductiveIsolation || validParentLineageForReproductiveIsolation(parent);
-    const blockedRelationshipCounts=blankLineageIsolationRelationshipCounts();
-    const isolationScan={
-      blockedCandidateCount:0,
-      blockedSameSpeciesDifferentLineageCount:0,
-      blockedRelationshipCounts
-    };
+    let speciesCandidateCount=0;
+    let differentSpeciesSameLineageRejected=0;
     if(parent && bestLimit>0){
       forEachOrgNeighbors(parent.x,parent.y,r,(candidate,dx,dy,d2)=>{
         if(!candidate || candidate===parent || !canReproduceNow(candidate)) return;
-        if(lineageAware && validSameLineageMateCandidate(parent,candidate)){
-          sameLineageCandidateCount++;
-          if(d2<sameLineageBestD2){
-            sameLineageBestD2=d2;
-            sameLineageMate=candidate;
+        if(!canSexuallyMate(parent,candidate)){
+          if(parent?.lineageId!=null
+            && candidate?.lineageId!=null
+            && String(parent.lineageId)===String(candidate.lineageId)){
+            differentSpeciesSameLineageRejected++;
           }
-        } else if(reproductiveIsolation){
-          addLineageIsolationBlockedCandidate(isolationScan,parent,candidate);
+          return;
         }
-        if(candidate.speciesKey===parent.speciesKey){
-          legacyCandidateCount++;
-          if(d2<legacyBestD2){
-            legacyBestD2=d2;
-            legacyMate=candidate;
-          }
+        speciesCandidateCount++;
+        if(parent?.lineageId!=null
+          && candidate?.lineageId!=null
+          && String(parent.lineageId)===String(candidate.lineageId)){
+          sameLineageCandidateCount++;
+        }
+        if(d2<bestD2){
+          bestD2=d2;
+          mate=candidate;
         }
       });
     }
-    let mate=null;
-    let mode='none';
-    let noMateReason=null;
-    let selectedDistanceSquared=null;
-    if(reproductiveIsolation && !parentLineageValid){
-      noMateReason='invalid-parent-lineage';
-    } else if(lineageAware && sameLineageMate){
-      mate=sameLineageMate;
-      mode='same-lineage';
-      selectedDistanceSquared=sameLineageBestD2;
-      noMateReason=null;
-    } else if(reproductiveIsolation){
-      noMateReason=isolationScan.blockedCandidateCount>0 ? 'reproductive-isolation' : 'no-candidate';
-    } else if(legacyMate){
-      mate=legacyMate;
-      mode='legacy-species-fallback';
-      selectedDistanceSquared=legacyBestD2;
-    } else {
-      noMateReason='no-candidate';
-    }
     const result={
       mate,
-      mode,
-      noMateReason,
-      reproductiveIsolationEnabled:reproductiveIsolation,
+      mode:mate ? 'same-species' : 'none',
+      noMateReason:mate ? null : 'no-candidate',
+      reproductiveIsolationEnabled:false,
       sameLineageCandidateCount,
-      legacyCandidateCount,
-      blockedCandidateCount:isolationScan.blockedCandidateCount,
-      blockedSameSpeciesDifferentLineageCount:isolationScan.blockedSameSpeciesDifferentLineageCount,
-      blockedRelationshipCounts:{...blockedRelationshipCounts},
+      legacyCandidateCount:speciesCandidateCount,
+      speciesCandidateCount,
+      differentSpeciesSameLineageRejected,
+      blockedCandidateCount:0,
+      blockedSameSpeciesDifferentLineageCount:0,
+      blockedRelationshipCounts:blankLineageIsolationRelationshipCounts(),
       searchRadius:Math.sqrt(bestLimit),
-      selectedDistanceSquared,
-      sameLineageMateId:sameLineageMate?.id ?? null,
-      sameLineageMateLineageId:sameLineageMate?.lineageId ?? null,
-      legacyMateId:legacyMate?.id ?? null,
-      legacyMateLineageId:legacyMate?.lineageId ?? null,
-      legacyMateSpeciesKey:legacyMate?.speciesKey ?? null,
-      selectionWouldDifferFromLegacy:lineageAware && sameLineageMate ? sameLineageMate!==legacyMate : (reproductiveIsolation && legacyMate ? true : false)
+      selectedDistanceSquared:mate ? bestD2 : null,
+      sameLineageMateId:null,
+      sameLineageMateLineageId:null,
+      legacyMateId:mate?.id ?? null,
+      legacyMateLineageId:mate?.lineageId ?? null,
+      legacyMateSpeciesKey:mate?.speciesKey ?? null,
+      selectionWouldDifferFromLegacy:false
     };
-    if(options.recordTelemetry!==false && lineageAware){
+    if(options.recordTelemetry!==false){
       result.telemetryRecorded=true;
       result.parentSpeciesKey=parent?.speciesKey ?? null;
+      result.parentLineageId=parent?.lineageId ?? null;
       result.telemetryEvent=recordLineageMateSelectionTelemetry(parent,result);
     }
     return result;
@@ -3033,7 +3001,9 @@ function buildSilhouettePathCached(key, g, cx, cy, baseR){
     if(!created) current.inheritedBirths++;
     if(mate){
       current.sexualBirths++;
-      if(String(parent?.lineageId ?? '')===lineageId && String(mate?.lineageId ?? '')===lineageId){
+      if(String(parent?.lineageId ?? '')===lineageId
+        && String(mate?.lineageId ?? '')===lineageId
+        && sameSpecies(parent,mate)){
         current.sameLineageSexualBirths++;
       }
     } else {
@@ -4119,8 +4089,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       blockedCrossPackCandidates:0,
       blockedPacklessCandidates:0,
       blockedMixedLineageCandidates:0,
+      blockedSpeciesMismatchCandidates:0,
       crossPackTargetSharing:0,
       mixedLineageCooperation:0,
+      speciesMismatchCooperation:0,
       invalidTargetSharing:0
     },
     packFormation: {
@@ -4204,8 +4176,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       blockedCrossPackCandidates:0,
       blockedPacklessCandidates:0,
       blockedMixedLineageCandidates:0,
+      blockedSpeciesMismatchCandidates:0,
       crossPackTargetSharing:0,
       mixedLineageCooperation:0,
+      speciesMismatchCooperation:0,
       invalidTargetSharing:0
     });
   }
@@ -4234,9 +4208,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       blockedCrossPackCandidates:Number(t.blockedCrossPackCandidates||0),
       blockedPacklessCandidates:Number(t.blockedPacklessCandidates||0),
       blockedMixedLineageCandidates:Number(t.blockedMixedLineageCandidates||0),
+      blockedSpeciesMismatchCandidates:Number(t.blockedSpeciesMismatchCandidates||0),
       invariants:{
         crossPackTargetSharing:Number(t.crossPackTargetSharing||0),
         mixedLineageCooperation:Number(t.mixedLineageCooperation||0),
+        speciesMismatchCooperation:Number(t.speciesMismatchCooperation||0),
         invalidTargetSharing:Number(t.invalidTargetSharing||0)
       }
     };
@@ -4260,6 +4236,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       packSameSpeciesDifferentLineageRejected:0,
       packInvalidLineageRejected:0,
       packInvalidLineageCleanups:0,
+      packSameSpeciesDifferentLineageJoins:0,
+      packDifferentSpeciesSameLineageRejected:0,
+      packDistanceLeaves:0,
+      packLineageOnlyLeaves:0,
+      packSaveMigrations:0,
+      packSaveMixedSpeciesRemoved:0,
       packIdentityRepaired:0,
       packIdentityRepairFailed:0,
       packReproductivePairPacksCreated:0,
@@ -4360,7 +4342,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     };
   }
   function packMemberLifecycleEvent(type,organism,pack,extra={}){
-    if(!lineageAwarePackIdentityEnabled() || !organism || !pack) return;
+    if(!persistentPackIdentityEnabled() || !organism || !pack) return;
     const birth=telemetry.births.get(organism.id) || null;
     const maturityAge=reproductiveMaturityAgeFor(organism);
     const maxEnergy=organismMaxEnergy(organism);
@@ -4444,7 +4426,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     }
   }
   function packMemberSpatialSample(pack){
-    if(!lineageAwarePackIdentityEnabled() || !pack || pack.dissolvedFrame!=null) return;
+    if(!persistentPackIdentityEnabled() || !pack || pack.dissolvedFrame!=null) return;
     const members=packIdentityLivingMembers(pack);
     if(!members.length) return;
     const memberRows=members.map(member=>{
@@ -4814,6 +4796,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       packSameSpeciesDifferentLineageRejected:0,
       packInvalidLineageRejected:0,
       packInvalidLineageCleanups:0,
+      packSameSpeciesDifferentLineageJoins:0,
+      packDifferentSpeciesSameLineageRejected:0,
+      packDistanceLeaves:0,
+      packLineageOnlyLeaves:0,
+      packSaveMigrations:0,
+      packSaveMixedSpeciesRemoved:0,
       packIdentityRepaired:0,
       packIdentityRepairFailed:0,
       packReproductivePairPacksCreated:0,
@@ -4857,6 +4845,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     organism.packJoinFrame=null;
     organism.packFounderId=null;
     organism.packInheritedFromParent=false;
+    organism.packInheritedFromId=null;
+    organism.packInheritedFromRole=null;
     organism.packLeaveCandidateSince=null;
     organism.packLastMemberContactFrame=null;
     organism._packNearestMemberDistance=null;
@@ -4868,7 +4858,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     return organism.socialMode==='hunt-pack';
   }
   function packIdentitySpeciesKey(organism){
-    return String(organism?.speciesKey || speciesKeyForOrganism(organism));
+    return organismSpeciesKey(organism);
   }
   function validPackLineageRecord(lineageId){
     if(!lineageAwarePackIdentityEnabled()) return null;
@@ -4880,23 +4870,14 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   function packBiologicalIdentityForOrganism(organism){
     if(!organism) return null;
     const speciesKey=packIdentitySpeciesKey(organism);
-    if(lineageAwarePackIdentityEnabled()){
-      const lineageId=organism.lineageId==null ? '' : String(organism.lineageId);
-      if(!lineageId || !validPackLineageRecord(lineageId)) return null;
-      return {mode:'lineage',key:lineageId,lineageId,speciesKey};
-    }
+    if(!speciesKey) return null;
     return {mode:'species',key:speciesKey,lineageId:organism.lineageId==null ? null : String(organism.lineageId),speciesKey};
   }
   function samePackBiologicalIdentity(a,b){
-    const ai=packBiologicalIdentityForOrganism(a);
-    const bi=packBiologicalIdentityForOrganism(b);
-    return !!(ai && bi && ai.mode===bi.mode && ai.key===bi.key);
+    return sameSpecies(a,b);
   }
-  // Keep the legacy loose biological grouping while switching its identity source.
   function samePackBehaviorIdentity(a,b){
-    if(!a || !b) return false;
-    if(lineageAwarePackIdentityEnabled()) return samePackBiologicalIdentity(a,b);
-    return packIdentitySpeciesKey(a)===packIdentitySpeciesKey(b);
+    return sameSpecies(a,b);
   }
   function sameActivePackMembership(a,b){
     if(!a || !b || a===b || !a.packId || a.packId!==b.packId) return false;
@@ -4915,12 +4896,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(String(a.packId)!==String(b.packId)) return 'different-pack';
     const pack=activePackById(a.packId);
     if(!pack) return 'inactive-pack';
-    const aLineage=a.lineageId==null ? '' : String(a.lineageId);
-    const bLineage=b.lineageId==null ? '' : String(b.lineageId);
-    if(!aLineage || !bLineage || aLineage!==bLineage) return 'mixed-lineage';
-    if(!validPackLineageRecord(aLineage)) return 'invalid-lineage';
     if(!packRecordMatchesOrganism(pack,a,{recordTelemetry:false,reason:'cooperative-targeting-a'})) return 'pack-record-mismatch';
     if(!packRecordMatchesOrganism(pack,b,{recordTelemetry:false,reason:'cooperative-targeting-b'})) return 'pack-record-mismatch';
+    if(!sameSpecies(a,b)) return 'species-mismatch';
     return null;
   }
   function actualPackHuntAlly(a,b){
@@ -4928,14 +4906,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       && actualPackHuntAllyRejectionReason(a,b)==null;
   }
   function packHuntBehaviorAlly(a,b){
-    if(packCooperativeTargetingEnabled()) return actualPackHuntAlly(a,b);
-    return !!(
-      a
-      && b
-      && a!==b
-      && isPackHunter(b)
-      && samePackBehaviorIdentity(a,b)
-    );
+    return actualPackHuntAlly(a,b);
   }
   function telemetryNotePackCooperation(a,b){
     if(!packCooperativeTargetingEnabled()) return false;
@@ -4943,11 +4914,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const rejection=actualPackHuntAllyRejectionReason(a,b);
     if(rejection){
       if(rejection==='different-pack') t.crossPackTargetSharing++;
-      if(rejection==='mixed-lineage') t.mixedLineageCooperation++;
+      if(rejection==='species-mismatch' || rejection==='pack-record-mismatch') t.speciesMismatchCooperation++;
       return false;
     }
     t.actualPackAllyUses++;
-    if(a.speciesKey!==b.speciesKey) t.sameLineageCrossSpeciesCooperations++;
     return true;
   }
   function telemetryNoteActualPackTargetSwitch(predator){
@@ -4958,26 +4928,19 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   }
   function packIdentityApplyRecord(pack,identity){
     if(!pack || !identity) return null;
-    pack.identityMode=identity.mode;
-    pack.identityKey=identity.key;
-    pack.lineageId=identity.mode==='lineage' ? identity.lineageId : (identity.lineageId ?? null);
-    pack.speciesKey=identity.speciesKey ?? pack.speciesKey ?? pack.founderSpeciesKey ?? null;
+    pack.identityMode='species';
+    pack.identityKey=String(identity.speciesKey || identity.key || '');
+    // lineageId remains compatibility/history metadata and is never an identity key.
+    if(pack.lineageId==null && identity.lineageId!=null) pack.lineageId=identity.lineageId;
+    pack.speciesKey=pack.identityKey || null;
     if(pack.founderSpeciesKey==null && identity.speciesKey!=null) pack.founderSpeciesKey=identity.speciesKey;
-    return identity;
+    return pack.speciesKey
+      ? {mode:'species',key:pack.speciesKey,lineageId:pack.lineageId ?? null,speciesKey:pack.speciesKey}
+      : null;
   }
   function packIdentityFromRecord(pack){
     if(!pack) return null;
-    if(lineageAwarePackIdentityEnabled()){
-      const mode=String(pack.identityMode || '');
-      const key=pack.identityKey==null ? '' : String(pack.identityKey);
-      const lineageId=pack.lineageId==null ? key : String(pack.lineageId);
-      const recordKey=mode==='lineage' ? key : lineageId;
-      if(recordKey && validPackLineageRecord(recordKey)){
-        return {mode:'lineage',key:recordKey,lineageId:recordKey,speciesKey:pack.speciesKey ?? pack.founderSpeciesKey ?? null};
-      }
-      return null;
-    }
-    const speciesKey=String(pack.identityMode==='species' && pack.identityKey ? pack.identityKey : (pack.speciesKey || pack.founderSpeciesKey || ''));
+    const speciesKey=String(pack.speciesKey || pack.founderSpeciesKey || (pack.identityMode==='species' ? pack.identityKey : '') || '');
     if(!speciesKey) return null;
     return {mode:'species',key:speciesKey,lineageId:pack.lineageId ?? null,speciesKey};
   }
@@ -5000,63 +4963,50 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       packIdentityApplyRecord(pack,existing);
       return existing;
     }
-    if(!lineageAwarePackIdentityEnabled()){
-      const speciesKey=String(pack.speciesKey || pack.founderSpeciesKey || '');
-      if(!speciesKey) return null;
-      const identity={mode:'species',key:speciesKey,lineageId:pack.lineageId ?? null,speciesKey};
-      packIdentityApplyRecord(pack,identity);
-      return identity;
-    }
     const candidates=packIdentityCandidateMembersForRepair(pack);
-    const identities=[];
-    const seen=new Set();
-    for(const organism of candidates){
-      const identity=packBiologicalIdentityForOrganism(organism);
-      if(!identity) continue;
-      const token=identity.mode+':'+identity.key;
-      if(seen.has(token)) continue;
-      seen.add(token);
-      identities.push(identity);
-    }
-    if(identities.length===1){
+    const canonical=candidates.find(organism=>!!packIdentitySpeciesKey(organism)) || null;
+    if(canonical){
+      const identity=packBiologicalIdentityForOrganism(canonical);
       packIdentityTelemetry().packIdentityRepaired++;
-      return packIdentityApplyRecord(pack,identities[0]);
-    }
-    if(identities.length>1){
-      packIdentityTelemetry().packIdentityRepairFailed++;
-      packIdentityTelemetry().packInvalidLineageCleanups++;
-      return null;
+      return packIdentityApplyRecord(pack,identity);
     }
     packIdentityTelemetry().packIdentityRepairFailed++;
     return null;
   }
   function packIdentityNoteMismatch(pack,organism,reason='mismatch'){
-    if(!lineageAwarePackIdentityEnabled()) return;
-    const organismIdentity=packBiologicalIdentityForOrganism(organism);
-    const packIdentity=packIdentityFromRecord(pack);
-    if(!organismIdentity || !packIdentity){
-      packIdentityTelemetry().packInvalidLineageRejected++;
-      return;
+    const packSpecies=String(pack?.speciesKey || '');
+    const organismSpecies=packIdentitySpeciesKey(organism);
+    if(packSpecies && organismSpecies && packSpecies!==organismSpecies){
+      const founder=organismById(pack?.founderId);
+      const packLineage=founder?.lineageId ?? pack?.lineageId ?? null;
+      if(packLineage!=null
+        && organism?.lineageId!=null
+        && String(packLineage)===String(organism.lineageId)){
+        packIdentityTelemetry().packDifferentSpeciesSameLineageRejected++;
+      }
     }
-    if(organismIdentity.speciesKey===packIdentity.speciesKey && organismIdentity.lineageId!==packIdentity.lineageId){
-      packIdentityTelemetry().packSameSpeciesDifferentLineageRejected++;
-    }
+  }
+  function packRecordMatchesSpecies(pack,organism){
+    const packSpecies=String(pack?.speciesKey || '');
+    return !!packSpecies && packSpecies===packIdentitySpeciesKey(organism);
   }
   function packRecordMatchesOrganism(pack,organism,options={}){
     if(!pack || !organism) return false;
-    const organismIdentity=packBiologicalIdentityForOrganism(organism);
-    if(!organismIdentity){
-      if(options.recordTelemetry && lineageAwarePackIdentityEnabled()) packIdentityTelemetry().packInvalidLineageRejected++;
-      return false;
-    }
     const packIdentity=repairPackRecordIdentity(pack);
-    if(!packIdentity){
-      if(options.recordTelemetry && lineageAwarePackIdentityEnabled()) packIdentityTelemetry().packInvalidLineageRejected++;
-      return false;
-    }
-    const ok=packIdentity.mode===organismIdentity.mode && packIdentity.key===organismIdentity.key;
+    if(!packIdentity) return false;
+    const ok=packRecordMatchesSpecies(pack,organism);
     if(!ok && options.recordTelemetry) packIdentityNoteMismatch(pack,organism,options.reason || 'mismatch');
     return ok;
+  }
+  function canJoinPack(organism,pack){
+    return !!(
+      persistentPackIdentityEnabled()
+      && packIdentityEligible(organism)
+      && !organism.packId
+      && pack
+      && pack.dissolvedFrame==null
+      && packRecordMatchesSpecies(pack,organism)
+    );
   }
   function packReproductionBottleneckTelemetry(){
     return telemetry.packReproductionBottleneck;
@@ -5191,10 +5141,12 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(selection.mate){
       t.sexualAttempts++;
       row.sexualAttempts++;
-      if(selection.mode==='same-lineage'){
+      if(selection.mode==='same-species'
+        && String(parent.lineageId ?? '')===String(selection.mate.lineageId ?? '')){
         t.sameLineageMateAttempts++;
         row.sameLineageMateAttempts++;
-      } else if(selection.mode==='legacy-species-fallback'){
+      }
+      if(selection.mode==='same-species'){
         t.legacyMateAttempts++;
         row.legacyMateAttempts++;
       }
@@ -5361,7 +5313,6 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(!o || o.dead || !o.packId) continue;
       const pack=activePackById(o.packId);
       if(!pack || !packIdentityEligible(o) || !packRecordMatchesOrganism(pack,o,{recordTelemetry:true,reason:'repair'})){
-        if(lineageAwarePackIdentityEnabled()) packIdentityTelemetry().packInvalidLineageCleanups++;
         clearOrganismPackIdentity(o,'repair-invalid');
         continue;
       }
@@ -5373,17 +5324,21 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(!persistentPackIdentityEnabled() || !packIdentityEligible(organism)) return false;
     const pack=activePackById(packId);
     if(!pack) return false;
-    if(!packRecordMatchesOrganism(pack,organism,{recordTelemetry:true,reason:options.reason || 'join'})) return false;
     if(organism.packId===pack.id){
       organism.packLeaveCandidateSince=null;
       return true;
     }
-    if(organism.packId) leavePackIdentity(organism,'switch');
+    if(organism.packId || !canJoinPack(organism,pack)){
+      packIdentityNoteMismatch(pack,organism,options.reason || 'join');
+      return false;
+    }
     organism._packMembershipPreviousId=organism.packId || null;
     organism.packId=pack.id;
     organism.packJoinFrame=frame;
     organism.packFounderId=pack.founderId ?? options.founderId ?? null;
     organism.packInheritedFromParent=!!options.inheritedFromParent;
+    organism.packInheritedFromId=options.inheritedFromParent ? (options.sourceParentId ?? null) : null;
+    organism.packInheritedFromRole=options.inheritedFromParent ? (options.inheritedFromMate ? 'mate' : 'primary-parent') : null;
     organism.packLeaveCandidateSince=null;
     organism.packLastMemberContactFrame=frame;
     organism.packJoinCount=Number(organism.packJoinCount||0)+1;
@@ -5394,17 +5349,16 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     pack.maximumLivingMembers=Math.max(Number(pack.maximumLivingMembers||0),pack.memberIds.length);
     pack.lastActiveFrame=frame;
     packIdentityTelemetry().packJoins++;
-    if(lineageAwarePackIdentityEnabled()) packIdentityTelemetry().lineageBasedPackJoins++;
+    if(pack.lineageId!=null
+      && organism.lineageId!=null
+      && String(pack.lineageId)!==String(organism.lineageId)){
+      packIdentityTelemetry().packSameSpeciesDifferentLineageJoins++;
+    }
     if(options.reason==='parent-inheritance' || options.inheritedFromParent){
       pack.birthsIntoPack=Number(pack.birthsIntoPack||0)+1;
       packIdentityTelemetry().packInheritedBirths++;
-      if(lineageAwarePackIdentityEnabled()){
-        if(options.inheritedFromMate) packIdentityTelemetry().packMateLineageInheritedBirths++;
-        else packIdentityTelemetry().packParentLineageInheritedBirths++;
-        const childSpecies=packIdentitySpeciesKey(organism);
-        const packSpecies=String(pack.speciesKey || pack.founderSpeciesKey || '');
-        if(childSpecies && packSpecies && childSpecies!==packSpecies) packIdentityTelemetry().packSameLineageCrossSpeciesInheritedBirths++;
-      }
+      if(options.inheritedFromMate) packIdentityTelemetry().packMateLineageInheritedBirths++;
+      else packIdentityTelemetry().packParentLineageInheritedBirths++;
     }
     packMemberLifecycleEvent('join',organism,pack,{
       reason:options.reason || 'join',
@@ -5424,6 +5378,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     organism.packJoinFrame=null;
     organism.packFounderId=null;
     organism.packInheritedFromParent=false;
+    organism.packInheritedFromId=null;
+    organism.packInheritedFromRole=null;
     organism.packLeaveCandidateSince=null;
     organism.packLastMemberContactFrame=null;
     organism._packNearestMemberDistance=null;
@@ -5434,6 +5390,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       pack.leaves=Number(pack.leaves||0)+1;
       pack.lastActiveFrame=frame;
       packIdentityTelemetry().packLeaves++;
+      if(reason==='distance') packIdentityTelemetry().packDistanceLeaves++;
       packIdentityRefreshPack(pack);
     }
     return true;
@@ -5460,7 +5417,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(!persistentPackIdentityEnabled()) return null;
     const members=packIdentitySanitizeMemberIds((candidates||[]).map(o=>o?.id))
       .map(id=>organismById(id))
-      .filter(o=>o && !o.dead && packIdentityEligible(o));
+      .filter(o=>o && !o.dead && !o.packId && packIdentityEligible(o));
     if(members.length<CONFIG.ecology.packIdentity.minimumFormationMembers) return null;
     members.sort((a,b)=>a.id-b.id);
     const founder=members[0];
@@ -5488,7 +5445,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       speciesKey:identity.speciesKey,
       identityMode:identity.mode,
       identityKey:identity.key,
-      lineageId:identity.lineageId ?? null,
+      // Founder lineage is retained for history/debug only.
+      lineageId:founder.lineageId ?? null,
       memberIds:[],
       parentPackId:options.parentPackId ?? null,
       totalMembersEver:0,
@@ -5503,7 +5461,6 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     };
     packIdentityState.packs[id]=pack;
     packIdentityTelemetry().packsCreated++;
-    if(lineageAwarePackIdentityEnabled()) packIdentityTelemetry().lineageBasedPacksCreated++;
     for(const member of members){
       joinPackIdentity(member,id,{reason:'formation',founderId:founder.id});
     }
@@ -5527,7 +5484,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       speciesKey:identity.speciesKey,
       identityMode:identity.mode,
       identityKey:identity.key,
-      lineageId:identity.lineageId ?? null,
+      lineageId:founder.lineageId ?? null,
       memberIds:[],
       parentPackId:options.parentPackId ?? null,
       totalMembersEver:0,
@@ -5542,7 +5499,6 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     };
     packIdentityState.packs[id]=pack;
     packIdentityTelemetry().packsCreated++;
-    if(lineageAwarePackIdentityEnabled()) packIdentityTelemetry().lineageBasedPacksCreated++;
     joinPackIdentity(founder,id,{reason:options.reason || 'single-founder',founderId:founder.id});
     packIdentityRefreshPack(pack);
     return pack;
@@ -5572,7 +5528,10 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(!other || other===organism || other.dead || !other.packId) return;
       const pack=activePackById(other.packId);
       if(!pack) return;
-      if(cfg.requireSameSpeciesForJoining && !packRecordMatchesOrganism(pack,organism,{recordTelemetry:true,reason:'join-scan'})) return;
+      if(!canJoinPack(organism,pack)){
+        packIdentityNoteMismatch(pack,organism,'join-scan');
+        return;
+      }
       const d=Math.sqrt(d2);
       const existing=byPack.get(pack.id);
       if(!existing || d<existing.nearestDistance){
@@ -5609,34 +5568,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     return false;
   }
   function joinLineageFamilyNeighborsIntoPack(packId,sources=[],reason='lineage-family-neighbor'){
-    if(!lineageAwarePackIdentityEnabled()) return 0;
-    const pack=activePackById(packId);
-    if(!pack) return 0;
-    repairPackRecordIdentity(pack);
-    const anchors=familyPackJoinAnchors(pack,sources);
-    if(!anchors.length) return 0;
-    const packTelemetry=packIdentityTelemetry();
-    packTelemetry.packFamilyNeighborScanCalls++;
-    let joins=0;
-    const candidates=organisms
-      .filter(o=>o && !o.dead && !o.packId)
-      .sort((a,b)=>a.id-b.id);
-    for(const candidate of candidates){
-      if(!packRecordMatchesOrganism(pack,candidate,{recordTelemetry:false,reason})) continue;
-      packTelemetry.packFamilyNeighborSameLineageUnassigned++;
-      const eligible=packIdentityEligible(candidate);
-      if(eligible) packTelemetry.packFamilyNeighborSameLineageEligible++;
-      else packTelemetry.packFamilyNeighborSameLineageIneligible++;
-      if(!nearFamilyPackAnchor(candidate,anchors)) continue;
-      if(eligible) packTelemetry.packFamilyNeighborNearEligible++;
-      else packTelemetry.packFamilyNeighborNearIneligible++;
-      if(!eligible) continue;
-      if(joinPackIdentity(candidate,pack.id,{reason})){
-        packTelemetry.packLineageFamilyNeighborJoins++;
-        joins++;
-      }
-    }
-    return joins;
+    // Deprecated diagnostic hook. Normal joining is handled only by the spatial
+    // speciesKey-based update pass.
+    return 0;
   }
   function formationCandidatesForOrganism(organism,excludedIds){
     if(!organism || organism.packId || !packIdentityEligible(organism)) return [];
@@ -5646,10 +5580,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     forEachOrgNeighbors(organism.x,organism.y,radius,(other)=>{
       if(!other || other===organism || other.dead || other.packId || excludedIds?.has(other.id)) return;
       if(!packIdentityEligible(other)) return;
-      if(cfg.requireSameSpeciesForFormation && !samePackBiologicalIdentity(organism,other)){
-        if(lineageAwarePackIdentityEnabled()){
-          if(packIdentitySpeciesKey(organism)===packIdentitySpeciesKey(other)) packIdentityTelemetry().packSameSpeciesDifferentLineageRejected++;
-          if(!packBiologicalIdentityForOrganism(organism) || !packBiologicalIdentityForOrganism(other)) packIdentityTelemetry().packInvalidLineageRejected++;
+      if(!sameSpecies(organism,other)){
+        if(organism.lineageId!=null
+          && other.lineageId!=null
+          && String(organism.lineageId)===String(other.lineageId)){
+          packIdentityTelemetry().packDifferentSpeciesSameLineageRejected++;
         }
         return;
       }
@@ -5658,7 +5593,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     return rows.sort((a,b)=>a.id-b.id);
   }
   function recordPackLifetimeGrowthOpportunities(living){
-    if(!lineageAwarePackIdentityEnabled()) return;
+    if(!persistentPackIdentityEnabled()) return;
     const telemetry=packIdentityTelemetry();
     for(const pack of packIdentitySortedPacks()){
       const anchors=packIdentityLivingMembers(pack);
@@ -5761,9 +5696,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     }
   }
   function reproductivePackFormationEnabled(){
-    return lineageAwarePackIdentityEnabled()
-      && !!CONFIG.ecology.packIdentity.allowReproductivePackFormation
-      && !!CONFIG.ecology.packIdentity.allowParentInheritance;
+    // Reproduction never creates a Pack. Formation is spatial and speciesKey-only.
+    return false;
   }
   function packRecordCanAcceptReproductivePair(pack,parent,mate,reason){
     if(!pack || !parent || !mate) return false;
@@ -5840,11 +5774,20 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     return false;
   }
   function childHasNewProvisionalPackLineage(child,parent,mate){
-    if(!lineageAwarePackIdentityEnabled() || !child?.lineageId) return false;
-    const record=lineageRecordById(child.lineageId);
-    if(record?.speciesStatus!=='provisional') return false;
-    const parentLineages=new Set([parent?.lineageId,mate?.lineageId].filter(id=>id!=null).map(String));
-    return !parentLineages.has(String(child.lineageId));
+    return false;
+  }
+  function canInheritPack(child,sourceParent,pack){
+    return !!(
+      child
+      && sourceParent
+      && !sourceParent.dead
+      && sourceParent.packId
+      && String(sourceParent.packId)===String(pack?.id || '')
+      && activePackById(sourceParent.packId)===pack
+      && packIdentityEligible(child)
+      && !child.packId
+      && packRecordMatchesSpecies(pack,child)
+    );
   }
   function inheritParentPackIdentity(child,parent,mate=null){
     if(!persistentPackIdentityEnabled()
@@ -5862,18 +5805,16 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       if(!source?.packId) continue;
       const pack=activePackById(source.packId);
       if(!pack) continue;
-      if(packRecordMatchesOrganism(pack,child,{recordTelemetry:true,reason:candidate.kind+'-inheritance'})){
+      if(canInheritPack(child,source,pack)){
         const joined=joinPackIdentity(child,source.packId,{
           reason:'parent-inheritance',
           inheritedFromParent:true,
-          inheritedFromMate:candidate.inheritedFromMate
+          inheritedFromMate:candidate.inheritedFromMate,
+          sourceParentId:source.id
         });
-        if(joined) joinLineageFamilyNeighborsIntoPack(source.packId,[parent,mate,child],candidate.kind+'-inheritance-family-neighbor');
         return joined;
       }
-    }
-    if(childHasNewProvisionalPackLineage(child,parent,mate)){
-      packIdentityTelemetry().packProvisionalBirthInheritanceSkipped++;
+      packIdentityNoteMismatch(pack,child,candidate.kind+'-inheritance');
     }
     return false;
   }
@@ -5899,6 +5840,31 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       packIdentityTelemetry().packInheritedClutchChildren+=count;
     }
   }
+  function migratePackRecordToSpeciesIdentity(pack){
+    if(!pack) return null;
+    const members=packIdentityCandidateMembersForRepair(pack);
+    const canonicalMember=members[0] || null;
+    const canonicalSpecies=packIdentitySpeciesKey(canonicalMember)
+      || String(pack.speciesKey || pack.founderSpeciesKey || (pack.identityMode==='species' ? pack.identityKey : '') || '');
+    if(!canonicalSpecies) return null;
+    const oldMode=String(pack.identityMode || '');
+    const oldKey=pack.identityKey==null ? '' : String(pack.identityKey);
+    packIdentityApplyRecord(pack,{
+      mode:'species',
+      key:canonicalSpecies,
+      speciesKey:canonicalSpecies,
+      lineageId:pack.lineageId ?? canonicalMember?.lineageId ?? null
+    });
+    if(oldMode!=='species' || oldKey!==canonicalSpecies){
+      packIdentityTelemetry().packSaveMigrations++;
+    }
+    for(const member of members){
+      if(packRecordMatchesSpecies(pack,member)) continue;
+      clearOrganismPackIdentity(member,'load-species-migration');
+      packIdentityTelemetry().packSaveMixedSpeciesRemoved++;
+    }
+    return packIdentityFromRecord(pack);
+  }
   function serializePackIdentityPack(pack){
     return {
       id:String(pack.id),
@@ -5907,8 +5873,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       founderId:pack.founderId ?? null,
       founderSpeciesKey:pack.founderSpeciesKey ?? pack.speciesKey ?? null,
       speciesKey:pack.speciesKey ?? pack.founderSpeciesKey ?? null,
-      identityMode:pack.identityMode ?? (lineageAwarePackIdentityEnabled() ? 'lineage' : 'species'),
-      identityKey:pack.identityKey ?? (lineageAwarePackIdentityEnabled() ? pack.lineageId : (pack.speciesKey ?? pack.founderSpeciesKey ?? null)),
+      identityMode:'species',
+      identityKey:pack.speciesKey ?? pack.founderSpeciesKey ?? null,
+      // Compatibility/history metadata only; never used for Pack membership.
       lineageId:pack.lineageId ?? null,
       memberIds:packIdentitySanitizeMemberIds(pack.memberIds),
       parentPackId:pack.parentPackId ?? null,
@@ -5974,6 +5941,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         memberFramesTotal:Number(raw.memberFramesTotal||0)
       };
     }
+    for(const pack of packIdentitySortedPacks(true)){
+      if(pack.dissolvedFrame==null) migratePackRecordToSpeciesIdentity(pack);
+    }
     for(const o of organisms){
       if(!o || !o.packId) continue;
       const pack=packIdentityState.packs[o.packId];
@@ -5989,6 +5959,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       packJoinFrame:o.packJoinFrame ?? null,
       packFounderId:o.packFounderId ?? null,
       packInheritedFromParent:!!o.packInheritedFromParent,
+      packInheritedFromId:o.packInheritedFromId ?? null,
+      packInheritedFromRole:o.packInheritedFromRole ?? null,
       packLeaveCandidateSince:o.packLeaveCandidateSince ?? null,
       ...(packCooperativeTargetingEnabled() ? {
         packSharedTargetId:o.packSharedTargetId ?? null,
@@ -7688,7 +7660,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     forEachOrgNeighbors(prey.x,prey.y,PACK_HELPER_RADIUS,(candidate)=>{
       if(!packHuntBehaviorAlly(predator,candidate)) return;
       mateCount++;
-      if(lineageAwarePackIdentityEnabled() && sameActivePackMembership(predator,candidate)) activePackMateCount++;
+      if(packCooperativeTargetingEnabled() && sameActivePackMembership(predator,candidate)) activePackMateCount++;
     });
     return {
       mateCount,
@@ -7698,7 +7670,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   }
   function applyPackPreyDistribution(predator,prey,grossGain,nutrientGain,attackCost,sizeInfo){
     const helpers=(sizeInfo?.eligiblePackHelpers || eligiblePackHelpersFor(predator,prey,'attack')).filter(h=>h && !h.dead);
-    const activePackHelpers=lineageAwarePackIdentityEnabled() && !duelExperimentActive
+    const activePackHelpers=packCooperativeTargetingEnabled() && !duelExperimentActive
       ? helpers.filter(helper=>sameActivePackMembership(predator,helper)).sort((a,b)=>{
           const ar=Number(a.energy||0)/Math.max(1,organismMaxEnergy(a));
           const br=Number(b.energy||0)/Math.max(1,organismMaxEnergy(b));
@@ -7914,7 +7886,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     t.rejectionReasons[key]=Number(t.rejectionReasons[key]||0)+1;
     if(key==='different-pack') t.blockedCrossPackCandidates++;
     if(key==='missing-pack' || key==='inactive-pack') t.blockedPacklessCandidates++;
-    if(key==='mixed-lineage' || key==='invalid-lineage' || key==='pack-record-mismatch') t.blockedMixedLineageCandidates++;
+    if(key==='species-mismatch' || key==='pack-record-mismatch') t.blockedSpeciesMismatchCandidates++;
   }
   function packSharedTargetValidity(predator,prey,sourceMate=null){
     if(!packCooperativeTargetingEnabled()) return {valid:false,reason:'feature-off'};
@@ -8862,13 +8834,6 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     if(prey===predator){ base.reason='self'; return base; }
     if(prey.dead){ base.reason='dead'; return base; }
     if((prey.protect||0)>0){ base.reason='protected'; return base; }
-    if(lineageAwarePackIdentityEnabled()
-      && samePackBehaviorIdentity(prey,predator)
-      && organisms.length>18
-    ){
-      base.reason='sameLineage';
-      return base;
-    }
     if(prey.speciesKey===predator.speciesKey && organisms.length>18){ base.reason='sameSpecies'; return base; }
     base.dietCompatible=true;
     if(preySize < minPreySize){
@@ -9958,7 +9923,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       deathCause:null
     };
     telemetry.births.set(child.id, rec);
-    if(lineageAwarePackIdentityEnabled() && child.packId){
+    if(persistentPackIdentityEnabled() && child.packId){
       const pack=activePackById(child.packId);
       if(pack){
         packMemberLifecycleEvent('birth-plan',child,pack,{
@@ -13575,10 +13540,13 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const snap=organismPackSnapshot(o);
     const fmt=(v)=>Number.isFinite(Number(v)) ? Number(v).toFixed(1) : 'n/a';
     return [
+      `speciesKey（種）: ${snap.speciesKey || '-'}`,
+      `lineageId（血統）: ${snap.lineageId || '-'}`,
       `Pack: ${snap.packId || '-'} / eligible ${snap.eligible ? 'yes' : 'no'} / members ${snap.packLivingMemberCount}`,
+      `Pack speciesKey: ${snap.packRecordSpeciesKey || '-'}`,
       `Pack age: join ${snap.packJoinFrame ?? '-'} / age ${snap.packMembershipAge ?? '-'} / founder ${snap.packFounderId ?? '-'}`,
       `Pack nearest: ${snap.nearestPackMemberId ?? '-'} / d ${fmt(snap.nearestPackMemberDistance)} / leaveSince ${snap.packLeaveCandidateSince ?? '-'}`,
-      `Pack inherited: ${snap.packInheritedFromParent ? 'yes' : 'no'} / joins ${snap.packJoinCount} / leaves ${snap.packLeaveCount}`
+      `Pack inherited: ${snap.packInheritedFromParent ? `${snap.packInheritedFromRole || 'parent'} #${snap.packInheritedFromId ?? '?'}` : 'no'} / joins ${snap.packJoinCount} / leaves ${snap.packLeaveCount}`
     ];
   }
   function selectedCardLines(o){
@@ -13784,7 +13752,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       this._chaseCommitmentState='idle'; this._chaseCommittedTargetId=null; this._chaseCommitmentEnteredFrame=null; this._chaseCommitmentSteps=0; this._chaseCommitmentReason=null; this._chaseCommitmentPlanSnapshot=null; this._chaseCommitmentBestDistance=null; this._chaseCommitmentNoProgressSteps=0;
       this.packConsensusTargetId=null; this.packConsensusHoldT=0; this.packConsensusSwitchCD=0; this._packConsensusTargetHistory=[];
       this.packSharedTargetId=null; this.packSharedTargetSourceId=null; this.packSharedTargetAdoptedFrame=null; this.packSharedTargetLastSupportFrame=null; this.packSharedTargetBestDistance=null; this.packSharedTargetLastProgressFrame=null; this.packSharedTargetSwitchCooldownUntil=null; this.packSharedTargetContactRecorded=false; this.packSharedTargetKillRecorded=false; this.packSharedTargetLastEndReason=null;
-      this.packId=null; this.packJoinFrame=null; this.packFounderId=null; this.packInheritedFromParent=false; this.packLeaveCandidateSince=null; this.packLastMemberContactFrame=null; this.packLeaveCount=0; this.packJoinCount=0; this._packMembershipPreviousId=null; this._packNearestMemberDistance=null; this._packNearestMemberId=null;
+      this.packId=null; this.packJoinFrame=null; this.packFounderId=null; this.packInheritedFromParent=false; this.packInheritedFromId=null; this.packInheritedFromRole=null; this.packLeaveCandidateSince=null; this.packLastMemberContactFrame=null; this.packLeaveCount=0; this.packJoinCount=0; this._packMembershipPreviousId=null; this._packNearestMemberDistance=null; this._packNearestMemberId=null;
       this.birthFrame=frame;
       this.grazingTimer=0;
       this.mateSeekT=0; this.callCD=0;
@@ -15377,9 +15345,6 @@ if(Z>0.08){
         clutch = sampleReproductionClutch(this);
         energyPlan = reproductionEnergyPlan(this,mate,clutch);
       }
-      if(isSex && mate){
-        ensureReproductivePairPackIdentity(this,mate);
-      }
       this._telemetryLastReproductionEnergyBefore=energyPlan.parentBefore;
       if(isSex && mate) mate._telemetryLastReproductionEnergyBefore=energyPlan.mateBefore;
 
@@ -15449,7 +15414,6 @@ if(Z>0.08){
           c.y=safeBirthPoint.y;
         }
         assignInheritedLineageFoundation(c,this,mate);
-        ensureReproductiveFamilyPackIdentity(this,mate,c);
         if(c._wasNewSpecies) announceNewSpecies(c);
 
         // protection scaling for multi-birth
@@ -22619,42 +22583,24 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   function lineageMateSelectionEventInvariantSummary(events=lineageMateSelectionEvents()){
     const rows=Array.isArray(events) ? events : [];
     const violations=[];
-    const counts={sameLineage:0,sameLineageCrossSpecies:0,legacyFallback:0,none:0,reproductiveIsolation:0};
+    const counts={sameSpecies:0,sameSpeciesDifferentLineage:0,none:0,crossSpecies:0};
     for(const event of rows){
-      if(event.reproductiveIsolationEnabled) counts.reproductiveIsolation++;
-      if(event.mode==='same-lineage'){
-        counts.sameLineage++;
-        if(event.parentSpeciesKey!==event.mateSpeciesKey) counts.sameLineageCrossSpecies++;
-        if(!event.parentLineageId || !event.mateLineageId || String(event.parentLineageId)!==String(event.mateLineageId)){
-          violations.push({frame:event.frame,parentId:event.parentId,mateId:event.mateId,reason:'same-lineage-id-mismatch',event});
+      if(event.mode==='same-species'){
+        counts.sameSpecies++;
+        if(String(event.parentLineageId ?? '')!==String(event.mateLineageId ?? '')){
+          counts.sameSpeciesDifferentLineage++;
         }
-      } else if(event.mode==='legacy-species-fallback'){
-        counts.legacyFallback++;
-        if(Number(event.sameLineageCandidateCount||0)!==0){
-          violations.push({frame:event.frame,parentId:event.parentId,mateId:event.mateId,reason:'legacy-had-same-lineage-candidate',event});
-        }
-        if(event.parentSpeciesKey!==event.mateSpeciesKey){
-          violations.push({frame:event.frame,parentId:event.parentId,mateId:event.mateId,reason:'legacy-species-mismatch',event});
+        if(String(event.parentSpeciesKey ?? '')!==String(event.mateSpeciesKey ?? '')){
+          counts.crossSpecies++;
+          violations.push({frame:event.frame,parentId:event.parentId,mateId:event.mateId,reason:'sexual-species-mismatch',event});
         }
       } else if(event.mode==='none'){
         counts.none++;
         if(event.mateId!==null){
           violations.push({frame:event.frame,parentId:event.parentId,mateId:event.mateId,reason:'none-had-mate',event});
         }
-        if(event.noMateReason==='reproductive-isolation' && Number(event.blockedCandidateCount || 0)<=0){
-          violations.push({frame:event.frame,parentId:event.parentId,mateId:event.mateId,reason:'isolation-reason-without-blocked-candidates',event});
-        }
-        if(event.noMateReason==='no-candidate' && Number(event.blockedCandidateCount || 0)!==0){
-          violations.push({frame:event.frame,parentId:event.parentId,mateId:event.mateId,reason:'no-candidate-with-blocked-candidates',event});
-        }
       } else {
         violations.push({frame:event.frame,parentId:event.parentId,mateId:event.mateId,reason:'unknown-mode',event});
-      }
-      if(event.reproductiveIsolationEnabled && event.mateId!=null && String(event.parentLineageId || '')!==String(event.mateLineageId || '')){
-        violations.push({frame:event.frame,parentId:event.parentId,mateId:event.mateId,reason:'mate-lineage-id-mismatch',event});
-      }
-      if(event.reproductiveIsolationEnabled && event.mode==='legacy-species-fallback'){
-        violations.push({frame:event.frame,parentId:event.parentId,mateId:event.mateId,reason:'isolation-used-legacy-fallback',event});
       }
     }
     return {ok:violations.length===0,violationCount:violations.length,violations:violations.slice(0,20),counts};
@@ -24452,29 +24398,28 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   }
   function setLineageAwareMateSelection(enabled){
     const requested=!!enabled;
-    featureFlags.lineageAwareMateSelection=requested;
+    featureFlags.lineageAwareMateSelection=false;
     return {
       ok:true,
       requested,
-      rawFlag:!!featureFlags.lineageAwareMateSelection,
-      enabled:lineageAwareMateSelectionEnabled(),
+      rawFlag:false,
+      enabled:false,
+      deprecated:true,
+      replacement:'speciesKey-only mating',
       persistentLineageRegistry:persistentLineageRegistryEnabled(),
       provisionalLineageClassification:provisionalLineageClassificationEnabled()
     };
   }
   function setLineageAwarePackIdentity(enabled){
     const requested=!!enabled;
-    const cooperativeWasEnabled=packCooperativeTargetingEnabled();
-    featureFlags.lineageAwarePackIdentity=requested;
-    if(cooperativeWasEnabled && !packCooperativeTargetingEnabled()){
-      for(const organism of organisms) clearPackCooperativeTargetState(organism,'lineage-pack-feature-off',false);
-    }
-    if(persistentPackIdentityEnabled()) packIdentityRepairMemberships();
+    featureFlags.lineageAwarePackIdentity=false;
     return {
       ok:true,
       requested,
-      rawFlag:!!featureFlags.lineageAwarePackIdentity,
-      enabled:lineageAwarePackIdentityEnabled(),
+      rawFlag:false,
+      enabled:false,
+      deprecated:true,
+      replacement:'speciesKey-only Pack identity',
       persistentPackIdentity:persistentPackIdentityEnabled(),
       persistentLineageRegistry:persistentLineageRegistryEnabled(),
       provisionalLineageClassification:provisionalLineageClassificationEnabled()
@@ -24492,7 +24437,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       requested,
       rawFlag:!!featureFlags.packCooperativeTargeting,
       enabled:packCooperativeTargetingEnabled(),
-      lineageAwarePackIdentity:lineageAwarePackIdentityEnabled()
+      persistentPackIdentity:persistentPackIdentityEnabled()
     };
   }
   function setResourceLimitedAlgaeRegrowth(enabled,options={}){
@@ -24519,13 +24464,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   }
   function setLineageReproductiveIsolation(enabled){
     const requested=!!enabled;
-    featureFlags.lineageReproductiveIsolation=requested;
+    featureFlags.lineageReproductiveIsolation=false;
     return {
       ok:true,
       requested,
-      rawFlag:!!featureFlags.lineageReproductiveIsolation,
-      enabled:lineageReproductiveIsolationEnabled(),
-      lineageAwareMateSelection:lineageAwareMateSelectionEnabled(),
+      rawFlag:false,
+      enabled:false,
+      deprecated:true,
+      replacement:'speciesKey-only mating',
+      lineageAwareMateSelection:false,
       persistentLineageRegistry:persistentLineageRegistryEnabled(),
       provisionalLineageClassification:provisionalLineageClassificationEnabled()
     };
@@ -25239,6 +25186,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       packMembershipAge:o.packJoinFrame==null ? null : Math.max(0,frame-Number(o.packJoinFrame)),
       packFounderId:o.packFounderId ?? null,
       packInheritedFromParent:!!o.packInheritedFromParent,
+      packInheritedFromId:o.packInheritedFromId ?? null,
+      packInheritedFromRole:o.packInheritedFromRole ?? null,
+      packRecordSpeciesKey:pack?.speciesKey ?? null,
       packLivingMemberCount:pack ? packIdentityLivingMembers(pack).length : 0,
       nearestPackMemberId:nearest?.member?.id ?? o._packNearestMemberId ?? null,
       nearestPackMemberDistance:nearest?.distance ?? o._packNearestMemberDistance ?? null,
@@ -25265,25 +25215,32 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     else if(eligible) row.unassigned++;
   }
   function packIdentityInvariantSummary(){
-    let lineageMismatchMembers=0;
+    let speciesMismatchMembers=0;
     let missingRecordIdentityPacks=0;
+    let mixedSpeciesPacks=0;
     let mixedLineagePacks=0;
     for(const pack of packIdentitySortedPacks(false)){
       const packIdentity=packIdentityFromRecord(pack);
       if(!packIdentity) missingRecordIdentityPacks++;
       const living=packIdentityLivingMembers(pack);
+      const speciesKeys=new Set();
       const lineageIds=new Set();
       for(const organism of living){
+        speciesKeys.add(packIdentitySpeciesKey(organism));
         if(organism.lineageId!=null) lineageIds.add(String(organism.lineageId));
-        const organismIdentity=packBiologicalIdentityForOrganism(organism);
-        if(lineageAwarePackIdentityEnabled() && (!packIdentity || !organismIdentity || packIdentity.key!==organismIdentity.key)) lineageMismatchMembers++;
+        if(!packIdentity || !packRecordMatchesSpecies(pack,organism)) speciesMismatchMembers++;
       }
+      if(speciesKeys.size>1) mixedSpeciesPacks++;
       if(lineageIds.size>1) mixedLineagePacks++;
     }
     return {
-      lineageMismatchMembers,
+      speciesMismatchMembers,
+      mixedSpeciesPacks,
+      // Compatibility field: lineage mismatch is intentionally not an invariant.
+      lineageMismatchMembers:0,
       missingRecordIdentityPacks,
-      mixedLineagePacks
+      mixedLineagePacks,
+      lineageOnlyLeaves:Number(packIdentityTelemetry().packLineageOnlyLeaves||0)
     };
   }
   function packIdentitySummary(){
@@ -25324,6 +25281,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       joins:Number(packIdentityTelemetry().packJoins||0),
       leaves:Number(packIdentityTelemetry().packLeaves||0),
       parentInheritedBirths:Number(packIdentityTelemetry().packInheritedBirths||0),
+      distanceLeaves:Number(packIdentityTelemetry().packDistanceLeaves||0),
       packDeaths:Number(packIdentityTelemetry().packDeaths||0),
       lineageBasedPacksCreated:Number(packIdentityTelemetry().lineageBasedPacksCreated||0),
       lineageBasedPackJoins:Number(packIdentityTelemetry().lineageBasedPackJoins||0),
@@ -25332,6 +25290,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       provisionalBirthInheritanceSkipped:Number(packIdentityTelemetry().packProvisionalBirthInheritanceSkipped||0),
       sameLineageCrossSpeciesInheritedBirths:Number(packIdentityTelemetry().packSameLineageCrossSpeciesInheritedBirths||0),
       sameSpeciesDifferentLineageRejected:Number(packIdentityTelemetry().packSameSpeciesDifferentLineageRejected||0),
+      sameSpeciesDifferentLineageJoins:Number(packIdentityTelemetry().packSameSpeciesDifferentLineageJoins||0),
+      differentSpeciesSameLineageRejected:Number(packIdentityTelemetry().packDifferentSpeciesSameLineageRejected||0),
+      saveMigrations:Number(packIdentityTelemetry().packSaveMigrations||0),
+      saveMixedSpeciesRemoved:Number(packIdentityTelemetry().packSaveMixedSpeciesRemoved||0),
       invalidLineageRejected:Number(packIdentityTelemetry().packInvalidLineageRejected||0),
       invalidLineageCleanups:Number(packIdentityTelemetry().packInvalidLineageCleanups||0),
       packIdentityRepaired:Number(packIdentityTelemetry().packIdentityRepaired||0),
@@ -31166,6 +31128,277 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     return {ok:results.every(r=>r.ok),results};
   }
 
+  function runSpeciesLineageResponsibilityMicroTests(){
+    const saved=capture();
+    const oldFlags={...featureFlags};
+    const oldRandom=Math.random;
+    const results=[];
+    const add=(id,name,ok,details={})=>results.push({id,name,ok:!!ok,details});
+    const clear=()=>{
+      running=false;
+      frame=0;
+      generation=1;
+      NEXT_ID=1;
+      organisms.length=0; newborn.length=0; food.length=0; corpses.length=0; plankton.length=0; patches.length=0; calls.length=0;
+      sparks.length=0; effects.length=0; rings.length=0; predationBlooms.length=0; waterCurrents.length=0; membranes.length=0;
+      speciesCount.clear(); speciesStats.clear(); extinctRecords.length=0;
+      lineage.nodes.clear(); lineage.edges.length=0;
+      resetLineageRegistry(); resetPackIdentityState(); resetTelemetry();
+    };
+    const testGenes=()=>normalizeLifeHistoryGenes({
+      speed:0.62,size:0.44,metabolism:0.42,fecundity:0.50,sense:0.65,diet:0.88,
+      formSeed:0.31,energyCapacity:0.5,clutchPotential:0.45,parentalInvestment:0.5
+    },true);
+    const make=(x,y,species,lineageId,options={})=>{
+      const o=new Organism(x,y,testGenes(),false);
+      o.protect=0;
+      o.age=999;
+      o.energy=Math.max(Number(o.energy||0),Number(o.reproThreshold||0)+80);
+      o.recalcPhenotype();
+      applyDevelopmentPhenotype(o);
+      o.role='pursuit';
+      o.socialMode=options.packHunter===false ? 'solitary' : 'hunt-pack';
+      o.sociality=options.packHunter===false ? 0.1 : 0.8;
+      o.speciesKey=species;
+      o.lineageId=lineageId;
+      o.canonicalAppearanceKey=String(lineageId || species);
+      return o;
+    };
+    const prepare=(rows)=>{ organisms.push(...rows); buildSpatialIndex(); };
+    const selectionSnapshot=(selection)=>({
+      mateId:selection?.mate?.id ?? null,
+      mode:selection?.mode ?? null,
+      noMateReason:selection?.noMateReason ?? null,
+      speciesCandidateCount:Number(selection?.speciesCandidateCount || 0),
+      sameLineageCandidateCount:Number(selection?.sameLineageCandidateCount || 0),
+      differentSpeciesSameLineageRejected:Number(selection?.differentSpeciesSameLineageRejected || 0)
+    });
+    const matingCase=(candidateSpecies,candidateLineage)=>{
+      clear();
+      const parent=make(100,100,'species-a','lineage-a');
+      const candidate=make(106,100,candidateSpecies,candidateLineage);
+      prepare([parent,candidate]);
+      return {parent,candidate,selection:selectMateForReproduction(parent,50,{recordTelemetry:true})};
+    };
+    try{
+      Object.assign(featureFlags,{
+        evolvableLifeHistory:false,
+        juvenileDevelopment:false,
+        persistentPackIdentity:true,
+        persistentLineageRegistry:false,
+        provisionalLineageClassification:false,
+        provisionalLineagePromotion:false,
+        lineageAwareMateSelection:false,
+        lineageReproductiveIsolation:false,
+        lineageAwarePackIdentity:false,
+        packCooperativeTargeting:true
+      });
+
+      const a=matingCase('species-a','lineage-a');
+      add('A','same speciesKey and same lineage can mate',
+        a.selection.mate===a.candidate && a.selection.mode==='same-species',
+        {selection:selectionSnapshot(a.selection)});
+
+      const b=matingCase('species-a','lineage-b');
+      add('B','same speciesKey and different lineage can mate',
+        b.selection.mate===b.candidate && b.selection.mode==='same-species',
+        {selection:selectionSnapshot(b.selection)});
+
+      const c=matingCase('species-b','lineage-a');
+      add('C','different speciesKey and same lineage cannot mate',
+        c.selection.mate==null && c.selection.differentSpeciesSameLineageRejected===1,
+        {selection:selectionSnapshot(c.selection)});
+
+      const d=matingCase('species-b','lineage-b');
+      add('D','different speciesKey and different lineage cannot mate',
+        d.selection.mate==null,
+        {selection:selectionSnapshot(d.selection)});
+
+      clear();
+      const eParent=make(100,100,'species-a','lineage-a');
+      prepare([eParent]);
+      Math.random=()=>0.5;
+      const eKids=eParent.tryReproduce();
+      Math.random=oldRandom;
+      add('E','no same-species mate preserves asexual reproduction',
+        eKids.length>0 && eKids.every(child=>child.mateParentId==null),
+        {births:eKids.length,mateParentIds:eKids.map(child=>child.mateParentId)});
+
+      clear();
+      const f1=make(100,100,'species-a','lineage-a');
+      const f2=make(106,100,'species-a','lineage-b');
+      prepare([f1,f2]);
+      updatePersistentPackIdentity(true);
+      add('F','same speciesKey and different lineage can form a Pack',
+        !!f1.packId && f1.packId===f2.packId,
+        {first:organismPackSnapshot(f1),second:organismPackSnapshot(f2)});
+
+      clear();
+      const g1=make(100,100,'species-a','lineage-a');
+      const g2=make(106,100,'species-b','lineage-a');
+      prepare([g1,g2]);
+      updatePersistentPackIdentity(true);
+      add('G','different speciesKey and same lineage cannot form a Pack',
+        !g1.packId && !g2.packId,
+        {first:organismPackSnapshot(g1),second:organismPackSnapshot(g2)});
+
+      clear();
+      const h1=make(100,100,'species-a','lineage-a');
+      const h2=make(106,100,'species-a','lineage-a');
+      prepare([h1,h2]);
+      updatePersistentPackIdentity(true);
+      const h3=make(103,104,'species-a','lineage-b');
+      prepare([h3]);
+      frame=CONFIG.ecology.packIdentity.updateIntervalSteps;
+      updatePersistentPackIdentity(true);
+      add('H','same speciesKey and different lineage can join a Pack',
+        !!h3.packId && h3.packId===h1.packId,
+        {candidate:organismPackSnapshot(h3),summary:packIdentitySummary()});
+
+      clear();
+      const i1=make(100,100,'species-a','lineage-a');
+      const i2=make(106,100,'species-a','lineage-a');
+      prepare([i1,i2]);
+      updatePersistentPackIdentity(true);
+      const i3=make(103,104,'species-b','lineage-a');
+      prepare([i3]);
+      frame=CONFIG.ecology.packIdentity.updateIntervalSteps;
+      updatePersistentPackIdentity(true);
+      add('I','different speciesKey and same lineage cannot join a Pack',
+        !i3.packId && packIdentityTelemetry().packDifferentSpeciesSameLineageRejected>0,
+        {candidate:organismPackSnapshot(i3),summary:packIdentitySummary()});
+
+      clear();
+      const jParent=make(100,100,'species-a','lineage-a');
+      const jParentAlly=make(106,100,'species-a','lineage-a');
+      const jMate=make(300,100,'species-a','lineage-mate');
+      const jMateAlly=make(306,100,'species-a','lineage-mate');
+      prepare([jParent,jParentAlly,jMate,jMateAlly]);
+      const jParentPack=createPackIdentity([jParent,jParentAlly]);
+      const jMatePack=createPackIdentity([jMate,jMateAlly]);
+      const jChild=make(103,104,'species-a','lineage-new');
+      prepare([jChild]);
+      let jRandomCalls=0;
+      Math.random=()=>{ jRandomCalls++; return 0.5; };
+      const jInherited=inheritParentPackIdentity(jChild,jParent,jMate);
+      Math.random=oldRandom;
+      add('J','same-species child inherits primary parent Pack despite lineage change',
+        jInherited
+          && jChild.packId===jParentPack?.id
+          && jChild.packId!==jMatePack?.id
+          && jChild.packInheritedFromRole==='primary-parent'
+          && jRandomCalls===0,
+        {child:organismPackSnapshot(jChild),primaryPack:jParentPack?.id,matePack:jMatePack?.id,randomCalls:jRandomCalls});
+
+      clear();
+      const kParent=make(100,100,'species-a','lineage-a');
+      const kAlly=make(106,100,'species-a','lineage-a');
+      prepare([kParent,kAlly]);
+      createPackIdentity([kParent,kAlly]);
+      const kChild=make(103,104,'species-b','lineage-a');
+      prepare([kChild]);
+      const kInherited=inheritParentPackIdentity(kChild,kParent,null);
+      add('K','different-species child does not inherit parent Pack despite same lineage',
+        !kInherited && !kChild.packId,
+        {child:organismPackSnapshot(kChild),parent:organismPackSnapshot(kParent)});
+
+      clear();
+      const l1=make(100,100,'species-a','lineage-a');
+      const l2=make(106,100,'species-a','lineage-b');
+      const lPrey=make(112,100,'prey-species','prey-lineage',{packHunter:false});
+      lPrey.size=Math.max(2,l2.size*0.8);
+      prepare([l1,l2,lPrey]);
+      createPackIdentity([l1,l2]);
+      l1.preyTargetId=lPrey.id;
+      const lShared=adoptPackSharedTarget(l2,lPrey,l1,'responsibility-micro');
+      add('L','same Pack and same speciesKey cooperate across lineages',
+        actualPackHuntAlly(l1,l2) && lShared && l2.preyTargetId===lPrey.id,
+        {first:organismPackSnapshot(l1),second:organismPackSnapshot(l2),preyId:lPrey.id,shared:lShared,targetId:l2.preyTargetId});
+
+      clear();
+      const m1=make(100,100,'species-a','lineage-a');
+      const m2=make(106,100,'species-a','lineage-b');
+      const m3=make(300,100,'species-a','lineage-a');
+      const m4=make(306,100,'species-a','lineage-b');
+      const mPrey=make(312,100,'prey-species','prey-lineage',{packHunter:false});
+      mPrey.size=Math.max(2,m3.size*0.8);
+      prepare([m1,m2,m3,m4,mPrey]);
+      createPackIdentity([m1,m2]);
+      createPackIdentity([m3,m4]);
+      m1.preyTargetId=mPrey.id;
+      const mShared=adoptPackSharedTarget(m3,mPrey,m1,'responsibility-micro');
+      add('M','different Packs cannot cooperate even with same speciesKey',
+        !actualPackHuntAlly(m1,m3) && !mShared && m3.preyTargetId!==mPrey.id,
+        {first:organismPackSnapshot(m1),second:organismPackSnapshot(m3),preyId:mPrey.id,shared:mShared,targetId:m3.preyTargetId});
+
+      clear();
+      const nCanonical=make(100,100,'species-a','lineage-a');
+      const nSame=make(106,100,'species-a','lineage-b');
+      const nMixed=make(112,100,'species-b','lineage-a');
+      prepare([nCanonical,nSame,nMixed]);
+      for(const organism of [nCanonical,nSame,nMixed]) organism.packId='pack-old';
+      restorePackIdentityState({
+        nextPackId:2,
+        packs:{
+          'pack-old':{
+            id:'pack-old',
+            createdFrame:0,
+            founderId:nCanonical.id,
+            identityMode:'lineage',
+            identityKey:'lineage-a',
+            lineageId:'lineage-a'
+          }
+        }
+      });
+      const nPack=activePackById('pack-old');
+      add('N','legacy Pack migration chooses smallest-ID member species and ejects mismatches',
+        nPack?.identityMode==='species'
+          && nPack?.identityKey==='species-a'
+          && nCanonical.packId==='pack-old'
+          && nSame.packId==='pack-old'
+          && nMixed.packId==null
+          && packIdentityInvariantSummary().mixedSpeciesPacks===0,
+        {pack:packSnapshot('pack-old'),mixed:organismPackSnapshot(nMixed),telemetry:{...packIdentityTelemetry()}});
+
+      const oSave=capture();
+      const oState=JSON.parse(decodeURIComponent(escape(atob(oSave.split(':',2)[1]))));
+      const oRawPack=oState.packIdentity?.packs?.['pack-old'];
+      if(oRawPack){
+        oRawPack.identityMode='lineage';
+        oRawPack.identityKey='lineage-a';
+        oRawPack.lineageId='lineage-a';
+        delete oRawPack.speciesKey;
+        delete oRawPack.founderSpeciesKey;
+      }
+      const oLegacy='ALIFE2:'+btoa(unescape(encodeURIComponent(JSON.stringify(oState))));
+      const oLoaded=restore(oLegacy);
+      const oMigrated=activePackById('pack-old');
+      const oRecaptured=JSON.parse(decodeURIComponent(escape(atob(capture().split(':',2)[1]))));
+      const oSavedPack=oRecaptured.packIdentity?.packs?.['pack-old'];
+      add('O','full legacy save/load migrates Pack identity to speciesKey',
+        oLoaded
+          && oMigrated?.speciesKey==='species-a'
+          && oMigrated?.identityMode==='species'
+          && oMigrated?.identityKey==='species-a'
+          && oSavedPack?.speciesKey==='species-a'
+          && oSavedPack?.identityMode==='species'
+          && oSavedPack?.identityKey==='species-a'
+          && packIdentityInvariantSummary().mixedSpeciesPacks===0,
+        {loaded:oLoaded,migrated:packSnapshot('pack-old'),saved:oSavedPack});
+    }catch(error){
+      add('exception','species/lineage responsibility micro exception',false,{
+        message:String(error?.message || error),
+        stack:String(error?.stack || '')
+      });
+    }finally{
+      Math.random=oldRandom;
+      Object.assign(featureFlags,oldFlags);
+      restore(saved);
+      Object.assign(featureFlags,oldFlags);
+    }
+    return {ok:results.every(result=>result.ok),results};
+  }
+
   window.__alifeDebug = {
     worldGeometry(){
       return {
@@ -31504,10 +31737,12 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       return runProvisionalLineagePromotionMicroTests();
     },
     runLineageAwareMateSelectionMicroTests(){
-      return runLineageAwareMateSelectionMicroTests();
+      const replacement=runSpeciesLineageResponsibilityMicroTests();
+      return {deprecated:true,replacement:'runSpeciesLineageResponsibilityMicroTests',ok:replacement.ok,results:replacement.results.filter(row=>['A','B','C','D','E'].includes(row.id))};
     },
     runLineageReproductiveIsolationMicroTests(){
-      return runLineageReproductiveIsolationMicroTests();
+      const replacement=runSpeciesLineageResponsibilityMicroTests();
+      return {deprecated:true,replacement:'speciesKey-only mating',ok:replacement.ok,results:replacement.results.filter(row=>['C','D'].includes(row.id))};
     },
     runReproductionDiagnosticIntegrityMicroTests(){
       return runReproductionDiagnosticIntegrityMicroTests();
@@ -31642,10 +31877,14 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       return runPersistentPackIdentityMicroTests();
     },
     runLineageAwarePackIdentityMicroTests(){
-      return runLineageAwarePackIdentityMicroTests();
+      const replacement=runSpeciesLineageResponsibilityMicroTests();
+      return {deprecated:true,replacement:'speciesKey-only Pack identity',ok:replacement.ok,results:replacement.results.filter(row=>['F','G','H','I','J','K','L','M','N','O'].includes(row.id))};
     },
     runPackReproductionBottleneckMicroTests(){
       return runPackReproductionBottleneckMicroTests();
+    },
+    runSpeciesLineageResponsibilityMicroTests(){
+      return runSpeciesLineageResponsibilityMicroTests();
     },
     runPersistentPackIdentityReproducibilityMicroTest(options={}){
       return runPersistentPackIdentityReproducibilityMicroTest(options);
@@ -32118,9 +32357,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         if(state.features.persistentLineageRegistry!=null) featureFlags.persistentLineageRegistry=!!state.features.persistentLineageRegistry;
         if(state.features.provisionalLineageClassification!=null) featureFlags.provisionalLineageClassification=!!state.features.provisionalLineageClassification;
         featureFlags.provisionalLineagePromotion=!!state.features.provisionalLineagePromotion;
-        featureFlags.lineageAwareMateSelection=!!state.features.lineageAwareMateSelection;
-        featureFlags.lineageReproductiveIsolation=!!state.features.lineageReproductiveIsolation;
-        featureFlags.lineageAwarePackIdentity=!!state.features.lineageAwarePackIdentity;
+        // Legacy save flags are accepted as metadata but no longer activate rules.
+        featureFlags.lineageAwareMateSelection=false;
+        featureFlags.lineageReproductiveIsolation=false;
+        featureFlags.lineageAwarePackIdentity=false;
         if(state.features.packCooperativeTargeting!=null) featureFlags.packCooperativeTargeting=!!state.features.packCooperativeTargeting;
         if(state.features.resourceLimitedAlgaeRegrowth!=null) featureFlags.resourceLimitedAlgaeRegrowth=!!state.features.resourceLimitedAlgaeRegrowth;
         if(state.features.eventKeyedVisualRng!=null) featureFlags.eventKeyedVisualRng=!!state.features.eventKeyedVisualRng;
@@ -32219,6 +32459,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         if(o.packJoinFrame!=null) u.packJoinFrame=o.packJoinFrame;
         if(o.packFounderId!=null) u.packFounderId=o.packFounderId;
         if(o.packInheritedFromParent!=null) u.packInheritedFromParent=!!o.packInheritedFromParent;
+        if(o.packInheritedFromId!=null) u.packInheritedFromId=o.packInheritedFromId;
+        if(o.packInheritedFromRole!=null) u.packInheritedFromRole=o.packInheritedFromRole;
         if(o.packLeaveCandidateSince!=null) u.packLeaveCandidateSince=o.packLeaveCandidateSince;
         if(o.packSharedTargetId!=null) u.packSharedTargetId=o.packSharedTargetId;
         if(o.packSharedTargetSourceId!=null) u.packSharedTargetSourceId=o.packSharedTargetSourceId;
