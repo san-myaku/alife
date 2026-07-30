@@ -30,4 +30,3 @@
 - Micro O: 完全なALIFE saveを旧lineage Pack形式へ書き換えてloadし、再saveが `species` identityへ正規化されることを確認。
 - 3seed×2,000step: 新save round-tripは全seed成功。
 - load後のmixed-species Packは0。
-

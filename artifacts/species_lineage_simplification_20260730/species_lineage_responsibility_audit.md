@@ -74,4 +74,3 @@
 - `lineageAwarePackIdentity`
 
 旧save・旧debug callerの互換metadataとしてfield/API名は受理するが、enabled判定は常にfalseであり、通常ゲームの判定には使わない。
-
