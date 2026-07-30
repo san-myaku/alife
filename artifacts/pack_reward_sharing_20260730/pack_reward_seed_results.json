@@ -1,0 +1,425 @@
+{
+  "schemaVersion": 1,
+  "configuration": {
+    "seeds": [
+      41001,
+      43001,
+      45001
+    ],
+    "steps": 5000,
+    "speciesIdentityV2": false,
+    "persistentPackIdentity": true,
+    "packCooperativeTargeting": true,
+    "claimDurationSteps": 72
+  },
+  "runs": [
+    {
+      "seed": 41001,
+      "steps": 5000,
+      "population": {
+        "ending": 123,
+        "births": 952,
+        "deaths": 893
+      },
+      "formation": {
+        "radiusMultiplier": 0.85,
+        "updateIntervalSteps": 12,
+        "observationSamples": 5000,
+        "huntPackLiving": {
+          "last": 0,
+          "maximum": 4,
+          "sampleTotal": 3583
+        },
+        "sameSpeciesPairs": {
+          "last": 0,
+          "maximum": 3,
+          "sampleTotal": 1107
+        },
+        "unassignedSameSpeciesPairs": {
+          "last": 0,
+          "maximum": 1,
+          "sampleTotal": 3
+        },
+        "withinFormationRadiusPairs": {
+          "last": 0,
+          "maximum": 3,
+          "sampleTotal": 1107
+        },
+        "unassignedWithinFormationRadiusPairs": {
+          "last": 0,
+          "maximum": 1,
+          "sampleTotal": 3
+        },
+        "creationAttempts": 1,
+        "creationSuccesses": 1,
+        "dissolvedImmediately": 0,
+        "huntPackBirths": 5,
+        "sameSpeciesHuntPackParentChildBirths": 3
+      },
+      "packs": {
+        "formed": 1,
+        "active": 0,
+        "maximumActive": 1,
+        "maximumSize": 3,
+        "totalJoins": 4,
+        "formationMemberJoins": 2,
+        "spatialJoins": 0,
+        "inheritedBirths": 2,
+        "distanceLeaves": 0,
+        "mixedSpecies": 0
+      },
+      "cooperation": {
+        "targetShares": 18,
+        "cooperativeKills": 3,
+        "speciesMismatchViolations": 0,
+        "crossPackViolations": 0
+      },
+      "claim": {
+        "activeCorpses": 0,
+        "created": 3,
+        "participantFeeds": 30,
+        "nonParticipantBlocks": 2,
+        "publicFeedsAfterExpiry": 6,
+        "energyConservationViolations": 0
+      },
+      "invariants": {
+        "crossSpeciesSexualBirths": 0,
+        "badNumbers": 0,
+        "energyCreationEvents": 0,
+        "nutrientCreationEvents": 0
+      },
+      "lineageValidation": {
+        "ok": true,
+        "violationCount": 0,
+        "counts": {
+          "missingLineageIdOrganismIds": 0,
+          "missingRecordLineageIds": 0,
+          "emptyCanonicalAppearanceKeyOrganismIds": 0,
+          "invalidSpeciesStatusRecordIds": 0,
+          "danglingParentLineageIds": 0,
+          "duplicateLineageIds": 0,
+          "nanLineageGenerationOrganismIds": 0,
+          "negativeLineageGenerationOrganismIds": 0,
+          "emptyRecordCanonicalAppearanceKeyIds": 0,
+          "ecotypeMismatchOrganismIds": 0,
+          "canonicalAppearanceKeyMismatchLineageIds": 0,
+          "basicAppearanceMismatchLineageIds": 0,
+          "normalizedGeometryMismatchLineageIds": 0,
+          "topologyMismatchLineageIds": 0,
+          "provisionalFounderInvariantIds": 0
+        },
+        "details": {
+          "missingLineageIdOrganismIds": [],
+          "missingRecordLineageIds": [],
+          "emptyCanonicalAppearanceKeyOrganismIds": [],
+          "invalidSpeciesStatusRecordIds": [],
+          "danglingParentLineageIds": [],
+          "duplicateLineageIds": [],
+          "nanLineageGenerationOrganismIds": [],
+          "negativeLineageGenerationOrganismIds": [],
+          "emptyRecordCanonicalAppearanceKeyIds": [],
+          "ecotypeMismatchOrganismIds": [],
+          "canonicalAppearanceKeyMismatchLineageIds": [],
+          "basicAppearanceMismatchLineageIds": [],
+          "normalizedGeometryMismatchLineageIds": [],
+          "topologyMismatchLineageIds": [],
+          "provisionalFounderInvariantIds": []
+        }
+      },
+      "roundTrip": {
+        "ok": true,
+        "worldVersion": 2,
+        "worldShape": "circle",
+        "worldWidth": 888,
+        "worldHeight": 888,
+        "worldRadius": 444,
+        "organisms": 123,
+        "extinctRecords": 14,
+        "algaeFieldHashBefore": "8ed44ac9",
+        "algaeFieldHashAfter": "8ed44ac9"
+      },
+      "browserErrors": []
+    },
+    {
+      "seed": 43001,
+      "steps": 5000,
+      "population": {
+        "ending": 121,
+        "births": 724,
+        "deaths": 667
+      },
+      "formation": {
+        "radiusMultiplier": 0.85,
+        "updateIntervalSteps": 12,
+        "observationSamples": 5000,
+        "huntPackLiving": {
+          "last": 0,
+          "maximum": 7,
+          "sampleTotal": 4393
+        },
+        "sameSpeciesPairs": {
+          "last": 0,
+          "maximum": 2,
+          "sampleTotal": 916
+        },
+        "unassignedSameSpeciesPairs": {
+          "last": 0,
+          "maximum": 1,
+          "sampleTotal": 18
+        },
+        "withinFormationRadiusPairs": {
+          "last": 0,
+          "maximum": 2,
+          "sampleTotal": 772
+        },
+        "unassignedWithinFormationRadiusPairs": {
+          "last": 0,
+          "maximum": 1,
+          "sampleTotal": 18
+        },
+        "creationAttempts": 3,
+        "creationSuccesses": 3,
+        "dissolvedImmediately": 0,
+        "huntPackBirths": 6,
+        "sameSpeciesHuntPackParentChildBirths": 5
+      },
+      "packs": {
+        "formed": 3,
+        "active": 0,
+        "maximumActive": 3,
+        "maximumSize": 2,
+        "totalJoins": 8,
+        "formationMemberJoins": 6,
+        "spatialJoins": 0,
+        "inheritedBirths": 2,
+        "distanceLeaves": 0,
+        "mixedSpecies": 0
+      },
+      "cooperation": {
+        "targetShares": 9,
+        "cooperativeKills": 1,
+        "speciesMismatchViolations": 0,
+        "crossPackViolations": 0
+      },
+      "claim": {
+        "activeCorpses": 0,
+        "created": 1,
+        "participantFeeds": 20,
+        "nonParticipantBlocks": 0,
+        "publicFeedsAfterExpiry": 0,
+        "energyConservationViolations": 0
+      },
+      "invariants": {
+        "crossSpeciesSexualBirths": 0,
+        "badNumbers": 0,
+        "energyCreationEvents": 0,
+        "nutrientCreationEvents": 0
+      },
+      "lineageValidation": {
+        "ok": true,
+        "violationCount": 0,
+        "counts": {
+          "missingLineageIdOrganismIds": 0,
+          "missingRecordLineageIds": 0,
+          "emptyCanonicalAppearanceKeyOrganismIds": 0,
+          "invalidSpeciesStatusRecordIds": 0,
+          "danglingParentLineageIds": 0,
+          "duplicateLineageIds": 0,
+          "nanLineageGenerationOrganismIds": 0,
+          "negativeLineageGenerationOrganismIds": 0,
+          "emptyRecordCanonicalAppearanceKeyIds": 0,
+          "ecotypeMismatchOrganismIds": 0,
+          "canonicalAppearanceKeyMismatchLineageIds": 0,
+          "basicAppearanceMismatchLineageIds": 0,
+          "normalizedGeometryMismatchLineageIds": 0,
+          "topologyMismatchLineageIds": 0,
+          "provisionalFounderInvariantIds": 0
+        },
+        "details": {
+          "missingLineageIdOrganismIds": [],
+          "missingRecordLineageIds": [],
+          "emptyCanonicalAppearanceKeyOrganismIds": [],
+          "invalidSpeciesStatusRecordIds": [],
+          "danglingParentLineageIds": [],
+          "duplicateLineageIds": [],
+          "nanLineageGenerationOrganismIds": [],
+          "negativeLineageGenerationOrganismIds": [],
+          "emptyRecordCanonicalAppearanceKeyIds": [],
+          "ecotypeMismatchOrganismIds": [],
+          "canonicalAppearanceKeyMismatchLineageIds": [],
+          "basicAppearanceMismatchLineageIds": [],
+          "normalizedGeometryMismatchLineageIds": [],
+          "topologyMismatchLineageIds": [],
+          "provisionalFounderInvariantIds": []
+        }
+      },
+      "roundTrip": {
+        "ok": true,
+        "worldVersion": 2,
+        "worldShape": "circle",
+        "worldWidth": 888,
+        "worldHeight": 888,
+        "worldRadius": 444,
+        "organisms": 121,
+        "extinctRecords": 14,
+        "algaeFieldHashBefore": "805a8ad5",
+        "algaeFieldHashAfter": "805a8ad5"
+      },
+      "browserErrors": []
+    },
+    {
+      "seed": 45001,
+      "steps": 5000,
+      "population": {
+        "ending": 120,
+        "births": 1007,
+        "deaths": 951
+      },
+      "formation": {
+        "radiusMultiplier": 0.85,
+        "updateIntervalSteps": 12,
+        "observationSamples": 5000,
+        "huntPackLiving": {
+          "last": 0,
+          "maximum": 3,
+          "sampleTotal": 847
+        },
+        "sameSpeciesPairs": {
+          "last": 0,
+          "maximum": 0,
+          "sampleTotal": 0
+        },
+        "unassignedSameSpeciesPairs": {
+          "last": 0,
+          "maximum": 0,
+          "sampleTotal": 0
+        },
+        "withinFormationRadiusPairs": {
+          "last": 0,
+          "maximum": 0,
+          "sampleTotal": 0
+        },
+        "unassignedWithinFormationRadiusPairs": {
+          "last": 0,
+          "maximum": 0,
+          "sampleTotal": 0
+        },
+        "creationAttempts": 0,
+        "creationSuccesses": 0,
+        "dissolvedImmediately": 0,
+        "huntPackBirths": 0,
+        "sameSpeciesHuntPackParentChildBirths": 0
+      },
+      "packs": {
+        "formed": 0,
+        "active": 0,
+        "maximumActive": 0,
+        "maximumSize": 0,
+        "totalJoins": 0,
+        "formationMemberJoins": 0,
+        "spatialJoins": 0,
+        "inheritedBirths": 0,
+        "distanceLeaves": 0,
+        "mixedSpecies": 0
+      },
+      "cooperation": {
+        "targetShares": 0,
+        "cooperativeKills": 0,
+        "speciesMismatchViolations": 0,
+        "crossPackViolations": 0
+      },
+      "claim": {
+        "activeCorpses": 0,
+        "created": 0,
+        "participantFeeds": 0,
+        "nonParticipantBlocks": 0,
+        "publicFeedsAfterExpiry": 0,
+        "energyConservationViolations": 0
+      },
+      "invariants": {
+        "crossSpeciesSexualBirths": 0,
+        "badNumbers": 0,
+        "energyCreationEvents": 0,
+        "nutrientCreationEvents": 0
+      },
+      "lineageValidation": {
+        "ok": true,
+        "violationCount": 0,
+        "counts": {
+          "missingLineageIdOrganismIds": 0,
+          "missingRecordLineageIds": 0,
+          "emptyCanonicalAppearanceKeyOrganismIds": 0,
+          "invalidSpeciesStatusRecordIds": 0,
+          "danglingParentLineageIds": 0,
+          "duplicateLineageIds": 0,
+          "nanLineageGenerationOrganismIds": 0,
+          "negativeLineageGenerationOrganismIds": 0,
+          "emptyRecordCanonicalAppearanceKeyIds": 0,
+          "ecotypeMismatchOrganismIds": 0,
+          "canonicalAppearanceKeyMismatchLineageIds": 0,
+          "basicAppearanceMismatchLineageIds": 0,
+          "normalizedGeometryMismatchLineageIds": 0,
+          "topologyMismatchLineageIds": 0,
+          "provisionalFounderInvariantIds": 0
+        },
+        "details": {
+          "missingLineageIdOrganismIds": [],
+          "missingRecordLineageIds": [],
+          "emptyCanonicalAppearanceKeyOrganismIds": [],
+          "invalidSpeciesStatusRecordIds": [],
+          "danglingParentLineageIds": [],
+          "duplicateLineageIds": [],
+          "nanLineageGenerationOrganismIds": [],
+          "negativeLineageGenerationOrganismIds": [],
+          "emptyRecordCanonicalAppearanceKeyIds": [],
+          "ecotypeMismatchOrganismIds": [],
+          "canonicalAppearanceKeyMismatchLineageIds": [],
+          "basicAppearanceMismatchLineageIds": [],
+          "normalizedGeometryMismatchLineageIds": [],
+          "topologyMismatchLineageIds": [],
+          "provisionalFounderInvariantIds": []
+        }
+      },
+      "roundTrip": {
+        "ok": true,
+        "worldVersion": 2,
+        "worldShape": "circle",
+        "worldWidth": 888,
+        "worldHeight": 888,
+        "worldRadius": 444,
+        "organisms": 120,
+        "extinctRecords": 14,
+        "algaeFieldHashBefore": "7ff331c4",
+        "algaeFieldHashAfter": "7ff331c4"
+      },
+      "browserErrors": []
+    }
+  ],
+  "aggregate": {
+    "endingPopulation": 364,
+    "naturalPacksFormed": 4,
+    "activePacksAtEnd": 0,
+    "maximumConcurrentPacks": 3,
+    "maximumPackSize": 3,
+    "packJoins": 0,
+    "totalPackMemberJoins": 12,
+    "formationMemberJoins": 8,
+    "packInheritedBirths": 4,
+    "targetShares": 27,
+    "cooperativeKills": 4,
+    "claimedCorpsesCreated": 4,
+    "activeClaimedCorpsesAtEnd": 0,
+    "participantFeeds": 50,
+    "nonParticipantBlocks": 2,
+    "publicFeedsAfterExpiry": 6,
+    "corpseEnergyConservationViolations": 0,
+    "mixedSpeciesPacks": 0,
+    "crossSpeciesSexualBirths": 0,
+    "badNumbers": 0,
+    "energyCreationEvents": 0,
+    "nutrientCreationEvents": 0,
+    "lineageValid": true,
+    "saveLoadValid": true,
+    "consoleErrors": []
+  }
+}

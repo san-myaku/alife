@@ -1,0 +1,583 @@
+{
+  "schemaVersion": 1,
+  "startHead": "ddb44e152f2cd7f3977df94cde20979cf15b1d2e",
+  "branch": "codex/simplify-species-lineage-pack",
+  "rule": "Natural Pack formation requires alive hunt-pack organisms with exact matching speciesKey; lineageId is ignored.",
+  "productionConfiguration": {
+    "speciesIdentityV2": false,
+    "formationRadiusMultiplier": 0.85,
+    "updateIntervalSteps": 12,
+    "minimumFormationMembers": 2
+  },
+  "diagnosis": {
+    "implementationBug": false,
+    "formationAdjustment": null,
+    "zeroCause": "The prior zero-Pack comparison forced staged speciesIdentityV2=true. Across every observed step it produced no same-species hunt-pack pair. Normal production speciesKey configuration formed Packs without changing Pack constants.",
+    "forcedSpeciesIdentityV2Audit": {
+      "seeds": [
+        41001,
+        43001,
+        45001
+      ],
+      "steps": 5000,
+      "endingPopulation": 369,
+      "packFormation": {
+        "huntPackLivingMaximum": 5,
+        "huntPackLivingSampleTotal": 2843,
+        "sameSpeciesPairSampleTotal": 0,
+        "unassignedSameSpeciesPairSampleTotal": 0,
+        "withinFormationRadiusPairSampleTotal": 0,
+        "unassignedWithinFormationRadiusPairSampleTotal": 0,
+        "creationAttempts": 0,
+        "creationSuccesses": 0,
+        "dissolvedImmediately": 0,
+        "huntPackBirths": 0,
+        "sameSpeciesHuntPackParentChildBirths": 0
+      },
+      "packs": {
+        "formed": 0,
+        "activeAtEnd": 0,
+        "maximumActive": 0,
+        "maximumSize": 0,
+        "joins": 0,
+        "inheritedBirths": 0,
+        "distanceLeaves": 0,
+        "mixedSpecies": 0
+      },
+      "cooperation": {
+        "targetShares": 0,
+        "kills": 0
+      },
+      "claim": {
+        "activeCorpses": 0,
+        "created": 0,
+        "participantFeeds": 0,
+        "nonParticipantBlocks": 0,
+        "publicFeedsAfterExpiry": 0,
+        "energyConservationViolations": 0
+      },
+      "invariants": {
+        "crossSpeciesSexualBirths": 0,
+        "mixedSpeciesPacks": 0,
+        "badNumbers": 0,
+        "energyCreationEvents": 0,
+        "nutrientCreationEvents": 0,
+        "lineageValid": true,
+        "roundTripValid": true,
+        "browserErrors": []
+      },
+      "microOk": true
+    },
+    "productionBeforeRewardImplementation": {
+      "seeds": [
+        41001,
+        43001,
+        45001
+      ],
+      "steps": 5000,
+      "endingPopulation": 366,
+      "packFormation": {
+        "huntPackLivingMaximum": 5,
+        "huntPackLivingSampleTotal": 6770,
+        "sameSpeciesPairSampleTotal": 1301,
+        "unassignedSameSpeciesPairSampleTotal": 14,
+        "withinFormationRadiusPairSampleTotal": 1301,
+        "unassignedWithinFormationRadiusPairSampleTotal": 14,
+        "creationAttempts": 2,
+        "creationSuccesses": 2,
+        "dissolvedImmediately": 0,
+        "huntPackBirths": 4,
+        "sameSpeciesHuntPackParentChildBirths": 3
+      },
+      "packs": {
+        "formed": 2,
+        "activeAtEnd": 0,
+        "maximumActive": 1,
+        "maximumSize": 3,
+        "joins": 5,
+        "inheritedBirths": 1,
+        "distanceLeaves": 0,
+        "mixedSpecies": 0
+      },
+      "cooperation": {
+        "targetShares": 12,
+        "kills": 1
+      },
+      "claim": {
+        "activeCorpses": 0,
+        "created": 0,
+        "participantFeeds": 0,
+        "nonParticipantBlocks": 0,
+        "publicFeedsAfterExpiry": 0,
+        "energyConservationViolations": 0
+      },
+      "invariants": {
+        "crossSpeciesSexualBirths": 0,
+        "mixedSpeciesPacks": 0,
+        "badNumbers": 0,
+        "energyCreationEvents": 0,
+        "nutrientCreationEvents": 0,
+        "lineageValid": true,
+        "roundTripValid": true,
+        "browserErrors": []
+      },
+      "microOk": true
+    },
+    "finalProductionRun": {
+      "huntPackLivingMaximum": 7,
+      "huntPackLivingSampleTotal": 8823,
+      "sameSpeciesPairSampleTotal": 2023,
+      "unassignedSameSpeciesPairSampleTotal": 21,
+      "withinFormationRadiusPairSampleTotal": 1879,
+      "unassignedWithinFormationRadiusPairSampleTotal": 21,
+      "creationAttempts": 4,
+      "creationSuccesses": 4,
+      "dissolvedImmediately": 0,
+      "huntPackBirths": 11,
+      "sameSpeciesHuntPackParentChildBirths": 8
+    }
+  },
+  "micro": {
+    "ok": true,
+    "results": [
+      {
+        "id": "F",
+        "name": "same speciesKey and different lineage can form a Pack",
+        "ok": true,
+        "details": {
+          "first": {
+            "organismId": 1,
+            "eligible": true,
+            "packId": "pack-1",
+            "packJoinFrame": 0,
+            "packMembershipAge": 0,
+            "packFounderId": 1,
+            "packInheritedFromParent": false,
+            "packInheritedFromId": null,
+            "packInheritedFromRole": null,
+            "packRecordSpeciesKey": "species-a",
+            "packLivingMemberCount": 2,
+            "nearestPackMemberId": 2,
+            "nearestPackMemberDistance": 6,
+            "packLeaveCandidateSince": null,
+            "packLeaveCount": 0,
+            "packJoinCount": 1,
+            "speciesKey": "species-a",
+            "lineageId": "lineage-a",
+            "packBiologicalIdentity": {
+              "mode": "species",
+              "key": "species-a",
+              "lineageId": "lineage-a",
+              "speciesKey": "species-a"
+            },
+            "role": "pursuit",
+            "socialMode": "hunt-pack",
+            "diet": "c"
+          },
+          "second": {
+            "organismId": 2,
+            "eligible": true,
+            "packId": "pack-1",
+            "packJoinFrame": 0,
+            "packMembershipAge": 0,
+            "packFounderId": 1,
+            "packInheritedFromParent": false,
+            "packInheritedFromId": null,
+            "packInheritedFromRole": null,
+            "packRecordSpeciesKey": "species-a",
+            "packLivingMemberCount": 2,
+            "nearestPackMemberId": 1,
+            "nearestPackMemberDistance": 6,
+            "packLeaveCandidateSince": null,
+            "packLeaveCount": 0,
+            "packJoinCount": 1,
+            "speciesKey": "species-a",
+            "lineageId": "lineage-b",
+            "packBiologicalIdentity": {
+              "mode": "species",
+              "key": "species-a",
+              "lineageId": "lineage-b",
+              "speciesKey": "species-a"
+            },
+            "role": "pursuit",
+            "socialMode": "hunt-pack",
+            "diet": "c"
+          }
+        }
+      },
+      {
+        "id": "P",
+        "name": "formed Pack remains active through the next normal update",
+        "ok": true,
+        "details": {
+          "first": {
+            "organismId": 1,
+            "eligible": true,
+            "packId": "pack-1",
+            "packJoinFrame": 0,
+            "packMembershipAge": 12,
+            "packFounderId": 1,
+            "packInheritedFromParent": false,
+            "packInheritedFromId": null,
+            "packInheritedFromRole": null,
+            "packRecordSpeciesKey": "species-a",
+            "packLivingMemberCount": 2,
+            "nearestPackMemberId": 2,
+            "nearestPackMemberDistance": 6,
+            "packLeaveCandidateSince": null,
+            "packLeaveCount": 0,
+            "packJoinCount": 1,
+            "speciesKey": "species-a",
+            "lineageId": "lineage-a",
+            "packBiologicalIdentity": {
+              "mode": "species",
+              "key": "species-a",
+              "lineageId": "lineage-a",
+              "speciesKey": "species-a"
+            },
+            "role": "pursuit",
+            "socialMode": "hunt-pack",
+            "diet": "c"
+          },
+          "second": {
+            "organismId": 2,
+            "eligible": true,
+            "packId": "pack-1",
+            "packJoinFrame": 0,
+            "packMembershipAge": 12,
+            "packFounderId": 1,
+            "packInheritedFromParent": false,
+            "packInheritedFromId": null,
+            "packInheritedFromRole": null,
+            "packRecordSpeciesKey": "species-a",
+            "packLivingMemberCount": 2,
+            "nearestPackMemberId": 1,
+            "nearestPackMemberDistance": 6,
+            "packLeaveCandidateSince": null,
+            "packLeaveCount": 0,
+            "packJoinCount": 1,
+            "speciesKey": "species-a",
+            "lineageId": "lineage-b",
+            "packBiologicalIdentity": {
+              "mode": "species",
+              "key": "species-a",
+              "lineageId": "lineage-b",
+              "speciesKey": "species-a"
+            },
+            "role": "pursuit",
+            "socialMode": "hunt-pack",
+            "diet": "c"
+          },
+          "pack": {
+            "id": "pack-1",
+            "createdFrame": 0,
+            "dissolvedFrame": null,
+            "founderId": 1,
+            "founderSpeciesKey": "species-a",
+            "speciesKey": "species-a",
+            "identityMode": "species",
+            "identityKey": "species-a",
+            "lineageId": "lineage-a",
+            "parentPackId": null,
+            "memberIds": [
+              1,
+              2
+            ],
+            "livingMemberIds": [
+              1,
+              2
+            ],
+            "currentLivingMembers": 2,
+            "maximumLivingMembers": 2,
+            "totalMembersEver": 2,
+            "birthsIntoPack": 0,
+            "joins": 2,
+            "leaves": 0,
+            "deaths": 0,
+            "lastActiveFrame": 12,
+            "memberFramesTotal": 48,
+            "age": 0
+          }
+        }
+      },
+      {
+        "id": "G",
+        "name": "different speciesKey and same lineage cannot form a Pack",
+        "ok": true,
+        "details": {
+          "first": {
+            "organismId": 1,
+            "eligible": true,
+            "packId": null,
+            "packJoinFrame": null,
+            "packMembershipAge": null,
+            "packFounderId": null,
+            "packInheritedFromParent": false,
+            "packInheritedFromId": null,
+            "packInheritedFromRole": null,
+            "packRecordSpeciesKey": null,
+            "packLivingMemberCount": 0,
+            "nearestPackMemberId": null,
+            "nearestPackMemberDistance": null,
+            "packLeaveCandidateSince": null,
+            "packLeaveCount": 0,
+            "packJoinCount": 0,
+            "speciesKey": "species-a",
+            "lineageId": "lineage-a",
+            "packBiologicalIdentity": {
+              "mode": "species",
+              "key": "species-a",
+              "lineageId": "lineage-a",
+              "speciesKey": "species-a"
+            },
+            "role": "pursuit",
+            "socialMode": "hunt-pack",
+            "diet": "c"
+          },
+          "second": {
+            "organismId": 2,
+            "eligible": true,
+            "packId": null,
+            "packJoinFrame": null,
+            "packMembershipAge": null,
+            "packFounderId": null,
+            "packInheritedFromParent": false,
+            "packInheritedFromId": null,
+            "packInheritedFromRole": null,
+            "packRecordSpeciesKey": null,
+            "packLivingMemberCount": 0,
+            "nearestPackMemberId": null,
+            "nearestPackMemberDistance": null,
+            "packLeaveCandidateSince": null,
+            "packLeaveCount": 0,
+            "packJoinCount": 0,
+            "speciesKey": "species-b",
+            "lineageId": "lineage-a",
+            "packBiologicalIdentity": {
+              "mode": "species",
+              "key": "species-b",
+              "lineageId": "lineage-a",
+              "speciesKey": "species-b"
+            },
+            "role": "pursuit",
+            "socialMode": "hunt-pack",
+            "diet": "c"
+          }
+        }
+      },
+      {
+        "id": "H",
+        "name": "same speciesKey and different lineage can join a Pack",
+        "ok": true,
+        "details": {
+          "candidate": {
+            "organismId": 3,
+            "eligible": true,
+            "packId": "pack-1",
+            "packJoinFrame": 12,
+            "packMembershipAge": 0,
+            "packFounderId": 1,
+            "packInheritedFromParent": false,
+            "packInheritedFromId": null,
+            "packInheritedFromRole": null,
+            "packRecordSpeciesKey": "species-a",
+            "packLivingMemberCount": 3,
+            "nearestPackMemberId": 1,
+            "nearestPackMemberDistance": 5,
+            "packLeaveCandidateSince": null,
+            "packLeaveCount": 0,
+            "packJoinCount": 1,
+            "speciesKey": "species-a",
+            "lineageId": "lineage-b",
+            "packBiologicalIdentity": {
+              "mode": "species",
+              "key": "species-a",
+              "lineageId": "lineage-b",
+              "speciesKey": "species-a"
+            },
+            "role": "pursuit",
+            "socialMode": "hunt-pack",
+            "diet": "c"
+          },
+          "summary": {
+            "featureEnabled": true,
+            "lineageAwarePackIdentity": false,
+            "packCooperativeTargeting": true,
+            "activePackCount": 1,
+            "dissolvedPackCount": 0,
+            "singleMemberPackCount": 0,
+            "averagePackSize": 3,
+            "medianPackSize": 3,
+            "maximumPackSize": 3,
+            "averagePackAge": 0,
+            "maximumPackAge": 0,
+            "packsCreated": 1,
+            "packsDissolved": 0,
+            "joins": 3,
+            "leaves": 0,
+            "parentInheritedBirths": 0,
+            "distanceLeaves": 0,
+            "packDeaths": 0,
+            "lineageBasedPacksCreated": 0,
+            "lineageBasedPackJoins": 0,
+            "parentLineageInheritedBirths": 0,
+            "mateLineageInheritedBirths": 0,
+            "provisionalBirthInheritanceSkipped": 0,
+            "sameLineageCrossSpeciesInheritedBirths": 0,
+            "sameSpeciesDifferentLineageRejected": 0,
+            "sameSpeciesDifferentLineageJoins": 1,
+            "differentSpeciesSameLineageRejected": 0,
+            "saveMigrations": 0,
+            "saveMixedSpeciesRemoved": 0,
+            "invalidLineageRejected": 0,
+            "invalidLineageCleanups": 0,
+            "packIdentityRepaired": 0,
+            "packIdentityRepairFailed": 0,
+            "reproductivePairPacksCreated": 0,
+            "reproductivePairJoins": 0,
+            "reproductivePairAlreadyAligned": 0,
+            "reproductivePairConflicts": 0,
+            "reproductiveFamilyPacksCreated": 0,
+            "lineageFamilyNeighborJoins": 0,
+            "familyNeighborScanCalls": 0,
+            "familyNeighborSameLineageUnassigned": 0,
+            "familyNeighborSameLineageEligible": 0,
+            "familyNeighborSameLineageIneligible": 0,
+            "familyNeighborNearEligible": 0,
+            "familyNeighborNearIneligible": 0,
+            "lifetimeOpportunitySamples": 1,
+            "lifetimeSameLineageUnassignedEligible": 1,
+            "lifetimeNearUnassignedEligible": 1,
+            "lifetimeSameLineageUnassignedIneligible": 0,
+            "lifetimeNearUnassignedIneligible": 0,
+            "lifetimeSameLineageOtherPack": 0,
+            "lifetimeNearOtherPack": 0,
+            "familyReproductionEvents": 0,
+            "familyMultiClutchEvents": 0,
+            "familyMultiClutchChildren": 0,
+            "inheritedClutchEvents": 0,
+            "inheritedClutchChildren": 0,
+            "overflowFeedingEvents": 0,
+            "overflowEnergyTransferred": 0,
+            "overflowNutrientTransferred": 0,
+            "overflowRecipients": 0,
+            "surplusFeedingEvents": 0,
+            "surplusEnergyTransferred": 0,
+            "surplusRecipients": 0,
+            "formation": {
+              "radiusMultiplier": 0.85,
+              "updateIntervalSteps": 12,
+              "observationSamples": 2,
+              "huntPackLiving": {
+                "last": 3,
+                "maximum": 3,
+                "sampleTotal": 5
+              },
+              "sameSpeciesPairs": {
+                "last": 3,
+                "maximum": 3,
+                "sampleTotal": 4
+              },
+              "unassignedSameSpeciesPairs": {
+                "last": 0,
+                "maximum": 1,
+                "sampleTotal": 1
+              },
+              "withinFormationRadiusPairs": {
+                "last": 3,
+                "maximum": 3,
+                "sampleTotal": 4
+              },
+              "unassignedWithinFormationRadiusPairs": {
+                "last": 0,
+                "maximum": 1,
+                "sampleTotal": 1
+              },
+              "creationAttempts": 1,
+              "creationSuccesses": 1,
+              "dissolvedImmediately": 0,
+              "maximumActivePackCount": 1,
+              "huntPackBirths": 0,
+              "sameSpeciesHuntPackParentChildBirths": 0
+            },
+            "invariants": {
+              "speciesMismatchMembers": 0,
+              "mixedSpeciesPacks": 0,
+              "lineageMismatchMembers": 0,
+              "missingRecordIdentityPacks": 0,
+              "mixedLineagePacks": 1,
+              "lineageOnlyLeaves": 0
+            },
+            "eligibleAssigned": 3,
+            "eligibleUnassigned": 0,
+            "eligibleTotal": 3,
+            "packMembershipRate": 1,
+            "byRole": {
+              "pursuit": {
+                "living": 3,
+                "eligible": 3,
+                "assigned": 3,
+                "unassigned": 0
+              }
+            },
+            "byDiet": {
+              "c": {
+                "living": 3,
+                "eligible": 3,
+                "assigned": 3,
+                "unassigned": 0
+              }
+            },
+            "bySocialMode": {
+              "hunt-pack": {
+                "living": 3,
+                "eligible": 3,
+                "assigned": 3,
+                "unassigned": 0
+              }
+            }
+          }
+        }
+      },
+      {
+        "id": "J",
+        "name": "same-species child inherits primary parent Pack despite lineage change",
+        "ok": true,
+        "details": {
+          "child": {
+            "organismId": 5,
+            "eligible": true,
+            "packId": "pack-1",
+            "packJoinFrame": 0,
+            "packMembershipAge": 0,
+            "packFounderId": 1,
+            "packInheritedFromParent": true,
+            "packInheritedFromId": 1,
+            "packInheritedFromRole": "primary-parent",
+            "packRecordSpeciesKey": "species-a",
+            "packLivingMemberCount": 3,
+            "nearestPackMemberId": 1,
+            "nearestPackMemberDistance": 5,
+            "packLeaveCandidateSince": null,
+            "packLeaveCount": 0,
+            "packJoinCount": 1,
+            "speciesKey": "species-a",
+            "lineageId": "lineage-new",
+            "packBiologicalIdentity": {
+              "mode": "species",
+              "key": "species-a",
+              "lineageId": "lineage-new",
+              "speciesKey": "species-a"
+            },
+            "role": "pursuit",
+            "socialMode": "hunt-pack",
+            "diet": "c"
+          },
+          "primaryPack": "pack-1",
+          "matePack": "pack-2",
+          "randomCalls": 0
+        }
+      }
+    ]
+  }
+}
