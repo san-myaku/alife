@@ -1,0 +1,3049 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T15:07:25.204Z",
+  "seeds": [
+    41001,
+    43001,
+    45001
+  ],
+  "requestedSteps": 20000,
+  "safetyStopPopulation": 5000,
+  "populationCapMode": "unlimited",
+  "productionConfiguration": {
+    "speciesIdentityV2": false,
+    "persistentPackIdentity": true,
+    "packCooperativeTargeting": true,
+    "resourceLimitedAlgaeRegrowth": true,
+    "environmentInitializationMode": "patchy-intermediate",
+    "worldShape": "circle"
+  },
+  "runs": [
+    {
+      "seed": 41001,
+      "requestedSteps": 20000,
+      "completedSteps": 20000,
+      "terminationReason": "completed",
+      "populationCap": {
+        "enabled": false,
+        "value": 120,
+        "display": "無制限"
+      },
+      "safetyStopPopulation": 5000,
+      "safetyStopReached": false,
+      "populationRunaway": false,
+      "maximumPopulation": 1108,
+      "endingPopulation": 114,
+      "populationTimeseries": [
+        {
+          "step": 0,
+          "frame": 0,
+          "population": 64,
+          "packs": 0,
+          "huntPackOrganisms": 3,
+          "species": 63,
+          "establishedLineages": 63
+        },
+        {
+          "step": 200,
+          "frame": 200,
+          "population": 59,
+          "packs": 0,
+          "huntPackOrganisms": 3,
+          "species": 55,
+          "establishedLineages": 63
+        },
+        {
+          "step": 400,
+          "frame": 400,
+          "population": 36,
+          "packs": 0,
+          "huntPackOrganisms": 1,
+          "species": 32,
+          "establishedLineages": 63
+        },
+        {
+          "step": 600,
+          "frame": 600,
+          "population": 37,
+          "packs": 0,
+          "huntPackOrganisms": 2,
+          "species": 31,
+          "establishedLineages": 63
+        },
+        {
+          "step": 800,
+          "frame": 800,
+          "population": 42,
+          "packs": 1,
+          "huntPackOrganisms": 2,
+          "species": 28,
+          "establishedLineages": 63
+        },
+        {
+          "step": 1000,
+          "frame": 1000,
+          "population": 55,
+          "packs": 1,
+          "huntPackOrganisms": 2,
+          "species": 26,
+          "establishedLineages": 63
+        },
+        {
+          "step": 1200,
+          "frame": 1200,
+          "population": 87,
+          "packs": 1,
+          "huntPackOrganisms": 2,
+          "species": 26,
+          "establishedLineages": 63
+        },
+        {
+          "step": 1400,
+          "frame": 1400,
+          "population": 136,
+          "packs": 0,
+          "huntPackOrganisms": 1,
+          "species": 29,
+          "establishedLineages": 63
+        },
+        {
+          "step": 1600,
+          "frame": 1600,
+          "population": 230,
+          "packs": 1,
+          "huntPackOrganisms": 2,
+          "species": 36,
+          "establishedLineages": 63
+        },
+        {
+          "step": 1800,
+          "frame": 1800,
+          "population": 390,
+          "packs": 0,
+          "huntPackOrganisms": 1,
+          "species": 43,
+          "establishedLineages": 63
+        },
+        {
+          "step": 2000,
+          "frame": 2000,
+          "population": 591,
+          "packs": 0,
+          "huntPackOrganisms": 2,
+          "species": 51,
+          "establishedLineages": 64
+        },
+        {
+          "step": 2200,
+          "frame": 2200,
+          "population": 737,
+          "packs": 0,
+          "huntPackOrganisms": 1,
+          "species": 53,
+          "establishedLineages": 64
+        },
+        {
+          "step": 2400,
+          "frame": 2400,
+          "population": 752,
+          "packs": 0,
+          "huntPackOrganisms": 1,
+          "species": 54,
+          "establishedLineages": 64
+        },
+        {
+          "step": 2600,
+          "frame": 2600,
+          "population": 598,
+          "packs": 1,
+          "huntPackOrganisms": 2,
+          "species": 52,
+          "establishedLineages": 65
+        },
+        {
+          "step": 2800,
+          "frame": 2800,
+          "population": 405,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 44,
+          "establishedLineages": 65
+        },
+        {
+          "step": 3000,
+          "frame": 3000,
+          "population": 245,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 35,
+          "establishedLineages": 65
+        },
+        {
+          "step": 3200,
+          "frame": 3200,
+          "population": 138,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 22,
+          "establishedLineages": 65
+        },
+        {
+          "step": 3400,
+          "frame": 3400,
+          "population": 89,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 20,
+          "establishedLineages": 65
+        },
+        {
+          "step": 3600,
+          "frame": 3600,
+          "population": 69,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 20,
+          "establishedLineages": 65
+        },
+        {
+          "step": 3800,
+          "frame": 3800,
+          "population": 63,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 16,
+          "establishedLineages": 65
+        },
+        {
+          "step": 4000,
+          "frame": 4000,
+          "population": 77,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 16,
+          "establishedLineages": 65
+        },
+        {
+          "step": 4200,
+          "frame": 4200,
+          "population": 96,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 16,
+          "establishedLineages": 66
+        },
+        {
+          "step": 4400,
+          "frame": 4400,
+          "population": 124,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 17,
+          "establishedLineages": 66
+        },
+        {
+          "step": 4600,
+          "frame": 4600,
+          "population": 157,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 17,
+          "establishedLineages": 67
+        },
+        {
+          "step": 4800,
+          "frame": 4800,
+          "population": 203,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 18,
+          "establishedLineages": 68
+        },
+        {
+          "step": 5000,
+          "frame": 5000,
+          "population": 217,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 18,
+          "establishedLineages": 68
+        },
+        {
+          "step": 5200,
+          "frame": 5200,
+          "population": 214,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 68
+        },
+        {
+          "step": 5400,
+          "frame": 5400,
+          "population": 208,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 69
+        },
+        {
+          "step": 5600,
+          "frame": 5600,
+          "population": 205,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 20,
+          "establishedLineages": 69
+        },
+        {
+          "step": 5800,
+          "frame": 5800,
+          "population": 193,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 18,
+          "establishedLineages": 69
+        },
+        {
+          "step": 6000,
+          "frame": 6000,
+          "population": 166,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 16,
+          "establishedLineages": 69
+        },
+        {
+          "step": 6200,
+          "frame": 6200,
+          "population": 119,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 12,
+          "establishedLineages": 69
+        },
+        {
+          "step": 6400,
+          "frame": 6400,
+          "population": 82,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 9,
+          "establishedLineages": 69
+        },
+        {
+          "step": 6600,
+          "frame": 6600,
+          "population": 67,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 9,
+          "establishedLineages": 69
+        },
+        {
+          "step": 6800,
+          "frame": 6800,
+          "population": 59,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 9,
+          "establishedLineages": 69
+        },
+        {
+          "step": 7000,
+          "frame": 7000,
+          "population": 53,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 9,
+          "establishedLineages": 69
+        },
+        {
+          "step": 7200,
+          "frame": 7200,
+          "population": 44,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 69
+        },
+        {
+          "step": 7400,
+          "frame": 7400,
+          "population": 44,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 69
+        },
+        {
+          "step": 7600,
+          "frame": 7600,
+          "population": 44,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 69
+        },
+        {
+          "step": 7800,
+          "frame": 7800,
+          "population": 43,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 69
+        },
+        {
+          "step": 8000,
+          "frame": 8000,
+          "population": 44,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 69
+        },
+        {
+          "step": 8200,
+          "frame": 8200,
+          "population": 44,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 69
+        },
+        {
+          "step": 8400,
+          "frame": 8400,
+          "population": 45,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 69
+        },
+        {
+          "step": 8600,
+          "frame": 8600,
+          "population": 56,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 69
+        },
+        {
+          "step": 8800,
+          "frame": 8800,
+          "population": 92,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 70
+        },
+        {
+          "step": 9000,
+          "frame": 9000,
+          "population": 168,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 71
+        },
+        {
+          "step": 9200,
+          "frame": 9200,
+          "population": 342,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 11,
+          "establishedLineages": 76
+        },
+        {
+          "step": 9400,
+          "frame": 9400,
+          "population": 594,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 12,
+          "establishedLineages": 80
+        },
+        {
+          "step": 9600,
+          "frame": 9600,
+          "population": 912,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 12,
+          "establishedLineages": 80
+        },
+        {
+          "step": 9800,
+          "frame": 9800,
+          "population": 1068,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 12,
+          "establishedLineages": 83
+        },
+        {
+          "step": 10000,
+          "frame": 10000,
+          "population": 1016,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 12,
+          "establishedLineages": 83
+        },
+        {
+          "step": 10200,
+          "frame": 10200,
+          "population": 776,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 11,
+          "establishedLineages": 83
+        },
+        {
+          "step": 10400,
+          "frame": 10400,
+          "population": 429,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 11,
+          "establishedLineages": 83
+        },
+        {
+          "step": 10600,
+          "frame": 10600,
+          "population": 207,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 11,
+          "establishedLineages": 83
+        },
+        {
+          "step": 10800,
+          "frame": 10800,
+          "population": 98,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 10,
+          "establishedLineages": 83
+        },
+        {
+          "step": 11000,
+          "frame": 11000,
+          "population": 55,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 83
+        },
+        {
+          "step": 11200,
+          "frame": 11200,
+          "population": 36,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 83
+        },
+        {
+          "step": 11400,
+          "frame": 11400,
+          "population": 20,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 6,
+          "establishedLineages": 83
+        },
+        {
+          "step": 11600,
+          "frame": 11600,
+          "population": 15,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 83
+        },
+        {
+          "step": 11800,
+          "frame": 11800,
+          "population": 16,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 83
+        },
+        {
+          "step": 12000,
+          "frame": 12000,
+          "population": 19,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 83
+        },
+        {
+          "step": 12200,
+          "frame": 12200,
+          "population": 27,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 83
+        },
+        {
+          "step": 12400,
+          "frame": 12400,
+          "population": 43,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 83
+        },
+        {
+          "step": 12600,
+          "frame": 12600,
+          "population": 62,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 85
+        },
+        {
+          "step": 12800,
+          "frame": 12800,
+          "population": 93,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 85
+        },
+        {
+          "step": 13000,
+          "frame": 13000,
+          "population": 164,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 85
+        },
+        {
+          "step": 13200,
+          "frame": 13200,
+          "population": 293,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 88
+        },
+        {
+          "step": 13400,
+          "frame": 13400,
+          "population": 504,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 88
+        },
+        {
+          "step": 13600,
+          "frame": 13600,
+          "population": 763,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 88
+        },
+        {
+          "step": 13800,
+          "frame": 13800,
+          "population": 928,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 10,
+          "establishedLineages": 88
+        },
+        {
+          "step": 14000,
+          "frame": 14000,
+          "population": 925,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 10,
+          "establishedLineages": 88
+        },
+        {
+          "step": 14200,
+          "frame": 14200,
+          "population": 745,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 9,
+          "establishedLineages": 88
+        },
+        {
+          "step": 14400,
+          "frame": 14400,
+          "population": 491,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 9,
+          "establishedLineages": 88
+        },
+        {
+          "step": 14600,
+          "frame": 14600,
+          "population": 241,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 88
+        },
+        {
+          "step": 14800,
+          "frame": 14800,
+          "population": 109,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 88
+        },
+        {
+          "step": 15000,
+          "frame": 15000,
+          "population": 53,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 88
+        },
+        {
+          "step": 15200,
+          "frame": 15200,
+          "population": 28,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 88
+        },
+        {
+          "step": 15400,
+          "frame": 15400,
+          "population": 26,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 88
+        },
+        {
+          "step": 15600,
+          "frame": 15600,
+          "population": 20,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 88
+        },
+        {
+          "step": 15800,
+          "frame": 15800,
+          "population": 18,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 88
+        },
+        {
+          "step": 16000,
+          "frame": 16000,
+          "population": 17,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 88
+        },
+        {
+          "step": 16200,
+          "frame": 16200,
+          "population": 17,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 88
+        },
+        {
+          "step": 16400,
+          "frame": 16400,
+          "population": 17,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 88
+        },
+        {
+          "step": 16600,
+          "frame": 16600,
+          "population": 17,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 88
+        },
+        {
+          "step": 16800,
+          "frame": 16800,
+          "population": 17,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 88
+        },
+        {
+          "step": 17000,
+          "frame": 17000,
+          "population": 16,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 88
+        },
+        {
+          "step": 17200,
+          "frame": 17200,
+          "population": 16,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 88
+        },
+        {
+          "step": 17400,
+          "frame": 17400,
+          "population": 16,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 88
+        },
+        {
+          "step": 17600,
+          "frame": 17600,
+          "population": 24,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 6,
+          "establishedLineages": 88
+        },
+        {
+          "step": 17800,
+          "frame": 17800,
+          "population": 48,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 6,
+          "establishedLineages": 88
+        },
+        {
+          "step": 18000,
+          "frame": 18000,
+          "population": 107,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 6,
+          "establishedLineages": 88
+        },
+        {
+          "step": 18200,
+          "frame": 18200,
+          "population": 221,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 89
+        },
+        {
+          "step": 18400,
+          "frame": 18400,
+          "population": 409,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 89
+        },
+        {
+          "step": 18600,
+          "frame": 18600,
+          "population": 668,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 9,
+          "establishedLineages": 90
+        },
+        {
+          "step": 18800,
+          "frame": 18800,
+          "population": 939,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 10,
+          "establishedLineages": 93
+        },
+        {
+          "step": 19000,
+          "frame": 19000,
+          "population": 1097,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 10,
+          "establishedLineages": 94
+        },
+        {
+          "step": 19200,
+          "frame": 19200,
+          "population": 1045,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 10,
+          "establishedLineages": 94
+        },
+        {
+          "step": 19400,
+          "frame": 19400,
+          "population": 837,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 10,
+          "establishedLineages": 94
+        },
+        {
+          "step": 19600,
+          "frame": 19600,
+          "population": 504,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 9,
+          "establishedLineages": 94
+        },
+        {
+          "step": 19800,
+          "frame": 19800,
+          "population": 255,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 94
+        },
+        {
+          "step": 20000,
+          "frame": 20000,
+          "population": 114,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 94
+        }
+      ],
+      "dynamics": {
+        "naturalEquilibrium": false,
+        "periodicVariation": true,
+        "continuedGrowth": false,
+        "tailMeanPopulation": 286.686,
+        "tailMinPopulation": 15,
+        "tailMaxPopulation": 1097,
+        "tailAmplitudeRatio": 3.77416,
+        "tailTrendPer1000Steps": 14.527149,
+        "tailDirectionChanges": 4
+      },
+      "capacityDeaths": 0,
+      "capacityCullDeaths": 0,
+      "packs": 0,
+      "maximumActivePacks": 1,
+      "maximumPackSize": 0,
+      "huntPackOrganisms": 0,
+      "species": 7,
+      "establishedLineages": 94,
+      "processing": {
+        "elapsedMs": 439604,
+        "measuredUpdateMsPerStep": 21.9788,
+        "stepsPerSecond": 45.495,
+        "fps": 15,
+        "updateMs": 0,
+        "drawMs": 11.51
+      },
+      "nanOrInfinity": 0,
+      "numberHealth": {
+        "ok": true,
+        "badCount": 0,
+        "bad": []
+      },
+      "lineageValidation": {
+        "ok": true,
+        "violationCount": 0,
+        "counts": {
+          "missingLineageIdOrganismIds": 0,
+          "missingRecordLineageIds": 0,
+          "emptyCanonicalAppearanceKeyOrganismIds": 0,
+          "invalidSpeciesStatusRecordIds": 0,
+          "danglingParentLineageIds": 0,
+          "duplicateLineageIds": 0,
+          "nanLineageGenerationOrganismIds": 0,
+          "negativeLineageGenerationOrganismIds": 0,
+          "emptyRecordCanonicalAppearanceKeyIds": 0,
+          "ecotypeMismatchOrganismIds": 0,
+          "canonicalAppearanceKeyMismatchLineageIds": 0,
+          "basicAppearanceMismatchLineageIds": 0,
+          "normalizedGeometryMismatchLineageIds": 0,
+          "topologyMismatchLineageIds": 0,
+          "provisionalFounderInvariantIds": 0
+        },
+        "details": {
+          "missingLineageIdOrganismIds": [],
+          "missingRecordLineageIds": [],
+          "emptyCanonicalAppearanceKeyOrganismIds": [],
+          "invalidSpeciesStatusRecordIds": [],
+          "danglingParentLineageIds": [],
+          "duplicateLineageIds": [],
+          "nanLineageGenerationOrganismIds": [],
+          "negativeLineageGenerationOrganismIds": [],
+          "emptyRecordCanonicalAppearanceKeyIds": [],
+          "ecotypeMismatchOrganismIds": [],
+          "canonicalAppearanceKeyMismatchLineageIds": [],
+          "basicAppearanceMismatchLineageIds": [],
+          "normalizedGeometryMismatchLineageIds": [],
+          "topologyMismatchLineageIds": [],
+          "provisionalFounderInvariantIds": []
+        }
+      },
+      "consoleErrors": []
+    },
+    {
+      "seed": 43001,
+      "requestedSteps": 20000,
+      "completedSteps": 20000,
+      "terminationReason": "completed",
+      "populationCap": {
+        "enabled": false,
+        "value": 120,
+        "display": "無制限"
+      },
+      "safetyStopPopulation": 5000,
+      "safetyStopReached": false,
+      "populationRunaway": false,
+      "maximumPopulation": 1962,
+      "endingPopulation": 1962,
+      "populationTimeseries": [
+        {
+          "step": 0,
+          "frame": 0,
+          "population": 64,
+          "packs": 0,
+          "huntPackOrganisms": 5,
+          "species": 63,
+          "establishedLineages": 63
+        },
+        {
+          "step": 200,
+          "frame": 200,
+          "population": 52,
+          "packs": 1,
+          "huntPackOrganisms": 6,
+          "species": 47,
+          "establishedLineages": 63
+        },
+        {
+          "step": 400,
+          "frame": 400,
+          "population": 30,
+          "packs": 2,
+          "huntPackOrganisms": 4,
+          "species": 25,
+          "establishedLineages": 63
+        },
+        {
+          "step": 600,
+          "frame": 600,
+          "population": 18,
+          "packs": 3,
+          "huntPackOrganisms": 5,
+          "species": 16,
+          "establishedLineages": 63
+        },
+        {
+          "step": 800,
+          "frame": 800,
+          "population": 13,
+          "packs": 1,
+          "huntPackOrganisms": 2,
+          "species": 12,
+          "establishedLineages": 63
+        },
+        {
+          "step": 1000,
+          "frame": 1000,
+          "population": 18,
+          "packs": 1,
+          "huntPackOrganisms": 2,
+          "species": 14,
+          "establishedLineages": 63
+        },
+        {
+          "step": 1200,
+          "frame": 1200,
+          "population": 26,
+          "packs": 1,
+          "huntPackOrganisms": 1,
+          "species": 16,
+          "establishedLineages": 63
+        },
+        {
+          "step": 1400,
+          "frame": 1400,
+          "population": 36,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 16,
+          "establishedLineages": 63
+        },
+        {
+          "step": 1600,
+          "frame": 1600,
+          "population": 60,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 16,
+          "establishedLineages": 63
+        },
+        {
+          "step": 1800,
+          "frame": 1800,
+          "population": 114,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 21,
+          "establishedLineages": 63
+        },
+        {
+          "step": 2000,
+          "frame": 2000,
+          "population": 206,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 23,
+          "establishedLineages": 63
+        },
+        {
+          "step": 2200,
+          "frame": 2200,
+          "population": 395,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 28,
+          "establishedLineages": 63
+        },
+        {
+          "step": 2400,
+          "frame": 2400,
+          "population": 651,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 30,
+          "establishedLineages": 63
+        },
+        {
+          "step": 2600,
+          "frame": 2600,
+          "population": 842,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 34,
+          "establishedLineages": 63
+        },
+        {
+          "step": 2800,
+          "frame": 2800,
+          "population": 747,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 30,
+          "establishedLineages": 63
+        },
+        {
+          "step": 3000,
+          "frame": 3000,
+          "population": 533,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 24,
+          "establishedLineages": 63
+        },
+        {
+          "step": 3200,
+          "frame": 3200,
+          "population": 315,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 63
+        },
+        {
+          "step": 3400,
+          "frame": 3400,
+          "population": 171,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 17,
+          "establishedLineages": 63
+        },
+        {
+          "step": 3600,
+          "frame": 3600,
+          "population": 99,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 13,
+          "establishedLineages": 63
+        },
+        {
+          "step": 3800,
+          "frame": 3800,
+          "population": 71,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 12,
+          "establishedLineages": 63
+        },
+        {
+          "step": 4000,
+          "frame": 4000,
+          "population": 49,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 10,
+          "establishedLineages": 63
+        },
+        {
+          "step": 4200,
+          "frame": 4200,
+          "population": 42,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 10,
+          "establishedLineages": 63
+        },
+        {
+          "step": 4400,
+          "frame": 4400,
+          "population": 32,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 63
+        },
+        {
+          "step": 4600,
+          "frame": 4600,
+          "population": 33,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 63
+        },
+        {
+          "step": 4800,
+          "frame": 4800,
+          "population": 35,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 63
+        },
+        {
+          "step": 5000,
+          "frame": 5000,
+          "population": 47,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 9,
+          "establishedLineages": 63
+        },
+        {
+          "step": 5200,
+          "frame": 5200,
+          "population": 47,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 9,
+          "establishedLineages": 63
+        },
+        {
+          "step": 5400,
+          "frame": 5400,
+          "population": 42,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 63
+        },
+        {
+          "step": 5600,
+          "frame": 5600,
+          "population": 43,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 63
+        },
+        {
+          "step": 5800,
+          "frame": 5800,
+          "population": 41,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 63
+        },
+        {
+          "step": 6000,
+          "frame": 6000,
+          "population": 39,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 63
+        },
+        {
+          "step": 6200,
+          "frame": 6200,
+          "population": 39,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 63
+        },
+        {
+          "step": 6400,
+          "frame": 6400,
+          "population": 36,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 63
+        },
+        {
+          "step": 6600,
+          "frame": 6600,
+          "population": 38,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 63
+        },
+        {
+          "step": 6800,
+          "frame": 6800,
+          "population": 38,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 63
+        },
+        {
+          "step": 7000,
+          "frame": 7000,
+          "population": 38,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 63
+        },
+        {
+          "step": 7200,
+          "frame": 7200,
+          "population": 38,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 63
+        },
+        {
+          "step": 7400,
+          "frame": 7400,
+          "population": 38,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 63
+        },
+        {
+          "step": 7600,
+          "frame": 7600,
+          "population": 37,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 63
+        },
+        {
+          "step": 7800,
+          "frame": 7800,
+          "population": 37,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 63
+        },
+        {
+          "step": 8000,
+          "frame": 8000,
+          "population": 37,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 63
+        },
+        {
+          "step": 8200,
+          "frame": 8200,
+          "population": 41,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 63
+        },
+        {
+          "step": 8400,
+          "frame": 8400,
+          "population": 63,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 63
+        },
+        {
+          "step": 8600,
+          "frame": 8600,
+          "population": 116,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 63
+        },
+        {
+          "step": 8800,
+          "frame": 8800,
+          "population": 225,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 6,
+          "establishedLineages": 63
+        },
+        {
+          "step": 9000,
+          "frame": 9000,
+          "population": 425,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 6,
+          "establishedLineages": 64
+        },
+        {
+          "step": 9200,
+          "frame": 9200,
+          "population": 692,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 6,
+          "establishedLineages": 65
+        },
+        {
+          "step": 9400,
+          "frame": 9400,
+          "population": 1021,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 6,
+          "establishedLineages": 67
+        },
+        {
+          "step": 9600,
+          "frame": 9600,
+          "population": 1175,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 67
+        },
+        {
+          "step": 9800,
+          "frame": 9800,
+          "population": 972,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 69
+        },
+        {
+          "step": 10000,
+          "frame": 10000,
+          "population": 466,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 69
+        },
+        {
+          "step": 10200,
+          "frame": 10200,
+          "population": 108,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 69
+        },
+        {
+          "step": 10400,
+          "frame": 10400,
+          "population": 17,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 69
+        },
+        {
+          "step": 10600,
+          "frame": 10600,
+          "population": 5,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 2,
+          "establishedLineages": 69
+        },
+        {
+          "step": 10800,
+          "frame": 10800,
+          "population": 4,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 2,
+          "establishedLineages": 69
+        },
+        {
+          "step": 11000,
+          "frame": 11000,
+          "population": 4,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 2,
+          "establishedLineages": 69
+        },
+        {
+          "step": 11200,
+          "frame": 11200,
+          "population": 3,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 2,
+          "establishedLineages": 69
+        },
+        {
+          "step": 11400,
+          "frame": 11400,
+          "population": 3,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 2,
+          "establishedLineages": 69
+        },
+        {
+          "step": 11600,
+          "frame": 11600,
+          "population": 3,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 2,
+          "establishedLineages": 69
+        },
+        {
+          "step": 11800,
+          "frame": 11800,
+          "population": 3,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 2,
+          "establishedLineages": 69
+        },
+        {
+          "step": 12000,
+          "frame": 12000,
+          "population": 4,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 2,
+          "establishedLineages": 69
+        },
+        {
+          "step": 12200,
+          "frame": 12200,
+          "population": 5,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 2,
+          "establishedLineages": 69
+        },
+        {
+          "step": 12400,
+          "frame": 12400,
+          "population": 9,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 69
+        },
+        {
+          "step": 12600,
+          "frame": 12600,
+          "population": 17,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 69
+        },
+        {
+          "step": 12800,
+          "frame": 12800,
+          "population": 33,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 69
+        },
+        {
+          "step": 13000,
+          "frame": 13000,
+          "population": 66,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 70
+        },
+        {
+          "step": 13200,
+          "frame": 13200,
+          "population": 139,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 70
+        },
+        {
+          "step": 13400,
+          "frame": 13400,
+          "population": 240,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 6,
+          "establishedLineages": 71
+        },
+        {
+          "step": 13600,
+          "frame": 13600,
+          "population": 433,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 71
+        },
+        {
+          "step": 13800,
+          "frame": 13800,
+          "population": 676,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 72
+        },
+        {
+          "step": 14000,
+          "frame": 14000,
+          "population": 933,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 9,
+          "establishedLineages": 74
+        },
+        {
+          "step": 14200,
+          "frame": 14200,
+          "population": 1062,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 9,
+          "establishedLineages": 74
+        },
+        {
+          "step": 14400,
+          "frame": 14400,
+          "population": 903,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 77
+        },
+        {
+          "step": 14600,
+          "frame": 14600,
+          "population": 528,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 77
+        },
+        {
+          "step": 14800,
+          "frame": 14800,
+          "population": 217,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 77
+        },
+        {
+          "step": 15000,
+          "frame": 15000,
+          "population": 73,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 77
+        },
+        {
+          "step": 15200,
+          "frame": 15200,
+          "population": 22,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 77
+        },
+        {
+          "step": 15400,
+          "frame": 15400,
+          "population": 7,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 77
+        },
+        {
+          "step": 15600,
+          "frame": 15600,
+          "population": 4,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 2,
+          "establishedLineages": 77
+        },
+        {
+          "step": 15800,
+          "frame": 15800,
+          "population": 1,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 1,
+          "establishedLineages": 77
+        },
+        {
+          "step": 16000,
+          "frame": 16000,
+          "population": 1,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 1,
+          "establishedLineages": 77
+        },
+        {
+          "step": 16200,
+          "frame": 16200,
+          "population": 1,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 1,
+          "establishedLineages": 77
+        },
+        {
+          "step": 16400,
+          "frame": 16400,
+          "population": 1,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 1,
+          "establishedLineages": 77
+        },
+        {
+          "step": 16600,
+          "frame": 16600,
+          "population": 1,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 1,
+          "establishedLineages": 77
+        },
+        {
+          "step": 16800,
+          "frame": 16800,
+          "population": 1,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 1,
+          "establishedLineages": 77
+        },
+        {
+          "step": 17000,
+          "frame": 17000,
+          "population": 1,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 1,
+          "establishedLineages": 77
+        },
+        {
+          "step": 17200,
+          "frame": 17200,
+          "population": 1,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 1,
+          "establishedLineages": 77
+        },
+        {
+          "step": 17400,
+          "frame": 17400,
+          "population": 1,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 1,
+          "establishedLineages": 77
+        },
+        {
+          "step": 17600,
+          "frame": 17600,
+          "population": 2,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 2,
+          "establishedLineages": 77
+        },
+        {
+          "step": 17800,
+          "frame": 17800,
+          "population": 3,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 77
+        },
+        {
+          "step": 18000,
+          "frame": 18000,
+          "population": 7,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 77
+        },
+        {
+          "step": 18200,
+          "frame": 18200,
+          "population": 13,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 77
+        },
+        {
+          "step": 18400,
+          "frame": 18400,
+          "population": 27,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 78
+        },
+        {
+          "step": 18600,
+          "frame": 18600,
+          "population": 66,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 78
+        },
+        {
+          "step": 18800,
+          "frame": 18800,
+          "population": 142,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 79
+        },
+        {
+          "step": 19000,
+          "frame": 19000,
+          "population": 315,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 79
+        },
+        {
+          "step": 19200,
+          "frame": 19200,
+          "population": 619,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 6,
+          "establishedLineages": 79
+        },
+        {
+          "step": 19400,
+          "frame": 19400,
+          "population": 1066,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 6,
+          "establishedLineages": 83
+        },
+        {
+          "step": 19600,
+          "frame": 19600,
+          "population": 1518,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 89
+        },
+        {
+          "step": 19800,
+          "frame": 19800,
+          "population": 1829,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 92
+        },
+        {
+          "step": 20000,
+          "frame": 20000,
+          "population": 1962,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 93
+        }
+      ],
+      "dynamics": {
+        "naturalEquilibrium": false,
+        "periodicVariation": false,
+        "continuedGrowth": true,
+        "tailMeanPopulation": 265.98,
+        "tailMinPopulation": 1,
+        "tailMaxPopulation": 1962,
+        "tailAmplitudeRatio": 7.372724,
+        "tailTrendPer1000Steps": 61.408597,
+        "tailDirectionChanges": 3
+      },
+      "capacityDeaths": 0,
+      "capacityCullDeaths": 0,
+      "packs": 0,
+      "maximumActivePacks": 3,
+      "maximumPackSize": 0,
+      "huntPackOrganisms": 0,
+      "species": 7,
+      "establishedLineages": 93,
+      "processing": {
+        "elapsedMs": 273458.3,
+        "measuredUpdateMsPerStep": 13.665,
+        "stepsPerSecond": 73.137,
+        "fps": 0,
+        "updateMs": 0,
+        "drawMs": 6.29
+      },
+      "nanOrInfinity": 0,
+      "numberHealth": {
+        "ok": true,
+        "badCount": 0,
+        "bad": []
+      },
+      "lineageValidation": {
+        "ok": true,
+        "violationCount": 0,
+        "counts": {
+          "missingLineageIdOrganismIds": 0,
+          "missingRecordLineageIds": 0,
+          "emptyCanonicalAppearanceKeyOrganismIds": 0,
+          "invalidSpeciesStatusRecordIds": 0,
+          "danglingParentLineageIds": 0,
+          "duplicateLineageIds": 0,
+          "nanLineageGenerationOrganismIds": 0,
+          "negativeLineageGenerationOrganismIds": 0,
+          "emptyRecordCanonicalAppearanceKeyIds": 0,
+          "ecotypeMismatchOrganismIds": 0,
+          "canonicalAppearanceKeyMismatchLineageIds": 0,
+          "basicAppearanceMismatchLineageIds": 0,
+          "normalizedGeometryMismatchLineageIds": 0,
+          "topologyMismatchLineageIds": 0,
+          "provisionalFounderInvariantIds": 0
+        },
+        "details": {
+          "missingLineageIdOrganismIds": [],
+          "missingRecordLineageIds": [],
+          "emptyCanonicalAppearanceKeyOrganismIds": [],
+          "invalidSpeciesStatusRecordIds": [],
+          "danglingParentLineageIds": [],
+          "duplicateLineageIds": [],
+          "nanLineageGenerationOrganismIds": [],
+          "negativeLineageGenerationOrganismIds": [],
+          "emptyRecordCanonicalAppearanceKeyIds": [],
+          "ecotypeMismatchOrganismIds": [],
+          "canonicalAppearanceKeyMismatchLineageIds": [],
+          "basicAppearanceMismatchLineageIds": [],
+          "normalizedGeometryMismatchLineageIds": [],
+          "topologyMismatchLineageIds": [],
+          "provisionalFounderInvariantIds": []
+        }
+      },
+      "consoleErrors": []
+    },
+    {
+      "seed": 45001,
+      "requestedSteps": 20000,
+      "completedSteps": 20000,
+      "terminationReason": "completed",
+      "populationCap": {
+        "enabled": false,
+        "value": 120,
+        "display": "無制限"
+      },
+      "safetyStopPopulation": 5000,
+      "safetyStopReached": false,
+      "populationRunaway": false,
+      "maximumPopulation": 1016,
+      "endingPopulation": 29,
+      "populationTimeseries": [
+        {
+          "step": 0,
+          "frame": 0,
+          "population": 64,
+          "packs": 0,
+          "huntPackOrganisms": 3,
+          "species": 62,
+          "establishedLineages": 62
+        },
+        {
+          "step": 200,
+          "frame": 200,
+          "population": 50,
+          "packs": 0,
+          "huntPackOrganisms": 3,
+          "species": 46,
+          "establishedLineages": 62
+        },
+        {
+          "step": 400,
+          "frame": 400,
+          "population": 30,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 23,
+          "establishedLineages": 62
+        },
+        {
+          "step": 600,
+          "frame": 600,
+          "population": 35,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 20,
+          "establishedLineages": 62
+        },
+        {
+          "step": 800,
+          "frame": 800,
+          "population": 39,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 16,
+          "establishedLineages": 62
+        },
+        {
+          "step": 1000,
+          "frame": 1000,
+          "population": 54,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 18,
+          "establishedLineages": 62
+        },
+        {
+          "step": 1200,
+          "frame": 1200,
+          "population": 88,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 63
+        },
+        {
+          "step": 1400,
+          "frame": 1400,
+          "population": 132,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 23,
+          "establishedLineages": 63
+        },
+        {
+          "step": 1600,
+          "frame": 1600,
+          "population": 224,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 25,
+          "establishedLineages": 63
+        },
+        {
+          "step": 1800,
+          "frame": 1800,
+          "population": 316,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 28,
+          "establishedLineages": 64
+        },
+        {
+          "step": 2000,
+          "frame": 2000,
+          "population": 474,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 34,
+          "establishedLineages": 64
+        },
+        {
+          "step": 2200,
+          "frame": 2200,
+          "population": 605,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 33,
+          "establishedLineages": 64
+        },
+        {
+          "step": 2400,
+          "frame": 2400,
+          "population": 713,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 38,
+          "establishedLineages": 64
+        },
+        {
+          "step": 2600,
+          "frame": 2600,
+          "population": 703,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 36,
+          "establishedLineages": 64
+        },
+        {
+          "step": 2800,
+          "frame": 2800,
+          "population": 482,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 29,
+          "establishedLineages": 64
+        },
+        {
+          "step": 3000,
+          "frame": 3000,
+          "population": 251,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 24,
+          "establishedLineages": 64
+        },
+        {
+          "step": 3200,
+          "frame": 3200,
+          "population": 149,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 21,
+          "establishedLineages": 64
+        },
+        {
+          "step": 3400,
+          "frame": 3400,
+          "population": 90,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 18,
+          "establishedLineages": 64
+        },
+        {
+          "step": 3600,
+          "frame": 3600,
+          "population": 58,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 18,
+          "establishedLineages": 64
+        },
+        {
+          "step": 3800,
+          "frame": 3800,
+          "population": 40,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 16,
+          "establishedLineages": 64
+        },
+        {
+          "step": 4000,
+          "frame": 4000,
+          "population": 33,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 12,
+          "establishedLineages": 64
+        },
+        {
+          "step": 4200,
+          "frame": 4200,
+          "population": 28,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 9,
+          "establishedLineages": 64
+        },
+        {
+          "step": 4400,
+          "frame": 4400,
+          "population": 34,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 10,
+          "establishedLineages": 64
+        },
+        {
+          "step": 4600,
+          "frame": 4600,
+          "population": 42,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 11,
+          "establishedLineages": 64
+        },
+        {
+          "step": 4800,
+          "frame": 4800,
+          "population": 72,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 13,
+          "establishedLineages": 64
+        },
+        {
+          "step": 5000,
+          "frame": 5000,
+          "population": 95,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 13,
+          "establishedLineages": 64
+        },
+        {
+          "step": 5200,
+          "frame": 5200,
+          "population": 105,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 14,
+          "establishedLineages": 64
+        },
+        {
+          "step": 5400,
+          "frame": 5400,
+          "population": 119,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 14,
+          "establishedLineages": 64
+        },
+        {
+          "step": 5600,
+          "frame": 5600,
+          "population": 123,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 14,
+          "establishedLineages": 64
+        },
+        {
+          "step": 5800,
+          "frame": 5800,
+          "population": 115,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 15,
+          "establishedLineages": 64
+        },
+        {
+          "step": 6000,
+          "frame": 6000,
+          "population": 99,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 14,
+          "establishedLineages": 64
+        },
+        {
+          "step": 6200,
+          "frame": 6200,
+          "population": 68,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 11,
+          "establishedLineages": 64
+        },
+        {
+          "step": 6400,
+          "frame": 6400,
+          "population": 55,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 12,
+          "establishedLineages": 64
+        },
+        {
+          "step": 6600,
+          "frame": 6600,
+          "population": 49,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 12,
+          "establishedLineages": 64
+        },
+        {
+          "step": 6800,
+          "frame": 6800,
+          "population": 47,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 13,
+          "establishedLineages": 64
+        },
+        {
+          "step": 7000,
+          "frame": 7000,
+          "population": 46,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 12,
+          "establishedLineages": 64
+        },
+        {
+          "step": 7200,
+          "frame": 7200,
+          "population": 46,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 11,
+          "establishedLineages": 64
+        },
+        {
+          "step": 7400,
+          "frame": 7400,
+          "population": 46,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 11,
+          "establishedLineages": 64
+        },
+        {
+          "step": 7600,
+          "frame": 7600,
+          "population": 48,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 11,
+          "establishedLineages": 64
+        },
+        {
+          "step": 7800,
+          "frame": 7800,
+          "population": 49,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 11,
+          "establishedLineages": 64
+        },
+        {
+          "step": 8000,
+          "frame": 8000,
+          "population": 49,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 11,
+          "establishedLineages": 64
+        },
+        {
+          "step": 8200,
+          "frame": 8200,
+          "population": 52,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 12,
+          "establishedLineages": 64
+        },
+        {
+          "step": 8400,
+          "frame": 8400,
+          "population": 70,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 13,
+          "establishedLineages": 65
+        },
+        {
+          "step": 8600,
+          "frame": 8600,
+          "population": 114,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 14,
+          "establishedLineages": 65
+        },
+        {
+          "step": 8800,
+          "frame": 8800,
+          "population": 204,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 16,
+          "establishedLineages": 65
+        },
+        {
+          "step": 9000,
+          "frame": 9000,
+          "population": 384,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 18,
+          "establishedLineages": 66
+        },
+        {
+          "step": 9200,
+          "frame": 9200,
+          "population": 657,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 20,
+          "establishedLineages": 68
+        },
+        {
+          "step": 9400,
+          "frame": 9400,
+          "population": 905,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 23,
+          "establishedLineages": 70
+        },
+        {
+          "step": 9600,
+          "frame": 9600,
+          "population": 937,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 23,
+          "establishedLineages": 71
+        },
+        {
+          "step": 9800,
+          "frame": 9800,
+          "population": 526,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 22,
+          "establishedLineages": 71
+        },
+        {
+          "step": 10000,
+          "frame": 10000,
+          "population": 154,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 16,
+          "establishedLineages": 71
+        },
+        {
+          "step": 10200,
+          "frame": 10200,
+          "population": 46,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 11,
+          "establishedLineages": 71
+        },
+        {
+          "step": 10400,
+          "frame": 10400,
+          "population": 22,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 71
+        },
+        {
+          "step": 10600,
+          "frame": 10600,
+          "population": 14,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 6,
+          "establishedLineages": 71
+        },
+        {
+          "step": 10800,
+          "frame": 10800,
+          "population": 12,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 6,
+          "establishedLineages": 71
+        },
+        {
+          "step": 11000,
+          "frame": 11000,
+          "population": 14,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 6,
+          "establishedLineages": 71
+        },
+        {
+          "step": 11200,
+          "frame": 11200,
+          "population": 13,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 71
+        },
+        {
+          "step": 11400,
+          "frame": 11400,
+          "population": 16,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 72
+        },
+        {
+          "step": 11600,
+          "frame": 11600,
+          "population": 17,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 72
+        },
+        {
+          "step": 11800,
+          "frame": 11800,
+          "population": 19,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 72
+        },
+        {
+          "step": 12000,
+          "frame": 12000,
+          "population": 23,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 73
+        },
+        {
+          "step": 12200,
+          "frame": 12200,
+          "population": 35,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 5,
+          "establishedLineages": 73
+        },
+        {
+          "step": 12400,
+          "frame": 12400,
+          "population": 62,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 8,
+          "establishedLineages": 73
+        },
+        {
+          "step": 12600,
+          "frame": 12600,
+          "population": 120,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 10,
+          "establishedLineages": 73
+        },
+        {
+          "step": 12800,
+          "frame": 12800,
+          "population": 227,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 16,
+          "establishedLineages": 74
+        },
+        {
+          "step": 13000,
+          "frame": 13000,
+          "population": 387,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 74
+        },
+        {
+          "step": 13200,
+          "frame": 13200,
+          "population": 597,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 21,
+          "establishedLineages": 76
+        },
+        {
+          "step": 13400,
+          "frame": 13400,
+          "population": 790,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 23,
+          "establishedLineages": 76
+        },
+        {
+          "step": 13600,
+          "frame": 13600,
+          "population": 775,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 22,
+          "establishedLineages": 78
+        },
+        {
+          "step": 13800,
+          "frame": 13800,
+          "population": 431,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 78
+        },
+        {
+          "step": 14000,
+          "frame": 14000,
+          "population": 174,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 17,
+          "establishedLineages": 78
+        },
+        {
+          "step": 14200,
+          "frame": 14200,
+          "population": 80,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 10,
+          "establishedLineages": 78
+        },
+        {
+          "step": 14400,
+          "frame": 14400,
+          "population": 33,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 6,
+          "establishedLineages": 78
+        },
+        {
+          "step": 14600,
+          "frame": 14600,
+          "population": 23,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 78
+        },
+        {
+          "step": 14800,
+          "frame": 14800,
+          "population": 14,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 78
+        },
+        {
+          "step": 15000,
+          "frame": 15000,
+          "population": 9,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 78
+        },
+        {
+          "step": 15200,
+          "frame": 15200,
+          "population": 7,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 78
+        },
+        {
+          "step": 15400,
+          "frame": 15400,
+          "population": 6,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 78
+        },
+        {
+          "step": 15600,
+          "frame": 15600,
+          "population": 3,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 78
+        },
+        {
+          "step": 15800,
+          "frame": 15800,
+          "population": 3,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 78
+        },
+        {
+          "step": 16000,
+          "frame": 16000,
+          "population": 3,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 78
+        },
+        {
+          "step": 16200,
+          "frame": 16200,
+          "population": 3,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 78
+        },
+        {
+          "step": 16400,
+          "frame": 16400,
+          "population": 3,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 78
+        },
+        {
+          "step": 16600,
+          "frame": 16600,
+          "population": 3,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 78
+        },
+        {
+          "step": 16800,
+          "frame": 16800,
+          "population": 3,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 78
+        },
+        {
+          "step": 17000,
+          "frame": 17000,
+          "population": 3,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 78
+        },
+        {
+          "step": 17200,
+          "frame": 17200,
+          "population": 3,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 78
+        },
+        {
+          "step": 17400,
+          "frame": 17400,
+          "population": 3,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 3,
+          "establishedLineages": 78
+        },
+        {
+          "step": 17600,
+          "frame": 17600,
+          "population": 6,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 4,
+          "establishedLineages": 78
+        },
+        {
+          "step": 17800,
+          "frame": 17800,
+          "population": 17,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 6,
+          "establishedLineages": 78
+        },
+        {
+          "step": 18000,
+          "frame": 18000,
+          "population": 43,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 78
+        },
+        {
+          "step": 18200,
+          "frame": 18200,
+          "population": 112,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 79
+        },
+        {
+          "step": 18400,
+          "frame": 18400,
+          "population": 234,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 10,
+          "establishedLineages": 84
+        },
+        {
+          "step": 18600,
+          "frame": 18600,
+          "population": 474,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 10,
+          "establishedLineages": 85
+        },
+        {
+          "step": 18800,
+          "frame": 18800,
+          "population": 808,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 12,
+          "establishedLineages": 90
+        },
+        {
+          "step": 19000,
+          "frame": 19000,
+          "population": 999,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 12,
+          "establishedLineages": 94
+        },
+        {
+          "step": 19200,
+          "frame": 19200,
+          "population": 805,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 12,
+          "establishedLineages": 94
+        },
+        {
+          "step": 19400,
+          "frame": 19400,
+          "population": 370,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 9,
+          "establishedLineages": 94
+        },
+        {
+          "step": 19600,
+          "frame": 19600,
+          "population": 159,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 7,
+          "establishedLineages": 94
+        },
+        {
+          "step": 19800,
+          "frame": 19800,
+          "population": 69,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 6,
+          "establishedLineages": 94
+        },
+        {
+          "step": 20000,
+          "frame": 20000,
+          "population": 29,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 6,
+          "establishedLineages": 94
+        }
+      ],
+      "dynamics": {
+        "naturalEquilibrium": false,
+        "periodicVariation": true,
+        "continuedGrowth": false,
+        "tailMeanPopulation": 162.255,
+        "tailMinPopulation": 3,
+        "tailMaxPopulation": 999,
+        "tailAmplitudeRatio": 6.138489,
+        "tailTrendPer1000Steps": 19.906335,
+        "tailDirectionChanges": 6
+      },
+      "capacityDeaths": 0,
+      "capacityCullDeaths": 0,
+      "packs": 0,
+      "maximumActivePacks": 0,
+      "maximumPackSize": 0,
+      "huntPackOrganisms": 0,
+      "species": 6,
+      "establishedLineages": 94,
+      "processing": {
+        "elapsedMs": 272372.3,
+        "measuredUpdateMsPerStep": 13.6175,
+        "stepsPerSecond": 73.429,
+        "fps": 0,
+        "updateMs": 0,
+        "drawMs": 7.79
+      },
+      "nanOrInfinity": 0,
+      "numberHealth": {
+        "ok": true,
+        "badCount": 0,
+        "bad": []
+      },
+      "lineageValidation": {
+        "ok": true,
+        "violationCount": 0,
+        "counts": {
+          "missingLineageIdOrganismIds": 0,
+          "missingRecordLineageIds": 0,
+          "emptyCanonicalAppearanceKeyOrganismIds": 0,
+          "invalidSpeciesStatusRecordIds": 0,
+          "danglingParentLineageIds": 0,
+          "duplicateLineageIds": 0,
+          "nanLineageGenerationOrganismIds": 0,
+          "negativeLineageGenerationOrganismIds": 0,
+          "emptyRecordCanonicalAppearanceKeyIds": 0,
+          "ecotypeMismatchOrganismIds": 0,
+          "canonicalAppearanceKeyMismatchLineageIds": 0,
+          "basicAppearanceMismatchLineageIds": 0,
+          "normalizedGeometryMismatchLineageIds": 0,
+          "topologyMismatchLineageIds": 0,
+          "provisionalFounderInvariantIds": 0
+        },
+        "details": {
+          "missingLineageIdOrganismIds": [],
+          "missingRecordLineageIds": [],
+          "emptyCanonicalAppearanceKeyOrganismIds": [],
+          "invalidSpeciesStatusRecordIds": [],
+          "danglingParentLineageIds": [],
+          "duplicateLineageIds": [],
+          "nanLineageGenerationOrganismIds": [],
+          "negativeLineageGenerationOrganismIds": [],
+          "emptyRecordCanonicalAppearanceKeyIds": [],
+          "ecotypeMismatchOrganismIds": [],
+          "canonicalAppearanceKeyMismatchLineageIds": [],
+          "basicAppearanceMismatchLineageIds": [],
+          "normalizedGeometryMismatchLineageIds": [],
+          "topologyMismatchLineageIds": [],
+          "provisionalFounderInvariantIds": []
+        }
+      },
+      "consoleErrors": []
+    }
+  ],
+  "aggregate": {
+    "maximumPopulation": 1962,
+    "endingPopulation": [
+      {
+        "seed": 41001,
+        "value": 114
+      },
+      {
+        "seed": 43001,
+        "value": 1962
+      },
+      {
+        "seed": 45001,
+        "value": 29
+      }
+    ],
+    "capacityDeaths": 0,
+    "capacityCullDeaths": 0,
+    "safetyStops": [],
+    "naturalEquilibriumSeeds": [],
+    "periodicVariationSeeds": [
+      41001,
+      45001
+    ],
+    "continuedGrowthSeeds": [
+      43001
+    ],
+    "nanOrInfinity": 0,
+    "consoleErrors": []
+  }
+}

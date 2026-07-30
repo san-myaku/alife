@@ -1,0 +1,144 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-30T14:50:52.964Z",
+  "defaultPopulationCap": 120,
+  "ui": {
+    "initial": {
+      "label": "120",
+      "checkboxChecked": false,
+      "sliderDisabled": false,
+      "warningVisible": false,
+      "warningText": "個体数が増え続けると、処理速度が低下したりブラウザが不安定になる場合があります。",
+      "settings": {
+        "enabled": true,
+        "value": 120,
+        "display": "120"
+      }
+    },
+    "unlimited": {
+      "label": "無制限",
+      "checkboxChecked": true,
+      "sliderDisabled": true,
+      "warningVisible": true,
+      "warningText": "個体数が増え続けると、処理速度が低下したりブラウザが不安定になる場合があります。",
+      "settings": {
+        "enabled": false,
+        "value": 120,
+        "display": "無制限"
+      }
+    },
+    "finiteAfterToggle": {
+      "label": "200",
+      "checkboxChecked": false,
+      "sliderDisabled": false,
+      "settings": {
+        "enabled": true,
+        "value": 200,
+        "display": "200"
+      }
+    },
+    "ok": true
+  },
+  "micro": {
+    "ok": true,
+    "defaultPopulationCap": 120,
+    "results": [
+      {
+        "id": "A",
+        "name": "finite cap 200 performs legacy capacity cull above 200",
+        "ok": true,
+        "details": {
+          "before": 220,
+          "settings": {
+            "enabled": true,
+            "value": 200,
+            "display": "200"
+          },
+          "removed": 20,
+          "after": 200,
+          "capacityDeaths": 20
+        }
+      },
+      {
+        "id": "B",
+        "name": "unlimited cap permits population above 200 without capacity deaths",
+        "ok": true,
+        "details": {
+          "before": 220,
+          "settings": {
+            "enabled": false,
+            "value": 200,
+            "display": "無制限"
+          },
+          "removed": 0,
+          "after": 220,
+          "capacityDeaths": 0
+        }
+      },
+      {
+        "id": "C",
+        "name": "finite and unlimited changes take effect on the next capacity check",
+        "ok": true,
+        "details": {
+          "before": 220,
+          "settings": {
+            "enabled": true,
+            "value": 200,
+            "display": "200"
+          },
+          "removedWhileUnlimited": 0,
+          "afterUnlimited": 220,
+          "removedAfterFinite": 20,
+          "afterFinite": 200
+        }
+      },
+      {
+        "id": "D",
+        "name": "save and load preserve unlimited mode and finite value",
+        "ok": true,
+        "details": {
+          "unlimitedLoaded": true,
+          "unlimitedRoundTrip": {
+            "enabled": false,
+            "value": 180,
+            "display": "無制限"
+          },
+          "finiteLoaded": true,
+          "finiteRoundTrip": {
+            "enabled": true,
+            "value": 170,
+            "display": "170"
+          }
+        }
+      },
+      {
+        "id": "E",
+        "name": "legacy save without population cap fields loads as finite default",
+        "ok": true,
+        "details": {
+          "legacyLoaded": true,
+          "legacyRoundTrip": {
+            "enabled": true,
+            "value": 120,
+            "display": "120"
+          },
+          "defaultValue": 120
+        }
+      },
+      {
+        "id": "F",
+        "name": "reset restores the existing finite default",
+        "ok": true,
+        "details": {
+          "resetSettings": {
+            "enabled": true,
+            "value": 120,
+            "display": "120"
+          },
+          "defaultValue": 120
+        }
+      }
+    ]
+  },
+  "consoleErrors": []
+}
