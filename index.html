@@ -112,6 +112,11 @@
   .challenge-state{ color:#bdf; font-size:.70rem; white-space:nowrap; }
   .challenge-meter{ height:6px; border-radius:999px; overflow:hidden; background:rgba(255,255,255,.10); margin-top:6px; }
   .challenge-meter i{ display:block; height:100%; width:var(--value,0%); background:linear-gradient(90deg,#f7b731,#50fa7b); }
+  .population-cap-toggle{ display:flex; align-items:flex-start; gap:8px; margin-top:8px; color:#dbeafe; font-size:.78rem; line-height:1.35; cursor:pointer; }
+  .population-cap-toggle input{ width:auto; margin:2px 0 0; accent-color:#7dd3fc; }
+  .population-cap-warning{ display:none; margin-top:7px; border:1px solid rgba(247,183,49,.38); border-radius:7px; padding:6px 8px; background:rgba(74,48,8,.28); color:#ffe3a3; font-size:.74rem; line-height:1.4; }
+  .population-cap-warning.visible{ display:block; }
+  #popmax-slider:disabled{ opacity:.42; cursor:not-allowed; }
   #capacity-note{ margin-top:6px; color:#ffdca8; font-size:.78rem; line-height:1.35; min-height:1.2em; }
   #extinct-cards{ margin-top:8px; display:grid; gap:6px; max-height:18vh; overflow:auto; }
   .extinct-card{ border:1px solid rgba(125,145,190,.28); border-radius:8px; background:rgba(7,16,34,.72); padding:7px 8px; color:#b8c7e6; font-size:.78rem; line-height:1.35; }
@@ -252,6 +257,11 @@
     <div class="control">
       <label>個体数上限 <span class="value" id="popmax-value">120</span></label>
       <input id="popmax-slider" type="range" min="30" max="200" step="10" value="120" />
+      <label class="population-cap-toggle">
+        <input id="population-cap-unlimited" type="checkbox" />
+        <span>個体数上限を無制限にする</span>
+      </label>
+      <div id="population-cap-warning" class="population-cap-warning" role="note">個体数が増え続けると、処理速度が低下したりブラウザが不安定になる場合があります。</div>
     </div>
 
     <div class="stats">
@@ -859,12 +869,52 @@
   }
 
   // ===== UI State =====
-  const ui={ speed:1, mutation:0.03, showSense:false, tool:'food', popMax:CONFIG.population.maxDefault, parallax:1.0, roleViz:false, observeField:null, microView:true, forceFullRender:true };
+  const ui={ speed:1, mutation:0.03, showSense:false, tool:'food', popMax:CONFIG.population.maxDefault, popMaxEnabled:true, parallax:1.0, roleViz:false, observeField:null, microView:true, forceFullRender:true };
   const devMode = new URLSearchParams(location.search).get('dev') === '1';
   const renderPerf = { mobile:IS_MOBILE_VIEW, low:!ui.forceFullRender && IS_MOBILE_VIEW, tiny:false, mode:ui.forceFullRender?'full':(IS_MOBILE_VIEW?'low':'full'), meshCount:0, complexCount:0, heavyComplex:false };
+  function populationCapEnabled(){
+    return ui.popMaxEnabled!==false && Number.isFinite(ui.popMax) && ui.popMax>0;
+  }
+  function populationCapSettings(){
+    return {
+      enabled:populationCapEnabled(),
+      value:Number.isFinite(ui.popMax) && ui.popMax>0 ? ui.popMax : CONFIG.population.maxDefault,
+      display:populationCapEnabled() ? String(ui.popMax) : '無制限'
+    };
+  }
+  function syncPopulationCapUI(){
+    const enabled=populationCapEnabled();
+    const slider=$('popmax-slider');
+    const unlimited=$('population-cap-unlimited');
+    const value=$('popmax-value');
+    const warning=$('population-cap-warning');
+    if(slider){
+      slider.disabled=!enabled;
+      slider.value=String(ui.popMax);
+      slider.setAttribute('aria-disabled',enabled ? 'false' : 'true');
+    }
+    if(unlimited) unlimited.checked=!enabled;
+    if(value) value.textContent=enabled ? String(ui.popMax) : '無制限';
+    if(warning) warning.classList.toggle('visible',!enabled);
+  }
+  function setPopulationCapSettings(options={}){
+    const opts=options || {};
+    const requested=Number(opts.value);
+    if(opts.value!=null && opts.value!=='' && Number.isFinite(requested) && requested>0){
+      ui.popMax=Math.max(1,Math.round(requested));
+    }else if(!Number.isFinite(ui.popMax) || ui.popMax<=0){
+      ui.popMax=CONFIG.population.maxDefault;
+    }
+    ui.popMaxEnabled=opts.enabled!==false;
+    syncPopulationCapUI();
+    updateCapacityStatus(window.env?.getAverages ? window.env.getAverages() : {O:1});
+    return populationCapSettings();
+  }
   $('speed-slider').addEventListener('input',e=>{ ui.speed=+e.target.value; $('speed-value').textContent=ui.speed+'x'; });
   $('mutation-slider').addEventListener('input',e=>{ ui.mutation=(+e.target.value)/100; $('mutation-value').textContent=e.target.value+'%'; });
-  $('popmax-slider').addEventListener('input',e=>{ ui.popMax=+e.target.value; $('popmax-value').textContent=String(ui.popMax); });
+  $('popmax-slider').addEventListener('input',e=>setPopulationCapSettings({enabled:true,value:e.target.value}));
+  $('population-cap-unlimited').addEventListener('change',e=>setPopulationCapSettings({enabled:!e.target.checked}));
+  syncPopulationCapUI();
   window.addEventListener('keydown',ev=>{ if(ev.key==='h'||ev.key==='H') ui.showSense=!ui.showSense; });
 
   // ===== Role visualization (color by role) =====
@@ -10896,14 +10946,17 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       c:currentDiets.c ? storeNSums.c/currentDiets.c : 0
     };
     const peakPopulation=samples.reduce((max,s)=>Math.max(max,Number(s.population||0)),organisms.length);
-    const firstAtPopulationCap=samples.find(s=>Number(s.population||0)>=ui.popMax) || null;
+    const firstAtPopulationCap=populationCapEnabled()
+      ? (samples.find(s=>Number(s.population||0)>=ui.popMax) || null)
+      : null;
     return {
       frame,
       windowFrames:wf,
       startPopulation:first?.population ?? null,
       endPopulation:organisms.length,
       peakPopulation,
-      populationCap:ui.popMax,
+      populationCap:populationCapEnabled() ? ui.popMax : null,
+      populationCapEnabled:populationCapEnabled(),
       firstPopulationCapFrame:firstAtPopulationCap?.frame ?? null,
       startDiets:first?.diets ?? null,
       endDiets:currentDiets,
@@ -13702,8 +13755,8 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
     const el=$('capacity-note'); if(!el) return;
     const pop=organisms.length;
     let msg='';
-    if(pop>ui.popMax*0.94) msg='過密状態：繁殖が抑制され、競争が強まっています。';
-    else if(pop>ui.popMax*0.82) msg='環境収容力に近づいています。餌と酸素の競争が増えています。';
+    if(populationCapEnabled() && pop>ui.popMax*0.94) msg='過密状態：繁殖が抑制され、競争が強まっています。';
+    else if(populationCapEnabled() && pop>ui.popMax*0.82) msg='環境収容力に近づいています。餌と酸素の競争が増えています。';
     else if(a.O<0.30) msg='酸素が不足し、若い個体の生存率が下がっています。';
     el.textContent=msg;
     if(msg && msg!==lastCapacityKey && frame>720){ log(msg); }
@@ -18514,10 +18567,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   }
 
   function populationLoad(){
-    return ui.popMax>0 ? organisms.length / Math.max(1, ui.popMax) : 0;
+    return populationCapEnabled() ? organisms.length / ui.popMax : 0;
   }
   function populationReproductionScale(){
-    if(ui.popMax<=0) return 1;
+    if(!populationCapEnabled()) return 1;
     const load=populationLoad();
     if(load<=0.85) return 1;
     if(load<1.0){
@@ -18528,9 +18581,11 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     return 0.05;
   }
   function overflowBuffer(){
+    if(!populationCapEnabled()) return 0;
     return Math.max(6, Math.ceil(Math.max(1,ui.popMax) * 0.05));
   }
   function emergencyPopulationLimit(){
+    if(!populationCapEnabled()) return null;
     return Math.max(1,ui.popMax) + overflowBuffer();
   }
   function capacityScore(o){
@@ -18730,7 +18785,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     telemetry.capacityCullEvents.push({
       frame,
       population:allRows.length,
-      populationLimit:Number(ui.popMax||0),
+      populationLimit:populationCapEnabled() ? ui.popMax : null,
       emergencyLimit,
       removeNeed,
       selected:selectedRows,
@@ -18808,7 +18863,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     };
   }
   function applyEmergencyCapacityCull(){
-    if(ui.popMax<=0) return 0;
+    if(!populationCapEnabled()) return 0;
     const emergencyLimit=emergencyPopulationLimit();
     if(organisms.length<=emergencyLimit) return 0;
     const removeNeed=Math.max(0, organisms.length-ui.popMax);
@@ -18844,11 +18899,26 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     }
     return removed;
   }
+  function forcePopulationForDiagnostic(n=120){
+    const target=Math.max(1,Math.min(6000,Math.round(Number(n)||120)));
+    while(organisms.length<target){
+      const point=randomPointInWorld(20,Math.random);
+      const o=new Organism(point.x,point.y);
+      settleStarter(o);
+      organisms.push(o);
+    }
+    while(organisms.length>target){
+      const o=organisms.pop();
+      if(o) speciesCount.set(o.speciesKey,Math.max(0,(speciesCount.get(o.speciesKey)||1)-1));
+    }
+    return organisms.length;
+  }
 
   function start(){ if(running) return; running=true; $('start-btn').disabled=true; $('pause-btn').disabled=false; log('▶ 再開'); }
   function pause(){ if(!running) return; running=false; $('start-btn').disabled=false; $('pause-btn').disabled=true; log('⏸ 一時停止'); }
   function reset(){
     running=false;
+    setPopulationCapSettings({enabled:true,value:CONFIG.population.maxDefault});
     $('start-btn').disabled=false;
     $('pause-btn').disabled=true;
     frame=0;
@@ -21537,7 +21607,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       species:species.species,
       maxSpeciesShare:species.maxSpeciesShare,
       averageEnergyByDiet:energy,
-      populationLoad:ui.popMax>0 ? organisms.length/Math.max(1,ui.popMax) : null,
+      populationLoad:populationCapEnabled() ? organisms.length/ui.popMax : null,
       recentBirths:recent.births,
       recentDeaths:recent.deaths,
       recentOvercrowdingDeaths:recent.overcrowdingDeaths,
@@ -21838,7 +21908,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const failures=[];
     const plans=[];
     if(positionMode==='cursor' && !devLastCursor) warnings.push('cursor position unavailable; used center dispersion');
-    if(ui.popMax>0 && organisms.length/Math.max(1,ui.popMax)>=0.95) warnings.push('population is above 95% of popMax; injected organisms may be culled by capacity pressure');
+    if(populationCapEnabled() && organisms.length/ui.popMax>=0.95) warnings.push('population is above 95% of popMax; injected organisms may be culled by capacity pressure');
     for(let i=0;i<count;i++){
       const genes=devGenesForSpawn(options,i,dietType,preset);
       const probe=devPhenotypeProbeFromGenes(genes);
@@ -22089,7 +22159,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   }
   function devPanelCounts(){
     const diets=devPopulationDietCounts();
-    return {frame,population:organisms.length,popMax:ui.popMax,carnivores:diets.c,omnivores:diets.m,herbivores:diets.h};
+    return {frame,population:organisms.length,popMax:populationCapEnabled() ? ui.popMax : null,populationCapEnabled:populationCapEnabled(),carnivores:diets.c,omnivores:diets.m,herbivores:diets.h};
   }
   function initDevPanel(){
     if(!devMode || document.getElementById('dev-injection-panel')) return;
@@ -22203,7 +22273,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     };
     const updateWarning=()=>{
       const c=devPanelCounts();
-      const load=c.popMax>0 ? c.population/Math.max(1,c.popMax) : 0;
+      const load=c.populationCapEnabled && c.popMax>0 ? c.population/c.popMax : 0;
       warning.textContent=load>=0.95 ? 'population is above 95% of popMax; injected organisms may be culled.' : '';
       if(!status.textContent){
         status.textContent=JSON.stringify({frame:c.frame,population:c.population,carnivores:c.carnivores,latestBatchId:[...injectionBatches.keys()].slice(-1)[0]||null},null,2);
@@ -22969,6 +23039,19 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       predationScansPerSample: perfStats.predationScansLast
     };
   }
+  function diagnosticPopulationSnapshot(step){
+    const living=organisms.filter(o=>o && !o.dead);
+    const lineageSummary=lineageRegistrySummary();
+    return {
+      step,
+      frame,
+      population:living.length,
+      packs:activePackSnapshots().length,
+      huntPackOrganisms:living.filter(isPackHunter).length,
+      species:new Set(living.map(o=>o.speciesKey)).size,
+      establishedLineages:Number(lineageSummary.classification?.establishedRecordCount || 0)
+    };
+  }
   function lineageMateSelectionEventInvariantSummary(events=lineageMateSelectionEvents()){
     const rows=Array.isArray(events) ? events : [];
     const violations=[];
@@ -23034,6 +23117,13 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const opts=options || {};
     const seed=Number(opts.seed ?? 42001);
     const steps=Math.max(1,Math.min(120000,Number(opts.steps ?? 6000)));
+    const safetyStopPopulation=opts.safetyStopPopulation==null || opts.safetyStopPopulation===''
+      ? null
+      : Math.max(1,Math.round(Number(opts.safetyStopPopulation)));
+    if(safetyStopPopulation!=null && !Number.isFinite(safetyStopPopulation)){
+      throw new RangeError(`Invalid diagnostic safety stop population: ${opts.safetyStopPopulation}`);
+    }
+    const populationSampleInterval=Math.max(1,Math.round(Number(opts.populationSampleInterval ?? 200)));
     const includeIndividuals=!!opts.includeIndividuals;
     const restoreAfterRun=!!opts.restoreAfterRun;
     const oldPackSharing={...diagnosticPackSharing};
@@ -23087,28 +23177,52 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       Math.random=duelSeededRandom(seed);
       NEXT_ID=1;
       reset();
+      if(opts.populationCapEnabled===false){
+        setPopulationCapSettings({enabled:false});
+      }else if(opts.populationCapEnabled===true || opts.populationCap!=null){
+        setPopulationCapSettings({enabled:true,value:opts.populationCap ?? CONFIG.population.maxDefault});
+      }
       const initialEnvironment=window.env?.initializationSummary ? window.env.initializationSummary() : null;
       const initialAlgaeRegrowth=window.env?.algaeFlowSummary ? window.env.algaeFlowSummary() : null;
       const initialResourceSpatial=resourceSpatialUseSummary();
       const diagnosticInitialPopulation=organisms.filter(o=>o && !o.dead).length;
       const resourceSpatialMilestones=[];
       const algaeRegrowthMilestones=[];
+      const populationTimeseries=[diagnosticPopulationSnapshot(0)];
+      let completedSteps=0;
+      let maximumPopulation=organisms.length;
+      let safetyStopReached=false;
       const milestoneFrames=new Set([120,300,500,750,1000,1500,2000,3000,6000].filter(value=>value<=steps));
       for(let i=0;i<steps;i++){
         updateModel();
+        completedSteps=i+1;
+        maximumPopulation=Math.max(maximumPopulation,organisms.length);
         if(milestoneFrames.has(i+1)){
           resourceSpatialMilestones.push(resourceSpatialUseSummary());
           algaeRegrowthMilestones.push(window.env?.algaeFlowSummary ? window.env.algaeFlowSummary() : null);
         }
+        if(completedSteps%populationSampleInterval===0){
+          populationTimeseries.push(diagnosticPopulationSnapshot(completedSteps));
+        }
+        if(safetyStopPopulation!=null && organisms.length>=safetyStopPopulation){
+          safetyStopReached=true;
+          if(populationTimeseries.at(-1)?.step!==completedSteps){
+            populationTimeseries.push(diagnosticPopulationSnapshot(completedSteps));
+          }
+          break;
+        }
+      }
+      if(populationTimeseries.at(-1)?.step!==completedSteps){
+        populationTimeseries.push(diagnosticPopulationSnapshot(completedSteps));
       }
       telemetrySampleFrame(true);
-      const lineage=carnivoreLineageSummary({windowFrames:steps+60,includeIndividuals});
-      const population=populationTurnoverSummary(steps+60);
-      const predation=predationIndividualFunnelSummary(steps+60);
-      const chase=chaseEfficiencySummary(steps+60);
-      const reproduction=reproductionEligibilitySummary(steps+60);
-      const feeding=feedingBehaviorSummary(steps+60);
-      const perfDiagnostic=performanceSummaryForDiagnostic(startedAt,steps);
+      const lineage=carnivoreLineageSummary({windowFrames:completedSteps+60,includeIndividuals});
+      const population=populationTurnoverSummary(completedSteps+60);
+      const predation=predationIndividualFunnelSummary(completedSteps+60);
+      const chase=chaseEfficiencySummary(completedSteps+60);
+      const reproduction=reproductionEligibilitySummary(completedSteps+60);
+      const feeding=feedingBehaviorSummary(completedSteps+60);
+      const perfDiagnostic=performanceSummaryForDiagnostic(startedAt,completedSteps);
       const health=diagnosticNumberHealth({lineage});
       const lineageMateSelectionDiagnostic={
         telemetry:lineageMateSelectionTelemetry(),
@@ -23132,10 +23246,18 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       return {
         seed,
         steps,
+        completedSteps,
         frame,
         world:{...worldGeometry},
         nextId:NEXT_ID,
         elapsedMs:Number((performance.now()-startedAt).toFixed(2)),
+        populationCap:populationCapSettings(),
+        populationTimeseries,
+        maximumPopulation,
+        safetyStopPopulation,
+        safetyStopReached,
+        populationRunaway:safetyStopReached,
+        terminationReason:safetyStopReached ? 'population-runaway-safety-stop' : 'completed',
         maxCarnivores:lineage.extinction.maxCarnivores,
         endCarnivores:lineage.extinction.currentCarnivores,
         carnivoreExtinctionFrame:lineage.extinction.carnivoreExtinctionFrame,
@@ -23211,6 +23333,98 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       diagnosticAlgaeRegrowthScale=oldDiagnosticAlgaeRegrowthScale;
       if(!opts.preserveFeatureFlagsAfterRun) Object.assign(featureFlags,oldFeatureFlags);
     }
+  }
+  function runUnlimitedPopulationCapMicroTests(){
+    const saved=capture();
+    const results=[];
+    const add=(id,name,ok,details={})=>results.push({id,name,ok:!!ok,details});
+    const prepare=(enabled,value=200,population=220)=>{
+      reset();
+      setPopulationCapSettings({enabled,value});
+      forcePopulationForDiagnostic(population);
+      resetTelemetry();
+      return {before:organisms.length,settings:populationCapSettings()};
+    };
+    try{
+      const finite=prepare(true,200,220);
+      const finiteRemoved=applyEmergencyCapacityCull();
+      const finiteCull=capacityCullSummary();
+      add('A','finite cap 200 performs legacy capacity cull above 200',
+        finite.before===220 && finiteRemoved===20 && organisms.length===200 && finiteCull.selected===20,
+        {...finite,removed:finiteRemoved,after:organisms.length,capacityDeaths:finiteCull.selected});
+
+      const unlimited=prepare(false,200,220);
+      const unlimitedRemoved=applyEmergencyCapacityCull();
+      const unlimitedCull=capacityCullSummary();
+      add('B','unlimited cap permits population above 200 without capacity deaths',
+        unlimited.before===220 && unlimitedRemoved===0 && organisms.length===220 && unlimitedCull.selected===0,
+        {...unlimited,removed:unlimitedRemoved,after:organisms.length,capacityDeaths:unlimitedCull.selected});
+
+      const toggle=prepare(true,200,220);
+      setPopulationCapSettings({enabled:false});
+      const removedWhileUnlimited=applyEmergencyCapacityCull();
+      const afterUnlimited=organisms.length;
+      setPopulationCapSettings({enabled:true});
+      const removedAfterFinite=applyEmergencyCapacityCull();
+      add('C','finite and unlimited changes take effect on the next capacity check',
+        toggle.before===220
+          && removedWhileUnlimited===0
+          && afterUnlimited===220
+          && removedAfterFinite===20
+          && organisms.length===200,
+        {...toggle,removedWhileUnlimited,afterUnlimited,removedAfterFinite,afterFinite:organisms.length});
+
+      reset();
+      setPopulationCapSettings({enabled:false,value:180});
+      const unlimitedSave=capture();
+      setPopulationCapSettings({enabled:true,value:130});
+      const unlimitedLoaded=restore(unlimitedSave);
+      const unlimitedRoundTrip=populationCapSettings();
+      setPopulationCapSettings({enabled:true,value:170});
+      const finiteSave=capture();
+      setPopulationCapSettings({enabled:false});
+      const finiteLoaded=restore(finiteSave);
+      const finiteRoundTrip=populationCapSettings();
+      add('D','save and load preserve unlimited mode and finite value',
+        unlimitedLoaded
+          && unlimitedRoundTrip.enabled===false
+          && unlimitedRoundTrip.value===180
+          && finiteLoaded
+          && finiteRoundTrip.enabled===true
+          && finiteRoundTrip.value===170,
+        {unlimitedLoaded,unlimitedRoundTrip,finiteLoaded,finiteRoundTrip});
+
+      const decoded=JSON.parse(decodeURIComponent(escape(atob(finiteSave.split(':',2)[1]))));
+      delete decoded.settings;
+      const legacySave='ALIFE2:'+btoa(unescape(encodeURIComponent(JSON.stringify(decoded))));
+      setPopulationCapSettings({enabled:false,value:190});
+      const legacyLoaded=restore(legacySave);
+      const legacyRoundTrip=populationCapSettings();
+      add('E','legacy save without population cap fields loads as finite default',
+        legacyLoaded
+          && legacyRoundTrip.enabled===true
+          && legacyRoundTrip.value===CONFIG.population.maxDefault,
+        {legacyLoaded,legacyRoundTrip,defaultValue:CONFIG.population.maxDefault});
+
+      setPopulationCapSettings({enabled:false,value:190});
+      reset();
+      const resetSettings=populationCapSettings();
+      add('F','reset restores the existing finite default',
+        resetSettings.enabled===true && resetSettings.value===CONFIG.population.maxDefault,
+        {resetSettings,defaultValue:CONFIG.population.maxDefault});
+    }catch(error){
+      add('exception','population cap micro test exception',false,{
+        message:String(error?.message || error),
+        stack:String(error?.stack || '')
+      });
+    }finally{
+      restore(saved);
+    }
+    return {
+      ok:results.every(result=>result.ok),
+      defaultPopulationCap:CONFIG.population.maxDefault,
+      results
+    };
   }
   function runCarnivoreLineageMicroTests(){
     const saved=capture();
@@ -32557,6 +32771,18 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     runSeededWorldDiagnostic(options={}){
       return runSeededWorldDiagnostic(options);
     },
+    runUnlimitedPopulationCapMicroTests(){
+      return runUnlimitedPopulationCapMicroTests();
+    },
+    populationCapSettings(){
+      return populationCapSettings();
+    },
+    setPopulationCap(options={}){
+      return setPopulationCapSettings(options);
+    },
+    applyCapacityCull(){
+      return applyEmergencyCapacityCull();
+    },
     diagnosticNumberHealth(extra=null){
       return diagnosticNumberHealth(extra);
     },
@@ -32813,12 +33039,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     capacitySummary(){
       return {
         population:organisms.length,
-        popMax:ui.popMax,
+        populationCapEnabled:populationCapEnabled(),
+        popMax:populationCapEnabled() ? ui.popMax : null,
+        finiteValue:ui.popMax,
+        display:populationCapEnabled() ? String(ui.popMax) : '無制限',
         load:populationLoad(),
         reproductionScale:populationReproductionScale(),
-        overflowBuffer:ui.popMax>0 ? overflowBuffer() : 0,
-        emergencyLimit:ui.popMax>0 ? emergencyPopulationLimit() : null,
-        overEmergency:ui.popMax>0 ? organisms.length>emergencyPopulationLimit() : false
+        overflowBuffer:populationCapEnabled() ? overflowBuffer() : 0,
+        emergencyLimit:populationCapEnabled() ? emergencyPopulationLimit() : null,
+        overEmergency:populationCapEnabled() ? organisms.length>emergencyPopulationLimit() : false
       };
     },
     resetSimulation(options={}){
@@ -32857,17 +33086,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       };
     },
     forcePopulation(n=120){
-      const target=Math.max(1,Math.min(180,Number(n)||120));
-      while(organisms.length<target){
-        const point=randomPointInWorld(20,Math.random);
-        const o=new Organism(point.x,point.y);
-        settleStarter(o);
-        organisms.push(o);
-      }
-      while(organisms.length>target){
-        const o=organisms.pop();
-        if(o){ speciesCount.set(o.speciesKey, Math.max(0,(speciesCount.get(o.speciesKey)||1)-1)); }
-      }
+      forcePopulationForDiagnostic(n);
       return this.counts();
     },
     modelStep(frames=1){ for(let i=0;i<Math.max(1,Math.min(20,frames|0));i++) updateModel(); return this.counts(); },
@@ -32945,6 +33164,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       worldHeight:WORLD_H,
       worldRadius:worldGeometry.radius,
       frame,generation,dayNight:{phase:dayNight.phase},worldEvent,eco,
+      settings:{
+        populationCapEnabled:populationCapEnabled(),
+        populationCap:ui.popMax
+      },
       environmentInitialization:{
         mode:normalizeEnvironmentInitializationMode(activeEnvironmentInitialization?.mode || environmentInitializationMode),
         seed:normalizeEnvironmentInitializationSeed(activeEnvironmentInitialization?.seed ?? environmentInitializationSeed)
@@ -33007,6 +33230,13 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         || state.worldRadius!==worldGeometry.radius){
         throw new Error(`このセーブの世界形式（${state.worldShape || '旧形式'}）は現在の${worldGeometry.shape}世界と一致しません`);
       }
+      const savedPopulationCap=state.settings && typeof state.settings==='object'
+        ? state.settings
+        : null;
+      setPopulationCapSettings({
+        enabled:savedPopulationCap?.populationCapEnabled !== false,
+        value:savedPopulationCap?.populationCap ?? CONFIG.population.maxDefault
+      });
       if(state.features && typeof state.features==='object'){
         if(state.features.evolvableLifeHistory!=null) featureFlags.evolvableLifeHistory=!!state.features.evolvableLifeHistory;
         if(state.features.juvenileDevelopment!=null) featureFlags.juvenileDevelopment=!!state.features.juvenileDevelopment;
