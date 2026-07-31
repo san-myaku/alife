@@ -8164,11 +8164,24 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
   function predationMinPreySize(predator, context='target'){
     return 0;
   }
-  function getEffectivePredationSizeRatio(predator, prey, context='target'){
+  function getEffectivePredationSizeRatio(predator, prey, context='target', includeHelperDetails=true){
     const predatorSize=Math.max(Number(predator?.size||0),0.001);
     const preySize=Number(prey?.size||0);
-    const eligiblePackHelpers=eligiblePackHelpersFor(predator,prey,context);
-    const eligibleHelperSizeSum=eligiblePackHelpers.reduce((sum,helper)=>sum+Number(helper.size||0),0);
+    let eligiblePackHelpers=null;
+    let eligibleHelperSizeSum=0;
+    let eligibleHelperCount=0;
+    if(includeHelperDetails){
+      eligiblePackHelpers=eligiblePackHelpersFor(predator,prey,context);
+      eligibleHelperCount=eligiblePackHelpers.length;
+      for(const helper of eligiblePackHelpers) eligibleHelperSizeSum+=Number(helper.size||0);
+    } else if(predationUsesPackHelpers(predator) && prey && Number.isFinite(Number(prey.x)) && Number.isFinite(Number(prey.y))){
+      forEachOrgNeighbors(prey.x,prey.y,PACK_HELPER_RADIUS,(helper)=>{
+        if(!helper || helper===predator || helper===prey || helper.dead || !helper.genes) return;
+        if(!packHuntBehaviorAlly(predator,helper)) return;
+        eligibleHelperCount++;
+        eligibleHelperSizeSum+=Number(helper.size||0);
+      });
+    }
     const effectivePredatorSize=predatorSize + PACK_HELPER_SIZE_CONTRIBUTION*eligibleHelperSizeSum;
     const packSizeMultiplier=effectivePredatorSize/predatorSize;
     const effectiveDenominator=Math.max(effectivePredatorSize,0.001);
@@ -8179,8 +8192,8 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
       effectiveSizeRatio,
       packSizeMultiplier,
       eligiblePackHelpers,
-      eligibleHelperIds:eligiblePackHelpers.map(h=>h.id),
-      eligibleHelperCount:eligiblePackHelpers.length,
+      eligibleHelperIds:eligiblePackHelpers ? eligiblePackHelpers.map(h=>h.id) : null,
+      eligibleHelperCount,
       eligibleHelperSizeSum,
       effectivePredatorSize,
       packHelperContribution:PACK_HELPER_SIZE_CONTRIBUTION
@@ -9402,7 +9415,7 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
     const preySize=Number(prey?.size||0);
     const maxPreySize=predationMaxPreySize(predator, context);
     const minPreySize=predationMinPreySize(predator, context);
-    const sizeInfo=getEffectivePredationSizeRatio(predator,prey,context);
+    const sizeInfo=getEffectivePredationSizeRatio(predator,prey,context,false);
     const sizeRatio=Number.isFinite(sizeInfo.rawSizeRatio) ? sizeInfo.rawSizeRatio : null;
     const maxRatio=Number.isFinite(maxPreySize) && maxPreySize>0 ? preySize/maxPreySize : null;
     const base={
@@ -9445,7 +9458,7 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
       base.reason='tooSmall';
       return base;
     }
-    if(!canAttemptPredation(predator,prey,context)){
+    if(!Number.isFinite(sizeInfo.effectiveSizeRatio) || sizeInfo.effectiveSizeRatio<0){
       base.tooLarge=true;
       base.reason='tooLarge';
       return base;
@@ -15095,7 +15108,15 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
         };
       }
       const perfTrailStarted=perfHotStart();
-      if((this.age & 3)===0){ this.trail.push({x:this.x,y:this.y}); if(this.trail.length>16) this.trail.shift(); }
+      if((this.age & 3)===0){
+        if(this.trail.length<16) this.trail.push({x:this.x,y:this.y});
+        else {
+          const point=this.trail.shift();
+          point.x=this.x;
+          point.y=this.y;
+          this.trail.push(point);
+        }
+      }
       perfHotEnd('trailHistory',perfTrailStarted,1);
       if(this.attackCD>0) this.attackCD--; if(this.protect>0) this.protect--; if(this.fleeTimer>0) this.fleeTimer--; if(this.mutagenBoost>0) this.mutagenBoost--; if(this.burstTimer>0) this.burstTimer--; if(this.grazingTimer>0) this.grazingTimer--; if(this.newSpeciesFlash>0) this.newSpeciesFlash--; if(this.packConsensusHoldT>0) this.packConsensusHoldT--; if(this.packConsensusSwitchCD>0) this.packConsensusSwitchCD--;
 
@@ -15121,7 +15142,13 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
       const foodLedger=foodLedgerFor(this);
       const preyTarget=carnGene>=0.54 ? organismById(this.preyTargetId) : null;
       if(canGrazeFieldAlgae(this) && window.env && window.env.bestAlgaeNear && (this.energy<this.reproThreshold*1.08 || foodLedger.main==='algae')){
-        const algaeTarget=window.env.bestAlgaeNear(this.x,this.y,this.senseR*(carnGene<0.34?1.05:0.72), carnGene<0.34?0.17:0.24);
+        const algaeTarget=window.env.bestAlgaeNear(
+          this.x,
+          this.y,
+          this.senseR*(carnGene<0.34?1.05:0.72),
+          carnGene<0.34?0.17:0.24,
+          this._algaeTarget || (this._algaeTarget={x:0,y:0,v:0,type:'fieldAlgae'})
+        );
         if(algaeTarget){
           const dx=algaeTarget.x-this.x, dy=algaeTarget.y-this.y, d2=dx*dx+dy*dy;
           if(d2<minD2*1.14){ minD2=d2; nearest=algaeTarget; }
@@ -16905,7 +16932,7 @@ const env = (function(){
     }
     lastPaint = -999;
   }
-  function bestAlgaeNear(x,y,r,minValue=0.20){
+  function bestAlgaeNear(x,y,r,minValue=0.20,out=null){
     ensure();
     const range = Math.max(1, r||cell);
     const cx = Math.min(ew-1, Math.max(0, (x/cell)|0));
@@ -16926,7 +16953,15 @@ const env = (function(){
         const score=v*(0.72 + 0.28*(1-dist/range)) - detritusPenalty;
         if(score>bestScore){
           bestScore=score;
-          best={x:wx,y:wy,v,type:'fieldAlgae'};
+          if(out){
+            out.x=wx;
+            out.y=wy;
+            out.v=v;
+            out.type='fieldAlgae';
+            best=out;
+          } else {
+            best={x:wx,y:wy,v,type:'fieldAlgae'};
+          }
         }
       }
     }
@@ -17737,7 +17772,7 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
   reset: resetAll,
   initialize: options=>initializeEnvironment(options),
   valueAt: (type,x,y)=> valueAt(type,x,y),
-  bestAlgaeNear: (x,y,r,minValue)=> bestAlgaeNear(x,y,r,minValue),
+  bestAlgaeNear: (x,y,r,minValue,out)=> bestAlgaeNear(x,y,r,minValue,out),
   grazeAlgaeAt: (x,y,appetite,radius)=> grazeAlgaeAt(x,y,appetite,radius),
   getAverages: ()=>averages(),
   algaeStats: ()=>algaeStats(),
