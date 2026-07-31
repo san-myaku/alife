@@ -16589,9 +16589,10 @@ const env = (function(){
   // pixel view
   let viewMode = 'pixels'; // 'pixels' | 'dots'
   let pxCanvas=null, pxCtx=null, lastPaint=-999;
-  let algaeCanvas=null, algaeCtx=null, lastAlgaePaint=-999;
+  let algaeCanvas=null, algaeCtx=null, lastAlgaePaint=-999, lastAlgaePaintTime=-Infinity;
   let algaeDirtyCells=null, algaeDirtyCount=0, algaeFullDirty=true;
-  const algaeRenderStats = { full:0, dirty:0, cells:0 };
+  const algaeRenderStats = { full:0, dirty:0, cells:0, throttled:0 };
+  const ALGAE_RENDER_INTERVAL_MS=100;
   let gpuCanvas=null, gpuGL=null, gpuProgram=null, gpuTex=null, gpuBuffer=null, gpuFieldBytes=null, gpuReady=false;
   // shared dot sprite
   let sprite = null;
@@ -16632,6 +16633,7 @@ const env = (function(){
     algaeDirtyCount = 0;
     algaeFullDirty = true;
     lastAlgaePaint = -999;
+    lastAlgaePaintTime = -Infinity;
   }
   function ensure(){
     if(!sprite) sprite = makeSprite();
@@ -17447,6 +17449,7 @@ if(p.type==='oxygen'){
       markAlgaeAllDirty();
     }
     let paintedCells=0;
+    const paintNow=performance.now();
     if(algaeFullDirty){
       algaeCtx.setTransform(1,0,0,1,0,0);
       algaeCtx.clearRect(0,0,cw,ch);
@@ -17456,7 +17459,8 @@ if(p.type==='oxygen'){
       algaeFullDirty = false;
       algaeRenderStats.full++;
       lastAlgaePaint = frame;
-    } else if(algaeDirtyCount>0){
+      lastAlgaePaintTime = paintNow;
+    } else if(algaeDirtyCount>0 && paintNow-lastAlgaePaintTime>=ALGAE_RENDER_INTERVAL_MS){
       const dirtyFlags = new Uint8Array(Math.max(1, ew*eh));
       for(let i=0;i<algaeDirtyCells.length;i++){
         if(!algaeDirtyCells[i]) continue;
@@ -17476,6 +17480,9 @@ if(p.type==='oxygen'){
       paintedCells = paintAlgaeMosaic(algaeCtx,dirty);
       algaeRenderStats.dirty++;
       lastAlgaePaint = frame;
+      lastAlgaePaintTime = paintNow;
+    } else if(algaeDirtyCount>0){
+      algaeRenderStats.throttled++;
     }
     algaeRenderStats.cells = paintedCells;
     ctx.save();
@@ -17864,6 +17871,7 @@ data[o+3] = Math.max(0, Math.min(255, 255*(Math.max(Na,Math.max(C,Math.max(T,dVi
   algaeLayerSummary: ()=>({
     full: algaeRenderStats.full,
     dirty: algaeRenderStats.dirty,
+    throttled: algaeRenderStats.throttled,
     cells: algaeRenderStats.cells,
     pending: algaeDirtyCount,
     fullDirty: algaeFullDirty,
