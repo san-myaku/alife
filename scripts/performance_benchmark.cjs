@@ -164,6 +164,9 @@ async function runCondition(browser, population, condition) {
       return {
         profiler,
         legacy,
+        idIndex: typeof window.__alifeDebug.validateOrganismIdIndex === 'function'
+          ? window.__alifeDebug.validateOrganismIdIndex()
+          : null,
         observer,
         memory,
         hud: document.getElementById('fps-hud')?.textContent || null,
@@ -186,6 +189,7 @@ async function runCondition(browser, population, condition) {
       endCounts: result.counts,
       profiler: result.profiler,
       legacy: result.legacy,
+      idIndex: result.idIndex,
       hud: result.hud,
       browserSignals: {
         longTaskCount: result.observer.longTasks.length,
