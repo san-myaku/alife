@@ -125,6 +125,12 @@
   #fps-hud{ position:fixed; left:8px; bottom:8px; z-index:30; pointer-events:none; min-width:132px; white-space:nowrap; padding:4px 7px; border:1px solid rgba(123,223,242,.38); border-radius:8px; background:rgba(5,12,26,.62); color:#dbeafe; font:700 12px/1.2 ui-monospace,SFMono-Regular,Consolas,monospace; font-variant-numeric:tabular-nums; box-shadow:0 4px 12px rgba(0,0,0,.20); }
   #fps-hud[data-level="mid"]{ border-color:rgba(247,183,49,.46); color:#ffe8ad; }
   #fps-hud[data-level="low"]{ border-color:rgba(255,107,107,.58); color:#ffc9c9; }
+  #perf-details{ position:fixed; left:8px; bottom:42px; z-index:31; display:none; width:min(540px,calc(100vw - 16px)); max-height:min(72vh,620px); overflow:auto; padding:8px 10px; border:1px solid rgba(123,223,242,.38); border-radius:9px; background:rgba(3,9,22,.94); color:#dbeafe; font:11px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace; font-variant-numeric:tabular-nums; box-shadow:0 8px 28px rgba(0,0,0,.42); }
+  #perf-details.open{ display:block; }
+  #perf-details table{ width:100%; border-collapse:collapse; }
+  #perf-details th,#perf-details td{ padding:2px 4px; border-bottom:1px solid rgba(125,145,190,.16); text-align:right; white-space:nowrap; }
+  #perf-details th:first-child,#perf-details td:first-child{ text-align:left; }
+  #perf-details .perf-meta{ margin-bottom:6px; color:#a9c7e8; }
   .observation-lab{ position:fixed; inset:0; z-index:60; display:none; color:#e8eefc; background:rgba(4,9,22,.94); }
   .observation-lab.open{ display:grid; grid-template-rows:auto 1fr; }
   .lab-topbar{ display:grid; grid-template-columns:auto 1fr auto; gap:10px; align-items:center; padding:10px 12px; border-bottom:1px solid rgba(125,145,190,.28); background:rgba(7,16,34,.94); }
@@ -183,12 +189,13 @@
     .lab-focus{ inset:4px; padding:6px; }
     .lab-focus-canvas{ min-height:260px; }
   }
-  @media (max-width:520px){ #fps-hud{ position:absolute; left:6px; top:8px; bottom:auto; min-width:0; max-width:calc(100vw - 18px); font-size:10px; padding:3px 6px; opacity:.78; } }
+  @media (max-width:520px){ #fps-hud{ position:absolute; left:6px; top:8px; bottom:auto; min-width:0; max-width:calc(100vw - 18px); font-size:10px; padding:3px 6px; opacity:.78; } #perf-details{ left:6px; top:34px; bottom:auto; width:calc(100vw - 12px); max-height:68vh; font-size:9px; } }
 </style>
 </head>
 <body>
 <div id="debug-console"></div>
 <div id="fps-hud" aria-live="off">FPS --</div>
+<div id="perf-details" aria-live="off"></div>
 <div id="toasts" class="toasts"></div>
 <div class="wrap">
   <div class="world-shell">
@@ -1268,8 +1275,186 @@
 
   // ===== Lightweight FPS HUD =====
   const fpsHud = $('fps-hud');
+  const perfDetails = $('perf-details');
   const fpsMeter = { last: performance.now(), frames: 0, fps: 0 };
   const perfStats = { updateMs:0, drawMs:0, speciesCardMs:0, neighborQueries:0, neighborQueriesLast:0, predationScans:0, predationScansLast:0 };
+  const PERF_METRICS = Object.freeze([
+    'totalFrame','processingTotal','simulationUpdate','organismUpdate','spatialIndex',
+    'foodSearch','carcassSearch','planktonSearch','targetLookup','reproduction',
+    'predation','deathRemoval','telemetryStatistics','trailHistory','environmentUpdate',
+    'drawTotal','environmentDraw','organismDraw','resourceDraw','effectsDraw','uiHudDraw',
+    'otherUpdate','otherDraw'
+  ]);
+  const PERF_LABELS = Object.freeze({
+    totalFrame:'Frame',processingTotal:'Processing',simulationUpdate:'Update',
+    organismUpdate:'Organisms update',spatialIndex:'Spatial index',foodSearch:'Food search',
+    carcassSearch:'Carcass search',planktonSearch:'Plankton search',targetLookup:'Target lookup',
+    reproduction:'Reproduction',predation:'Predation',deathRemoval:'Death/removal',
+    telemetryStatistics:'Telemetry/stats',trailHistory:'Trail/history',
+    environmentUpdate:'Environment update',drawTotal:'Draw',environmentDraw:'Environment draw',
+    organismDraw:'Organism draw',resourceDraw:'Food/carcass/plankton draw',
+    effectsDraw:'Effects draw',uiHudDraw:'UI/HUD draw',otherUpdate:'Other update',
+    otherDraw:'Other draw'
+  });
+  const perfProfiler = {
+    enabled:true,
+    deepEnabled:true,
+    deepSampleInterval:8,
+    frameSequence:0,
+    previousNow:null,
+    current:null,
+    frames:[],
+    maxFrames:720,
+    expanded:false
+  };
+  function perfAdd(metric,ms,calls=1){
+    const current=perfProfiler.current;
+    if(!current || !Number.isFinite(ms)) return;
+    current.values[metric]=(current.values[metric]||0)+Math.max(0,ms);
+    current.calls[metric]=(current.calls[metric]||0)+Math.max(0,calls);
+  }
+  function perfStart(){
+    return perfProfiler.current ? performance.now() : 0;
+  }
+  function perfEnd(metric,startedAt,calls=1){
+    if(!startedAt || !perfProfiler.current) return 0;
+    const elapsed=performance.now()-startedAt;
+    perfAdd(metric,elapsed,calls);
+    return elapsed;
+  }
+  function perfHotStart(){
+    return perfProfiler.current?.deepSample ? performance.now() : 0;
+  }
+  function perfHotEnd(metric,startedAt,calls=1){
+    if(!startedAt || !perfProfiler.current?.deepSample) return 0;
+    return perfEnd(metric,startedAt,calls);
+  }
+  function perfBeginFrame(now){
+    if(!perfProfiler.enabled){ perfProfiler.current=null; return; }
+    const interval=perfProfiler.previousNow==null ? 0 : Math.max(0,now-perfProfiler.previousNow);
+    perfProfiler.previousNow=now;
+    perfProfiler.frameSequence++;
+    perfProfiler.current={
+      startedAt:performance.now(),
+      interval,
+      running:!!running,
+      renderMode:renderPerf.mode,
+      deepSample:perfProfiler.deepEnabled && perfProfiler.frameSequence%Math.max(1,perfProfiler.deepSampleInterval|0)===0,
+      values:Object.create(null),
+      calls:Object.create(null)
+    };
+  }
+  function perfEndFrame(){
+    const current=perfProfiler.current;
+    if(!current) return;
+    perfAdd('processingTotal',performance.now()-current.startedAt,1);
+    if(current.interval>0) perfAdd('totalFrame',current.interval,1);
+    const v=current.values;
+    const updateKnown=(v.organismUpdate||0)+(v.spatialIndex||0)+(v.deathRemoval||0)
+      +(v.telemetryStatistics||0)+(v.environmentUpdate||0);
+    const drawKnown=(v.environmentDraw||0)+(v.organismDraw||0)+(v.resourceDraw||0)
+      +(v.effectsDraw||0)+(v.uiHudDraw||0);
+    v.otherUpdate=Math.max(0,(v.simulationUpdate||0)-updateKnown);
+    v.otherDraw=Math.max(0,(v.drawTotal||0)-drawKnown);
+    current.counts={
+      organisms:organisms.length,
+      food:food.length,
+      carcasses:corpses.length,
+      plankton:plankton.length,
+      trails:organisms.reduce((sum,o)=>sum+(o.trail?.length||0),0),
+      telemetrySamples:telemetry?.samples?.length||0
+    };
+    perfProfiler.frames.push(current);
+    if(perfProfiler.frames.length>perfProfiler.maxFrames){
+      perfProfiler.frames.splice(0,perfProfiler.frames.length-perfProfiler.maxFrames);
+    }
+    perfProfiler.current=null;
+  }
+  function perfPercentile(sorted,p){
+    if(!sorted.length) return 0;
+    const index=Math.min(sorted.length-1,Math.max(0,Math.ceil(sorted.length*p)-1));
+    return sorted[index];
+  }
+  function perfMetricSummary(rows,metric){
+    const metricRows=(metric==='totalFrame'||metric==='processingTotal'||metric==='simulationUpdate'
+      ||metric==='drawTotal'||metric==='organismUpdate'||metric==='spatialIndex'
+      ||metric==='environmentDraw'||metric==='organismDraw'||metric==='resourceDraw'
+      ||metric==='effectsDraw'||metric==='uiHudDraw'||metric==='otherUpdate'||metric==='otherDraw')
+      ? rows
+      : rows.filter(row=>(row.calls[metric]||0)>0 || (row.values[metric]||0)>0);
+    const values=metricRows.map(row=>Number(row.values[metric]||0)).sort((a,b)=>a-b);
+    const sum=values.reduce((total,value)=>total+value,0);
+    const calls=metricRows.reduce((total,row)=>total+Number(row.calls[metric]||0),0);
+    const avgFrameMs=rows.length
+      ? rows.reduce((total,row)=>total+Number(row.values.totalFrame||0),0)/rows.length
+      : 0;
+    const callsPerFrame=metricRows.length ? calls/metricRows.length : 0;
+    return {
+      samples:values.length,
+      average:values.length ? sum/values.length : 0,
+      median:perfPercentile(values,0.50),
+      p95:perfPercentile(values,0.95),
+      max:values.length ? values[values.length-1] : 0,
+      calls,
+      callsPerFrame,
+      callsPerSecond:avgFrameMs>0 ? callsPerFrame*1000/avgFrameMs : 0
+    };
+  }
+  function performanceProfilerSummary(options={}){
+    const requested=Math.max(1,Math.min(perfProfiler.maxFrames,Number(options.frames)||perfProfiler.maxFrames));
+    const rows=perfProfiler.frames.slice(-requested);
+    const metrics={};
+    for(const metric of PERF_METRICS) metrics[metric]=perfMetricSummary(rows,metric);
+    const latest=rows[rows.length-1] || null;
+    return {
+      schemaVersion:1,
+      sampleFrames:rows.length,
+      deepSampleInterval:perfProfiler.deepSampleInterval,
+      runningFrames:rows.filter(row=>row.running).length,
+      pausedFrames:rows.filter(row=>!row.running).length,
+      fps:metrics.totalFrame.average>0 ? 1000/metrics.totalFrame.average : 0,
+      renderMode:latest?.renderMode || renderPerf.mode,
+      counts:latest?.counts || {
+        organisms:organisms.length,food:food.length,carcasses:corpses.length,
+        plankton:plankton.length,trails:0,telemetrySamples:telemetry?.samples?.length||0
+      },
+      metrics
+    };
+  }
+  function resetPerformanceProfiler(){
+    perfProfiler.frames.length=0;
+    perfProfiler.previousNow=null;
+    perfProfiler.current=null;
+    perfProfiler.frameSequence=0;
+    return {ok:true};
+  }
+  function renderPerformanceDetails(){
+    if(!perfDetails || !devMode || !perfProfiler.expanded) return;
+    const summary=performanceProfilerSummary({frames:360});
+    const rows=PERF_METRICS.map(metric=>{
+      const value=summary.metrics[metric];
+      return `<tr><td>${PERF_LABELS[metric]||metric}</td><td>${value.average.toFixed(2)}</td><td>${value.median.toFixed(2)}</td><td>${value.p95.toFixed(2)}</td><td>${value.max.toFixed(2)}</td><td>${value.callsPerFrame.toFixed(1)}</td><td>${value.callsPerSecond.toFixed(0)}</td></tr>`;
+    }).join('');
+    const c=summary.counts;
+    perfDetails.innerHTML=`<div class="perf-meta">FPS ${summary.fps.toFixed(1)}｜Frame ${summary.metrics.totalFrame.average.toFixed(2)}ms｜Org ${c.organisms}｜Food ${c.food}｜Carcasses ${c.carcasses}｜Plankton ${c.plankton}｜Trails ${c.trails}｜Telemetry ${c.telemetrySamples}<br>クリックまたは U/D キーで閉じる</div><table><thead><tr><th>Category</th><th>avg</th><th>p50</th><th>p95</th><th>max</th><th>call/F</th><th>call/s</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+  function setPerformanceHudExpanded(expanded){
+    perfProfiler.expanded=devMode && expanded!==false;
+    if(perfDetails) perfDetails.classList.toggle('open',perfProfiler.expanded);
+    if(perfProfiler.expanded) renderPerformanceDetails();
+    return perfProfiler.expanded;
+  }
+  if(devMode && fpsHud){
+    fpsHud.style.pointerEvents='auto';
+    fpsHud.style.cursor='pointer';
+    fpsHud.title='クリックまたは U/D キーで詳細計測を展開';
+    fpsHud.addEventListener('click',()=>setPerformanceHudExpanded(!perfProfiler.expanded));
+    document.addEventListener('keydown',event=>{
+      if(event.key==='u'||event.key==='U'||event.key==='d'||event.key==='D'){
+        setPerformanceHudExpanded(!perfProfiler.expanded);
+      }
+    });
+  }
   function updateAdaptiveRenderMode(fps){
     const pop = organisms.length;
     let meshCount = 0, complexCount = 0;
@@ -1313,9 +1498,15 @@
     perfStats.neighborQueries = 0;
     perfStats.predationScans = 0;
     updateAdaptiveRenderMode(fps);
-    fpsHud.textContent = `FPS ${fps}｜${renderPerf.mode}｜個体 ${organisms.length}｜U${perfStats.updateMs.toFixed(1)} D${perfStats.drawMs.toFixed(1)}`;
-    fpsHud.title = `FPS ${fps}\n描画 ${renderPerf.mode}\n個体 ${organisms.length}\nmesh ${renderPerf.meshCount}\n複雑形態 ${renderPerf.complexCount}\n餌 ${food.length}\n死骸 ${corpses.length}\nプランクトン ${plankton.length}\n粒子 ${sparks.length + rings.length}\n近傍探索 ${perfStats.neighborQueriesLast}/秒\n捕食探索 ${perfStats.predationScansLast}/秒\n種カード更新 ${perfStats.speciesCardMs.toFixed(1)}ms`;
+    const frameMs=fps>0 ? 1000/fps : 0;
+    const trails=devMode ? organisms.reduce((sum,o)=>sum+(o.trail?.length||0),0) : 0;
+    const telemetrySamples=devMode ? (telemetry?.samples?.length||0) : 0;
+    fpsHud.textContent = devMode
+      ? `FPS ${fps}｜F${frameMs.toFixed(1)} U${perfStats.updateMs.toFixed(1)} D${perfStats.drawMs.toFixed(1)}｜Org ${organisms.length} Food ${food.length} Car ${corpses.length} Plk ${plankton.length} Tr ${trails} Tel ${telemetrySamples}｜${renderPerf.mode}`
+      : `FPS ${fps}｜${renderPerf.mode}｜個体 ${organisms.length}｜U${perfStats.updateMs.toFixed(1)} D${perfStats.drawMs.toFixed(1)}`;
+    fpsHud.title = `${devMode?'クリックまたは U/D キーで詳細計測を展開\n':''}FPS ${fps}\nFrame ${frameMs.toFixed(2)}ms\n描画 ${renderPerf.mode}\n個体 ${organisms.length}\nmesh ${renderPerf.meshCount}\n複雑形態 ${renderPerf.complexCount}\n餌 ${food.length}\n死骸 ${corpses.length}\nプランクトン ${plankton.length}\n軌跡 ${trails}\ntelemetry samples ${telemetrySamples}\n粒子 ${sparks.length + rings.length}\n近傍探索 ${perfStats.neighborQueriesLast}/秒\n捕食探索 ${perfStats.predationScansLast}/秒\n種カード更新 ${perfStats.speciesCardMs.toFixed(1)}ms`;
     fpsHud.dataset.level = fps < 28 ? 'low' : (fps < 45 ? 'mid' : 'ok');
+    renderPerformanceDetails();
     fpsMeter.last = now;
     fpsMeter.frames = 0;
   }
@@ -1337,7 +1528,7 @@
 
   function clearGrid(){ for(let i=0;i<gOrg.length;i++) gOrg[i].length=0; }
   function cellIndex(x,y){ const cx= Math.min(GW-1, Math.max(0, (x/GS)|0)); const cy= Math.min(GH-1, Math.max(0, (y/GS)|0)); return cy*GW + cx; }
-  function buildSpatialIndex(){ ensureGrid(); clearGrid(); for(const o of organisms){ gOrg[cellIndex(o.x,o.y)].push(o); } }
+  function buildSpatialIndex(){ const perfStarted=perfStart(); ensureGrid(); clearGrid(); for(const o of organisms){ gOrg[cellIndex(o.x,o.y)].push(o); } perfEnd('spatialIndex',perfStarted,1); }
   function forEachOrgNeighbors(x,y,r,fn){ perfStats.neighborQueries++; const r2=r*r; let __hits=0; const __MAX_HITS=56; const minx=Math.max(0, ((x-r)/GS)|0), maxx=Math.min(GW-1, ((x+r)/GS)|0); const miny=Math.max(0, ((y-r)/GS)|0), maxy=Math.min(GH-1, ((y+r)/GS)|0); for(let cy=miny; cy<=maxy; cy++){ for(let cx=minx; cx<=maxx; cx++){ const arr=gOrg[cy*GW+cx]; for(let i=0;i<arr.length;i++){ const o=arr[i]; const dx=o.x - x, dy=o.y - y; const d2=dx*dx+dy*dy; if(d2<=r2){ fn(o,dx,dy,d2); if(++__hits>=__MAX_HITS) return; } } } } }
 
   // ===== Entities =====
@@ -13834,8 +14025,11 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
   }
   function organismById(id){
     if(!id) return null;
-    for(const o of organisms){ if(o.id===id) return o; }
-    return null;
+    const perfStarted=perfHotStart();
+    let found=null;
+    for(const o of organisms){ if(o.id===id){ found=o; break; } }
+    perfHotEnd('targetLookup',perfStarted,1);
+    return found;
   }
   function nearestOrganismAt(x,y,maxR){
     buildSpatialIndex();
@@ -14842,7 +15036,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           dampingFactor:1
         };
       }
+      const perfTrailStarted=perfHotStart();
       if((this.age & 3)===0){ this.trail.push({x:this.x,y:this.y}); if(this.trail.length>16) this.trail.shift(); }
+      perfHotEnd('trailHistory',perfTrailStarted,1);
       if(this.attackCD>0) this.attackCD--; if(this.protect>0) this.protect--; if(this.fleeTimer>0) this.fleeTimer--; if(this.mutagenBoost>0) this.mutagenBoost--; if(this.burstTimer>0) this.burstTimer--; if(this.grazingTimer>0) this.grazingTimer--; if(this.newSpeciesFlash>0) this.newSpeciesFlash--; if(this.packConsensusHoldT>0) this.packConsensusHoldT--; if(this.packConsensusSwitchCD>0) this.packConsensusSwitchCD--;
 
       // フィールド効果
@@ -14854,7 +15050,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
       let nearest=null, minD2=this.senseR*this.senseR;
       this.separateFromNeighbors();
       const socialNeighbors = this.socialSteer();
+      const perfPredationIntentStarted=perfHotStart();
       this.updatePredationIntent();
+      perfHotEnd('predation',perfPredationIntentStarted,1);
       const isActivePreyChase = this._predationChasingThisStep === true;
       const suppressNoTargetDrift = activePreyChaseDirectedMovementFixEnabled && isActivePreyChase;
       let activeChaseAmbusherNoTargetDampingApplied = false;
@@ -14872,12 +15070,15 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
         }
       }
       if(!preyTarget){
+        const perfFoodSearchStarted=perfHotStart();
         for(const f of food){
           if(!canEatFoodParticle(this,f.type)) continue;
           const dx=f.x-this.x, dy=f.y-this.y, d2=dx*dx+dy*dy;
           if(d2<minD2){ minD2=d2; nearest=f; }
         }
+        perfHotEnd('foodSearch',perfFoodSearchStarted,1);
       }
+      const perfCarcassTargetStarted=perfHotStart();
       if(!preyTarget && this.fleeTimer<=0){
         for(const c of corpses){
           if(!organismIsCorpseClaimParticipant(this,c)) continue;
@@ -14893,7 +15094,9 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           if(d2<minD2*corpseBias){ minD2=d2; nearest=c; }
         }
       }
+      perfHotEnd('carcassSearch',perfCarcassTargetStarted,1);
       if(this.role==='filter' && plankton.length){
+        const perfPlanktonTargetStarted=perfHotStart();
         // Steer toward nearby plankton (random sampling, cheap)
         const samples = Math.min(12, plankton.length);
         const planktonBias=foodLedger.main==='plankton' ? 1.45 : 0.85;
@@ -14902,6 +15105,7 @@ let NEXT_ID=1; const organisms=[]; const newborn=[]; const sparks=[]; const food
           const dx=p.x-this.x, dy=p.y-this.y, d2=dx*dx+dy*dy;
           if(d2<minD2*planktonBias){ minD2=d2; nearest=p; }
         }
+        perfHotEnd('planktonSearch',perfPlanktonTargetStarted,1);
       }
 
       if(isAmbusherPredator(this) && !nearest && !suppressNoTargetDrift){
@@ -15249,6 +15453,7 @@ if(Z>0.08){
       }
 
       // 食事（餌）
+      const perfFoodConsumeStarted=perfHotStart();
       for(let i=food.length-1;i>=0;--i){
         const f=food[i];
         const c=this.genes.diet;
@@ -15285,9 +15490,11 @@ if(Z>0.08){
           break;
         }
       }
+      perfHotEnd('foodSearch',perfFoodConsumeStarted,1);
 
       // 食事（死骸・プランクトン）
       {
+        const perfCarcassConsumeStarted=perfHotStart();
         for(let i=corpses.length-1;i>=0;--i){
           const c=corpses[i];
           const dx=c.x-this.x, dy=c.y-this.y;
@@ -15303,9 +15510,10 @@ if(Z>0.08){
             break;
           }
         }
-
+        perfHotEnd('carcassSearch',perfCarcassConsumeStarted,1);
       }
       if(this.role==='filter'){
+        const perfPlanktonConsumeStarted=perfHotStart();
         let eaten=0;
         const carn=this.genes.diet;
         const diet=dietTypeFromCarn(carn);
@@ -15328,11 +15536,14 @@ if(Z>0.08){
             if(++eaten>=3) break;
           }
         }
+        perfHotEnd('planktonSearch',perfPlanktonConsumeStarted,1);
       }
 
       // 捕食
       telemetryRecordChaseMotionSample(this);
+      const perfPredationStarted=perfHotStart();
       this.tryPredate();
+      perfHotEnd('predation',perfPredationStarted,1);
 
       // エネルギー消費
       const moveCost=0.03*(this.vx*this.vx + this.vy*this.vy)*(this.developmentMovementCostScale ?? 1);
@@ -15372,6 +15583,7 @@ if(Z>0.08){
       this.moveCostSum+=moveCost; this.phase += 0.012 + 0.035*(this.motionLevel||0); this.fitness += 0.002;
 
       // 繁殖
+      const perfReproductionStarted=perfHotStart();
       telemetryRecordReproductionGate(this,'evaluated');
       telemetryRecordPackReproductionGate(this,'evaluated');
       if(!duelExperimentActive){
@@ -15456,10 +15668,12 @@ if(Z>0.08){
       } else {
         this.mateSeekT=0; this.callCD=0;
       }
+      perfHotEnd('reproduction',perfReproductionStarted,1);
 
       this.age++;
 
       // 死亡
+      const perfDeathStarted=perfHotStart();
       // chloroplast trait: daytime survival when staying calm (no extra energy gain)
       if(this.energy<=0 && isPhotosynthetic){
         const sp2 = this.vx*this.vx + this.vy*this.vy;
@@ -15469,6 +15683,7 @@ if(Z>0.08){
       }
       if(this.energy<=0){ const corpseE = 0.45*(8*this.size); corpses.push(new Corpse(this.x,this.y,corpseE,{eventKey:`corpse:starvation:${frame}:${this.id}`})); eco.detritusMeter += corpseE; sparks.push(new Spark(this.x,this.y,0.9*CONFIG.rendering.starvationParticleScale,'rgba(140,190,120,',CONFIG.rendering.starvationParticleAlpha)); this.deathCause='飢餓'; recordDeath(this,'飢餓'); this.dead=true; }
       else if(this.age>12000){ const corpseE = 0.45*(0.6*this.energy + 8*this.size); corpses.push(new Corpse(this.x,this.y,corpseE,{eventKey:`corpse:old-age:${frame}:${this.id}`})); eco.detritusMeter += corpseE; this.deathCause='老化'; recordDeath(this,'老化'); this.dead=true; }
+      perfHotEnd('deathRemoval',perfDeathStarted,1);
     }
 
     tryPredate(){
@@ -19010,18 +19225,24 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         if(--calls[i].t<=0) calls.splice(i,1);
       }
       buildSpatialIndex();
+      const perfPackTelemetryStarted=perfStart();
       updatePersistentPackIdentity();
       telemetryRecordPackWorldStep();
+      perfEnd('telemetryStatistics',perfPackTelemetryStarted,2);
+      const perfOrganismUpdateStarted=perfStart();
       for(const o of organisms){
         if(!o.dead){
           o.step();
         }
       }
+      perfEnd('organismUpdate',perfOrganismUpdateStarted,organisms.length);
       for(let i=effects.length-1;i>=0;--i){ const e=effects[i]; if(--e.t<=0) effects.splice(i,1); }
       for(let i=corpses.length-1;i>=0;--i){ const c=corpses[i]; c.step(); if(c.t<=0) corpses.splice(i,1); }
       for(let i=food.length-1;i>=0;--i){ if(food[i].step && !food[i].step()) food.splice(i,1); }
       for(const p of plankton){ p.step(); }
+      const perfEnvironmentUpdateStarted=perfStart();
       if((frame & 15)===0){ if(window.env){ window.env.tickFields(); window.env.maintainDots('algae'); window.env.maintainDots('cold'); window.env.maintainDots('oxygen'); } }
+      perfEnd('environmentUpdate',perfEnvironmentUpdateStarted,1);
       // プランクトン自然発生（デトリタス分解×酸素で上限が変動）
 {
   const a = (window.env && window.env.getAverages) ? window.env.getAverages() : {N:0.25,O:0.75,D:0.05,C:0.25};
@@ -19073,9 +19294,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       }
       recordFoodSupply('wildDetritusParticle',pts.length);
     }
-  }
+      }
 }
       // 死亡掃除
+      const perfRemovalStarted=perfStart();
       for(let i=organisms.length-1;i>=0;--i){
         if(organisms[i].dead){
           recordDeath(organisms[i], organisms[i].deathCause||'不明');
@@ -19092,6 +19314,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       }
       // 人口制限
       applyEmergencyCapacityCull();
+      perfEnd('deathRemoval',perfRemovalStarted,1);
       // 餌の自然供給
       if(frame%120===0){ const f=season(); const small=(Math.random()<0.55*f*CONFIG.ecology.wildFoodSpawnScale)?1:0; const big=(Math.random()<0.06*f*CONFIG.ecology.wildFoodSpawnScale)?1:0; if(small||big) addFood(small,big,'seasonalFood'); const label = f<0.9 ? '🍂 飢饉期' : '🌱 豊作期'; if(label !== lastSeasonLabel){ showToast('season', f<0.9 ? '飢饉期。餌粒は少なく、藻場を食べられる個体や腐肉食が有利に働くだろう。' : '豊作期。緑の藻場が再生しやすく、草食と増殖力の高い種に追い風だろう。'); lastSeasonLabel = label; } }
       maybeSpawnRescueFood();
@@ -19104,6 +19327,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       peaceCounter++; evaluateChallenges();
       tickDayNight(); modelUi.dayNight=true;
       if(frame%120===0) modelUi.species=true;
+      const perfTelemetryStarted=perfStart();
       telemetryMarkNewbornSurvival();
       telemetryMarkCarnivoreMilestones();
       telemetryMarkPredationNutritionSurvival();
@@ -19111,6 +19335,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       telemetryUpdateCarnivorePopulationState();
       sampleWorldBoundaryTelemetry();
       telemetrySampleFrame();
+      perfEnd('telemetryStatistics',perfTelemetryStarted,8);
     }
     inModelUpdate=false;
   }
@@ -22965,16 +23190,23 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     applyWorldTransform();
     traceWorldBoundaryPath(ctx,0);
     ctx.clip();
+    const perfEnvironmentDrawStarted=perfStart();
     drawBackground();
     // レイヤー順：パッチ -> エフェクト -> 餌/死骸/プランクトン -> 個体 -> スパーク -> HUD -> 右下HUD
     // patches hidden; environment is visualized as dots
     if(window.env) window.env.draw(ctx);
     drawObservationOverlay();
+    perfEnd('environmentDraw',perfEnvironmentDrawStarted,1);
+    const perfEffectsBackdropStarted=perfStart();
     for(const e of effects){ const k=e.t/e.maxT; ctx.beginPath(); ctx.arc(e.x,e.y,e.r*(0.98+0.02*Math.sin(frame*0.1)),0,TAU); ctx.strokeStyle = e.type==='repel'? `rgba(120,255,160,${0.18*k})` : `rgba(255,230,120,${0.18*k})`; ctx.lineWidth=2; ctx.stroke(); }
+    perfEnd('effectsDraw',perfEffectsBackdropStarted,effects.length);
+    const perfResourceDrawStarted=perfStart();
     for(const f of food){ if(f.type!=='detritus') f.draw(ctx); }
     for(let i=0;i<corpses.length;i++){ if(renderPerf.tiny && (i&1)) continue; corpses[i].draw(ctx); }
     for(const f of food){ if(f.type==='detritus') f.draw(ctx); }
     for(let i=0;i<plankton.length;i++){ plankton[i].draw(ctx); }
+    perfEnd('resourceDraw',perfResourceDrawStarted,food.length+corpses.length+plankton.length);
+    const perfTransientDrawStarted=perfStart();
     drawTransientFields();
     // same-species mating calls (beacons)
     for (let i=calls.length-1;i>=0;--i){
@@ -22985,14 +23217,24 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       ctx.lineWidth=1.5;
       ctx.stroke();
     }
+    perfEnd('effectsDraw',perfTransientDrawStarted,calls.length+1);
+    const perfOrganismDrawStarted=perfStart();
     for(const o of organisms){ o.draw(); }
+    perfEnd('organismDraw',perfOrganismDrawStarted,organisms.length);
+    const perfForegroundEffectsStarted=perfStart();
     for(let i=predationBlooms.length-1;i>=0;--i){ const b=predationBlooms[i]; b.step(); b.draw(ctx); if(b.t<=0) predationBlooms.splice(i,1); }
     for(let i=sparks.length-1;i>=0;--i){ const s=sparks[i]; s.step(); s.draw(ctx); if(s.t<=0) sparks.splice(i,1); }
+    perfEnd('effectsDraw',perfForegroundEffectsStarted,predationBlooms.length+sparks.length);
+    const perfUiWorldStarted=perfStart();
     drawPredationSizeOverlay();
     drawSelectionWorldOverlay();
+    perfEnd('uiHudDraw',perfUiWorldStarted,1);
+    const perfShoreDrawStarted=perfStart();
     drawWorldBoundaryShore();
+    perfEnd('environmentDraw',perfShoreDrawStarted,1);
     ctx.restore();
     ctx.setTransform(DPR,0,0,DPR,0,0);
+    const perfUiScreenStarted=perfStart();
     drawSelectionScreenOverlay();
     drawObservationLabel();
     drawHUD();
@@ -23002,6 +23244,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       lastPhyDrawFrame = frame;
       phyDirty = false;
     }
+    perfEnd('uiHudDraw',perfUiScreenStarted,1);
   }
 
   function diagnosticNumberHealth(extra=null){
@@ -33085,6 +33328,66 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         symbolSpriteCache: {size:symbolSpriteCache.size, ...symbolSpriteStats}
       };
     },
+    performanceProfilerSummary(options={}){
+      return performanceProfilerSummary(options);
+    },
+    resetPerformanceProfiler(){
+      return resetPerformanceProfiler();
+    },
+    setPerformanceProfiling(options={}){
+      if(options.enabled!=null) perfProfiler.enabled=options.enabled!==false;
+      if(options.deepEnabled!=null) perfProfiler.deepEnabled=options.deepEnabled!==false;
+      if(options.deepSampleInterval!=null){
+        perfProfiler.deepSampleInterval=Math.max(1,Math.min(120,Number(options.deepSampleInterval)||8));
+      }
+      if(options.maxFrames!=null){
+        perfProfiler.maxFrames=Math.max(60,Math.min(3600,Number(options.maxFrames)||720));
+      }
+      return {
+        enabled:perfProfiler.enabled,
+        deepEnabled:perfProfiler.deepEnabled,
+        deepSampleInterval:perfProfiler.deepSampleInterval,
+        maxFrames:perfProfiler.maxFrames
+      };
+    },
+    setPerformanceHudExpanded(expanded=true){
+      return setPerformanceHudExpanded(expanded);
+    },
+    setBenchmarkRenderMode(mode='full'){
+      const value=String(mode||'full').toLowerCase();
+      if(value==='full'){
+        ui.forceFullRender=true;
+        renderPerf.low=false;
+        renderPerf.tiny=false;
+        renderPerf.mode='full';
+      } else {
+        ui.forceFullRender=false;
+        renderPerf.low=true;
+        renderPerf.tiny=true;
+        renderPerf.mode='tiny';
+      }
+      syncPerfUI();
+      return renderPerf.mode;
+    },
+    setSimulationRunning(enabled=true){
+      if(enabled===false) pause();
+      else start();
+      return running;
+    },
+    preparePerformanceBenchmark(options={}){
+      pause();
+      setPopulationCapSettings({enabled:false,value:ui.popMax});
+      forcePopulationForDiagnostic(options.population ?? 120);
+      this.setBenchmarkRenderMode(options.renderMode || 'full');
+      buildSpatialIndex();
+      resetPerformanceProfiler();
+      return {
+        running,
+        renderMode:renderPerf.mode,
+        populationCapEnabled:populationCapEnabled(),
+        counts:this.counts()
+      };
+    },
     forcePopulation(n=120){
       forcePopulationForDiagnostic(n);
       return this.counts();
@@ -33118,14 +33421,28 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   };
 
   function loop(now=performance.now()){
+    perfBeginFrame(now);
+    const perfHudStarted=perfStart();
     updateFpsHud(now);
+    perfEnd('uiHudDraw',perfHudStarted,1);
     const u0=performance.now();
-    if(!predationStadiumLab.open && running){ updateModel(); renderModelUi(); if(frame%20===0) reportMix(); }
-    perfStats.updateMs = perfStats.updateMs*0.88 + (performance.now()-u0)*0.12;
+    if(!predationStadiumLab.open && running){
+      updateModel();
+      const perfModelUiStarted=perfStart();
+      renderModelUi();
+      if(frame%20===0) reportMix();
+      perfEnd('telemetryStatistics',perfModelUiStarted,1);
+    }
+    const updateElapsed=performance.now()-u0;
+    perfAdd('simulationUpdate',updateElapsed,running?1:0);
+    perfStats.updateMs = perfStats.updateMs*0.88 + updateElapsed*0.12;
     const d0=performance.now();
     if(predationStadiumLab.open) drawPredationStadiumLab(now);
     else draw();
-    perfStats.drawMs = perfStats.drawMs*0.88 + (performance.now()-d0)*0.12;
+    const drawElapsed=performance.now()-d0;
+    perfAdd('drawTotal',drawElapsed,1);
+    perfStats.drawMs = perfStats.drawMs*0.88 + drawElapsed*0.12;
+    perfEndFrame();
     requestAnimationFrame(loop);
   }
 
