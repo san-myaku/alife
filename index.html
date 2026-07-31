@@ -1716,6 +1716,22 @@
       && normalizeCorpseClaimParticipantIds(corpse.claimParticipantIds).includes(Number(organism.id))
     );
   }
+  const drawCullBounds={minX:0,minY:0,maxX:0,maxY:0};
+  function updateDrawCullBounds(){
+    const halfW=VIEW_W/(2*camera.zoom);
+    const halfH=VIEW_H/(2*camera.zoom);
+    drawCullBounds.minX=camera.x-halfW;
+    drawCullBounds.maxX=camera.x+halfW;
+    drawCullBounds.minY=camera.y-halfH;
+    drawCullBounds.maxY=camera.y+halfH;
+  }
+  function isCircleVisibleForDraw(x,y,r=0){
+    const margin=Math.max(0,Number(r)||0);
+    return x+margin>=drawCullBounds.minX
+      && x-margin<=drawCullBounds.maxX
+      && y+margin>=drawCullBounds.minY
+      && y-margin<=drawCullBounds.maxY;
+  }
   function corpseClaimAccessAllowed(organism,corpse,options={}){
     const active=corpseClaimActive(corpse);
     if(!active) return true;
@@ -13586,6 +13602,13 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
     if(OrganismRender.symbolRenderScaleFor) return OrganismRender.symbolRenderScaleFor(o,sym);
     return 1;
   }
+  function organismDrawCullRadius(o){
+    const sym=o?._symbol;
+    const visualScale=organismVisualScale(o);
+    let radius=Math.max(32,(o?.size||1)*4,symbolRenderedVisualR(o,sym)*visualScale*1.65);
+    if(ui.showSense) radius=Math.max(radius,(o?.senseR||0)*visualScale+2);
+    return radius;
+  }
   function symbolSpriteGeometrySignature(o,sym){
     if(sym.canonicalAppearanceIdentityKey){
       const cached=canonicalSymbolSpriteSignatureCache.get(sym);
@@ -16333,9 +16356,11 @@ if(Z>0.08){
     drawSymbolicLive(c=ctx,bake=null){ return OrganismRender.drawOrganism(this, c, bake, {ADAPTATION_BY_ID, CONFIG, ROLE_HUE, adaptationProfilesFromGenes, clamp, clamp01, dayNight, formFromGenes, isPredatorBursting, lerp, organismVisualScale, renderPerf, selectedOrganism, ui}); }
 
     drawSymbolicSpriteBackdrops(sym, visualScale){
+      const showMicroHalo=ui.microView && visualScale>CONFIG.rendering.microView.baseScale+0.03;
+      if(!showMicroHalo && !ui.showSense && this.newSpeciesFlash<=0) return;
       ctx.save();
       ctx.translate(this.x,this.y);
-      if(ui.microView && visualScale>CONFIG.rendering.microView.baseScale+0.03){
+      if(showMicroHalo){
         const hue=(sym.outlineHue ?? this.hue ?? 190);
         const rr=Math.max(4,symbolRenderedVisualR(this,sym)*visualScale*1.22);
         ctx.beginPath();
@@ -16374,6 +16399,7 @@ if(Z>0.08){
     }
 
     drawSymbolicSpriteRings(sym, visualScale){
+      if(!(this.chaseTimer>0 || this.preyTargetId) && this.fleeTimer<=0 && this.protect<=0) return;
       const nodes = sym.nodes || [];
       const gait = this.gait || this.phase || 0;
       const predatorBursting=isPredatorBursting(this);
@@ -16413,11 +16439,19 @@ if(Z>0.08){
       const sprite=getSymbolSprite(this);
       if(sprite){
         this.drawSymbolicSpriteBackdrops(sym, visualScale);
-        ctx.save();
-        ctx.translate(this.x,this.y);
-        ctx.rotate(Number.isFinite(this.heading) ? this.heading : 0);
+        const angle=Number.isFinite(this.heading) ? this.heading : 0;
+        const cos=Math.cos(angle), sin=Math.sin(angle);
+        const scale=DPR*camera.zoom;
+        ctx.setTransform(
+          scale*cos,
+          scale*sin,
+          -scale*sin,
+          scale*cos,
+          DPR*((this.x-camera.x)*camera.zoom+VIEW_W*0.5),
+          DPR*((this.y-camera.y)*camera.zoom+VIEW_H*0.5)
+        );
         ctx.drawImage(sprite.canvas,-sprite.half,-sprite.half);
-        ctx.restore();
+        applyWorldTransform();
         this.drawSymbolicSpriteRings(sym, visualScale);
         return;
       }
@@ -23311,6 +23345,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     ctx.fillRect(0,0,VIEW_W,VIEW_H);
     ctx.save();
     applyWorldTransform();
+    updateDrawCullBounds();
     traceWorldBoundaryPath(ctx,0);
     ctx.clip();
     const perfEnvironmentDrawStarted=perfStart();
@@ -23321,19 +23356,37 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     drawObservationOverlay();
     perfEnd('environmentDraw',perfEnvironmentDrawStarted,1);
     const perfEffectsBackdropStarted=perfStart();
-    for(const e of effects){ const k=e.t/e.maxT; ctx.beginPath(); ctx.arc(e.x,e.y,e.r*(0.98+0.02*Math.sin(frame*0.1)),0,TAU); ctx.strokeStyle = e.type==='repel'? `rgba(120,255,160,${0.18*k})` : `rgba(255,230,120,${0.18*k})`; ctx.lineWidth=2; ctx.stroke(); }
-    perfEnd('effectsDraw',perfEffectsBackdropStarted,effects.length);
+    let effectsBackdropDrawn=0;
+    for(const e of effects){
+      if(!isCircleVisibleForDraw(e.x,e.y,e.r+3)) continue;
+      const k=e.t/e.maxT; ctx.beginPath(); ctx.arc(e.x,e.y,e.r*(0.98+0.02*Math.sin(frame*0.1)),0,TAU); ctx.strokeStyle = e.type==='repel'? `rgba(120,255,160,${0.18*k})` : `rgba(255,230,120,${0.18*k})`; ctx.lineWidth=2; ctx.stroke();
+      effectsBackdropDrawn++;
+    }
+    perfEnd('effectsDraw',perfEffectsBackdropStarted,effectsBackdropDrawn);
     const perfResourceDrawStarted=perfStart();
-    for(const f of food){ if(f.type!=='detritus') f.draw(ctx); }
-    for(let i=0;i<corpses.length;i++){ if(renderPerf.tiny && (i&1)) continue; corpses[i].draw(ctx); }
-    for(const f of food){ if(f.type==='detritus') f.draw(ctx); }
-    for(let i=0;i<plankton.length;i++){ plankton[i].draw(ctx); }
-    perfEnd('resourceDraw',perfResourceDrawStarted,food.length+corpses.length+plankton.length);
+    let resourcesDrawn=0;
+    for(const f of food){ if(f.type!=='detritus' && isCircleVisibleForDraw(f.x,f.y,(f.r||3)+4)){ f.draw(ctx); resourcesDrawn++; } }
+    for(let i=0;i<corpses.length;i++){
+      if(renderPerf.tiny && (i&1)) continue;
+      const corpse=corpses[i];
+      if(!isCircleVisibleForDraw(corpse.x,corpse.y,(corpse.radius||10)+6)) continue;
+      corpse.draw(ctx);
+      resourcesDrawn++;
+    }
+    for(const f of food){ if(f.type==='detritus' && isCircleVisibleForDraw(f.x,f.y,(f.r||3)+4)){ f.draw(ctx); resourcesDrawn++; } }
+    for(let i=0;i<plankton.length;i++){
+      const p=plankton[i];
+      if(!isCircleVisibleForDraw(p.x,p.y,7)) continue;
+      p.draw(ctx);
+      resourcesDrawn++;
+    }
+    perfEnd('resourceDraw',perfResourceDrawStarted,resourcesDrawn);
     const perfTransientDrawStarted=perfStart();
     drawTransientFields();
     // same-species mating calls (beacons)
     for (let i=calls.length-1;i>=0;--i){
       const c=calls[i];
+      if(!isCircleVisibleForDraw(c.x,c.y,c.r+3)) continue;
       const k=c.t/c.maxT;
       ctx.beginPath(); ctx.arc(c.x,c.y,c.r*(1.0-0.35*(1-k)),0,TAU);
       ctx.strokeStyle = 'rgba(126,204,142,'+(0.09*k)+')';
@@ -23343,13 +23396,31 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     perfEnd('effectsDraw',perfTransientDrawStarted,calls.length+1);
     const perfOrganismDrawStarted=perfStart();
     beginSymbolSpriteFrame();
-    for(const o of organisms){ o.draw(); }
+    let organismsDrawn=0;
+    for(const o of organisms){
+      if(!isCircleVisibleForDraw(o.x,o.y,organismDrawCullRadius(o))) continue;
+      o.draw();
+      organismsDrawn++;
+    }
     trimSymbolSpriteCache();
-    perfEnd('organismDraw',perfOrganismDrawStarted,organisms.length);
+    renderPerf.visibleOrganisms=organismsDrawn;
+    renderPerf.culledOrganisms=organisms.length-organismsDrawn;
+    perfEnd('organismDraw',perfOrganismDrawStarted,organismsDrawn);
     const perfForegroundEffectsStarted=perfStart();
-    for(let i=predationBlooms.length-1;i>=0;--i){ const b=predationBlooms[i]; b.step(); b.draw(ctx); if(b.t<=0) predationBlooms.splice(i,1); }
-    for(let i=sparks.length-1;i>=0;--i){ const s=sparks[i]; s.step(); s.draw(ctx); if(s.t<=0) sparks.splice(i,1); }
-    perfEnd('effectsDraw',perfForegroundEffectsStarted,predationBlooms.length+sparks.length);
+    let foregroundEffectsDrawn=0;
+    for(let i=predationBlooms.length-1;i>=0;--i){
+      const b=predationBlooms[i];
+      b.step();
+      if(isCircleVisibleForDraw(b.x,b.y,Math.max(48,b.r||0,b.radius||0))){ b.draw(ctx); foregroundEffectsDrawn++; }
+      if(b.t<=0) predationBlooms.splice(i,1);
+    }
+    for(let i=sparks.length-1;i>=0;--i){
+      const s=sparks[i];
+      s.step();
+      if(isCircleVisibleForDraw(s.x,s.y,Math.max(32,s.r||0,s.radius||0))){ s.draw(ctx); foregroundEffectsDrawn++; }
+      if(s.t<=0) sparks.splice(i,1);
+    }
+    perfEnd('effectsDraw',perfForegroundEffectsStarted,foregroundEffectsDrawn);
     const perfUiWorldStarted=perfStart();
     drawPredationSizeOverlay();
     drawSelectionWorldOverlay();
@@ -33450,6 +33521,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         meshCount: renderPerf.meshCount,
         complexCount: renderPerf.complexCount,
         heavyComplex: renderPerf.heavyComplex,
+        visibleOrganisms: renderPerf.visibleOrganisms ?? organisms.length,
+        culledOrganisms: renderPerf.culledOrganisms ?? 0,
         symbolSpriteCache: {size:symbolSpriteCache.size, ...symbolSpriteStats}
       };
     },

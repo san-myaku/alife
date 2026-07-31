@@ -107,6 +107,7 @@ const viewport = { width: 1280, height: 720 };
 const shouldProfile = !flag('no-profile');
 const profilePopulation = Math.max(1, Math.round(finite(arg('profile-population', 2000), 2000)));
 const profileDurationMs = Math.max(1000, finite(arg('profile-ms', 4000), 4000));
+const cameraZoom = Math.max(0, finite(arg('camera-zoom', 0), 0));
 
 const conditions = [
   { id: 'A', renderMode: 'full', running: true, label: '通常描画・実行中' },
@@ -141,6 +142,12 @@ async function runCondition(browser, population, condition) {
         renderMode: condition.renderMode
       }
     );
+    if (cameraZoom > 0) {
+      await page.evaluate(zoom => {
+        const world = window.__alifeDebug.worldGeometry();
+        window.__alifeDebug.focusCamera(world.centerX, world.centerY, zoom);
+      }, cameraZoom);
+    }
     if (condition.running) {
       await page.evaluate(() => window.__alifeDebug.setSimulationRunning(true));
     }
@@ -445,6 +452,7 @@ async function main() {
         viewport,
         warmupMs,
         sampleMs,
+        cameraZoom,
         populations,
         conditions
       },
