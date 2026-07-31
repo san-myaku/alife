@@ -13566,12 +13566,17 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
     return s;
   }
   const symbolSpriteCache = new Map();
-  const symbolSpriteStats = { hits:0, misses:0, bakes:0, evictions:0 };
+  const symbolSpriteStats = { hits:0, misses:0, bakes:0, evictions:0, peakSize:0, frameKeys:0, effectiveLimit:0 };
+  let symbolSpriteRenderEpoch=0;
+  let symbolSpriteFrameKeyCount=0;
   const canonicalSymbolSpriteSignatureCache = new WeakMap();
   function clearSymbolSpriteCache(){
     symbolSpriteCache.clear();
     canonicalSymbolSpriteSignatureCache.clear?.();
+    symbolSpriteRenderEpoch=0;
+    symbolSpriteFrameKeyCount=0;
     symbolSpriteStats.hits=0; symbolSpriteStats.misses=0; symbolSpriteStats.bakes=0; symbolSpriteStats.evictions=0;
+    symbolSpriteStats.peakSize=0; symbolSpriteStats.frameKeys=0; symbolSpriteStats.effectiveLimit=0;
   }
   function symbolRenderedVisualR(o,sym){
     if(OrganismRender.symbolRenderedVisualR) return OrganismRender.symbolRenderedVisualR(o,sym);
@@ -13626,13 +13631,16 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
     const roleTier = ui.roleViz ? (normalizeRole(o.role)||'other') : 'base';
     return `${symbolSpriteGeometrySignature(o,sym)}|${sizeTier}|${tier}|${symbolSpriteGaitBucket(o)}|${nightTier}|${roleTier}|${symbolSpriteFlags(o)}`;
   }
+  function beginSymbolSpriteFrame(){
+    symbolSpriteRenderEpoch++;
+    symbolSpriteFrameKeyCount=0;
+  }
   function trimSymbolSpriteCache(){
-    const limit = CONFIG.rendering.symbolSpriteCacheLimit;
+    const limit = Math.max(CONFIG.rendering.symbolSpriteCacheLimit,symbolSpriteFrameKeyCount);
+    symbolSpriteStats.frameKeys=symbolSpriteFrameKeyCount;
+    symbolSpriteStats.effectiveLimit=limit;
     while(symbolSpriteCache.size > limit){
-      let oldestKey=null, oldestFrame=Infinity;
-      for(const [key,rec] of symbolSpriteCache){
-        if(rec.last < oldestFrame){ oldestFrame=rec.last; oldestKey=key; }
-      }
+      const oldestKey=symbolSpriteCache.keys().next().value;
       if(oldestKey==null) break;
       symbolSpriteCache.delete(oldestKey);
       symbolSpriteStats.evictions++;
@@ -13646,7 +13654,13 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
     const key = symbolSpriteKey(o,sym,visualScale);
     const cached = symbolSpriteCache.get(key);
     if(cached){
+      if(cached.epoch!==symbolSpriteRenderEpoch){
+        cached.epoch=symbolSpriteRenderEpoch;
+        symbolSpriteFrameKeyCount++;
+      }
       cached.last = frame;
+      symbolSpriteCache.delete(key);
+      symbolSpriteCache.set(key,cached);
       symbolSpriteStats.hits++;
       return cached;
     }
@@ -13662,10 +13676,11 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
     const bucket = symbolSpriteGaitBucket(o);
     const bakeGait = (bucket + 0.5) / CONFIG.rendering.symbolSpriteGaitBuckets * TAU;
     o.drawSymbolicLive(c,{x:side*0.5,y:side*0.5,visualScale,heading:0,gait:bakeGait});
-    const rec = {canvas, side, half:side*0.5, last:frame};
+    const rec = {canvas, side, half:side*0.5, last:frame, epoch:symbolSpriteRenderEpoch};
     symbolSpriteCache.set(key, rec);
+    symbolSpriteFrameKeyCount++;
     symbolSpriteStats.bakes++;
-    trimSymbolSpriteCache();
+    symbolSpriteStats.peakSize=Math.max(symbolSpriteStats.peakSize,symbolSpriteCache.size);
     return rec;
   }
   function prosperityLabel(g, topology=topologyFromGenes(g), flags=null){
@@ -23327,7 +23342,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     }
     perfEnd('effectsDraw',perfTransientDrawStarted,calls.length+1);
     const perfOrganismDrawStarted=perfStart();
+    beginSymbolSpriteFrame();
     for(const o of organisms){ o.draw(); }
+    trimSymbolSpriteCache();
     perfEnd('organismDraw',perfOrganismDrawStarted,organisms.length);
     const perfForegroundEffectsStarted=perfStart();
     for(let i=predationBlooms.length-1;i>=0;--i){ const b=predationBlooms[i]; b.step(); b.draw(ctx); if(b.t<=0) predationBlooms.splice(i,1); }
