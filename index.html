@@ -8180,7 +8180,7 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
   function predationMinPreySize(predator, context='target'){
     return 0;
   }
-  function getEffectivePredationSizeRatio(predator, prey, context='target', includeHelperDetails=true){
+  function getEffectivePredationSizeRatio(predator, prey, context='target', includeHelperDetails=true, out=null){
     const predatorSize=Math.max(Number(predator?.size||0),0.001);
     const preySize=Number(prey?.size||0);
     let eligiblePackHelpers=null;
@@ -8203,17 +8203,17 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
     const effectiveDenominator=Math.max(effectivePredatorSize,0.001);
     const rawSizeRatio=preySize/predatorSize;
     const effectiveSizeRatio=preySize/effectiveDenominator;
-    return {
-      rawSizeRatio,
-      effectiveSizeRatio,
-      packSizeMultiplier,
-      eligiblePackHelpers,
-      eligibleHelperIds:eligiblePackHelpers ? eligiblePackHelpers.map(h=>h.id) : null,
-      eligibleHelperCount,
-      eligibleHelperSizeSum,
-      effectivePredatorSize,
-      packHelperContribution:PACK_HELPER_SIZE_CONTRIBUTION
-    };
+    const result=out || {};
+    result.rawSizeRatio=rawSizeRatio;
+    result.effectiveSizeRatio=effectiveSizeRatio;
+    result.packSizeMultiplier=packSizeMultiplier;
+    result.eligiblePackHelpers=eligiblePackHelpers;
+    result.eligibleHelperIds=eligiblePackHelpers ? eligiblePackHelpers.map(h=>h.id) : null;
+    result.eligibleHelperCount=eligibleHelperCount;
+    result.eligibleHelperSizeSum=eligibleHelperSizeSum;
+    result.effectivePredatorSize=effectivePredatorSize;
+    result.packHelperContribution=PACK_HELPER_SIZE_CONTRIBUTION;
+    return result;
   }
   function noteCooperativeHuntParticipation(organism,prey,reason='support'){
     if(!organism || organism.dead || !prey) return;
@@ -9426,43 +9426,43 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
   function largePreySuccessMultiplier(effectiveSizeRatio){
     return getPredationSizeSuccessMul(effectiveSizeRatio);
   }
-  function predationCandidateClassification(predator, prey, context='target', distance=null){
+  function predationCandidateClassification(predator, prey, context='target', distance=null, out=null){
     const predatorSize=Number(predator?.size||0);
     const preySize=Number(prey?.size||0);
     const maxPreySize=predationMaxPreySize(predator, context);
     const minPreySize=predationMinPreySize(predator, context);
-    const sizeInfo=getEffectivePredationSizeRatio(predator,prey,context,false);
+    const base=out || {};
+    if(!base._sizeInfo) Object.defineProperty(base,'_sizeInfo',{value:{},enumerable:false});
+    const sizeInfo=getEffectivePredationSizeRatio(predator,prey,context,false,base._sizeInfo);
     const sizeRatio=Number.isFinite(sizeInfo.rawSizeRatio) ? sizeInfo.rawSizeRatio : null;
     const maxRatio=Number.isFinite(maxPreySize) && maxPreySize>0 ? preySize/maxPreySize : null;
-    const base={
-      predatorId:predator?.id ?? null,
-      preyId:prey?.id ?? null,
-      context,
-      predatorSize,
-      predatorSizeGene:Number(predator?.genes?.size ?? 0),
-      preySize,
-      preySizeGene:Number(prey?.genes?.size ?? 0),
-      maxPreySize,
-      minPreySize,
-      sizeRatio,
-      maxRatio,
-      rawSizeRatio:sizeRatio,
-      effectiveSizeRatio:Number.isFinite(sizeInfo.effectiveSizeRatio) ? sizeInfo.effectiveSizeRatio : null,
-      packSizeMultiplier:sizeInfo.packSizeMultiplier,
-      eligibleHelperCount:sizeInfo.eligibleHelperCount,
-      eligibleHelperSizeSum:sizeInfo.eligibleHelperSizeSum,
-      effectivePredatorSize:sizeInfo.effectivePredatorSize,
-      sizeSuccessMul:getPredationSizeSuccessMul(sizeInfo.effectiveSizeRatio),
-      maxRawSizeRatio:null,
-      distance,
-      preyDiet:prey ? telemetryDiet(prey) : null,
-      preyAge:Number(prey?.age ?? 0),
-      valid:false,
-      dietCompatible:false,
-      tooLarge:false,
-      tooSmall:false,
-      reason:'other'
-    };
+    base.predatorId=predator?.id ?? null;
+    base.preyId=prey?.id ?? null;
+    base.context=context;
+    base.predatorSize=predatorSize;
+    base.predatorSizeGene=Number(predator?.genes?.size ?? 0);
+    base.preySize=preySize;
+    base.preySizeGene=Number(prey?.genes?.size ?? 0);
+    base.maxPreySize=maxPreySize;
+    base.minPreySize=minPreySize;
+    base.sizeRatio=sizeRatio;
+    base.maxRatio=maxRatio;
+    base.rawSizeRatio=sizeRatio;
+    base.effectiveSizeRatio=Number.isFinite(sizeInfo.effectiveSizeRatio) ? sizeInfo.effectiveSizeRatio : null;
+    base.packSizeMultiplier=sizeInfo.packSizeMultiplier;
+    base.eligibleHelperCount=sizeInfo.eligibleHelperCount;
+    base.eligibleHelperSizeSum=sizeInfo.eligibleHelperSizeSum;
+    base.effectivePredatorSize=sizeInfo.effectivePredatorSize;
+    base.sizeSuccessMul=getPredationSizeSuccessMul(sizeInfo.effectiveSizeRatio);
+    base.maxRawSizeRatio=null;
+    base.distance=distance;
+    base.preyDiet=prey ? telemetryDiet(prey) : null;
+    base.preyAge=Number(prey?.age ?? 0);
+    base.valid=false;
+    base.dietCompatible=false;
+    base.tooLarge=false;
+    base.tooSmall=false;
+    base.reason='other';
     if(!predator || !prey){ base.reason='missing'; return base; }
     if(prey===predator){ base.reason='self'; return base; }
     if(prey.dead){ base.reason='dead'; return base; }
@@ -9483,8 +9483,21 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
     base.reason='valid';
     return base;
   }
+  function predationCandidateIsValid(predator,prey,context='target'){
+    if(!predator || !prey || prey===predator || prey.dead || (prey.protect||0)>0) return false;
+    if(prey.speciesKey===predator.speciesKey && organisms.length>18) return false;
+    const preySize=Number(prey.size||0);
+    if(preySize<predationMinPreySize(predator,context)) return false;
+    const scratch=predator._predationSizeRatioScratch
+      || (predator._predationSizeRatioScratch={});
+    const sizeInfo=getEffectivePredationSizeRatio(predator,prey,context,false,scratch);
+    return Number.isFinite(sizeInfo.effectiveSizeRatio) && sizeInfo.effectiveSizeRatio>=0;
+  }
   function scanPredationNeighborhood(predator, radius, context='target'){
-    const rows=[];
+    const rows=predator._predationScanRows || (predator._predationScanRows=[]);
+    const rowPool=predator._predationScanRowPool || (predator._predationScanRowPool=[]);
+    rows.length=0;
+    let rowIndex=0;
     const otherReasons={protected:0,sameSpecies:0,sameLineage:0,dead:0,self:0,dietIncompatible:0,missing:0,other:0};
     let observedOrganisms=0,dietCompatiblePrey=0,tooLargeRejected=0,tooSmallRejected=0,otherRejected=0,validPrey=0;
     let nearestDiet=null,nearestValid=null,nearestTooLarge=null;
@@ -9495,7 +9508,9 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
       if(!o || o===predator || o.dead) return;
       const d=Math.sqrt(d2)||0;
       observedOrganisms++;
-      const cls=predationCandidateClassification(predator,o,context,d);
+      const row=rowPool[rowIndex] || (rowPool[rowIndex]={});
+      rowIndex++;
+      const cls=predationCandidateClassification(predator,o,context,d,row);
       cls.dx=dx; cls.dy=dy; cls.d2=d2;
       rows.push(cls);
       if(cls.dietCompatible){
@@ -14911,7 +14926,7 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
       }
       const scanR=predationScanRadius(this);
       let prey=organismById(this.preyTargetId);
-      const validPrey=(p)=> predationCandidateClassification(this,p,'target').valid;
+      const validPrey=(p)=> predationCandidateIsValid(this,p,'target');
       if(!validPrey(prey)){
         if(prey) telemetryEndChaseEpisode(this,prey.dead?'preyDiedElsewhere':'targetInvalid',prey);
         else if(this.preyTargetId!=null) telemetryEndChaseEpisode(this,'targetLost');
@@ -15830,7 +15845,7 @@ if(Z>0.08){
       if(repelHere) intent*=0.2;
       if(intent<0.05) return;
       let bestD2=Infinity;
-      const canEat=(o)=> predationCandidateClassification(this,o,'attack').valid;
+      const canEat=(o)=> predationCandidateIsValid(this,o,'attack');
       if(!canEat(prey)){
         prey=null;
         perfStats.predationScans++;
