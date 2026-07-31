@@ -96,9 +96,23 @@ function seededInit(seed) {
   } catch (_) {}
 }
 
-const htmlFile = arg('file', process.env.ALIFE_FILE || 'index.html');
+let htmlFile = arg('file', process.env.ALIFE_FILE || 'index.html');
 const label = arg('label', 'baseline');
 const artifactDir = arg('out-dir', path.join('artifacts', 'performance_optimization'));
+const gitRef = arg('git-ref', null);
+let temporaryHtmlFile = null;
+if (gitRef) {
+  fs.mkdirSync(artifactDir, { recursive: true });
+  const resolvedRef = require('child_process')
+    .execFileSync('git', ['rev-parse', gitRef], { encoding: 'utf8' })
+    .trim();
+  // Keep the temporary page beside index.html so its relative shared-renderer script resolves.
+  temporaryHtmlFile = path.resolve(`.benchmark-${resolvedRef.slice(0, 12)}.html`);
+  const source = require('child_process')
+    .execFileSync('git', ['show', `${resolvedRef}:index.html`], { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+  fs.writeFileSync(temporaryHtmlFile, source, 'utf8');
+  htmlFile = temporaryHtmlFile;
+}
 const populations = parsePopulations(arg('populations'));
 const seed = Math.round(finite(arg('seed', 61001), 61001));
 const warmupMs = Math.max(250, finite(arg('warmup-ms', 900), 900));
@@ -148,9 +162,6 @@ async function runCondition(browser, population, condition) {
         window.__alifeDebug.focusCamera(world.centerX, world.centerY, zoom);
       }, cameraZoom);
     }
-    if (condition.running) {
-      await page.evaluate(() => window.__alifeDebug.setSimulationRunning(true));
-    }
     await page.waitForTimeout(warmupMs);
     const startCounts = await page.evaluate(() => window.__alifeDebug.counts());
     await page.evaluate(() => {
@@ -158,6 +169,9 @@ async function runCondition(browser, population, condition) {
       window.__alifePerfObserver.gc.length = 0;
       window.__alifeDebug.resetPerformanceProfiler();
     });
+    if (condition.running) {
+      await page.evaluate(() => window.__alifeDebug.setSimulationRunning(true));
+    }
     await page.waitForTimeout(sampleMs);
     const result = await page.evaluate(() => {
       const profiler = window.__alifeDebug.performanceProfilerSummary({ frames: 720 });
@@ -300,13 +314,13 @@ async function runBrowserProfile(browser) {
     await page.evaluate(options => {
       window.__alifeDebug.preparePerformanceBenchmark(options);
       window.__alifeDebug.setPerformanceProfiling({ deepEnabled: false });
-      window.__alifeDebug.setSimulationRunning(true);
     }, { population: profilePopulation, renderMode: 'full' });
     await page.waitForTimeout(warmupMs);
     await page.evaluate(() => {
       window.__alifePerfObserver.longTasks.length = 0;
       window.__alifePerfObserver.gc.length = 0;
       window.__alifeDebug.resetPerformanceProfiler();
+      window.__alifeDebug.setSimulationRunning(true);
     });
     await session.send('Profiler.enable');
     await session.send('Performance.enable');
@@ -444,8 +458,8 @@ async function main() {
       label,
       generatedAt: new Date().toISOString(),
       source: {
-        file: path.resolve(htmlFile),
-        gitHead: require('child_process').execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+        file: gitRef ? `git:${gitRef}:index.html` : path.resolve(htmlFile),
+        gitHead: require('child_process').execFileSync('git', ['rev-parse', gitRef || 'HEAD'], { encoding: 'utf8' }).trim()
       },
       benchmark: {
         seed,
@@ -467,6 +481,7 @@ async function main() {
     process.stdout.write(JSON.stringify({ jsonFile, csvFile, runs: runs.length }, null, 2) + '\n');
   } finally {
     await browser.close();
+    if (temporaryHtmlFile && fs.existsSync(temporaryHtmlFile)) fs.unlinkSync(temporaryHtmlFile);
   }
 }
 
