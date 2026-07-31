@@ -1,0 +1,1258 @@
+{
+  "generatedAt": "2026-07-31T05:07:50.385Z",
+  "seed": 61001,
+  "baselineRef": "645e163ecd4cea97fd9e397ca5564de7413b29e6",
+  "optimizedHead": "693c7e7053d75e3d92489d28248a64dc17c39200",
+  "runs": [
+    {
+      "label": "baseline",
+      "steps": 1000,
+      "completedSteps": 1000,
+      "elapsedMs": 3444.7,
+      "snapshot": {
+        "frame": 1000,
+        "totalOrganisms": 91,
+        "births": 103,
+        "deaths": 76,
+        "reproductions": 78,
+        "deathCauses": {
+          "starvation": 50,
+          "oldAge": 0,
+          "predation": 26,
+          "overcrowding": 0,
+          "other": 0
+        },
+        "predationCount": 26,
+        "foodIntakeCount": 41663,
+        "foodIntakeBySource": {
+          "fieldAlgae": 41291,
+          "wildParticle": 8,
+          "plankton": 5,
+          "prey": 26,
+          "corpse": 306,
+          "detritusParticle": 27
+        },
+        "speciesCount": 20,
+        "packCount": 0,
+        "huntPackOrganisms": 0,
+        "averageEnergy": 83.016608,
+        "averageLifespan": 631.684211,
+        "deathAgeSamples": 76,
+        "health": {
+          "ok": true,
+          "badCount": 0,
+          "bad": []
+        },
+        "organismIdIndex": null,
+        "counts": {
+          "food": 261,
+          "carcasses": 38,
+          "plankton": 92,
+          "telemetrySamples": 102
+        }
+      },
+      "populationTimeseries": [
+        {
+          "step": 0,
+          "frame": 0,
+          "population": 64,
+          "packs": 0,
+          "huntPackOrganisms": 3,
+          "species": 62,
+          "establishedLineages": 0
+        },
+        {
+          "step": 100,
+          "frame": 100,
+          "population": 62,
+          "packs": 0,
+          "huntPackOrganisms": 3,
+          "species": 60,
+          "establishedLineages": 0
+        },
+        {
+          "step": 200,
+          "frame": 200,
+          "population": 52,
+          "packs": 0,
+          "huntPackOrganisms": 3,
+          "species": 46,
+          "establishedLineages": 0
+        },
+        {
+          "step": 300,
+          "frame": 300,
+          "population": 39,
+          "packs": 0,
+          "huntPackOrganisms": 2,
+          "species": 28,
+          "establishedLineages": 0
+        },
+        {
+          "step": 400,
+          "frame": 400,
+          "population": 35,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 21,
+          "establishedLineages": 0
+        },
+        {
+          "step": 500,
+          "frame": 500,
+          "population": 40,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 21,
+          "establishedLineages": 0
+        },
+        {
+          "step": 600,
+          "frame": 600,
+          "population": 42,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 18,
+          "establishedLineages": 0
+        },
+        {
+          "step": 700,
+          "frame": 700,
+          "population": 48,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 18,
+          "establishedLineages": 0
+        },
+        {
+          "step": 800,
+          "frame": 800,
+          "population": 63,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 900,
+          "frame": 900,
+          "population": 79,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 20,
+          "establishedLineages": 0
+        },
+        {
+          "step": 1000,
+          "frame": 1000,
+          "population": 91,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 20,
+          "establishedLineages": 0
+        }
+      ],
+      "conservation": {
+        "energyPositiveResidualMax": 0,
+        "nutrientPositiveResidualMax": 5.551115123125783e-17,
+        "energyCreationEvents": 0,
+        "nutrientCreationEvents": 0
+      },
+      "terminationReason": "completed",
+      "modelHash": "0da0445c825000ad3b8735ee339b5b05f401b18c376cb605b0db64aa53a90222",
+      "errors": []
+    },
+    {
+      "label": "optimized",
+      "steps": 1000,
+      "completedSteps": 1000,
+      "elapsedMs": 3868.6,
+      "snapshot": {
+        "frame": 1000,
+        "totalOrganisms": 91,
+        "births": 103,
+        "deaths": 76,
+        "reproductions": 78,
+        "deathCauses": {
+          "starvation": 50,
+          "oldAge": 0,
+          "predation": 26,
+          "overcrowding": 0,
+          "other": 0
+        },
+        "predationCount": 26,
+        "foodIntakeCount": 41663,
+        "foodIntakeBySource": {
+          "fieldAlgae": 41291,
+          "wildParticle": 8,
+          "plankton": 5,
+          "prey": 26,
+          "corpse": 306,
+          "detritusParticle": 27
+        },
+        "speciesCount": 20,
+        "packCount": 0,
+        "huntPackOrganisms": 0,
+        "averageEnergy": 83.016608,
+        "averageLifespan": 631.684211,
+        "deathAgeSamples": 76,
+        "health": {
+          "ok": true,
+          "badCount": 0,
+          "bad": []
+        },
+        "organismIdIndex": {
+          "ok": true,
+          "organisms": 91,
+          "indexed": 91,
+          "duplicateIds": [],
+          "missingIds": [],
+          "staleIds": []
+        },
+        "counts": {
+          "food": 261,
+          "carcasses": 38,
+          "plankton": 92,
+          "telemetrySamples": 102
+        }
+      },
+      "populationTimeseries": [
+        {
+          "step": 0,
+          "frame": 0,
+          "population": 64,
+          "packs": 0,
+          "huntPackOrganisms": 3,
+          "species": 62,
+          "establishedLineages": 0
+        },
+        {
+          "step": 100,
+          "frame": 100,
+          "population": 62,
+          "packs": 0,
+          "huntPackOrganisms": 3,
+          "species": 60,
+          "establishedLineages": 0
+        },
+        {
+          "step": 200,
+          "frame": 200,
+          "population": 52,
+          "packs": 0,
+          "huntPackOrganisms": 3,
+          "species": 46,
+          "establishedLineages": 0
+        },
+        {
+          "step": 300,
+          "frame": 300,
+          "population": 39,
+          "packs": 0,
+          "huntPackOrganisms": 2,
+          "species": 28,
+          "establishedLineages": 0
+        },
+        {
+          "step": 400,
+          "frame": 400,
+          "population": 35,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 21,
+          "establishedLineages": 0
+        },
+        {
+          "step": 500,
+          "frame": 500,
+          "population": 40,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 21,
+          "establishedLineages": 0
+        },
+        {
+          "step": 600,
+          "frame": 600,
+          "population": 42,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 18,
+          "establishedLineages": 0
+        },
+        {
+          "step": 700,
+          "frame": 700,
+          "population": 48,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 18,
+          "establishedLineages": 0
+        },
+        {
+          "step": 800,
+          "frame": 800,
+          "population": 63,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 900,
+          "frame": 900,
+          "population": 79,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 20,
+          "establishedLineages": 0
+        },
+        {
+          "step": 1000,
+          "frame": 1000,
+          "population": 91,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 20,
+          "establishedLineages": 0
+        }
+      ],
+      "conservation": {
+        "energyPositiveResidualMax": 0,
+        "nutrientPositiveResidualMax": 5.551115123125783e-17,
+        "energyCreationEvents": 0,
+        "nutrientCreationEvents": 0
+      },
+      "terminationReason": "completed",
+      "modelHash": "0da0445c825000ad3b8735ee339b5b05f401b18c376cb605b0db64aa53a90222",
+      "errors": []
+    },
+    {
+      "label": "baseline",
+      "steps": 5000,
+      "completedSteps": 5000,
+      "elapsedMs": 21784.9,
+      "snapshot": {
+        "frame": 5000,
+        "totalOrganisms": 122,
+        "births": 841,
+        "deaths": 783,
+        "reproductions": 636,
+        "deathCauses": {
+          "starvation": 71,
+          "oldAge": 0,
+          "predation": 57,
+          "overcrowding": 655,
+          "other": 0
+        },
+        "predationCount": 57,
+        "foodIntakeCount": 530760,
+        "foodIntakeBySource": {
+          "fieldAlgae": 529457,
+          "wildParticle": 12,
+          "plankton": 121,
+          "prey": 57,
+          "corpse": 792,
+          "detritusParticle": 321
+        },
+        "speciesCount": 17,
+        "packCount": 0,
+        "huntPackOrganisms": 0,
+        "averageEnergy": 122.90305,
+        "averageLifespan": 677.111111,
+        "deathAgeSamples": 783,
+        "health": {
+          "ok": true,
+          "badCount": 0,
+          "bad": []
+        },
+        "organismIdIndex": null,
+        "counts": {
+          "food": 0,
+          "carcasses": 1,
+          "plankton": 96,
+          "telemetrySamples": 502
+        }
+      },
+      "populationTimeseries": [
+        {
+          "step": 0,
+          "frame": 0,
+          "population": 64,
+          "packs": 0,
+          "huntPackOrganisms": 3,
+          "species": 62,
+          "establishedLineages": 0
+        },
+        {
+          "step": 500,
+          "frame": 500,
+          "population": 40,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 21,
+          "establishedLineages": 0
+        },
+        {
+          "step": 1000,
+          "frame": 1000,
+          "population": 91,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 20,
+          "establishedLineages": 0
+        },
+        {
+          "step": 1500,
+          "frame": 1500,
+          "population": 125,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 22,
+          "establishedLineages": 0
+        },
+        {
+          "step": 2000,
+          "frame": 2000,
+          "population": 124,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 2500,
+          "frame": 2500,
+          "population": 121,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 20,
+          "establishedLineages": 0
+        },
+        {
+          "step": 3000,
+          "frame": 3000,
+          "population": 120,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 3500,
+          "frame": 3500,
+          "population": 121,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 4000,
+          "frame": 4000,
+          "population": 120,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 4500,
+          "frame": 4500,
+          "population": 126,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 17,
+          "establishedLineages": 0
+        },
+        {
+          "step": 5000,
+          "frame": 5000,
+          "population": 122,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 17,
+          "establishedLineages": 0
+        }
+      ],
+      "conservation": {
+        "energyPositiveResidualMax": 1.4210854715202004e-14,
+        "nutrientPositiveResidualMax": 5.551115123125783e-17,
+        "energyCreationEvents": 0,
+        "nutrientCreationEvents": 0
+      },
+      "terminationReason": "completed",
+      "modelHash": "165762e1de540d651391f6b5b32697dfb088a112b15623e08ef79f3b0686b7e9",
+      "errors": []
+    },
+    {
+      "label": "optimized",
+      "steps": 5000,
+      "completedSteps": 5000,
+      "elapsedMs": 31294.7,
+      "snapshot": {
+        "frame": 5000,
+        "totalOrganisms": 122,
+        "births": 841,
+        "deaths": 783,
+        "reproductions": 636,
+        "deathCauses": {
+          "starvation": 71,
+          "oldAge": 0,
+          "predation": 57,
+          "overcrowding": 655,
+          "other": 0
+        },
+        "predationCount": 57,
+        "foodIntakeCount": 530760,
+        "foodIntakeBySource": {
+          "fieldAlgae": 529457,
+          "wildParticle": 12,
+          "plankton": 121,
+          "prey": 57,
+          "corpse": 792,
+          "detritusParticle": 321
+        },
+        "speciesCount": 17,
+        "packCount": 0,
+        "huntPackOrganisms": 0,
+        "averageEnergy": 122.90305,
+        "averageLifespan": 677.111111,
+        "deathAgeSamples": 783,
+        "health": {
+          "ok": true,
+          "badCount": 0,
+          "bad": []
+        },
+        "organismIdIndex": {
+          "ok": true,
+          "organisms": 122,
+          "indexed": 122,
+          "duplicateIds": [],
+          "missingIds": [],
+          "staleIds": []
+        },
+        "counts": {
+          "food": 0,
+          "carcasses": 1,
+          "plankton": 96,
+          "telemetrySamples": 502
+        }
+      },
+      "populationTimeseries": [
+        {
+          "step": 0,
+          "frame": 0,
+          "population": 64,
+          "packs": 0,
+          "huntPackOrganisms": 3,
+          "species": 62,
+          "establishedLineages": 0
+        },
+        {
+          "step": 500,
+          "frame": 500,
+          "population": 40,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 21,
+          "establishedLineages": 0
+        },
+        {
+          "step": 1000,
+          "frame": 1000,
+          "population": 91,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 20,
+          "establishedLineages": 0
+        },
+        {
+          "step": 1500,
+          "frame": 1500,
+          "population": 125,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 22,
+          "establishedLineages": 0
+        },
+        {
+          "step": 2000,
+          "frame": 2000,
+          "population": 124,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 2500,
+          "frame": 2500,
+          "population": 121,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 20,
+          "establishedLineages": 0
+        },
+        {
+          "step": 3000,
+          "frame": 3000,
+          "population": 120,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 3500,
+          "frame": 3500,
+          "population": 121,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 4000,
+          "frame": 4000,
+          "population": 120,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 4500,
+          "frame": 4500,
+          "population": 126,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 17,
+          "establishedLineages": 0
+        },
+        {
+          "step": 5000,
+          "frame": 5000,
+          "population": 122,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 17,
+          "establishedLineages": 0
+        }
+      ],
+      "conservation": {
+        "energyPositiveResidualMax": 1.4210854715202004e-14,
+        "nutrientPositiveResidualMax": 5.551115123125783e-17,
+        "energyCreationEvents": 0,
+        "nutrientCreationEvents": 0
+      },
+      "terminationReason": "completed",
+      "modelHash": "165762e1de540d651391f6b5b32697dfb088a112b15623e08ef79f3b0686b7e9",
+      "errors": []
+    },
+    {
+      "label": "baseline",
+      "steps": 10000,
+      "completedSteps": 10000,
+      "elapsedMs": 43754,
+      "snapshot": {
+        "frame": 10000,
+        "totalOrganisms": 124,
+        "births": 1422,
+        "deaths": 1362,
+        "reproductions": 1084,
+        "deathCauses": {
+          "starvation": 209,
+          "oldAge": 0,
+          "predation": 102,
+          "overcrowding": 1051,
+          "other": 0
+        },
+        "predationCount": 102,
+        "foodIntakeCount": 1070262,
+        "foodIntakeBySource": {
+          "fieldAlgae": 1065795,
+          "wildParticle": 12,
+          "plankton": 296,
+          "prey": 102,
+          "corpse": 3034,
+          "detritusParticle": 1023
+        },
+        "speciesCount": 17,
+        "packCount": 0,
+        "huntPackOrganisms": 0,
+        "averageEnergy": 121.101372,
+        "averageLifespan": 790.593979,
+        "deathAgeSamples": 1362,
+        "health": {
+          "ok": true,
+          "badCount": 0,
+          "bad": []
+        },
+        "organismIdIndex": null,
+        "counts": {
+          "food": 93,
+          "carcasses": 0,
+          "plankton": 127,
+          "telemetrySamples": 1002
+        }
+      },
+      "populationTimeseries": [
+        {
+          "step": 0,
+          "frame": 0,
+          "population": 64,
+          "packs": 0,
+          "huntPackOrganisms": 3,
+          "species": 62,
+          "establishedLineages": 0
+        },
+        {
+          "step": 1000,
+          "frame": 1000,
+          "population": 91,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 20,
+          "establishedLineages": 0
+        },
+        {
+          "step": 2000,
+          "frame": 2000,
+          "population": 124,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 3000,
+          "frame": 3000,
+          "population": 120,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 4000,
+          "frame": 4000,
+          "population": 120,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 5000,
+          "frame": 5000,
+          "population": 122,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 17,
+          "establishedLineages": 0
+        },
+        {
+          "step": 6000,
+          "frame": 6000,
+          "population": 124,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 18,
+          "establishedLineages": 0
+        },
+        {
+          "step": 7000,
+          "frame": 7000,
+          "population": 120,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 8000,
+          "frame": 8000,
+          "population": 91,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 16,
+          "establishedLineages": 0
+        },
+        {
+          "step": 9000,
+          "frame": 9000,
+          "population": 124,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 10000,
+          "frame": 10000,
+          "population": 124,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 17,
+          "establishedLineages": 0
+        }
+      ],
+      "conservation": {
+        "energyPositiveResidualMax": 1.4210854715202004e-14,
+        "nutrientPositiveResidualMax": 5.551115123125783e-17,
+        "energyCreationEvents": 0,
+        "nutrientCreationEvents": 0
+      },
+      "terminationReason": "completed",
+      "modelHash": "626194759c33cab5314d10fff71f9f88a2934d462d7540c556bab307c046e34f",
+      "errors": []
+    },
+    {
+      "label": "optimized",
+      "steps": 10000,
+      "completedSteps": 10000,
+      "elapsedMs": 63804.1,
+      "snapshot": {
+        "frame": 10000,
+        "totalOrganisms": 124,
+        "births": 1422,
+        "deaths": 1362,
+        "reproductions": 1084,
+        "deathCauses": {
+          "starvation": 209,
+          "oldAge": 0,
+          "predation": 102,
+          "overcrowding": 1051,
+          "other": 0
+        },
+        "predationCount": 102,
+        "foodIntakeCount": 1070262,
+        "foodIntakeBySource": {
+          "fieldAlgae": 1065795,
+          "wildParticle": 12,
+          "plankton": 296,
+          "prey": 102,
+          "corpse": 3034,
+          "detritusParticle": 1023
+        },
+        "speciesCount": 17,
+        "packCount": 0,
+        "huntPackOrganisms": 0,
+        "averageEnergy": 121.101372,
+        "averageLifespan": 790.593979,
+        "deathAgeSamples": 1362,
+        "health": {
+          "ok": true,
+          "badCount": 0,
+          "bad": []
+        },
+        "organismIdIndex": {
+          "ok": true,
+          "organisms": 124,
+          "indexed": 124,
+          "duplicateIds": [],
+          "missingIds": [],
+          "staleIds": []
+        },
+        "counts": {
+          "food": 93,
+          "carcasses": 0,
+          "plankton": 127,
+          "telemetrySamples": 1002
+        }
+      },
+      "populationTimeseries": [
+        {
+          "step": 0,
+          "frame": 0,
+          "population": 64,
+          "packs": 0,
+          "huntPackOrganisms": 3,
+          "species": 62,
+          "establishedLineages": 0
+        },
+        {
+          "step": 1000,
+          "frame": 1000,
+          "population": 91,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 20,
+          "establishedLineages": 0
+        },
+        {
+          "step": 2000,
+          "frame": 2000,
+          "population": 124,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 3000,
+          "frame": 3000,
+          "population": 120,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 4000,
+          "frame": 4000,
+          "population": 120,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 5000,
+          "frame": 5000,
+          "population": 122,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 17,
+          "establishedLineages": 0
+        },
+        {
+          "step": 6000,
+          "frame": 6000,
+          "population": 124,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 18,
+          "establishedLineages": 0
+        },
+        {
+          "step": 7000,
+          "frame": 7000,
+          "population": 120,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 8000,
+          "frame": 8000,
+          "population": 91,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 16,
+          "establishedLineages": 0
+        },
+        {
+          "step": 9000,
+          "frame": 9000,
+          "population": 124,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 19,
+          "establishedLineages": 0
+        },
+        {
+          "step": 10000,
+          "frame": 10000,
+          "population": 124,
+          "packs": 0,
+          "huntPackOrganisms": 0,
+          "species": 17,
+          "establishedLineages": 0
+        }
+      ],
+      "conservation": {
+        "energyPositiveResidualMax": 1.4210854715202004e-14,
+        "nutrientPositiveResidualMax": 5.551115123125783e-17,
+        "energyCreationEvents": 0,
+        "nutrientCreationEvents": 0
+      },
+      "terminationReason": "completed",
+      "modelHash": "626194759c33cab5314d10fff71f9f88a2934d462d7540c556bab307c046e34f",
+      "errors": []
+    }
+  ],
+  "comparisons": [
+    {
+      "steps": 1000,
+      "exactModelState": true,
+      "baselineModelHash": "0da0445c825000ad3b8735ee339b5b05f401b18c376cb605b0db64aa53a90222",
+      "optimizedModelHash": "0da0445c825000ad3b8735ee339b5b05f401b18c376cb605b0db64aa53a90222",
+      "snapshotExact": true
+    },
+    {
+      "steps": 5000,
+      "exactModelState": true,
+      "baselineModelHash": "165762e1de540d651391f6b5b32697dfb088a112b15623e08ef79f3b0686b7e9",
+      "optimizedModelHash": "165762e1de540d651391f6b5b32697dfb088a112b15623e08ef79f3b0686b7e9",
+      "snapshotExact": true
+    },
+    {
+      "steps": 10000,
+      "exactModelState": true,
+      "baselineModelHash": "626194759c33cab5314d10fff71f9f88a2934d462d7540c556bab307c046e34f",
+      "optimizedModelHash": "626194759c33cab5314d10fff71f9f88a2934d462d7540c556bab307c046e34f",
+      "snapshotExact": true
+    }
+  ],
+  "saveLoad": {
+    "restored": {
+      "ok": true,
+      "counts": {
+        "organisms": 91,
+        "food": 261,
+        "detritusParticles": 257,
+        "plankton": 92,
+        "sparks": 0,
+        "rings": 0,
+        "predationBlooms": 0,
+        "membranes": 0,
+        "corpses": 38,
+        "species": 20
+      },
+      "world": {
+        "worldVersion": 2,
+        "worldShape": "circle",
+        "worldWidth": 888,
+        "worldHeight": 888,
+        "centerX": 444,
+        "centerY": 444,
+        "radius": 444,
+        "viewWidth": 872,
+        "viewHeight": 688,
+        "dpr": 1,
+        "camera": {
+          "x": 444,
+          "y": 444,
+          "zoom": 0.7747747747747747,
+          "minZoom": 0.7747747747747747,
+          "maxZoom": 6.198198198198198,
+          "initialized": true
+        },
+        "environment": {
+          "width": 50,
+          "height": 50,
+          "cellSize": 18,
+          "cellCount": 2500,
+          "activeCellCount": 1911,
+          "inactiveCellCount": 589,
+          "approximateActiveArea": 619164,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888
+        },
+        "spatialGrid": {
+          "cellSize": 38,
+          "width": 24,
+          "height": 24
+        }
+      },
+      "environmentInitialization": {
+        "mode": "patchy-intermediate",
+        "seed": 61001,
+        "cellCount": 1911,
+        "minimumAlgae": 0.02000018022954464,
+        "maximumAlgae": 0.3399994969367981,
+        "meanAlgae": 0.14250000017002606,
+        "medianAlgae": 0.12999999523162842,
+        "standardDeviation": 0.08654581772617116,
+        "fieldHash": "0721326b",
+        "thresholds": {
+          "lowMax": 0.075,
+          "highMin": 0.185
+        },
+        "ratios": {
+          "low": 0.250130821559393,
+          "medium": 0.49973835688121404,
+          "high": 0.250130821559393
+        },
+        "spatial": {
+          "componentCount": 16,
+          "resourcePatchCount": 15,
+          "byBand": {
+            "low": {
+              "components": 6,
+              "largestCells": 162,
+              "largestShare": 0.0847723704866562
+            },
+            "medium": {
+              "components": 1,
+              "largestCells": 955,
+              "largestShare": 0.49973835688121404
+            },
+            "high": {
+              "components": 9,
+              "largestCells": 207,
+              "largestShare": 0.10832025117739404
+            }
+          }
+        }
+      }
+    },
+    "beforeHash": "9ad579c280c70543daef1da0bc929721939d9d6c7d6bd649182ca3440c06baeb",
+    "afterHash": "5eb759913bebbc8bcc0e4526a20cb48381b69b5605838246b02757369355919e",
+    "exactModelState": false,
+    "indexValidation": {
+      "ok": true,
+      "organisms": 91,
+      "indexed": 91,
+      "duplicateIds": [],
+      "missingIds": [],
+      "staleIds": []
+    },
+    "roundTripApi": {
+      "ok": true,
+      "worldVersion": 2,
+      "worldShape": "circle",
+      "worldWidth": 888,
+      "worldHeight": 888,
+      "worldRadius": 444,
+      "organisms": 91,
+      "extinctRecords": 14,
+      "algaeFieldHashBefore": "5af43197",
+      "algaeFieldHashAfter": "5af43197"
+    },
+    "modes": {
+      "tinyMode": "tiny",
+      "fullMode": "full"
+    },
+    "pauseResumeCompleted": true,
+    "errors": []
+  },
+  "legacySaveLoad": {
+    "baselineCounts": {
+      "organisms": 91,
+      "food": 261,
+      "detritusParticles": 257,
+      "plankton": 92,
+      "sparks": 197,
+      "rings": 39,
+      "predationBlooms": 26,
+      "membranes": 0,
+      "corpses": 38,
+      "species": 20
+    },
+    "restored": {
+      "ok": true,
+      "counts": {
+        "organisms": 91,
+        "food": 261,
+        "detritusParticles": 257,
+        "plankton": 92,
+        "sparks": 0,
+        "rings": 0,
+        "predationBlooms": 0,
+        "membranes": 0,
+        "corpses": 38,
+        "species": 20
+      },
+      "world": {
+        "worldVersion": 2,
+        "worldShape": "circle",
+        "worldWidth": 888,
+        "worldHeight": 888,
+        "centerX": 444,
+        "centerY": 444,
+        "radius": 444,
+        "viewWidth": 872,
+        "viewHeight": 688,
+        "dpr": 1,
+        "camera": {
+          "x": 444,
+          "y": 444,
+          "zoom": 0.7747747747747747,
+          "minZoom": 0.7747747747747747,
+          "maxZoom": 6.198198198198198,
+          "initialized": true
+        },
+        "environment": {
+          "width": 50,
+          "height": 50,
+          "cellSize": 18,
+          "cellCount": 2500,
+          "activeCellCount": 1911,
+          "inactiveCellCount": 589,
+          "approximateActiveArea": 619164,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888
+        },
+        "spatialGrid": {
+          "cellSize": 64,
+          "width": 0,
+          "height": 0
+        }
+      },
+      "environmentInitialization": {
+        "mode": "patchy-intermediate",
+        "seed": 61001,
+        "cellCount": 1911,
+        "minimumAlgae": 0.02000018022954464,
+        "maximumAlgae": 0.3399994969367981,
+        "meanAlgae": 0.14250000017002606,
+        "medianAlgae": 0.12999999523162842,
+        "standardDeviation": 0.08654581772617116,
+        "fieldHash": "0721326b",
+        "thresholds": {
+          "lowMax": 0.075,
+          "highMin": 0.185
+        },
+        "ratios": {
+          "low": 0.250130821559393,
+          "medium": 0.49973835688121404,
+          "high": 0.250130821559393
+        },
+        "spatial": {
+          "componentCount": 16,
+          "resourcePatchCount": 15,
+          "byBand": {
+            "low": {
+              "components": 6,
+              "largestCells": 162,
+              "largestShare": 0.0847723704866562
+            },
+            "medium": {
+              "components": 1,
+              "largestCells": 955,
+              "largestShare": 0.49973835688121404
+            },
+            "high": {
+              "components": 9,
+              "largestCells": 207,
+              "largestShare": 0.10832025117739404
+            }
+          }
+        }
+      }
+    },
+    "counts": {
+      "organisms": 91,
+      "food": 261,
+      "detritusParticles": 257,
+      "plankton": 92,
+      "sparks": 0,
+      "rings": 0,
+      "predationBlooms": 0,
+      "membranes": 0,
+      "corpses": 38,
+      "species": 20
+    },
+    "indexValidation": {
+      "ok": true,
+      "organisms": 91,
+      "indexed": 91,
+      "duplicateIds": [],
+      "missingIds": [],
+      "staleIds": []
+    },
+    "health": {
+      "ok": true,
+      "badCount": 0,
+      "bad": []
+    },
+    "countsExact": false,
+    "errors": []
+  }
+}

@@ -1,0 +1,1102 @@
+{
+  "generatedAt": "2026-07-31T05:03:58.769Z",
+  "seed": 61001,
+  "baselineRef": "645e163",
+  "optimizedHead": "693c7e7053d75e3d92489d28248a64dc17c39200",
+  "scenarios": [
+    {
+      "id": "few-organisms",
+      "population": 32,
+      "steps": 1,
+      "camera": "fit"
+    },
+    {
+      "id": "population-200",
+      "population": 200,
+      "steps": 1,
+      "camera": "fit"
+    },
+    {
+      "id": "population-1000",
+      "population": 1000,
+      "steps": 1,
+      "camera": "fit"
+    },
+    {
+      "id": "zoom-in",
+      "population": 200,
+      "steps": 1,
+      "camera": "zoom-in"
+    },
+    {
+      "id": "zoom-out",
+      "population": 200,
+      "steps": 1,
+      "camera": "zoom-out"
+    },
+    {
+      "id": "complex-environment",
+      "population": 200,
+      "steps": 240,
+      "camera": "fit"
+    },
+    {
+      "id": "predation-active",
+      "population": null,
+      "steps": 300,
+      "camera": "fit"
+    },
+    {
+      "id": "many-carcasses",
+      "population": null,
+      "steps": 1000,
+      "camera": "fit"
+    }
+  ],
+  "comparisons": [
+    {
+      "scenario": "few-organisms",
+      "baselineState": {
+        "counts": {
+          "organisms": 32,
+          "food": 11,
+          "detritusParticles": 0,
+          "plankton": 70,
+          "sparks": 0,
+          "rings": 0,
+          "predationBlooms": 0,
+          "membranes": 0,
+          "corpses": 0,
+          "species": 31
+        },
+        "world": {
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "centerX": 444,
+          "centerY": 444,
+          "radius": 444,
+          "viewWidth": 872,
+          "viewHeight": 688,
+          "dpr": 1,
+          "camera": {
+            "x": 444,
+            "y": 444,
+            "zoom": 0.7747747747747747,
+            "minZoom": 0.7747747747747747,
+            "maxZoom": 6.198198198198198,
+            "initialized": true
+          },
+          "environment": {
+            "width": 50,
+            "height": 50,
+            "cellSize": 18,
+            "cellCount": 2500,
+            "activeCellCount": 1911,
+            "inactiveCellCount": 589,
+            "approximateActiveArea": 619164,
+            "worldShape": "circle",
+            "worldWidth": 888,
+            "worldHeight": 888
+          },
+          "spatialGrid": {
+            "cellSize": 45,
+            "width": 20,
+            "height": 20
+          }
+        },
+        "predation": {
+          "chasing": 0,
+          "fleeing": 2,
+          "targets": 0,
+          "bursting": 0,
+          "predEvents": 0
+        }
+      },
+      "optimizedState": {
+        "counts": {
+          "organisms": 32,
+          "food": 11,
+          "detritusParticles": 0,
+          "plankton": 70,
+          "sparks": 0,
+          "rings": 0,
+          "predationBlooms": 0,
+          "membranes": 0,
+          "corpses": 0,
+          "species": 31
+        },
+        "world": {
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "centerX": 444,
+          "centerY": 444,
+          "radius": 444,
+          "viewWidth": 872,
+          "viewHeight": 688,
+          "dpr": 1,
+          "camera": {
+            "x": 444,
+            "y": 444,
+            "zoom": 0.7747747747747747,
+            "minZoom": 0.7747747747747747,
+            "maxZoom": 6.198198198198198,
+            "initialized": true
+          },
+          "environment": {
+            "width": 50,
+            "height": 50,
+            "cellSize": 18,
+            "cellCount": 2500,
+            "activeCellCount": 1911,
+            "inactiveCellCount": 589,
+            "approximateActiveArea": 619164,
+            "worldShape": "circle",
+            "worldWidth": 888,
+            "worldHeight": 888
+          },
+          "spatialGrid": {
+            "cellSize": 45,
+            "width": 20,
+            "height": 20
+          }
+        },
+        "predation": {
+          "chasing": 0,
+          "fleeing": 2,
+          "targets": 0,
+          "bursting": 0,
+          "predEvents": 0
+        }
+      },
+      "stateExact": true,
+      "image": {
+        "sameDimensions": true,
+        "width": 872,
+        "height": 688,
+        "pixels": 599936,
+        "differingPixels": 2248,
+        "differingPixelRatio": 0.0037470663537443995,
+        "meanAbsoluteChannelDifference": 0.10183961289204181,
+        "maxChannelDifference": 252
+      }
+    },
+    {
+      "scenario": "population-200",
+      "baselineState": {
+        "counts": {
+          "organisms": 200,
+          "food": 11,
+          "detritusParticles": 0,
+          "plankton": 70,
+          "sparks": 0,
+          "rings": 0,
+          "predationBlooms": 0,
+          "membranes": 0,
+          "corpses": 0,
+          "species": 165
+        },
+        "world": {
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "centerX": 444,
+          "centerY": 444,
+          "radius": 444,
+          "viewWidth": 872,
+          "viewHeight": 688,
+          "dpr": 1,
+          "camera": {
+            "x": 444,
+            "y": 444,
+            "zoom": 0.7747747747747747,
+            "minZoom": 0.7747747747747747,
+            "maxZoom": 6.198198198198198,
+            "initialized": true
+          },
+          "environment": {
+            "width": 50,
+            "height": 50,
+            "cellSize": 18,
+            "cellCount": 2500,
+            "activeCellCount": 1911,
+            "inactiveCellCount": 589,
+            "approximateActiveArea": 619164,
+            "worldShape": "circle",
+            "worldWidth": 888,
+            "worldHeight": 888
+          },
+          "spatialGrid": {
+            "cellSize": 45,
+            "width": 20,
+            "height": 20
+          }
+        },
+        "predation": {
+          "chasing": 0,
+          "fleeing": 7,
+          "targets": 0,
+          "bursting": 0,
+          "predEvents": 0
+        }
+      },
+      "optimizedState": {
+        "counts": {
+          "organisms": 200,
+          "food": 11,
+          "detritusParticles": 0,
+          "plankton": 70,
+          "sparks": 0,
+          "rings": 0,
+          "predationBlooms": 0,
+          "membranes": 0,
+          "corpses": 0,
+          "species": 165
+        },
+        "world": {
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "centerX": 444,
+          "centerY": 444,
+          "radius": 444,
+          "viewWidth": 872,
+          "viewHeight": 688,
+          "dpr": 1,
+          "camera": {
+            "x": 444,
+            "y": 444,
+            "zoom": 0.7747747747747747,
+            "minZoom": 0.7747747747747747,
+            "maxZoom": 6.198198198198198,
+            "initialized": true
+          },
+          "environment": {
+            "width": 50,
+            "height": 50,
+            "cellSize": 18,
+            "cellCount": 2500,
+            "activeCellCount": 1911,
+            "inactiveCellCount": 589,
+            "approximateActiveArea": 619164,
+            "worldShape": "circle",
+            "worldWidth": 888,
+            "worldHeight": 888
+          },
+          "spatialGrid": {
+            "cellSize": 45,
+            "width": 20,
+            "height": 20
+          }
+        },
+        "predation": {
+          "chasing": 0,
+          "fleeing": 7,
+          "targets": 0,
+          "bursting": 0,
+          "predEvents": 0
+        }
+      },
+      "stateExact": true,
+      "image": {
+        "sameDimensions": true,
+        "width": 872,
+        "height": 688,
+        "pixels": 599936,
+        "differingPixels": 43,
+        "differingPixelRatio": 0.00007167431192660551,
+        "meanAbsoluteChannelDifference": 0.0037599843983358223,
+        "maxChannelDifference": 252
+      }
+    },
+    {
+      "scenario": "population-1000",
+      "baselineState": {
+        "counts": {
+          "organisms": 1000,
+          "food": 11,
+          "detritusParticles": 0,
+          "plankton": 70,
+          "sparks": 0,
+          "rings": 0,
+          "predationBlooms": 0,
+          "membranes": 0,
+          "corpses": 0,
+          "species": 530
+        },
+        "world": {
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "centerX": 444,
+          "centerY": 444,
+          "radius": 444,
+          "viewWidth": 872,
+          "viewHeight": 688,
+          "dpr": 1,
+          "camera": {
+            "x": 444,
+            "y": 444,
+            "zoom": 0.7747747747747747,
+            "minZoom": 0.7747747747747747,
+            "maxZoom": 6.198198198198198,
+            "initialized": true
+          },
+          "environment": {
+            "width": 50,
+            "height": 50,
+            "cellSize": 18,
+            "cellCount": 2500,
+            "activeCellCount": 1911,
+            "inactiveCellCount": 589,
+            "approximateActiveArea": 619164,
+            "worldShape": "circle",
+            "worldWidth": 888,
+            "worldHeight": 888
+          },
+          "spatialGrid": {
+            "cellSize": 45,
+            "width": 20,
+            "height": 20
+          }
+        },
+        "predation": {
+          "chasing": 0,
+          "fleeing": 7,
+          "targets": 0,
+          "bursting": 0,
+          "predEvents": 0
+        }
+      },
+      "optimizedState": {
+        "counts": {
+          "organisms": 1000,
+          "food": 11,
+          "detritusParticles": 0,
+          "plankton": 70,
+          "sparks": 0,
+          "rings": 0,
+          "predationBlooms": 0,
+          "membranes": 0,
+          "corpses": 0,
+          "species": 530
+        },
+        "world": {
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "centerX": 444,
+          "centerY": 444,
+          "radius": 444,
+          "viewWidth": 872,
+          "viewHeight": 688,
+          "dpr": 1,
+          "camera": {
+            "x": 444,
+            "y": 444,
+            "zoom": 0.7747747747747747,
+            "minZoom": 0.7747747747747747,
+            "maxZoom": 6.198198198198198,
+            "initialized": true
+          },
+          "environment": {
+            "width": 50,
+            "height": 50,
+            "cellSize": 18,
+            "cellCount": 2500,
+            "activeCellCount": 1911,
+            "inactiveCellCount": 589,
+            "approximateActiveArea": 619164,
+            "worldShape": "circle",
+            "worldWidth": 888,
+            "worldHeight": 888
+          },
+          "spatialGrid": {
+            "cellSize": 45,
+            "width": 20,
+            "height": 20
+          }
+        },
+        "predation": {
+          "chasing": 0,
+          "fleeing": 7,
+          "targets": 0,
+          "bursting": 0,
+          "predEvents": 0
+        }
+      },
+      "stateExact": true,
+      "image": {
+        "sameDimensions": true,
+        "width": 872,
+        "height": 688,
+        "pixels": 599936,
+        "differingPixels": 293,
+        "differingPixelRatio": 0.0004883854277789631,
+        "meanAbsoluteChannelDifference": 0.030624933326221463,
+        "maxChannelDifference": 252
+      }
+    },
+    {
+      "scenario": "zoom-in",
+      "baselineState": {
+        "counts": {
+          "organisms": 200,
+          "food": 11,
+          "detritusParticles": 0,
+          "plankton": 70,
+          "sparks": 0,
+          "rings": 0,
+          "predationBlooms": 0,
+          "membranes": 0,
+          "corpses": 0,
+          "species": 163
+        },
+        "world": {
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "centerX": 444,
+          "centerY": 444,
+          "radius": 444,
+          "viewWidth": 872,
+          "viewHeight": 688,
+          "dpr": 1,
+          "camera": {
+            "x": 444,
+            "y": 444,
+            "zoom": 2,
+            "minZoom": 0.7747747747747747,
+            "maxZoom": 6.198198198198198,
+            "initialized": true
+          },
+          "environment": {
+            "width": 50,
+            "height": 50,
+            "cellSize": 18,
+            "cellCount": 2500,
+            "activeCellCount": 1911,
+            "inactiveCellCount": 589,
+            "approximateActiveArea": 619164,
+            "worldShape": "circle",
+            "worldWidth": 888,
+            "worldHeight": 888
+          },
+          "spatialGrid": {
+            "cellSize": 45,
+            "width": 20,
+            "height": 20
+          }
+        },
+        "predation": {
+          "chasing": 0,
+          "fleeing": 7,
+          "targets": 0,
+          "bursting": 0,
+          "predEvents": 0
+        }
+      },
+      "optimizedState": {
+        "counts": {
+          "organisms": 200,
+          "food": 11,
+          "detritusParticles": 0,
+          "plankton": 70,
+          "sparks": 0,
+          "rings": 0,
+          "predationBlooms": 0,
+          "membranes": 0,
+          "corpses": 0,
+          "species": 163
+        },
+        "world": {
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "centerX": 444,
+          "centerY": 444,
+          "radius": 444,
+          "viewWidth": 872,
+          "viewHeight": 688,
+          "dpr": 1,
+          "camera": {
+            "x": 444,
+            "y": 444,
+            "zoom": 2,
+            "minZoom": 0.7747747747747747,
+            "maxZoom": 6.198198198198198,
+            "initialized": true
+          },
+          "environment": {
+            "width": 50,
+            "height": 50,
+            "cellSize": 18,
+            "cellCount": 2500,
+            "activeCellCount": 1911,
+            "inactiveCellCount": 589,
+            "approximateActiveArea": 619164,
+            "worldShape": "circle",
+            "worldWidth": 888,
+            "worldHeight": 888
+          },
+          "spatialGrid": {
+            "cellSize": 45,
+            "width": 20,
+            "height": 20
+          }
+        },
+        "predation": {
+          "chasing": 0,
+          "fleeing": 7,
+          "targets": 0,
+          "bursting": 0,
+          "predEvents": 0
+        }
+      },
+      "stateExact": true,
+      "image": {
+        "sameDimensions": true,
+        "width": 872,
+        "height": 688,
+        "pixels": 599936,
+        "differingPixels": 2370,
+        "differingPixelRatio": 0.00395042137828035,
+        "meanAbsoluteChannelDifference": 0.28022155696607637,
+        "maxChannelDifference": 237
+      }
+    },
+    {
+      "scenario": "zoom-out",
+      "baselineState": {
+        "counts": {
+          "organisms": 200,
+          "food": 11,
+          "detritusParticles": 0,
+          "plankton": 70,
+          "sparks": 0,
+          "rings": 0,
+          "predationBlooms": 0,
+          "membranes": 0,
+          "corpses": 0,
+          "species": 170
+        },
+        "world": {
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "centerX": 444,
+          "centerY": 444,
+          "radius": 444,
+          "viewWidth": 872,
+          "viewHeight": 688,
+          "dpr": 1,
+          "camera": {
+            "x": 444,
+            "y": 444,
+            "zoom": 0.7747747747747747,
+            "minZoom": 0.7747747747747747,
+            "maxZoom": 6.198198198198198,
+            "initialized": true
+          },
+          "environment": {
+            "width": 50,
+            "height": 50,
+            "cellSize": 18,
+            "cellCount": 2500,
+            "activeCellCount": 1911,
+            "inactiveCellCount": 589,
+            "approximateActiveArea": 619164,
+            "worldShape": "circle",
+            "worldWidth": 888,
+            "worldHeight": 888
+          },
+          "spatialGrid": {
+            "cellSize": 45,
+            "width": 20,
+            "height": 20
+          }
+        },
+        "predation": {
+          "chasing": 0,
+          "fleeing": 7,
+          "targets": 0,
+          "bursting": 0,
+          "predEvents": 0
+        }
+      },
+      "optimizedState": {
+        "counts": {
+          "organisms": 200,
+          "food": 11,
+          "detritusParticles": 0,
+          "plankton": 70,
+          "sparks": 0,
+          "rings": 0,
+          "predationBlooms": 0,
+          "membranes": 0,
+          "corpses": 0,
+          "species": 170
+        },
+        "world": {
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "centerX": 444,
+          "centerY": 444,
+          "radius": 444,
+          "viewWidth": 872,
+          "viewHeight": 688,
+          "dpr": 1,
+          "camera": {
+            "x": 444,
+            "y": 444,
+            "zoom": 0.7747747747747747,
+            "minZoom": 0.7747747747747747,
+            "maxZoom": 6.198198198198198,
+            "initialized": true
+          },
+          "environment": {
+            "width": 50,
+            "height": 50,
+            "cellSize": 18,
+            "cellCount": 2500,
+            "activeCellCount": 1911,
+            "inactiveCellCount": 589,
+            "approximateActiveArea": 619164,
+            "worldShape": "circle",
+            "worldWidth": 888,
+            "worldHeight": 888
+          },
+          "spatialGrid": {
+            "cellSize": 45,
+            "width": 20,
+            "height": 20
+          }
+        },
+        "predation": {
+          "chasing": 0,
+          "fleeing": 7,
+          "targets": 0,
+          "bursting": 0,
+          "predEvents": 0
+        }
+      },
+      "stateExact": true,
+      "image": {
+        "sameDimensions": true,
+        "width": 872,
+        "height": 688,
+        "pixels": 599936,
+        "differingPixels": 196,
+        "differingPixelRatio": 0.0003267015148282483,
+        "meanAbsoluteChannelDifference": 0.02238363758800939,
+        "maxChannelDifference": 252
+      }
+    },
+    {
+      "scenario": "complex-environment",
+      "baselineState": {
+        "counts": {
+          "organisms": 200,
+          "food": 58,
+          "detritusParticles": 52,
+          "plankton": 83,
+          "sparks": 196,
+          "rings": 9,
+          "predationBlooms": 8,
+          "membranes": 0,
+          "corpses": 21,
+          "species": 166
+        },
+        "world": {
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "centerX": 444,
+          "centerY": 444,
+          "radius": 444,
+          "viewWidth": 872,
+          "viewHeight": 688,
+          "dpr": 1,
+          "camera": {
+            "x": 444,
+            "y": 444,
+            "zoom": 0.7747747747747747,
+            "minZoom": 0.7747747747747747,
+            "maxZoom": 6.198198198198198,
+            "initialized": true
+          },
+          "environment": {
+            "width": 50,
+            "height": 50,
+            "cellSize": 18,
+            "cellCount": 2500,
+            "activeCellCount": 1911,
+            "inactiveCellCount": 589,
+            "approximateActiveArea": 619164,
+            "worldShape": "circle",
+            "worldWidth": 888,
+            "worldHeight": 888
+          },
+          "spatialGrid": {
+            "cellSize": 52,
+            "width": 18,
+            "height": 18
+          }
+        },
+        "predation": {
+          "chasing": 22,
+          "fleeing": 17,
+          "targets": 23,
+          "bursting": 5,
+          "predEvents": 8
+        }
+      },
+      "optimizedState": {
+        "counts": {
+          "organisms": 200,
+          "food": 58,
+          "detritusParticles": 52,
+          "plankton": 83,
+          "sparks": 196,
+          "rings": 9,
+          "predationBlooms": 8,
+          "membranes": 0,
+          "corpses": 21,
+          "species": 166
+        },
+        "world": {
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "centerX": 444,
+          "centerY": 444,
+          "radius": 444,
+          "viewWidth": 872,
+          "viewHeight": 688,
+          "dpr": 1,
+          "camera": {
+            "x": 444,
+            "y": 444,
+            "zoom": 0.7747747747747747,
+            "minZoom": 0.7747747747747747,
+            "maxZoom": 6.198198198198198,
+            "initialized": true
+          },
+          "environment": {
+            "width": 50,
+            "height": 50,
+            "cellSize": 18,
+            "cellCount": 2500,
+            "activeCellCount": 1911,
+            "inactiveCellCount": 589,
+            "approximateActiveArea": 619164,
+            "worldShape": "circle",
+            "worldWidth": 888,
+            "worldHeight": 888
+          },
+          "spatialGrid": {
+            "cellSize": 52,
+            "width": 18,
+            "height": 18
+          }
+        },
+        "predation": {
+          "chasing": 22,
+          "fleeing": 17,
+          "targets": 23,
+          "bursting": 5,
+          "predEvents": 8
+        }
+      },
+      "stateExact": true,
+      "image": {
+        "sameDimensions": true,
+        "width": 872,
+        "height": 688,
+        "pixels": 599936,
+        "differingPixels": 21070,
+        "differingPixelRatio": 0.0351204128440367,
+        "meanAbsoluteChannelDifference": 0.4339587889374867,
+        "maxChannelDifference": 252
+      }
+    },
+    {
+      "scenario": "predation-active",
+      "baselineState": {
+        "counts": {
+          "organisms": 39,
+          "food": 155,
+          "detritusParticles": 149,
+          "plankton": 87,
+          "sparks": 197,
+          "rings": 13,
+          "predationBlooms": 9,
+          "membranes": 0,
+          "corpses": 30,
+          "species": 28
+        },
+        "world": {
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "centerX": 444,
+          "centerY": 444,
+          "radius": 444,
+          "viewWidth": 872,
+          "viewHeight": 688,
+          "dpr": 1,
+          "camera": {
+            "x": 444,
+            "y": 444,
+            "zoom": 0.7747747747747747,
+            "minZoom": 0.7747747747747747,
+            "maxZoom": 6.198198198198198,
+            "initialized": true
+          },
+          "environment": {
+            "width": 50,
+            "height": 50,
+            "cellSize": 18,
+            "cellCount": 2500,
+            "activeCellCount": 1911,
+            "inactiveCellCount": 589,
+            "approximateActiveArea": 619164,
+            "worldShape": "circle",
+            "worldWidth": 888,
+            "worldHeight": 888
+          },
+          "spatialGrid": {
+            "cellSize": 57,
+            "width": 16,
+            "height": 16
+          }
+        },
+        "predation": {
+          "chasing": 17,
+          "fleeing": 12,
+          "targets": 14,
+          "bursting": 5,
+          "predEvents": 17
+        }
+      },
+      "optimizedState": {
+        "counts": {
+          "organisms": 39,
+          "food": 155,
+          "detritusParticles": 149,
+          "plankton": 87,
+          "sparks": 197,
+          "rings": 13,
+          "predationBlooms": 9,
+          "membranes": 0,
+          "corpses": 30,
+          "species": 28
+        },
+        "world": {
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "centerX": 444,
+          "centerY": 444,
+          "radius": 444,
+          "viewWidth": 872,
+          "viewHeight": 688,
+          "dpr": 1,
+          "camera": {
+            "x": 444,
+            "y": 444,
+            "zoom": 0.7747747747747747,
+            "minZoom": 0.7747747747747747,
+            "maxZoom": 6.198198198198198,
+            "initialized": true
+          },
+          "environment": {
+            "width": 50,
+            "height": 50,
+            "cellSize": 18,
+            "cellCount": 2500,
+            "activeCellCount": 1911,
+            "inactiveCellCount": 589,
+            "approximateActiveArea": 619164,
+            "worldShape": "circle",
+            "worldWidth": 888,
+            "worldHeight": 888
+          },
+          "spatialGrid": {
+            "cellSize": 57,
+            "width": 16,
+            "height": 16
+          }
+        },
+        "predation": {
+          "chasing": 17,
+          "fleeing": 12,
+          "targets": 14,
+          "bursting": 5,
+          "predEvents": 17
+        }
+      },
+      "stateExact": true,
+      "image": {
+        "sameDimensions": true,
+        "width": 872,
+        "height": 688,
+        "pixels": 599936,
+        "differingPixels": 26623,
+        "differingPixelRatio": 0.044376400149349265,
+        "meanAbsoluteChannelDifference": 0.35087159296991677,
+        "maxChannelDifference": 252
+      }
+    },
+    {
+      "scenario": "many-carcasses",
+      "baselineState": {
+        "counts": {
+          "organisms": 91,
+          "food": 261,
+          "detritusParticles": 257,
+          "plankton": 92,
+          "sparks": 197,
+          "rings": 39,
+          "predationBlooms": 26,
+          "membranes": 0,
+          "corpses": 38,
+          "species": 20
+        },
+        "world": {
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "centerX": 444,
+          "centerY": 444,
+          "radius": 444,
+          "viewWidth": 872,
+          "viewHeight": 688,
+          "dpr": 1,
+          "camera": {
+            "x": 444,
+            "y": 444,
+            "zoom": 0.7747747747747747,
+            "minZoom": 0.7747747747747747,
+            "maxZoom": 6.198198198198198,
+            "initialized": true
+          },
+          "environment": {
+            "width": 50,
+            "height": 50,
+            "cellSize": 18,
+            "cellCount": 2500,
+            "activeCellCount": 1911,
+            "inactiveCellCount": 589,
+            "approximateActiveArea": 619164,
+            "worldShape": "circle",
+            "worldWidth": 888,
+            "worldHeight": 888
+          },
+          "spatialGrid": {
+            "cellSize": 38,
+            "width": 24,
+            "height": 24
+          }
+        },
+        "predation": {
+          "chasing": 5,
+          "fleeing": 8,
+          "targets": 6,
+          "bursting": 2,
+          "predEvents": 43
+        }
+      },
+      "optimizedState": {
+        "counts": {
+          "organisms": 91,
+          "food": 261,
+          "detritusParticles": 257,
+          "plankton": 92,
+          "sparks": 197,
+          "rings": 39,
+          "predationBlooms": 26,
+          "membranes": 0,
+          "corpses": 38,
+          "species": 20
+        },
+        "world": {
+          "worldVersion": 2,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888,
+          "centerX": 444,
+          "centerY": 444,
+          "radius": 444,
+          "viewWidth": 872,
+          "viewHeight": 688,
+          "dpr": 1,
+          "camera": {
+            "x": 444,
+            "y": 444,
+            "zoom": 0.7747747747747747,
+            "minZoom": 0.7747747747747747,
+            "maxZoom": 6.198198198198198,
+            "initialized": true
+          },
+          "environment": {
+            "width": 50,
+            "height": 50,
+            "cellSize": 18,
+            "cellCount": 2500,
+            "activeCellCount": 1911,
+            "inactiveCellCount": 589,
+            "approximateActiveArea": 619164,
+            "worldShape": "circle",
+            "worldWidth": 888,
+            "worldHeight": 888
+          },
+          "spatialGrid": {
+            "cellSize": 38,
+            "width": 24,
+            "height": 24
+          }
+        },
+        "predation": {
+          "chasing": 5,
+          "fleeing": 8,
+          "targets": 6,
+          "bursting": 2,
+          "predEvents": 43
+        }
+      },
+      "stateExact": true,
+      "image": {
+        "sameDimensions": true,
+        "width": 872,
+        "height": 688,
+        "pixels": 599936,
+        "differingPixels": 51410,
+        "differingPixelRatio": 0.08569247386387881,
+        "meanAbsoluteChannelDifference": 0.8900724410603797,
+        "maxChannelDifference": 252
+      }
+    }
+  ],
+  "errors": {
+    "baseline": [],
+    "optimized": []
+  }
+}
