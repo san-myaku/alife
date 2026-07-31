@@ -13597,16 +13597,17 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
     return s;
   }
   const symbolSpriteCache = new Map();
-  const symbolSpriteStats = { hits:0, misses:0, bakes:0, evictions:0, peakSize:0, frameKeys:0, effectiveLimit:0 };
+  const symbolSpriteStats = { hits:0, misses:0, bakes:0, evictions:0, imageBitmaps:0, peakSize:0, frameKeys:0, effectiveLimit:0 };
   let symbolSpriteRenderEpoch=0;
   let symbolSpriteFrameKeyCount=0;
   const canonicalSymbolSpriteSignatureCache = new WeakMap();
   function clearSymbolSpriteCache(){
+    for(const rec of symbolSpriteCache.values()) rec.canvas?.close?.();
     symbolSpriteCache.clear();
     canonicalSymbolSpriteSignatureCache.clear?.();
     symbolSpriteRenderEpoch=0;
     symbolSpriteFrameKeyCount=0;
-    symbolSpriteStats.hits=0; symbolSpriteStats.misses=0; symbolSpriteStats.bakes=0; symbolSpriteStats.evictions=0;
+    symbolSpriteStats.hits=0; symbolSpriteStats.misses=0; symbolSpriteStats.bakes=0; symbolSpriteStats.evictions=0; symbolSpriteStats.imageBitmaps=0;
     symbolSpriteStats.peakSize=0; symbolSpriteStats.frameKeys=0; symbolSpriteStats.effectiveLimit=0;
   }
   function symbolRenderedVisualR(o,sym){
@@ -13680,6 +13681,7 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
     while(symbolSpriteCache.size > limit){
       const oldestKey=symbolSpriteCache.keys().next().value;
       if(oldestKey==null) break;
+      symbolSpriteCache.get(oldestKey)?.canvas?.close?.();
       symbolSpriteCache.delete(oldestKey);
       symbolSpriteStats.evictions++;
     }
@@ -13705,7 +13707,9 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
     symbolSpriteStats.misses++;
     const visualR = Math.max(o.size||1, symbolRenderedVisualR(o,sym));
     const side = Math.max(28, Math.min(CONFIG.rendering.symbolSpriteMaxSide, Math.ceil(visualR*visualScale*2.85 + (o.size||1)*visualScale*3.2 + 24)));
-    const canvas = document.createElement('canvas');
+    const canvas = typeof OffscreenCanvas==='function'
+      ? new OffscreenCanvas(side,side)
+      : document.createElement('canvas');
     canvas.width = side;
     canvas.height = side;
     const c = canvas.getContext('2d');
@@ -13714,7 +13718,11 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
     const bucket = symbolSpriteGaitBucket(o);
     const bakeGait = (bucket + 0.5) / CONFIG.rendering.symbolSpriteGaitBuckets * TAU;
     o.drawSymbolicLive(c,{x:side*0.5,y:side*0.5,visualScale,heading:0,gait:bakeGait});
-    const rec = {canvas, side, half:side*0.5, last:frame, epoch:symbolSpriteRenderEpoch};
+    const drawable=typeof canvas.transferToImageBitmap==='function'
+      ? canvas.transferToImageBitmap()
+      : canvas;
+    if(drawable!==canvas) symbolSpriteStats.imageBitmaps++;
+    const rec = {canvas:drawable, side, half:side*0.5, last:frame, epoch:symbolSpriteRenderEpoch};
     symbolSpriteCache.set(key, rec);
     symbolSpriteFrameKeyCount++;
     symbolSpriteStats.bakes++;
