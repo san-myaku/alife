@@ -16439,19 +16439,11 @@ if(Z>0.08){
       const sprite=getSymbolSprite(this);
       if(sprite){
         this.drawSymbolicSpriteBackdrops(sym, visualScale);
-        const angle=Number.isFinite(this.heading) ? this.heading : 0;
-        const cos=Math.cos(angle), sin=Math.sin(angle);
-        const scale=DPR*camera.zoom;
-        ctx.setTransform(
-          scale*cos,
-          scale*sin,
-          -scale*sin,
-          scale*cos,
-          DPR*((this.x-camera.x)*camera.zoom+VIEW_W*0.5),
-          DPR*((this.y-camera.y)*camera.zoom+VIEW_H*0.5)
-        );
+        ctx.save();
+        ctx.translate(this.x,this.y);
+        ctx.rotate(Number.isFinite(this.heading) ? this.heading : 0);
         ctx.drawImage(sprite.canvas,-sprite.half,-sprite.half);
-        applyWorldTransform();
+        ctx.restore();
         this.drawSymbolicSpriteRings(sym, visualScale);
         return;
       }
