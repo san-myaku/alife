@@ -49,6 +49,17 @@
   .dot.herb{background:#7bdff2}
   .dot.omni{background:#f7b731}
   .dot.carn{background:#ff4242}
+  .dot.total{background:#f5f7ff}
+  .population-navigator{ display:grid; gap:7px; margin-top:8px; }
+  .navigator-tabs{ display:flex; flex-wrap:wrap; gap:6px; }
+  .navigator-tab{ min-height:32px; padding:5px 9px; border:1px solid #2d3a68; border-radius:8px; background:#081327; color:#c9d8f2; cursor:pointer; font-size:.75rem; font-weight:700; }
+  .navigator-tab.on{ border-color:#7dd3fc; background:#123153; color:#eef8ff; }
+  .navigator-list{ display:grid; gap:5px; max-height:150px; overflow:auto; }
+  .navigator-item{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:center; width:100%; padding:7px 8px; border:1px solid rgba(125,145,190,.28); border-radius:8px; background:rgba(7,16,34,.72); color:#dbeafe; text-align:left; cursor:pointer; }
+  .navigator-item.on{ border-color:#7dd3fc; box-shadow:inset 0 0 0 1px rgba(125,211,252,.22); }
+  .navigator-item small{ color:#9fb3d1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .navigator-item b{ color:#fff; font-variant-numeric:tabular-nums; }
+  .navigator-action{ width:100%; min-height:38px; }
   @media (max-width:980px){
     body{ overflow:auto; overscroll-behavior:none; }
     .wrap{ height:auto; min-height:100dvh; grid-template-columns:1fr; grid-template-rows:minmax(68dvh,72dvh) auto; gap:8px; padding:8px; }
@@ -262,6 +273,12 @@
     </div>
 
     <div class="control">
+      <label>藻の再生速度 <span class="value" id="algae-regrowth-value">100</span></label>
+      <input id="algae-regrowth-slider" type="range" min="10" max="200" step="10" value="100" aria-label="藻の再生速度" />
+      <div class="hint">現在の再生速度を100とした割合です。</div>
+    </div>
+
+    <div class="control">
       <label>個体数上限 <span class="value" id="popmax-value">120</span></label>
       <input id="popmax-slider" type="range" min="30" max="200" step="10" value="120" />
       <label class="population-cap-toggle">
@@ -308,12 +325,31 @@
     </div>
 
     <div class="control">
-      <label>種別シェア（リアルタイム）<span class="value pill" id="tool-pill">ツール: エサ</span></label>
+      <label>個体数の推移<span class="value pill" id="tool-pill">ツール: エサ</span></label>
       <canvas id="mix-canvas" class="mini"></canvas>
       <div class="legend">
         <span class="dot herb"></span><span class="hint">草食</span>
         <span class="dot omni"></span><span class="hint">雑食</span>
         <span class="dot carn"></span><span class="hint">肉食</span>
+        <span class="dot total"></span><span class="hint">総数</span>
+      </div>
+    </div>
+
+    <div class="control">
+      <label>個体ナビゲーター <span class="value" id="navigator-count">0個体</span></label>
+      <div class="population-navigator">
+        <div id="navigator-diets" class="navigator-tabs" aria-label="食性を選択">
+          <button type="button" class="navigator-tab on" data-diet="h">🌿 草食</button>
+          <button type="button" class="navigator-tab" data-diet="m">🍽️ 雑食</button>
+          <button type="button" class="navigator-tab" data-diet="c">🍖 肉食</button>
+        </div>
+        <div id="navigator-groups" class="navigator-tabs" aria-label="分類方法を選択">
+          <button type="button" class="navigator-tab on" data-group="species">種別</button>
+          <button type="button" class="navigator-tab" data-group="pack">Pack</button>
+        </div>
+        <div id="navigator-list" class="navigator-list"></div>
+        <button id="navigator-show-btn" type="button" class="btn navigator-action" disabled>フィールドに出す</button>
+        <div class="hint">選んだspecies／Packの個体を1体追加し、その新個体へ移動します。</div>
       </div>
     </div>
 
@@ -841,13 +877,41 @@
     return !!featureFlags.resourceLimitedAlgaeRegrowth;
   }
   let diagnosticAlgaeRegrowthScale=null;
+  let algaeRegrowthPercent=100;
+  function normalizeAlgaeRegrowthPercent(value){
+    if(value==null || value==='') return 100;
+    const n=Number(value);
+    return Number.isFinite(n) ? clamp(Math.round(n/10)*10,10,200) : 100;
+  }
+  function setAlgaeRegrowthPercent(value,{syncUI=true}={}){
+    algaeRegrowthPercent=normalizeAlgaeRegrowthPercent(value);
+    if(syncUI){
+      const slider=$('algae-regrowth-slider');
+      const label=$('algae-regrowth-value');
+      if(slider) slider.value=String(algaeRegrowthPercent);
+      if(label) label.textContent=String(algaeRegrowthPercent);
+    }
+    return algaeRegrowthControlSummary();
+  }
+  function baseAlgaeRegrowthScale(){
+    return resourceLimitedAlgaeRegrowthEnabled()
+      ? CONFIG.environment.algaeRegrowth.resourceLimitedScale
+      : CONFIG.environment.algaeRegrowth.legacyScale;
+  }
   function effectiveAlgaeRegrowthScale(){
-    if(!resourceLimitedAlgaeRegrowthEnabled()) return CONFIG.environment.algaeRegrowth.legacyScale;
     if(diagnosticAlgaeRegrowthScale!=null){
       const override=Number(diagnosticAlgaeRegrowthScale);
       if(Number.isFinite(override)) return clamp(override,0,CONFIG.environment.algaeRegrowth.legacyScale);
     }
-    return CONFIG.environment.algaeRegrowth.resourceLimitedScale;
+    return baseAlgaeRegrowthScale()*(algaeRegrowthPercent/100);
+  }
+  function algaeRegrowthControlSummary(){
+    return {
+      percent:algaeRegrowthPercent,
+      baseScale:baseAlgaeRegrowthScale(),
+      effectiveScale:effectiveAlgaeRegrowthScale(),
+      diagnosticOverride:diagnosticAlgaeRegrowthScale
+    };
   }
   function eventKeyedVisualRngEnabled(){
     return !!featureFlags.eventKeyedVisualRng;
@@ -919,6 +983,7 @@
   }
   $('speed-slider').addEventListener('input',e=>{ ui.speed=+e.target.value; $('speed-value').textContent=ui.speed+'x'; });
   $('mutation-slider').addEventListener('input',e=>{ ui.mutation=(+e.target.value)/100; $('mutation-value').textContent=e.target.value+'%'; });
+  $('algae-regrowth-slider').addEventListener('input',e=>setAlgaeRegrowthPercent(e.target.value));
   $('popmax-slider').addEventListener('input',e=>setPopulationCapSettings({enabled:true,value:e.target.value}));
   $('population-cap-unlimited').addEventListener('change',e=>setPopulationCapSettings({enabled:!e.target.checked}));
   syncPopulationCapUI();
@@ -16741,6 +16806,7 @@ const env = (function(){
     return {
       enabled:resourceLimitedAlgaeRegrowthEnabled(),
       configuredScale:CONFIG.environment.algaeRegrowth.resourceLimitedScale,
+      userPercent:algaeRegrowthPercent,
       effectiveScale:effectiveAlgaeRegrowthScale(),
       startedAtFrame:algaeFlow.startedAtFrame,
       elapsedFrames,
@@ -18114,7 +18180,8 @@ function triggerEvent(type){
   function resizeMix(){ const r=mixCanvas.getBoundingClientRect(); MX=r.width; MY=r.height; mixCanvas.width=Math.round(MX*DPR); mixCanvas.height=Math.round(MY*DPR); mixCtx.setTransform(DPR,0,0,DPR,0,0); } window.addEventListener('resize', resizeMix, {passive:true}); resizeMix();
   function classifyDiet(o){ const c=o.genes.diet; if(c<0.33) return 0; if(c<0.66) return 1; return 2; }
   function reportMix(){
-    const n=organisms.length||1;
+    const total=organisms.length;
+    const n=total||1;
     let h=0,m=0,c=0;
     for(const o of organisms){
       const t=classifyDiet(o);
@@ -18122,13 +18189,48 @@ function triggerEvent(type){
     }
     const H=h/n, M=m/n, C=c/n;
     dietShare.h=H; dietShare.m=M; dietShare.c=C;
-    mixHist.push({h:H, m:M, c:C, season:season()});
-    if(mixHist.length>140) mixHist.shift();
+    mixHist.push({frame,h,m,c,total,season:season()});
+    if(mixHist.length>180) mixHist.splice(0,mixHist.length-180);
     drawMix();
   }
-
-function drawMix(clear){ if(clear){ mixCtx.clearRect(0,0,MX,MY); } mixCtx.fillStyle='#071022'; mixCtx.fillRect(0,0,MX,MY); if(mixHist.length){ const s=mixHist[mixHist.length-1].season; const col=`rgba(${Math.round(255*(1-s/1.2))}, ${Math.round(120+100*s)}, 255, 0.18)`; mixCtx.fillStyle=col; mixCtx.fillRect(0,0,MX,6); } const N=mixHist.length; const w=MX/Math.max(1,N-1); function pathFor(key,base){ mixCtx.beginPath(); for(let i=0;i<N;i++){ const x=i*w; let b=0; for(const k of base){ b += mixHist[i][k]; } const y=MY - (b + mixHist[i][key])*MY; if(i===0) mixCtx.moveTo(x,MY - b*MY); mixCtx.lineTo(x,y); } for(let i=N-1;i>=0;i--){ const x=i*w; let b=0; for(const k of base){ b += mixHist[i][k]; } const y=MY - b*MY; mixCtx.lineTo(x,y); } mixCtx.closePath(); }
-    pathFor('h',[]); mixCtx.fillStyle='#7bdff299'; mixCtx.fill(); pathFor('m',['h']); mixCtx.fillStyle='#f7b73199'; mixCtx.fill(); pathFor('c',['h','m']); mixCtx.fillStyle='#ff6b6b99'; mixCtx.fill(); mixCtx.strokeStyle='rgba(255,255,255,0.12)'; mixCtx.lineWidth=1; mixCtx.strokeRect(0,0,MX,MY); }
+  function populationHistorySummary(){
+    return {limit:180,length:mixHist.length,latest:mixHist.length?{...mixHist[mixHist.length-1]}:null,rows:mixHist.map(row=>({...row}))};
+  }
+  function drawMix(clear){
+    if(clear) mixCtx.clearRect(0,0,MX,MY);
+    mixCtx.fillStyle='#071022'; mixCtx.fillRect(0,0,MX,MY);
+    if(!mixHist.length) return;
+    const latest=mixHist[mixHist.length-1];
+    const s=latest.season;
+    mixCtx.fillStyle=`rgba(${Math.round(255*(1-s/1.2))}, ${Math.round(120+100*s)}, 255, 0.18)`;
+    mixCtx.fillRect(0,0,MX,6);
+    const padTop=10,padBottom=8,plotH=Math.max(1,MY-padTop-padBottom);
+    const maxTotal=Math.max(1,...mixHist.map(row=>row.total));
+    mixCtx.strokeStyle='rgba(255,255,255,0.08)'; mixCtx.lineWidth=1;
+    for(let i=1;i<4;i++){
+      const y=padTop+plotH*i/4;
+      mixCtx.beginPath(); mixCtx.moveTo(0,y); mixCtx.lineTo(MX,y); mixCtx.stroke();
+    }
+    const stepX=MX/Math.max(1,mixHist.length-1);
+    const drawLine=(key,color,width=1.7)=>{
+      mixCtx.beginPath();
+      for(let i=0;i<mixHist.length;i++){
+        const x=i*stepX;
+        const y=padTop+plotH*(1-mixHist[i][key]/maxTotal);
+        if(i===0) mixCtx.moveTo(x,y); else mixCtx.lineTo(x,y);
+      }
+      mixCtx.strokeStyle=color; mixCtx.lineWidth=width; mixCtx.lineJoin='round'; mixCtx.lineCap='round'; mixCtx.stroke();
+      const last=mixHist[mixHist.length-1];
+      const endpointX=mixHist.length===1 ? 4 : (mixHist.length-1)*stepX;
+      const endpointY=padTop+plotH*(1-last[key]/maxTotal);
+      mixCtx.beginPath(); mixCtx.arc(endpointX,endpointY,2.4,0,TAU); mixCtx.fillStyle=color; mixCtx.fill();
+    };
+    drawLine('h','#7bdff2');
+    drawLine('m','#f7b731');
+    drawLine('c','#ff6b6b');
+    drawLine('total','#f5f7ff',2.1);
+    mixCtx.strokeStyle='rgba(255,255,255,0.16)'; mixCtx.lineWidth=1; mixCtx.strokeRect(0,0,MX,MY);
+  }
 
   // ===== Challenges =====
   const CHALLENGE_DEFS=Object.freeze([
@@ -18688,6 +18790,145 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       ${crown}${colonyBadge}
     </svg>`;
   }
+  const populationNavigatorState={diet:'h',group:'species',selectedKey:null};
+  const POPULATION_NAVIGATOR_DIET_LABELS=Object.freeze({h:'草食',m:'雑食',c:'肉食'});
+  function populationNavigatorGroups(){
+    const living=organisms.filter(o=>o && !o.dead && dietTypeFromCarn(o.genes?.diet ?? 0.5)===populationNavigatorState.diet);
+    const groups=new Map();
+    for(const organism of living){
+      const key=populationNavigatorState.group==='pack' ? String(organism.packId||'') : String(organism.speciesKey||'');
+      if(!key || (populationNavigatorState.group==='pack' && !activePackById(key))) continue;
+      let row=groups.get(key);
+      if(!row){ row={key,count:0,representativeId:organism.id,organism}; groups.set(key,row); }
+      row.count++;
+      if(organism.id<row.representativeId){ row.representativeId=organism.id; row.organism=organism; }
+    }
+    return {living,rows:[...groups.values()].sort((a,b)=>b.count-a.count || a.representativeId-b.representativeId)};
+  }
+  function populationNavigatorLabel(row){
+    const organism=row.organism;
+    const speciesName=nickFromGenes(organism.genes,organism.flags);
+    return populationNavigatorState.group==='pack'
+      ? {title:`Pack ${row.key}`,detail:`${speciesName} / ${organism.speciesKey}`}
+      : {title:speciesName,detail:String(organism.speciesKey)};
+  }
+  function refreshPopulationNavigator(){
+    const list=$('navigator-list');
+    if(!list) return populationNavigatorSummary();
+    const dietCounts={h:0,m:0,c:0};
+    for(const organism of organisms){
+      if(!organism || organism.dead) continue;
+      dietCounts[dietTypeFromCarn(organism.genes?.diet ?? 0.5)]++;
+    }
+    document.querySelectorAll('#navigator-diets [data-diet]').forEach(button=>{
+      const diet=button.dataset.diet;
+      button.classList.toggle('on',diet===populationNavigatorState.diet);
+      button.setAttribute('aria-pressed',String(diet===populationNavigatorState.diet));
+      const icon=diet==='h'?'🌿':(diet==='m'?'🍽️':'🍖');
+      button.textContent=`${icon} ${POPULATION_NAVIGATOR_DIET_LABELS[diet]} ${dietCounts[diet]}`;
+    });
+    document.querySelectorAll('#navigator-groups [data-group]').forEach(button=>{
+      const group=button.dataset.group;
+      button.classList.toggle('on',group===populationNavigatorState.group);
+      button.setAttribute('aria-pressed',String(group===populationNavigatorState.group));
+    });
+    const {living,rows}=populationNavigatorGroups();
+    if(!rows.some(row=>row.key===populationNavigatorState.selectedKey)) populationNavigatorState.selectedKey=rows[0]?.key ?? null;
+    list.replaceChildren();
+    const displayRows=rows.slice(0,80);
+    for(const row of displayRows){
+      const label=populationNavigatorLabel(row);
+      const button=document.createElement('button');
+      button.type='button';
+      button.className='navigator-item'+(row.key===populationNavigatorState.selectedKey?' on':'');
+      button.dataset.navigatorKey=row.key;
+      button.setAttribute('aria-pressed',String(row.key===populationNavigatorState.selectedKey));
+      const text=document.createElement('small'); text.textContent=`${label.title} — ${label.detail}`;
+      const count=document.createElement('b'); count.textContent=String(row.count);
+      button.append(text,count);
+      button.addEventListener('click',()=>{ populationNavigatorState.selectedKey=row.key; refreshPopulationNavigator(); });
+      list.appendChild(button);
+    }
+    if(rows.length>displayRows.length){
+      const more=document.createElement('div'); more.className='hint'; more.textContent=`ほか${rows.length-displayRows.length}分類（個体数上位80件を表示）`;
+      list.appendChild(more);
+    }
+    if(!rows.length){
+      const empty=document.createElement('div'); empty.className='hint';
+      empty.textContent=populationNavigatorState.group==='pack' ? 'この食性で活動中のPackはありません。' : 'この食性の生存個体はいません。';
+      list.appendChild(empty);
+    }
+    const countLabel=$('navigator-count'); if(countLabel) countLabel.textContent=`${living.length}個体`;
+    const showButton=$('navigator-show-btn'); if(showButton) showButton.disabled=!populationNavigatorState.selectedKey;
+    const selectedRow=rows.find(row=>row.key===populationNavigatorState.selectedKey);
+    return {diet:populationNavigatorState.diet,group:populationNavigatorState.group,selectedKey:populationNavigatorState.selectedKey,livingCount:living.length,groupCount:rows.length,selectedOrganismId:selectedRow?.representativeId ?? null};
+  }
+  function populationNavigatorRepresentative(){
+    const key=populationNavigatorState.selectedKey;
+    if(!key) return null;
+    for(const organism of organisms){
+      if(!organism || organism.dead || dietTypeFromCarn(organism.genes?.diet ?? 0.5)!==populationNavigatorState.diet) continue;
+      if(populationNavigatorState.group==='pack'){
+        if(String(organism.packId||'')===key && activePackById(key)) return organism;
+      }else if(String(organism.speciesKey||'')===key) return organism;
+    }
+    return null;
+  }
+  function showPopulationNavigatorSelection(){
+    const source=populationNavigatorRepresentative();
+    if(!source){ refreshPopulationNavigator(); return null; }
+    const angle=Math.random()*TAU;
+    const distance=Math.max(18,Number(source.size||6)*4);
+    const point=clampPointToWorld(source.x+Math.cos(angle)*distance,source.y+Math.sin(angle)*distance,12);
+    const clone=new Organism(
+      point.x,
+      point.y,
+      {...source.genes},
+      false,
+      null,
+      null,
+      speciesIdentityV2Enabled() ? {deferSpeciesRegistration:true} : null
+    );
+    if(speciesIdentityV2Enabled()){
+      clone.traits={...(source.traits||{})};
+      clone.flags=__flagsFromTraits(clone.traits,clone.genes);
+      finalizeOrganismSpeciesIdentity(clone,{reason:'population-navigator'});
+      clone.recalcPhenotype();
+      applyDevelopmentPhenotype(clone);
+      clone.updateColor();
+      recordRareTraitDiscovery(clone);
+      registerFinalizedSpeciesIdentity(clone,{bornByRepro:false,reason:'population-navigator'});
+    }
+    settleStarter(clone);
+    clone.lastAction='フィールドへ追加';
+    organisms.push(clone);
+    registerOrganismId(clone);
+    let joinedPack=false;
+    if(populationNavigatorState.group==='pack' && source.packId){
+      joinedPack=joinPackIdentity(clone,source.packId,{reason:'population-navigator'});
+    }
+    selectOrganism(clone);
+    focusCameraOn(clone.x,clone.y,Math.max(camera.zoom,getFitCamera().zoom*2.2));
+    reportMix();
+    rebuildSpeciesCards();
+    showToast('species',`${POPULATION_NAVIGATOR_DIET_LABELS[populationNavigatorState.diet]}の個体を1体追加`);
+    return {organismId:clone.id,sourceId:source.id,speciesKey:clone.speciesKey,packId:clone.packId ?? null,joinedPack,population:organisms.length};
+  }
+  function populationNavigatorSummary(){
+    const grouped=populationNavigatorGroups();
+    return {diet:populationNavigatorState.diet,group:populationNavigatorState.group,selectedKey:populationNavigatorState.selectedKey,livingCount:grouped.living.length,groups:grouped.rows.map(row=>({key:row.key,count:row.count,representativeId:row.representativeId})),selectedOrganismId:populationNavigatorRepresentative()?.id ?? null};
+  }
+  document.querySelectorAll('#navigator-diets [data-diet]').forEach(button=>button.addEventListener('click',()=>{
+    populationNavigatorState.diet=button.dataset.diet;
+    populationNavigatorState.selectedKey=null;
+    refreshPopulationNavigator();
+  }));
+  document.querySelectorAll('#navigator-groups [data-group]').forEach(button=>button.addEventListener('click',()=>{
+    populationNavigatorState.group=button.dataset.group;
+    populationNavigatorState.selectedKey=null;
+    refreshPopulationNavigator();
+  }));
+  $('navigator-show-btn').addEventListener('click',showPopulationNavigatorSelection);
   function rebuildSpeciesCards(){
     const __cardsT0 = performance.now();
     const cont=$('species-cards'); if(!cont) return;
@@ -18763,6 +19004,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       </div>`;
     }
     cont.innerHTML = html || '<div style="color:var(--muted);font-size:12px;">表示できる種がありません</div>';
+    refreshPopulationNavigator();
     perfStats.speciesCardMs = performance.now() - __cardsT0;
   }
 
@@ -19310,6 +19552,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   function reset(){
     running=false;
     setPopulationCapSettings({enabled:true,value:CONFIG.population.maxDefault});
+    setAlgaeRegrowthPercent(100);
     $('start-btn').disabled=false;
     $('pause-btn').disabled=true;
     frame=0;
@@ -19374,7 +19617,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     if($('mutation-slider')) $('mutation-slider').value='3';
     if($('mutation-value')) $('mutation-value').textContent='3%';
     log('↺ リセット');
-    drawMix(true);
+    mixHist.length=0;
+    reportMix();
+    refreshPopulationNavigator();
     renderExtinctRecords();
     updateWaterStatus();
     initChallenges();
@@ -32907,11 +33152,34 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     setResourceLimitedAlgaeRegrowth(enabled,options={}){
       return setResourceLimitedAlgaeRegrowth(enabled,options);
     },
+    setAlgaeRegrowthPercent(value){
+      return setAlgaeRegrowthPercent(value);
+    },
+    algaeRegrowthControlSummary(){
+      return algaeRegrowthControlSummary();
+    },
     resourceLimitedAlgaeRegrowthEnabled(){
       return resourceLimitedAlgaeRegrowthEnabled();
     },
     algaeRegrowthSummary(){
       return window.env?.algaeFlowSummary ? window.env.algaeFlowSummary() : null;
+    },
+    populationHistorySummary(){
+      return populationHistorySummary();
+    },
+    populationNavigatorSummary(){
+      return populationNavigatorSummary();
+    },
+    setPopulationNavigator(options={}){
+      const opts=options || {};
+      if(['h','m','c'].includes(opts.diet)) populationNavigatorState.diet=opts.diet;
+      if(['species','pack'].includes(opts.group)) populationNavigatorState.group=opts.group;
+      populationNavigatorState.selectedKey=opts.selectedKey==null ? null : String(opts.selectedKey);
+      refreshPopulationNavigator();
+      return populationNavigatorSummary();
+    },
+    showPopulationNavigatorSelection(){
+      return showPopulationNavigatorSelection();
     },
     selectMateForReproduction(parent,radius,options={}){
       return selectMateForReproduction(parent,radius,options);
@@ -33707,7 +33975,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       frame,generation,dayNight:{phase:dayNight.phase},worldEvent,eco,
       settings:{
         populationCapEnabled:populationCapEnabled(),
-        populationCap:ui.popMax
+        populationCap:ui.popMax,
+        algaeRegrowthPercent
       },
       environmentInitialization:{
         mode:normalizeEnvironmentInitializationMode(activeEnvironmentInitialization?.mode || environmentInitializationMode),
@@ -33778,6 +34047,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         enabled:savedPopulationCap?.populationCapEnabled !== false,
         value:savedPopulationCap?.populationCap ?? CONFIG.population.maxDefault
       });
+      setAlgaeRegrowthPercent(savedPopulationCap?.algaeRegrowthPercent ?? 100);
       if(state.features && typeof state.features==='object'){
         if(state.features.evolvableLifeHistory!=null) featureFlags.evolvableLifeHistory=!!state.features.evolvableLifeHistory;
         if(state.features.juvenileDevelopment!=null) featureFlags.juvenileDevelopment=!!state.features.juvenileDevelopment;
@@ -33984,7 +34254,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       restoreInjectionBatches(state.injectionBatches);
       resetTelemetry();
       telemetrySampleFrame(true);
-      reportMix(); rebuildSpeciesCards(); renderExtinctRecords(); updateWaterStatus();
+      mixHist.length=0; reportMix(); rebuildSpeciesCards(); renderExtinctRecords(); updateWaterStatus();
       showToast('season','✔ ロード完了');
       return true;
     }catch(e){ alert('ロード失敗: '+(e?.message||e)); return false; }
@@ -34082,6 +34352,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       resetTelemetry();
       telemetrySampleFrame(true);
       reportMix(); 
+      refreshPopulationNavigator();
       updateWaterStatus();
       refreshSpeciesStats();
       initDevPanel();

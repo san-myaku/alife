@@ -1,0 +1,535 @@
+{
+  "schemaVersion": 1,
+  "environment": "Playwright Chromium headless",
+  "targetUrl": "file:///C:/Users/yuhim/Documents/ALIFE/.codex_worktrees/simplify_species_lineage_pack/index.html?ui-smoke=1",
+  "result": {
+    "initial": {
+      "control": {
+        "percent": 100,
+        "baseScale": 0.7,
+        "effectiveScale": 0.7,
+        "diagnosticOverride": null
+      },
+      "slider": {
+        "min": "10",
+        "max": "200",
+        "step": "10",
+        "value": "100",
+        "label": "100"
+      }
+    },
+    "at10": {
+      "control": {
+        "percent": 10,
+        "baseScale": 0.7,
+        "effectiveScale": 0.06999999999999999,
+        "diagnosticOverride": null
+      },
+      "value": "10",
+      "label": "10"
+    },
+    "at200": {
+      "control": {
+        "percent": 200,
+        "baseScale": 0.7,
+        "effectiveScale": 1.4,
+        "diagnosticOverride": null
+      },
+      "value": "200",
+      "label": "200"
+    },
+    "savedRestore": {
+      "ok": true,
+      "counts": {
+        "organisms": 64,
+        "food": 12,
+        "detritusParticles": 0,
+        "plankton": 70,
+        "sparks": 0,
+        "rings": 0,
+        "predationBlooms": 0,
+        "membranes": 0,
+        "corpses": 0,
+        "species": 61
+      },
+      "world": {
+        "worldVersion": 2,
+        "worldShape": "circle",
+        "worldWidth": 888,
+        "worldHeight": 888,
+        "centerX": 444,
+        "centerY": 444,
+        "radius": 444,
+        "viewWidth": 1032,
+        "viewHeight": 868,
+        "dpr": 1,
+        "camera": {
+          "x": 444,
+          "y": 444,
+          "zoom": 0.9774774774774775,
+          "minZoom": 0.9774774774774775,
+          "maxZoom": 7.81981981981982,
+          "initialized": true
+        },
+        "environment": {
+          "width": 50,
+          "height": 50,
+          "cellSize": 18,
+          "cellCount": 2500,
+          "activeCellCount": 1911,
+          "inactiveCellCount": 589,
+          "approximateActiveArea": 619164,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888
+        },
+        "spatialGrid": {
+          "cellSize": 64,
+          "width": 0,
+          "height": 0
+        }
+      },
+      "environmentInitialization": {
+        "mode": "patchy-intermediate",
+        "seed": 41001,
+        "cellCount": 1911,
+        "minimumAlgae": 0.02000018022954464,
+        "maximumAlgae": 0.3399994969367981,
+        "meanAlgae": 0.14250000017002606,
+        "medianAlgae": 0.12999999523162842,
+        "standardDeviation": 0.08654581772617116,
+        "fieldHash": "5aa3e9bb",
+        "thresholds": {
+          "lowMax": 0.075,
+          "highMin": 0.185
+        },
+        "ratios": {
+          "low": 0.250130821559393,
+          "medium": 0.49973835688121404,
+          "high": 0.250130821559393
+        },
+        "spatial": {
+          "componentCount": 14,
+          "resourcePatchCount": 9,
+          "byBand": {
+            "low": {
+              "components": 5,
+              "largestCells": 162,
+              "largestShare": 0.0847723704866562
+            },
+            "medium": {
+              "components": 5,
+              "largestCells": 900,
+              "largestShare": 0.47095761381475665
+            },
+            "high": {
+              "components": 4,
+              "largestCells": 302,
+              "largestShare": 0.15803244374672945
+            }
+          }
+        }
+      }
+    },
+    "afterSavedRestore": {
+      "percent": 200,
+      "baseScale": 0.7,
+      "effectiveScale": 1.4,
+      "diagnosticOverride": null
+    },
+    "legacyRestore": {
+      "ok": true,
+      "counts": {
+        "organisms": 64,
+        "food": 12,
+        "detritusParticles": 0,
+        "plankton": 70,
+        "sparks": 0,
+        "rings": 0,
+        "predationBlooms": 0,
+        "membranes": 0,
+        "corpses": 0,
+        "species": 61
+      },
+      "world": {
+        "worldVersion": 2,
+        "worldShape": "circle",
+        "worldWidth": 888,
+        "worldHeight": 888,
+        "centerX": 444,
+        "centerY": 444,
+        "radius": 444,
+        "viewWidth": 1032,
+        "viewHeight": 868,
+        "dpr": 1,
+        "camera": {
+          "x": 444,
+          "y": 444,
+          "zoom": 0.9774774774774775,
+          "minZoom": 0.9774774774774775,
+          "maxZoom": 7.81981981981982,
+          "initialized": true
+        },
+        "environment": {
+          "width": 50,
+          "height": 50,
+          "cellSize": 18,
+          "cellCount": 2500,
+          "activeCellCount": 1911,
+          "inactiveCellCount": 589,
+          "approximateActiveArea": 619164,
+          "worldShape": "circle",
+          "worldWidth": 888,
+          "worldHeight": 888
+        },
+        "spatialGrid": {
+          "cellSize": 64,
+          "width": 0,
+          "height": 0
+        }
+      },
+      "environmentInitialization": {
+        "mode": "patchy-intermediate",
+        "seed": 41001,
+        "cellCount": 1911,
+        "minimumAlgae": 0.02000018022954464,
+        "maximumAlgae": 0.3399994969367981,
+        "meanAlgae": 0.14250000017002606,
+        "medianAlgae": 0.12999999523162842,
+        "standardDeviation": 0.08654581772617116,
+        "fieldHash": "5aa3e9bb",
+        "thresholds": {
+          "lowMax": 0.075,
+          "highMin": 0.185
+        },
+        "ratios": {
+          "low": 0.250130821559393,
+          "medium": 0.49973835688121404,
+          "high": 0.250130821559393
+        },
+        "spatial": {
+          "componentCount": 14,
+          "resourcePatchCount": 9,
+          "byBand": {
+            "low": {
+              "components": 5,
+              "largestCells": 162,
+              "largestShare": 0.0847723704866562
+            },
+            "medium": {
+              "components": 5,
+              "largestCells": 900,
+              "largestShare": 0.47095761381475665
+            },
+            "high": {
+              "components": 4,
+              "largestCells": 302,
+              "largestShare": 0.15803244374672945
+            }
+          }
+        }
+      }
+    },
+    "afterLegacyRestore": {
+      "percent": 100,
+      "baseScale": 0.7,
+      "effectiveScale": 0.7,
+      "diagnosticOverride": null
+    },
+    "historyInitial": {
+      "limit": 180,
+      "length": 1,
+      "latest": {
+        "frame": 0,
+        "h": 32,
+        "m": 21,
+        "c": 11,
+        "total": 64,
+        "season": 0.6
+      },
+      "rows": [
+        {
+          "frame": 0,
+          "h": 32,
+          "m": 21,
+          "c": 11,
+          "total": 64,
+          "season": 0.6
+        }
+      ]
+    },
+    "historyAfter": {
+      "limit": 180,
+      "length": 2,
+      "latest": {
+        "frame": 20,
+        "h": 32,
+        "m": 21,
+        "c": 11,
+        "total": 64,
+        "season": 0.6251253922375197
+      },
+      "rows": [
+        {
+          "frame": 0,
+          "h": 32,
+          "m": 21,
+          "c": 11,
+          "total": 64,
+          "season": 0.6
+        },
+        {
+          "frame": 20,
+          "h": 32,
+          "m": 21,
+          "c": 11,
+          "total": 64,
+          "season": 0.6251253922375197
+        }
+      ]
+    },
+    "beforePopulation": 64,
+    "afterPopulation": 65,
+    "speciesNavigator": {
+      "diet": "h",
+      "group": "species",
+      "selectedKey": "1200113",
+      "livingCount": 32,
+      "groups": [
+        {
+          "key": "1200113",
+          "count": 2,
+          "representativeId": 9
+        },
+        {
+          "key": "3230226",
+          "count": 2,
+          "representativeId": 16
+        },
+        {
+          "key": "1000113",
+          "count": 1,
+          "representativeId": 4
+        },
+        {
+          "key": "0320005",
+          "count": 1,
+          "representativeId": 8
+        },
+        {
+          "key": "1010114",
+          "count": 1,
+          "representativeId": 12
+        },
+        {
+          "key": "2320215",
+          "count": 1,
+          "representativeId": 14
+        },
+        {
+          "key": "1220115",
+          "count": 1,
+          "representativeId": 15
+        },
+        {
+          "key": "1020115",
+          "count": 1,
+          "representativeId": 17
+        },
+        {
+          "key": "1030116",
+          "count": 1,
+          "representativeId": 19
+        },
+        {
+          "key": "2100224",
+          "count": 1,
+          "representativeId": 20
+        },
+        {
+          "key": "2220214",
+          "count": 1,
+          "representativeId": 22
+        },
+        {
+          "key": "3001223",
+          "count": 1,
+          "representativeId": 25
+        },
+        {
+          "key": "0210004",
+          "count": 1,
+          "representativeId": 26
+        },
+        {
+          "key": "3200223",
+          "count": 1,
+          "representativeId": 31
+        },
+        {
+          "key": "0001012",
+          "count": 1,
+          "representativeId": 34
+        },
+        {
+          "key": "1320115",
+          "count": 1,
+          "representativeId": 35
+        },
+        {
+          "key": "0010014",
+          "count": 1,
+          "representativeId": 36
+        },
+        {
+          "key": "1301103",
+          "count": 1,
+          "representativeId": 38
+        },
+        {
+          "key": "1110114",
+          "count": 1,
+          "representativeId": 39
+        },
+        {
+          "key": "2301213",
+          "count": 1,
+          "representativeId": 43
+        },
+        {
+          "key": "1230116",
+          "count": 1,
+          "representativeId": 45
+        },
+        {
+          "key": "0301003",
+          "count": 1,
+          "representativeId": 46
+        },
+        {
+          "key": "1130116",
+          "count": 1,
+          "representativeId": 48
+        },
+        {
+          "key": "2210224",
+          "count": 1,
+          "representativeId": 50
+        },
+        {
+          "key": "3130226",
+          "count": 1,
+          "representativeId": 51
+        },
+        {
+          "key": "1330116",
+          "count": 1,
+          "representativeId": 53
+        },
+        {
+          "key": "1210114",
+          "count": 1,
+          "representativeId": 55
+        },
+        {
+          "key": "1111114",
+          "count": 1,
+          "representativeId": 57
+        },
+        {
+          "key": "1120115",
+          "count": 1,
+          "representativeId": 62
+        },
+        {
+          "key": "1121115",
+          "count": 1,
+          "representativeId": 63
+        }
+      ],
+      "selectedOrganismId": 9
+    },
+    "showResult": {
+      "organismId": 193,
+      "sourceId": 9,
+      "speciesKey": "1200113",
+      "packId": null,
+      "joinedPack": false,
+      "population": 65
+    },
+    "selected": {
+      "id": 193,
+      "x": 209.87386677110845,
+      "y": 486.04742301185604,
+      "dead": false
+    },
+    "packNavigator": {
+      "diet": "c",
+      "group": "pack",
+      "selectedKey": null,
+      "livingCount": 11,
+      "groups": [],
+      "selectedOrganismId": null
+    },
+    "ui": {
+      "legendLabels": [
+        "草食",
+        "雑食",
+        "肉食",
+        "総数"
+      ],
+      "dietButtons": [
+        {
+          "diet": "h",
+          "text": "🌿 草食 33",
+          "pressed": "false"
+        },
+        {
+          "diet": "m",
+          "text": "🍽️ 雑食 21",
+          "pressed": "false"
+        },
+        {
+          "diet": "c",
+          "text": "🍖 肉食 11",
+          "pressed": "true"
+        }
+      ],
+      "groupButtons": [
+        {
+          "group": "species",
+          "text": "種別",
+          "pressed": "false"
+        },
+        {
+          "group": "pack",
+          "text": "Pack",
+          "pressed": "true"
+        }
+      ],
+      "showButtonText": "フィールドに出す",
+      "navigatorCount": "11個体",
+      "chartWidth": 330,
+      "chartHeight": 120
+    },
+    "afterReset": {
+      "percent": 100,
+      "baseScale": 0.7,
+      "effectiveScale": 0.7,
+      "diagnosticOverride": null
+    }
+  },
+  "assertions": {
+    "sliderRange": true,
+    "current100Preserved": true,
+    "tenAndTwoHundredMapped": true,
+    "saveRoundTrip": true,
+    "legacyDefault": true,
+    "historyFourSeries": true,
+    "navigatorAddsAndSelectsOne": true,
+    "packModeAvailable": true,
+    "resetDefault": true,
+    "noErrors": true
+  },
+  "errors": []
+}
