@@ -349,7 +349,7 @@
         </div>
         <div id="navigator-list" class="navigator-list"></div>
         <button id="navigator-show-btn" type="button" class="btn navigator-action" disabled>フィールドに出す</button>
-        <div class="hint">選んだspecies／Packの個体を1体追加し、その新個体へ移動します。</div>
+        <div class="hint">既存個体はコピーせず、選んだ食性・species／Pack条件の個体をランダム位置へ1体生成します。</div>
       </div>
     </div>
 
@@ -18790,7 +18790,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       ${crown}${colonyBadge}
     </svg>`;
   }
-  const populationNavigatorState={diet:'h',group:'species',selectedKey:null};
+  const POPULATION_NAVIGATOR_RANDOM_KEY='__random__';
+  const populationNavigatorState={diet:'h',group:'species',selectedKey:POPULATION_NAVIGATOR_RANDOM_KEY};
   const POPULATION_NAVIGATOR_DIET_LABELS=Object.freeze({h:'草食',m:'雑食',c:'肉食'});
   function populationNavigatorGroups(){
     const living=organisms.filter(o=>o && !o.dead && dietTypeFromCarn(o.genes?.diet ?? 0.5)===populationNavigatorState.diet);
@@ -18833,8 +18834,27 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       button.setAttribute('aria-pressed',String(group===populationNavigatorState.group));
     });
     const {living,rows}=populationNavigatorGroups();
-    if(!rows.some(row=>row.key===populationNavigatorState.selectedKey)) populationNavigatorState.selectedKey=rows[0]?.key ?? null;
+    const randomAllowed=populationNavigatorState.group==='species';
+    if(randomAllowed){
+      if(populationNavigatorState.selectedKey!==POPULATION_NAVIGATOR_RANDOM_KEY && !rows.some(row=>row.key===populationNavigatorState.selectedKey)){
+        populationNavigatorState.selectedKey=POPULATION_NAVIGATOR_RANDOM_KEY;
+      }
+    }else if(!rows.some(row=>row.key===populationNavigatorState.selectedKey)){
+      populationNavigatorState.selectedKey=rows[0]?.key ?? null;
+    }
     list.replaceChildren();
+    if(randomAllowed){
+      const randomButton=document.createElement('button');
+      randomButton.type='button';
+      randomButton.className='navigator-item'+(populationNavigatorState.selectedKey===POPULATION_NAVIGATOR_RANDOM_KEY?' on':'');
+      randomButton.dataset.navigatorKey=POPULATION_NAVIGATOR_RANDOM_KEY;
+      randomButton.setAttribute('aria-pressed',String(populationNavigatorState.selectedKey===POPULATION_NAVIGATOR_RANDOM_KEY));
+      const text=document.createElement('small'); text.textContent=`ランダム新種（${POPULATION_NAVIGATOR_DIET_LABELS[populationNavigatorState.diet]}）— 現在の個体をコピーしません`;
+      const count=document.createElement('b'); count.textContent='＋';
+      randomButton.append(text,count);
+      randomButton.addEventListener('click',()=>{ populationNavigatorState.selectedKey=POPULATION_NAVIGATOR_RANDOM_KEY; refreshPopulationNavigator(); });
+      list.appendChild(randomButton);
+    }
     const displayRows=rows.slice(0,80);
     for(const row of displayRows){
       const label=populationNavigatorLabel(row);
@@ -18865,7 +18885,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   }
   function populationNavigatorRepresentative(){
     const key=populationNavigatorState.selectedKey;
-    if(!key) return null;
+    if(!key || key===POPULATION_NAVIGATOR_RANDOM_KEY) return null;
     for(const organism of organisms){
       if(!organism || organism.dead || dietTypeFromCarn(organism.genes?.diet ?? 0.5)!==populationNavigatorState.diet) continue;
       if(populationNavigatorState.group==='pack'){
@@ -18874,45 +18894,87 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     }
     return null;
   }
+  function populationNavigatorRandomDietGenes(){
+    const longDiet=populationNavigatorState.diet==='h' ? 'herbivore' : (populationNavigatorState.diet==='m' ? 'omnivore' : 'carnivore');
+    return devGenesForPreset(longDiet,'random');
+  }
+  function populationNavigatorRandomizedSpeciesGenes(source,{requirePack=false}={}){
+    const base=devCloneGenes(source?.genes || {});
+    const flags=source?.flags || {};
+    const targetKey=String(source?.speciesKey || '');
+    const keys=GENE_KEYS.filter(key=>Number.isFinite(Number(base[key])));
+    for(let attempt=0;attempt<192;attempt++){
+      const candidate={...base};
+      const changeCount=1+Math.floor(Math.random()*Math.min(4,Math.max(1,keys.length)));
+      for(let j=0;j<changeCount;j++){
+        const key=keys[Math.floor(Math.random()*keys.length)];
+        const radius=key==='diet' ? 0.025 : 0.05;
+        let delta=rnd(-radius,radius);
+        if(Math.abs(delta)<0.004) delta=delta<0?-0.004:0.004;
+        candidate[key]=clamp(Number(candidate[key])+delta,0,1);
+      }
+      const normalized=devCloneGenes(candidate);
+      if(speciesKey(normalized,flags)!==targetKey) continue;
+      if(dietTypeFromCarn(normalized.diet)!==populationNavigatorState.diet) continue;
+      if(requirePack && speciesSocialModeFromGenes(normalized)!=='hunt-pack') continue;
+      const changedKeys=keys.filter(key=>Math.abs(Number(normalized[key])-Number(base[key]))>1e-9);
+      if(changedKeys.length) return {genes:normalized,changedKeys,variationApplied:true};
+    }
+    return {genes:base,changedKeys:[],variationApplied:false};
+  }
   function showPopulationNavigatorSelection(){
-    const source=populationNavigatorRepresentative();
-    if(!source){ refreshPopulationNavigator(); return null; }
-    const angle=Math.random()*TAU;
-    const distance=Math.max(18,Number(source.size||6)*4);
-    const point=clampPointToWorld(source.x+Math.cos(angle)*distance,source.y+Math.sin(angle)*distance,12);
-    const clone=new Organism(
+    const randomDiet=populationNavigatorState.group==='species' && populationNavigatorState.selectedKey===POPULATION_NAVIGATOR_RANDOM_KEY;
+    const source=randomDiet ? null : populationNavigatorRepresentative();
+    if(!randomDiet && !source){ refreshPopulationNavigator(); return null; }
+    const randomized=randomDiet
+      ? {genes:populationNavigatorRandomDietGenes(),changedKeys:[],variationApplied:true}
+      : populationNavigatorRandomizedSpeciesGenes(source,{requirePack:populationNavigatorState.group==='pack'});
+    const point=randomPointInWorld(20,Math.random);
+    const organism=new Organism(
       point.x,
       point.y,
-      {...source.genes},
+      randomized.genes,
       false,
       null,
       null,
-      speciesIdentityV2Enabled() ? {deferSpeciesRegistration:true} : null
+      speciesIdentityV2Enabled() && source ? {deferSpeciesRegistration:true} : null
     );
-    if(speciesIdentityV2Enabled()){
-      clone.traits={...(source.traits||{})};
-      clone.flags=__flagsFromTraits(clone.traits,clone.genes);
-      finalizeOrganismSpeciesIdentity(clone,{reason:'population-navigator'});
-      clone.recalcPhenotype();
-      applyDevelopmentPhenotype(clone);
-      clone.updateColor();
-      recordRareTraitDiscovery(clone);
-      registerFinalizedSpeciesIdentity(clone,{bornByRepro:false,reason:'population-navigator'});
+    if(speciesIdentityV2Enabled() && source){
+      organism.traits={...(source.traits||{})};
+      organism.flags=__flagsFromTraits(organism.traits,organism.genes);
+      finalizeOrganismSpeciesIdentity(organism,{reason:'population-navigator'});
+      organism.recalcPhenotype();
+      applyDevelopmentPhenotype(organism);
+      organism.updateColor();
+      recordRareTraitDiscovery(organism);
+      registerFinalizedSpeciesIdentity(organism,{bornByRepro:false,reason:'population-navigator'});
     }
-    settleStarter(clone);
-    clone.lastAction='フィールドへ追加';
-    organisms.push(clone);
-    registerOrganismId(clone);
+    settleStarter(organism);
+    organism.lastAction='ランダム生成';
+    organisms.push(organism);
+    registerOrganismId(organism);
     let joinedPack=false;
     if(populationNavigatorState.group==='pack' && source.packId){
-      joinedPack=joinPackIdentity(clone,source.packId,{reason:'population-navigator'});
+      joinedPack=joinPackIdentity(organism,source.packId,{reason:'population-navigator'});
     }
-    selectOrganism(clone);
-    focusCameraOn(clone.x,clone.y,Math.max(camera.zoom,getFitCamera().zoom*2.2));
+    selectOrganism(organism);
+    focusCameraOn(organism.x,organism.y,Math.max(camera.zoom,getFitCamera().zoom*2.2));
     reportMix();
     rebuildSpeciesCards();
-    showToast('species',`${POPULATION_NAVIGATOR_DIET_LABELS[populationNavigatorState.diet]}の個体を1体追加`);
-    return {organismId:clone.id,sourceId:source.id,speciesKey:clone.speciesKey,packId:clone.packId ?? null,joinedPack,population:organisms.length};
+    showToast('species',`${POPULATION_NAVIGATOR_DIET_LABELS[populationNavigatorState.diet]}の個体をランダム生成`);
+    return {
+      organismId:organism.id,
+      sourceId:source?.id ?? null,
+      mode:randomDiet ? 'random-diet' : (populationNavigatorState.group==='pack' ? 'random-within-pack-species' : 'random-within-species'),
+      diet:dietTypeFromCarn(organism.genes?.diet ?? 0.5),
+      speciesKey:organism.speciesKey,
+      packId:organism.packId ?? null,
+      joinedPack,
+      randomPosition:true,
+      variationApplied:randomized.variationApplied,
+      changedGeneKeys:randomized.changedKeys,
+      population:organisms.length
+    };
   }
   function populationNavigatorSummary(){
     const grouped=populationNavigatorGroups();
@@ -18920,12 +18982,12 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
   }
   document.querySelectorAll('#navigator-diets [data-diet]').forEach(button=>button.addEventListener('click',()=>{
     populationNavigatorState.diet=button.dataset.diet;
-    populationNavigatorState.selectedKey=null;
+    populationNavigatorState.selectedKey=populationNavigatorState.group==='species' ? POPULATION_NAVIGATOR_RANDOM_KEY : null;
     refreshPopulationNavigator();
   }));
   document.querySelectorAll('#navigator-groups [data-group]').forEach(button=>button.addEventListener('click',()=>{
     populationNavigatorState.group=button.dataset.group;
-    populationNavigatorState.selectedKey=null;
+    populationNavigatorState.selectedKey=populationNavigatorState.group==='species' ? POPULATION_NAVIGATOR_RANDOM_KEY : null;
     refreshPopulationNavigator();
   }));
   $('navigator-show-btn').addEventListener('click',showPopulationNavigatorSelection);

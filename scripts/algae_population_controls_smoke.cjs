@@ -65,9 +65,13 @@ function closeTo(actual,expected,epsilon=1e-9){ return Math.abs(Number(actual)-N
       const historyAfter=debug.populationHistorySummary();
 
       const beforePopulation=debug.counts().organisms;
-      const speciesNavigator=debug.setPopulationNavigator({diet:'h',group:'species'});
-      const showResult=debug.showPopulationNavigatorSelection();
-      const selected=debug.selectedOrganism();
+      const randomNavigator=debug.setPopulationNavigator({diet:'h',group:'species'});
+      const randomResult=debug.showPopulationNavigatorSelection();
+      const randomSelected=debug.selectedOrganism();
+      const speciesKey=randomNavigator.groups[0]?.key || null;
+      const speciesNavigator=speciesKey ? debug.setPopulationNavigator({diet:'h',group:'species',selectedKey:speciesKey}) : null;
+      const speciesResult=speciesKey ? debug.showPopulationNavigatorSelection() : null;
+      const speciesSelected=debug.selectedOrganism();
       const afterPopulation=debug.counts().organisms;
       const packNavigator=debug.setPopulationNavigator({diet:'c',group:'pack'});
       const ui={
@@ -82,7 +86,7 @@ function closeTo(actual,expected,epsilon=1e-9){ return Math.abs(Number(actual)-N
       debug.setAlgaeRegrowthPercent(200);
       debug.resetSimulation();
       const afterReset=debug.algaeRegrowthControlSummary();
-      return {initial,at10,at200,savedRestore,afterSavedRestore,legacyRestore,afterLegacyRestore,historyInitial,historyAfter,beforePopulation,afterPopulation,speciesNavigator,showResult,selected,packNavigator,ui,afterReset};
+      return {initial,at10,at200,savedRestore,afterSavedRestore,legacyRestore,afterLegacyRestore,historyInitial,historyAfter,beforePopulation,afterPopulation,randomNavigator,randomResult,randomSelected,speciesNavigator,speciesResult,speciesSelected,packNavigator,ui,afterReset};
     });
 
     assert(result.initial.slider.min==='10' && result.initial.slider.max==='200' && result.initial.slider.step==='10','slider range is not 10..200 step 10');
@@ -94,8 +98,13 @@ function closeTo(actual,expected,epsilon=1e-9){ return Math.abs(Number(actual)-N
     assert(result.historyAfter.length>=2,'population history did not advance');
     for(const row of result.historyAfter.rows) assert(row.h+row.m+row.c===row.total,'diet counts do not sum to total');
     assert(result.ui.legendLabels.join('|')==='草食|雑食|肉食|総数','chart legend is incomplete');
-    assert(result.speciesNavigator.groups.length>0 && result.showResult?.organismId===result.selected?.id,'species navigation did not add and select an organism');
-    assert(result.afterPopulation===result.beforePopulation+1,'navigator did not add exactly one organism');
+    assert(result.randomNavigator.selectedKey==='__random__','random diet option was not selected by default');
+    assert(result.randomResult?.mode==='random-diet' && result.randomResult.sourceId==null && result.randomResult.diet==='h','random diet spawn copied an existing organism or ignored the diet');
+    assert(result.randomResult.randomPosition===true && result.randomResult.organismId===result.randomSelected?.id,'random diet spawn was not placed and selected');
+    assert(result.speciesNavigator?.groups.length>0 && result.speciesResult?.mode==='random-within-species','species-constrained random spawn did not run');
+    assert(result.speciesResult.speciesKey===result.speciesNavigator.selectedKey && result.speciesResult.organismId===result.speciesSelected?.id,'species-constrained spawn did not preserve the selected species');
+    assert(result.speciesResult.randomPosition===true && result.speciesResult.variationApplied===true,'species-constrained spawn reused an exact gene copy');
+    assert(result.afterPopulation===result.beforePopulation+2,'navigator did not add the two diagnostic organisms');
     assert(result.packNavigator.group==='pack','Pack grouping did not activate');
     assert(result.afterReset.percent===100 && closeTo(result.afterReset.effectiveScale,0.70),'reset did not restore 100');
     assert(errors.length===0,errors.join('\n'));
@@ -103,9 +112,9 @@ function closeTo(actual,expected,epsilon=1e-9){ return Math.abs(Number(actual)-N
     await page.evaluate(()=>window.__alifeDebug.setPopulationNavigator({diet:'h',group:'species'}));
     await page.locator('#mix-canvas').scrollIntoViewIfNeeded();
     await page.screenshot({path:path.join(outDir,'panel.png')});
-    const artifact={schemaVersion:1,environment:'Playwright Chromium headless',targetUrl,result,assertions:{sliderRange:true,current100Preserved:true,tenAndTwoHundredMapped:true,saveRoundTrip:true,legacyDefault:true,historyFourSeries:true,navigatorAddsAndSelectsOne:true,packModeAvailable:true,resetDefault:true,noErrors:true},errors};
+    const artifact={schemaVersion:2,environment:'Playwright Chromium headless',targetUrl,result,assertions:{sliderRange:true,current100Preserved:true,tenAndTwoHundredMapped:true,saveRoundTrip:true,legacyDefault:true,historyFourSeries:true,randomDietSpawn:true,randomSpeciesSpawn:true,noExistingOrganismCopy:true,packModeAvailable:true,resetDefault:true,noErrors:true},errors};
     fs.writeFileSync(path.join(outDir,'ui-smoke.json'),JSON.stringify(artifact,null,2));
-    console.log(JSON.stringify({ok:true,artifact:path.join(outDir,'ui-smoke.json'),screenshot:path.join(outDir,'panel.png'),summary:{initial:result.initial.control,at10:result.at10.control,at200:result.at200.control,historyLength:result.historyAfter.length,navigatorGroups:result.speciesNavigator.groups.length,selected:result.selected,packGroups:result.packNavigator.groups.length}},null,2));
+    console.log(JSON.stringify({ok:true,artifact:path.join(outDir,'ui-smoke.json'),screenshot:path.join(outDir,'panel.png'),summary:{initial:result.initial.control,at10:result.at10.control,at200:result.at200.control,historyLength:result.historyAfter.length,navigatorGroups:result.speciesNavigator.groups.length,randomResult:result.randomResult,speciesResult:result.speciesResult,packGroups:result.packNavigator.groups.length}},null,2));
   }finally{
     await page.close();
     await browser.close();
