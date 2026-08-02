@@ -18176,7 +18176,7 @@ function triggerEvent(type){
   }
 
   // ===== Mix chart =====
-  const mixCanvas=$('mix-canvas'); const mixCtx=mixCanvas.getContext('2d'); let MX=0,MY=0; const mixHist=[];
+  const mixCanvas=$('mix-canvas'); const mixCtx=mixCanvas.getContext('2d'); let MX=0,MY=0; const mixHist=[]; let lastMixReportFrame=null;
   function resizeMix(){ const r=mixCanvas.getBoundingClientRect(); MX=r.width; MY=r.height; mixCanvas.width=Math.round(MX*DPR); mixCanvas.height=Math.round(MY*DPR); mixCtx.setTransform(DPR,0,0,DPR,0,0); } window.addEventListener('resize', resizeMix, {passive:true}); resizeMix();
   function classifyDiet(o){ const c=o.genes.diet; if(c<0.33) return 0; if(c<0.66) return 1; return 2; }
   function reportMix(){
@@ -18189,9 +18189,15 @@ function triggerEvent(type){
     }
     const H=h/n, M=m/n, C=c/n;
     dietShare.h=H; dietShare.m=M; dietShare.c=C;
-    mixHist.push({frame,h,m,c,total,season:season()});
+    const row={frame,h,m,c,total,season:season()};
+    if(mixHist.length && mixHist[mixHist.length-1].frame===frame) mixHist[mixHist.length-1]=row;
+    else mixHist.push(row);
     if(mixHist.length>180) mixHist.splice(0,mixHist.length-180);
+    lastMixReportFrame=frame;
     drawMix();
+  }
+  function maybeReportMix(){
+    if(lastMixReportFrame==null || frame-lastMixReportFrame>=20) reportMix();
   }
   function populationHistorySummary(){
     return {limit:180,length:mixHist.length,latest:mixHist.length?{...mixHist[mixHist.length-1]}:null,rows:mixHist.map(row=>({...row}))};
@@ -18211,17 +18217,22 @@ function triggerEvent(type){
       const y=padTop+plotH*i/4;
       mixCtx.beginPath(); mixCtx.moveTo(0,y); mixCtx.lineTo(MX,y); mixCtx.stroke();
     }
-    const stepX=MX/Math.max(1,mixHist.length-1);
+    const firstFrame=Number(mixHist[0]?.frame)||0;
+    const lastFrame=Number(mixHist[mixHist.length-1]?.frame)||firstFrame;
+    const frameSpan=Math.max(1,lastFrame-firstFrame);
+    const historyX=(row,index)=>lastFrame===firstFrame
+      ? (mixHist.length===1 ? 4 : index*MX/Math.max(1,mixHist.length-1))
+      : clamp((Number(row.frame)-firstFrame)/frameSpan,0,1)*MX;
     const drawLine=(key,color,width=1.7)=>{
       mixCtx.beginPath();
       for(let i=0;i<mixHist.length;i++){
-        const x=i*stepX;
+        const x=historyX(mixHist[i],i);
         const y=padTop+plotH*(1-mixHist[i][key]/maxTotal);
         if(i===0) mixCtx.moveTo(x,y); else mixCtx.lineTo(x,y);
       }
       mixCtx.strokeStyle=color; mixCtx.lineWidth=width; mixCtx.lineJoin='round'; mixCtx.lineCap='round'; mixCtx.stroke();
       const last=mixHist[mixHist.length-1];
-      const endpointX=mixHist.length===1 ? 4 : (mixHist.length-1)*stepX;
+      const endpointX=historyX(last,mixHist.length-1);
       const endpointY=padTop+plotH*(1-last[key]/maxTotal);
       mixCtx.beginPath(); mixCtx.arc(endpointX,endpointY,2.4,0,TAU); mixCtx.fillStyle=color; mixCtx.fill();
     };
@@ -18849,7 +18860,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       randomButton.className='navigator-item'+(populationNavigatorState.selectedKey===POPULATION_NAVIGATOR_RANDOM_KEY?' on':'');
       randomButton.dataset.navigatorKey=POPULATION_NAVIGATOR_RANDOM_KEY;
       randomButton.setAttribute('aria-pressed',String(populationNavigatorState.selectedKey===POPULATION_NAVIGATOR_RANDOM_KEY));
-      const text=document.createElement('small'); text.textContent=`ランダム新種（${POPULATION_NAVIGATOR_DIET_LABELS[populationNavigatorState.diet]}）— 現在の個体をコピーしません`;
+      const text=document.createElement('small'); text.textContent=`ランダム個体（${POPULATION_NAVIGATOR_DIET_LABELS[populationNavigatorState.diet]}）— 現在の個体をコピーしません`;
       const count=document.createElement('b'); count.textContent='＋';
       randomButton.append(text,count);
       randomButton.addEventListener('click',()=>{ populationNavigatorState.selectedKey=POPULATION_NAVIGATOR_RANDOM_KEY; refreshPopulationNavigator(); });
@@ -18920,7 +18931,18 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       const changedKeys=keys.filter(key=>Math.abs(Number(normalized[key])-Number(base[key]))>1e-9);
       if(changedKeys.length) return {genes:normalized,changedKeys,variationApplied:true};
     }
-    return {genes:base,changedKeys:[],variationApplied:false};
+    const probeDeltas=[-0.05,-0.025,-0.012,-0.004,0.004,0.012,0.025,0.05];
+    for(const key of keys){
+      for(const delta of probeDeltas){
+        const candidate=devCloneGenes({...base,[key]:clamp(Number(base[key])+delta,0,1)});
+        if(Math.abs(Number(candidate[key])-Number(base[key]))<=1e-9) continue;
+        if(speciesKey(candidate,flags)!==targetKey) continue;
+        if(dietTypeFromCarn(candidate.diet)!==populationNavigatorState.diet) continue;
+        if(requirePack && speciesSocialModeFromGenes(candidate)!=='hunt-pack') continue;
+        return {genes:candidate,changedKeys:[key],variationApplied:true};
+      }
+    }
+    return null;
   }
   function showPopulationNavigatorSelection(){
     const randomDiet=populationNavigatorState.group==='species' && populationNavigatorState.selectedKey===POPULATION_NAVIGATOR_RANDOM_KEY;
@@ -18929,6 +18951,10 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     const randomized=randomDiet
       ? {genes:populationNavigatorRandomDietGenes(),changedKeys:[],variationApplied:true}
       : populationNavigatorRandomizedSpeciesGenes(source,{requirePack:populationNavigatorState.group==='pack'});
+    if(!randomized){
+      showToast('species','条件を保ったランダム個体を作れませんでした');
+      return null;
+    }
     const point=randomPointInWorld(20,Math.random);
     const organism=new Organism(
       point.x,
@@ -18971,6 +18997,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       packId:organism.packId ?? null,
       joinedPack,
       randomPosition:true,
+      spawnPosition:{x:organism.x,y:organism.y},
       variationApplied:randomized.variationApplied,
       changedGeneKeys:randomized.changedKeys,
       population:organisms.length
@@ -33984,7 +34011,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       updateModel();
       const perfModelUiStarted=perfStart();
       renderModelUi();
-      if(frame%20===0) reportMix();
+      maybeReportMix();
       perfEnd('telemetryStatistics',perfModelUiStarted,1);
     }
     const updateElapsed=performance.now()-u0;
