@@ -1,13 +1,15 @@
 /*
- * Generator-only organism concept renderer.
+ * Shared two-level organism art renderer.
  *
- * This file is intentionally not used by the game. It explores a more
- * illustrated roster look before any shared renderer integration happens.
+ * Normal mode is the crisp illustrated field treatment. closeUp mode keeps
+ * the same silhouette and appearance slots, then adds microscope-only glass,
+ * internal detail, and DIC lighting.
  */
 (function (global) {
   "use strict";
 
   const TAU = Math.PI * 2;
+  const RENDERER_VERSION = "roster-art-v3-dual-mode";
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
   const lerp = (a, b, t) => a + (b - a) * t;
 
@@ -53,6 +55,15 @@
     return profile?.topology || o.morphologyTopology || "single";
   }
 
+  function formOf(o) {
+    const model = global.OrganismModel;
+    const genes = genesOf(o);
+    if (model && model.formFromGenes) {
+      try { return model.formFromGenes(genes, canonicalSeedKey(o, "form")); } catch (_) {}
+    }
+    return o.form || {};
+  }
+
   function canonicalSeedKey(o, salt) {
     const profile = canonicalProfileFor(o);
     if (profile) return profile.speciesKey + ":" + salt;
@@ -80,6 +91,9 @@
     else hue = lerp(338, 6, speed) + hJitter;
     if (opts && opts.groupColor) {
       hue = hue * 0.72 + parseHexHue(opts.groupColor) * 0.28;
+    }
+    if (opts && Number.isFinite(Number(opts.groupHue))) {
+      hue = hue * 0.72 + Number(opts.groupHue) * 0.28;
     }
     return {
       hue,
@@ -378,7 +392,7 @@
   // pick the shell texture that fits the silhouette, the way real diatoms differ:
   // elongated shells get transverse striae, round/radial ones get radial ribs.
   function drawShellPattern(ctx, o, r, pal, rng) {
-    const kind = visualKind(o), form = o.form || {}, topo = topologyOf(o);
+    const kind = visualKind(o), form = formOf(o), topo = topologyOf(o);
     if (/needle|serpent|finned|dart|spindle|crescent|barb|leaf/.test(kind) || (form.aspect || 1) > 1.5) {
       drawStriae(ctx, r, pal, rng);
     } else if (/radial|ring|star|triangle|fan|clover|trefoil|gourd/.test(kind) || topo === "radial" || topo === "ring") {
@@ -656,7 +670,7 @@
     }
     if (topology === "single") {
       if ((g.speed || 0.5) > 0.62 || flags.chl) return "single-leaf";
-      if ((o.form && o.form.aspect > 1.46) && (g.size || 0.5) > 0.38) return "single-spindle";
+      if ((formOf(o).aspect || 0) > 1.46 && (g.size || 0.5) > 0.38) return "single-spindle";
       // formSeed picks the plain-body silhouette so the "form" gene has real reach.
       var singleShapes = SINGLE_SHAPES;
       return singleShapes[Math.min(singleShapes.length - 1, Math.floor((g.formSeed == null ? 0.5 : g.formSeed) * singleShapes.length))];
@@ -875,7 +889,7 @@
 
   function drawCellBlob(ctx, o, r, pal, rng) {
     const g = genesOf(o);
-    const form = o.form || {};
+    const form = formOf(o);
     const aspect = 0.90 + (form.aspect || 1.2) * 0.22;
     const point = clamp((g.speed || 0.5) * 0.62 + (g.diet || 0.5) * 0.28, 0, 1);
     const irregular = 0.25 + clamp(form.detail || 0.5, 0, 1) * 0.78;
@@ -1186,11 +1200,12 @@
   function drawInterior(ctx, o, r, pal, rng, opts) {
     opts = opts || {};
     const scale = opts.scale == null ? 1 : opts.scale;
-    const detail = ((o.form || {}).detail || 0.5);
+    const detail = (formOf(o).detail || 0.5);
     const interior = opts.interior || interiorOf(o);
     const surface = opts.surface || surfaceOf(o);
     const chl = !!(o.flags && o.flags.chl);
-    const diet = clamp((o.genes || {}).diet == null ? 0.5 : o.genes.diet, 0, 1);
+    const visualGenes = genesOf(o);
+    const diet = clamp(visualGenes.diet == null ? 0.5 : visualGenes.diet, 0, 1);
     if (CLOSEUP) {
       // Drawn inside the caller's body clip. glassBody already laid down the fill, DIC
       // relief and specular; here we etch the shell pattern and suspend the organelles.
@@ -1258,7 +1273,7 @@
     return { m: m, cl: cl, halfW: halfW, nrm: nrm, segStep: Math.max(4, Math.round(m / 9)) };
   }
   function singleOutline(kind, r, o, rng) {
-    const form = o.form || {};
+    const form = formOf(o);
     const pts = [], n = 84;
     // ---- swimmers: nose points up (-y), tail trails down (+y) ----
     if (kind === "single-dart") {
@@ -1467,7 +1482,7 @@
   }
   function _fillOutline(ctx, pts){ ctx.beginPath(); for (let i=0;i<pts.length;i++){ if(i===0) ctx.moveTo(pts[i].x,pts[i].y); else ctx.lineTo(pts[i].x,pts[i].y); } ctx.closePath(); }
   function drawBodyFromPts(ctx, o, r, pal, rng, pts, nuclei) {
-    const form = o.form || {};
+    const form = formOf(o);
     ctx.save();
     _fillOutline(ctx, pts);
     fillAndStroke(ctx, r, pal, 0.68);
@@ -1660,7 +1675,7 @@
 
   function drawChain(ctx, o, r, pal, rng) {
     const g = genesOf(o);
-    const n = 3 + Math.round(clamp((g.fecundity || 0.5) * 5 + (o.form ? o.form.length : 0.5) * 2, 0, 7));
+    const n = 3 + Math.round(clamp((g.fecundity || 0.5) * 5 + (formOf(o).length || 0.5) * 2, 0, 7));
     const step = r * lerp(0.48, 0.64, g.speed || 0.5);
     const variant = variantIndex(o, "chain", 2); // match visualKind: 1 = segment, 0 = bead chain
     ctx.save();
@@ -1734,7 +1749,7 @@
     const arms = 2 + variantIndex(o, "armn", 4);              // 2..5 arms
     const downward = variantIndex(o, "armdir", 2) === 1 && arms <= 3;
     // per-species base length, then each arm is a bit longer/shorter than that base.
-    const baseBeads = 2 + Math.round(((o.form && o.form.length) || 0.5) * 3) + variantIndex(o, "armlen", 2); // 2..6
+    const baseBeads = 2 + Math.round((formOf(o).length || 0.5) * 3) + variantIndex(o, "armlen", 2); // 2..6
     for (let i = 0; i < arms; i++) {
       let a;
       if (downward) a = Math.PI * 0.28 + (arms <= 1 ? 0.5 : i / (arms - 1)) * Math.PI * 0.44;
@@ -2098,6 +2113,34 @@
   // every call. Only set inside drawOrganism; always reset before it returns.
   let CLOSEUP = false;
 
+  function normalSpriteKey(o) {
+    const g = genesOf(o);
+    const form = formOf(o);
+    const flags = o.flags || {};
+    const identity = canonicalSeedKey(o, "normal-sprite");
+    const genes = ["speed", "size", "metabolism", "fecundity", "sense", "diet", "formSeed"]
+      .map(name => Math.round(clamp(Number(g[name]) || 0, 0, 1) * 1000))
+      .join(",");
+    const formKey = [form.aspect, form.detail, form.length, form.pointiness]
+      .map(value => Math.round((Number(value) || 0) * 1000))
+      .join(",");
+    const flagKey = `${flags.chl ? 1 : 0}${flags.glow ? 1 : 0}${flags.crown ? 1 : 0}${flags.colony ? 1 : 0}`;
+    const adaptations = Array.isArray(o.adaptations) ? o.adaptations.slice().sort().join(",") : "";
+    return [
+      RENDERER_VERSION,
+      identity,
+      topologyOf(o),
+      visualKind(o),
+      interiorOf(o),
+      surfaceOf(o),
+      genes,
+      formKey,
+      flagKey,
+      o.isMega ? "mega" : "normal",
+      adaptations
+    ].join("|");
+  }
+
   function drawOrganism(ctx, o, w, h, opts) {
     opts = opts || {};
     const previousCloseup = CLOSEUP;
@@ -2157,8 +2200,9 @@
   }
 
   global.OrganismRosterArt = {
-    version: "generator-art-v2-microscope",
+    version: RENDERER_VERSION,
     drawOrganism,
+    normalSpriteKey,
     visualKind,
     singleShapes: SINGLE_SHAPES,
     // Diagnostic: which per-species interior / surface slot a creature drew.

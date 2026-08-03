@@ -1,0 +1,491 @@
+{
+  "schemaVersion": 1,
+  "environment": "Playwright Chromium headless",
+  "targetUrl": "file:///C:/Users/yuhim/Documents/ALIFE/.codex_worktrees/visual_integration/index.html?normal-visual-smoke=1",
+  "setup": {
+    "organismId": 65,
+    "screen": {
+      "x": 443.7477477477477,
+      "y": 344
+    }
+  },
+  "renderAudit": {
+    "before": {
+      "counts": {
+        "organisms": 65,
+        "food": 12,
+        "detritusParticles": 0,
+        "plankton": 70,
+        "sparks": 0,
+        "rings": 0,
+        "predationBlooms": 0,
+        "membranes": 0,
+        "corpses": 0,
+        "species": 59
+      },
+      "renderer": {
+        "style": "roster",
+        "requested": "roster",
+        "available": true,
+        "rendererVersion": "roster-art-v3-dual-mode",
+        "baseScale": 0.46,
+        "spriteCache": {
+          "size": 65,
+          "hits": 512,
+          "misses": 65,
+          "bakes": 65,
+          "evictions": 0,
+          "imageBitmaps": 65,
+          "peakSize": 65,
+          "frameKeys": 65,
+          "effectiveLimit": 1800
+        }
+      },
+      "lens": {
+        "enabled": false,
+        "available": true,
+        "rendererVersion": "roster-art-v3-dual-mode",
+        "x": 436,
+        "y": 344,
+        "radius": 184,
+        "magnification": 3.2,
+        "maxOrganisms": 10,
+        "lastDrawn": 0
+      }
+    },
+    "normal": {
+      "renderer": {
+        "style": "roster",
+        "requested": "roster",
+        "available": true,
+        "rendererVersion": "roster-art-v3-dual-mode",
+        "baseScale": 0.46,
+        "spriteCache": {
+          "size": 65,
+          "hits": 260,
+          "misses": 65,
+          "bakes": 65,
+          "evictions": 0,
+          "imageBitmaps": 65,
+          "peakSize": 65,
+          "frameKeys": 65,
+          "effectiveLimit": 1800
+        }
+      },
+      "lens": {
+        "enabled": false,
+        "available": true,
+        "rendererVersion": "roster-art-v3-dual-mode",
+        "x": 436,
+        "y": 344,
+        "radius": 184,
+        "magnification": 3.2,
+        "maxOrganisms": 10,
+        "lastDrawn": 0
+      }
+    },
+    "microscope": {
+      "enabled": true,
+      "available": true,
+      "rendererVersion": "roster-art-v3-dual-mode",
+      "x": 443.7477477477477,
+      "y": 344,
+      "radius": 184,
+      "magnification": 3.2,
+      "maxOrganisms": 10,
+      "lastDrawn": 3
+    },
+    "normalIds": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65
+    ],
+    "microscopeIds": [
+      29,
+      28,
+      65
+    ],
+    "sharedIds": [
+      28,
+      29,
+      65
+    ],
+    "targetShared": true,
+    "calls": {
+      "normal": 65,
+      "microscope": 9
+    },
+    "randomCalls": 0,
+    "after": {
+      "counts": {
+        "organisms": 65,
+        "food": 12,
+        "detritusParticles": 0,
+        "plankton": 70,
+        "sparks": 0,
+        "rings": 0,
+        "predationBlooms": 0,
+        "membranes": 0,
+        "corpses": 0,
+        "species": 59
+      },
+      "renderer": {
+        "style": "roster",
+        "requested": "roster",
+        "available": true,
+        "rendererVersion": "roster-art-v3-dual-mode",
+        "baseScale": 0.46,
+        "spriteCache": {
+          "size": 65,
+          "hits": 520,
+          "misses": 65,
+          "bakes": 65,
+          "evictions": 0,
+          "imageBitmaps": 65,
+          "peakSize": 65,
+          "frameKeys": 65,
+          "effectiveLimit": 1800
+        }
+      },
+      "lens": {
+        "enabled": false,
+        "available": true,
+        "rendererVersion": "roster-art-v3-dual-mode",
+        "x": 443.7477477477477,
+        "y": 344,
+        "radius": 184,
+        "magnification": 3.2,
+        "maxOrganisms": 10,
+        "lastDrawn": 0
+      }
+    },
+    "modelEvidence": {
+      "exact": true,
+      "beforeSha256": "b9f05e9fab428f7a0f432b092c397d095a75e55bdb280a1a6f2e4585a4cab5b4",
+      "afterSha256": "b9f05e9fab428f7a0f432b092c397d095a75e55bdb280a1a6f2e4585a4cab5b4"
+    }
+  },
+  "benchmark": {
+    "cases": [
+      {
+        "population": 64,
+        "counts": {
+          "organisms": 64,
+          "food": 12,
+          "detritusParticles": 0,
+          "plankton": 70,
+          "sparks": 0,
+          "rings": 0,
+          "predationBlooms": 0,
+          "membranes": 0,
+          "corpses": 0,
+          "species": 58
+        },
+        "stateExact": true,
+        "legacy": {
+          "style": "legacy",
+          "renderer": {
+            "style": "legacy",
+            "requested": "legacy",
+            "available": true,
+            "rendererVersion": "roster-art-v3-dual-mode",
+            "baseScale": 0.46,
+            "spriteCache": {
+              "size": 64,
+              "hits": 6144,
+              "misses": 64,
+              "bakes": 64,
+              "evictions": 0,
+              "imageBitmaps": 64,
+              "peakSize": 64,
+              "frameKeys": 64,
+              "effectiveLimit": 1800
+            }
+          },
+          "frameMs": {
+            "samples": 60,
+            "median": 33.400000000000546,
+            "p95": 50.099999999999454,
+            "max": 50.100000000000364
+          },
+          "drawMs": {
+            "samples": 60,
+            "median": 3,
+            "p95": 3.9,
+            "max": 4.4
+          }
+        },
+        "roster": {
+          "style": "roster",
+          "renderer": {
+            "style": "roster",
+            "requested": "roster",
+            "available": true,
+            "rendererVersion": "roster-art-v3-dual-mode",
+            "baseScale": 0.46,
+            "spriteCache": {
+              "size": 64,
+              "hits": 6144,
+              "misses": 64,
+              "bakes": 64,
+              "evictions": 0,
+              "imageBitmaps": 64,
+              "peakSize": 64,
+              "frameKeys": 64,
+              "effectiveLimit": 1800
+            }
+          },
+          "frameMs": {
+            "samples": 60,
+            "median": 33.29999999999927,
+            "p95": 33.400000000001455,
+            "max": 50
+          },
+          "drawMs": {
+            "samples": 60,
+            "median": 2.38,
+            "p95": 3.36,
+            "max": 3.47
+          }
+        }
+      },
+      {
+        "population": 200,
+        "counts": {
+          "organisms": 200,
+          "food": 12,
+          "detritusParticles": 0,
+          "plankton": 70,
+          "sparks": 0,
+          "rings": 0,
+          "predationBlooms": 0,
+          "membranes": 0,
+          "corpses": 0,
+          "species": 164
+        },
+        "stateExact": true,
+        "legacy": {
+          "style": "legacy",
+          "renderer": {
+            "style": "legacy",
+            "requested": "legacy",
+            "available": true,
+            "rendererVersion": "roster-art-v3-dual-mode",
+            "baseScale": 0.46,
+            "spriteCache": {
+              "size": 200,
+              "hits": 19200,
+              "misses": 200,
+              "bakes": 200,
+              "evictions": 0,
+              "imageBitmaps": 200,
+              "peakSize": 200,
+              "frameKeys": 200,
+              "effectiveLimit": 1800
+            }
+          },
+          "frameMs": {
+            "samples": 60,
+            "median": 50,
+            "p95": 66.60000000000036,
+            "max": 66.70000000000073
+          },
+          "drawMs": {
+            "samples": 60,
+            "median": 2.68,
+            "p95": 4.5,
+            "max": 5.14
+          }
+        },
+        "roster": {
+          "style": "roster",
+          "renderer": {
+            "style": "roster",
+            "requested": "roster",
+            "available": true,
+            "rendererVersion": "roster-art-v3-dual-mode",
+            "baseScale": 0.46,
+            "spriteCache": {
+              "size": 200,
+              "hits": 19200,
+              "misses": 200,
+              "bakes": 200,
+              "evictions": 0,
+              "imageBitmaps": 200,
+              "peakSize": 200,
+              "frameKeys": 200,
+              "effectiveLimit": 1800
+            }
+          },
+          "frameMs": {
+            "samples": 60,
+            "median": 33.400000000001455,
+            "p95": 50.099999999998545,
+            "max": 50.10000000000218
+          },
+          "drawMs": {
+            "samples": 60,
+            "median": 2.94,
+            "p95": 3.5,
+            "max": 3.6
+          }
+        }
+      },
+      {
+        "population": 1000,
+        "counts": {
+          "organisms": 1000,
+          "food": 12,
+          "detritusParticles": 0,
+          "plankton": 70,
+          "sparks": 0,
+          "rings": 0,
+          "predationBlooms": 0,
+          "membranes": 0,
+          "corpses": 0,
+          "species": 533
+        },
+        "stateExact": true,
+        "legacy": {
+          "style": "legacy",
+          "renderer": {
+            "style": "legacy",
+            "requested": "legacy",
+            "available": true,
+            "rendererVersion": "roster-art-v3-dual-mode",
+            "baseScale": 0.46,
+            "spriteCache": {
+              "size": 1000,
+              "hits": 96000,
+              "misses": 1000,
+              "bakes": 1000,
+              "evictions": 0,
+              "imageBitmaps": 1000,
+              "peakSize": 1000,
+              "frameKeys": 1000,
+              "effectiveLimit": 1800
+            }
+          },
+          "frameMs": {
+            "samples": 60,
+            "median": 166.70000000000437,
+            "p95": 300,
+            "max": 316.7000000000007
+          },
+          "drawMs": {
+            "samples": 60,
+            "median": 8.33,
+            "p95": 12.15,
+            "max": 12.63
+          }
+        },
+        "roster": {
+          "style": "roster",
+          "renderer": {
+            "style": "roster",
+            "requested": "roster",
+            "available": true,
+            "rendererVersion": "roster-art-v3-dual-mode",
+            "baseScale": 0.46,
+            "spriteCache": {
+              "size": 1000,
+              "hits": 96000,
+              "misses": 1000,
+              "bakes": 1000,
+              "evictions": 0,
+              "imageBitmaps": 1000,
+              "peakSize": 1000,
+              "frameKeys": 1000,
+              "effectiveLimit": 1800
+            }
+          },
+          "frameMs": {
+            "samples": 60,
+            "median": 150,
+            "p95": 166.79999999999563,
+            "max": 216.59999999999854
+          },
+          "drawMs": {
+            "samples": 60,
+            "median": 10.46,
+            "p95": 11.17,
+            "max": 11.32
+          }
+        }
+      }
+    ]
+  },
+  "assertions": {
+    "normalDefault": true,
+    "twoDistinctModes": true,
+    "sameOrganismIdentity": true,
+    "visualRngIsolation": true,
+    "modelNonInterference": true,
+    "countNonInterference": true,
+    "performanceSamples": true,
+    "noErrors": true
+  },
+  "errors": []
+}

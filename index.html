@@ -742,6 +742,7 @@
       symbolSpriteCacheLimit: 1800,
       symbolSpriteMaxSide: 224,
       symbolSpriteGaitBuckets: 4,
+      normalRosterBaseScale: 0.46,
       microView: Object.freeze({
         baseScale: 0.34,
         rareScale: 0.48,
@@ -13724,7 +13725,30 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
   const symbolSpriteStats = { hits:0, misses:0, bakes:0, evictions:0, imageBitmaps:0, peakSize:0, frameKeys:0, effectiveLimit:0 };
   let symbolSpriteRenderEpoch=0;
   let symbolSpriteFrameKeyCount=0;
+  let normalOrganismRenderer='roster';
   const canonicalSymbolSpriteSignatureCache = new WeakMap();
+  function normalRosterArtAvailable(){
+    return !!window.OrganismRosterArt?.drawOrganism;
+  }
+  function normalRosterArtEnabled(){
+    return normalOrganismRenderer==='roster' && normalRosterArtAvailable();
+  }
+  function setNormalOrganismRenderer(style='roster'){
+    const requested=String(style||'roster').toLowerCase();
+    normalOrganismRenderer=requested==='legacy' ? 'legacy' : 'roster';
+    clearSymbolSpriteCache();
+    return normalOrganismRendererSummary();
+  }
+  function normalOrganismRendererSummary(){
+    return {
+      style:normalRosterArtEnabled() ? 'roster' : 'legacy',
+      requested:normalOrganismRenderer,
+      available:normalRosterArtAvailable(),
+      rendererVersion:window.OrganismRosterArt?.version ?? null,
+      baseScale:CONFIG.rendering.normalRosterBaseScale,
+      spriteCache:{size:symbolSpriteCache.size,...symbolSpriteStats}
+    };
+  }
   function clearSymbolSpriteCache(){
     for(const rec of symbolSpriteCache.values()) rec.canvas?.close?.();
     symbolSpriteCache.clear();
@@ -13742,10 +13766,40 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
     if(OrganismRender.symbolRenderScaleFor) return OrganismRender.symbolRenderScaleFor(o,sym);
     return 1;
   }
+  function normalRosterVisualScale(o,visualScale=organismVisualScale(o)){
+    return ui.microView ? Math.max(visualScale,CONFIG.rendering.normalRosterBaseScale) : visualScale;
+  }
+  function normalRosterRoleHue(o){
+    if(!ui.roleViz) return null;
+    return ROLE_HUE[normalizeRole(o?.role)] ?? ROLE_HUE.other;
+  }
+  function drawNormalRosterArt(o,c=ctx,bake=null){
+    if(!normalRosterArtEnabled()) return false;
+    const sym=o?._symbol || (o?.prepareSymbolDetails(),o?._symbol);
+    const visualScale=normalRosterVisualScale(o,bake?.visualScale ?? organismVisualScale(o));
+    const visualR=Math.max(o?.size||1,symbolRenderedVisualR(o,sym));
+    const boxR=Math.max(5,visualR*visualScale);
+    const x=bake?.x ?? o.x;
+    const y=bake?.y ?? o.y;
+    const heading=Number.isFinite(bake?.heading) ? bake.heading : (Number.isFinite(o.heading) ? o.heading : 0);
+    c.save();
+    c.translate(x,y);
+    c.rotate(heading+Math.PI*0.5);
+    c.translate(-boxR,-boxR);
+    window.OrganismRosterArt.drawOrganism(c,o,boxR*2,boxR*2,{
+      fill:0.42,
+      closeUp:false,
+      groupHue:normalRosterRoleHue(o)
+    });
+    c.restore();
+    return true;
+  }
   function organismDrawCullRadius(o){
     const sym=o?._symbol;
-    const visualScale=organismVisualScale(o);
-    let radius=Math.max(32,(o?.size||1)*4,symbolRenderedVisualR(o,sym)*visualScale*1.65);
+    const rawVisualScale=organismVisualScale(o);
+    const visualScale=normalRosterArtEnabled() ? normalRosterVisualScale(o,rawVisualScale) : rawVisualScale;
+    const artReach=normalRosterArtEnabled() ? 2.05 : 1.65;
+    let radius=Math.max(32,(o?.size||1)*4,symbolRenderedVisualR(o,sym)*visualScale*artReach);
     if(ui.showSense) radius=Math.max(radius,(o?.senseR||0)*visualScale+2);
     return radius;
   }
@@ -13789,9 +13843,16 @@ let NEXT_ID=1; const organisms=[]; const organismIdIndex=new Map(); const newbor
   }
   function symbolSpriteKey(o,sym,visualScale){
     const tier = renderPerf.low ? 'low' : 'full';
-    const sizeTier = Math.max(1, Math.round((o.size||1)*visualScale*2));
+    const spriteVisualScale=normalRosterArtEnabled() ? normalRosterVisualScale(o,visualScale) : visualScale;
+    const sizeTier = Math.max(1, Math.round((o.size||1)*spriteVisualScale*2));
     const nightTier = Math.round(clamp01(dayNight.night ?? (dayNight.isNight ? 1 : 0)));
     const roleTier = ui.roleViz ? (normalizeRole(o.role)||'other') : 'base';
+    if(normalRosterArtEnabled()){
+      const artKey=window.OrganismRosterArt.normalSpriteKey
+        ? window.OrganismRosterArt.normalSpriteKey(o)
+        : symbolSpriteGeometrySignature(o,sym);
+      return `roster|${artKey}|${sizeTier}|${tier}|${roleTier}`;
+    }
     return `${symbolSpriteGeometrySignature(o,sym)}|${sizeTier}|${tier}|${symbolSpriteGaitBucket(o)}|${nightTier}|${roleTier}|${symbolSpriteFlags(o)}`;
   }
   function beginSymbolSpriteFrame(){
@@ -16500,7 +16561,10 @@ if(Z>0.08){
       ctx.restore();
     }
 
-    drawSymbolicLive(c=ctx,bake=null){ return OrganismRender.drawOrganism(this, c, bake, {ADAPTATION_BY_ID, CONFIG, ROLE_HUE, adaptationProfilesFromGenes, clamp, clamp01, dayNight, formFromGenes, isPredatorBursting, lerp, organismVisualScale, renderPerf, selectedOrganism, ui}); }
+    drawSymbolicLive(c=ctx,bake=null){
+      if(drawNormalRosterArt(this,c,bake)) return true;
+      return OrganismRender.drawOrganism(this, c, bake, {ADAPTATION_BY_ID, CONFIG, ROLE_HUE, adaptationProfilesFromGenes, clamp, clamp01, dayNight, formFromGenes, isPredatorBursting, lerp, organismVisualScale, renderPerf, selectedOrganism, ui});
+    }
 
     drawSymbolicSpriteBackdrops(sym, visualScale){
       const showMicroHalo=ui.microView && visualScale>CONFIG.rendering.microView.baseScale+0.03;
@@ -16588,13 +16652,27 @@ if(Z>0.08){
         this.drawSymbolicSpriteBackdrops(sym, visualScale);
         ctx.save();
         ctx.translate(this.x,this.y);
-        ctx.rotate(Number.isFinite(this.heading) ? this.heading : 0);
+        const heading=Number.isFinite(this.heading) ? this.heading : 0;
+        if(normalRosterArtEnabled()){
+          const gait=this.gait || this.phase || 0;
+          const pulse=1+Math.sin(gait*0.34+this.id*0.17)*0.014;
+          ctx.rotate(heading+Math.sin(gait*0.22+this.id)*0.018);
+          ctx.scale(pulse,2-pulse);
+        } else {
+          ctx.rotate(heading);
+        }
         ctx.drawImage(sprite.canvas,-sprite.half,-sprite.half);
         ctx.restore();
         this.drawSymbolicSpriteRings(sym, visualScale);
         return;
       }
-      this.drawSymbolicLive(ctx,null);
+      if(normalRosterArtEnabled()){
+        this.drawSymbolicSpriteBackdrops(sym,visualScale);
+        this.drawSymbolicLive(ctx,null);
+        this.drawSymbolicSpriteRings(sym,visualScale);
+      } else {
+        this.drawSymbolicLive(ctx,null);
+      }
     }
 
     draw(){
@@ -23816,9 +23894,13 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
       const diameter=item.bodyR*2;
       ctx.save();
       ctx.translate(item.sx,item.sy);
-      ctx.rotate(Number.isFinite(item.o.heading) ? item.o.heading : 0);
+      ctx.rotate((Number.isFinite(item.o.heading) ? item.o.heading : 0)+Math.PI*0.5);
       ctx.translate(-item.bodyR,-item.bodyR);
-      window.OrganismRosterArt.drawOrganism(ctx,item.o,diameter,diameter,{fill:0.52,closeUp:true});
+      window.OrganismRosterArt.drawOrganism(ctx,item.o,diameter,diameter,{
+        fill:0.52,
+        closeUp:true,
+        groupHue:normalRosterRoleHue(item.o)
+      });
       ctx.restore();
     }
     const innerShade=ctx.createRadialGradient(lens.x,lens.y,lens.r*0.74,lens.x,lens.y,lens.r);
@@ -33257,6 +33339,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     clearSelection(){ selectOrganism(null); return true; },
     selectedOrganism(){ const o=selectedOrganism; return o ? {id:o.id,x:o.x,y:o.y,dead:!!o.dead} : null; },
+    normalOrganismRendererSummary(){ return normalOrganismRendererSummary(); },
+    setNormalOrganismRenderer(style='roster'){ return setNormalOrganismRenderer(style); },
     microscopeLensSummary(){ return microscopeLensSummary(); },
     setMicroscopeLens(enabled=true,options={}){ return setMicroscopeLens(enabled,options); },
     setTool(name){ setTool(String(name)); return ui.tool; },
@@ -34068,6 +34152,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         lowRender: renderPerf.low,
         tinyRender: renderPerf.tiny,
         renderMode: renderPerf.mode,
+        normalOrganismRenderer:normalOrganismRendererSummary(),
         microscopeLens: microscopeLensSummary(),
         meshCount: renderPerf.meshCount,
         complexCount: renderPerf.complexCount,

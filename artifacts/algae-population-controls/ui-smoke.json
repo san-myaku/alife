@@ -50,7 +50,7 @@
         "predationBlooms": 0,
         "membranes": 0,
         "corpses": 0,
-        "species": 61
+        "species": 60
       },
       "world": {
         "worldVersion": 2,
@@ -149,7 +149,7 @@
         "predationBlooms": 0,
         "membranes": 0,
         "corpses": 0,
-        "species": 61
+        "species": 60
       },
       "world": {
         "worldVersion": 2,
@@ -241,18 +241,18 @@
       "length": 1,
       "latest": {
         "frame": 0,
-        "h": 16,
-        "m": 27,
-        "c": 21,
+        "h": 19,
+        "m": 25,
+        "c": 20,
         "total": 64,
         "season": 0.6
       },
       "rows": [
         {
           "frame": 0,
-          "h": 16,
-          "m": 27,
-          "c": 21,
+          "h": 19,
+          "m": 25,
+          "c": 20,
           "total": 64,
           "season": 0.6
         }
@@ -263,26 +263,26 @@
       "length": 2,
       "latest": {
         "frame": 22,
-        "h": 16,
-        "m": 27,
-        "c": 21,
+        "h": 19,
+        "m": 25,
+        "c": 20,
         "total": 64,
         "season": 0.6276362340245113
       },
       "rows": [
         {
           "frame": 0,
-          "h": 16,
-          "m": 27,
-          "c": 21,
+          "h": 19,
+          "m": 25,
+          "c": 20,
           "total": 64,
           "season": 0.6
         },
         {
           "frame": 22,
-          "h": 16,
-          "m": 27,
-          "c": 21,
+          "h": 19,
+          "m": 25,
+          "c": 20,
           "total": 64,
           "season": 0.6276362340245113
         }
@@ -294,72 +294,82 @@
       "diet": "h",
       "group": "species",
       "selectedKey": "__random__",
-      "livingCount": 16,
+      "livingCount": 19,
       "groups": [
         {
-          "key": "3001224",
-          "count": 1,
+          "key": "0210014",
+          "count": 2,
           "representativeId": 5
         },
         {
-          "key": "1300113",
+          "key": "3310214",
           "count": 1,
-          "representativeId": 12
+          "representativeId": 4
         },
         {
-          "key": "3100223",
+          "key": "3011224",
           "count": 1,
-          "representativeId": 13
+          "representativeId": 8
         },
         {
-          "key": "2230116",
+          "key": "3321224",
+          "count": 1,
+          "representativeId": 11
+        },
+        {
+          "key": "0011015",
           "count": 1,
           "representativeId": 14
         },
         {
-          "key": "2210214",
+          "key": "3211223",
           "count": 1,
-          "representativeId": 17
+          "representativeId": 15
         },
         {
-          "key": "2310113",
+          "key": "1020115",
+          "count": 1,
+          "representativeId": 19
+        },
+        {
+          "key": "1010114",
+          "count": 1,
+          "representativeId": 23
+        },
+        {
+          "key": "0130006",
           "count": 1,
           "representativeId": 24
         },
         {
-          "key": "2311214",
+          "key": "0220005",
           "count": 1,
-          "representativeId": 25
+          "representativeId": 27
         },
         {
-          "key": "3030226",
+          "key": "1000112",
           "count": 1,
-          "representativeId": 28
+          "representativeId": 41
         },
         {
-          "key": "1001113",
+          "key": "1300113",
           "count": 1,
-          "representativeId": 34
+          "representativeId": 42
         },
         {
-          "key": "0220015",
-          "count": 1,
-          "representativeId": 35
-        },
-        {
-          "key": "2321115",
-          "count": 1,
-          "representativeId": 37
-        },
-        {
-          "key": "2330117",
-          "count": 1,
-          "representativeId": 39
-        },
-        {
-          "key": "2010124",
+          "key": "0200003",
           "count": 1,
           "representativeId": 49
+        },
+        {
+          "key": "1330116",
+          "count": 1,
+          "representativeId": 51
+        },
+        {
+          "key": "0230016",
+          "count": 1,
+          "representativeId": 55
         },
         {
           "key": "1111114",
@@ -384,13 +394,13 @@
       "sourceId": null,
       "mode": "random-diet",
       "diet": "h",
-      "speciesKey": "3121225",
+      "speciesKey": "1031116",
       "packId": null,
       "joinedPack": false,
       "randomPosition": true,
       "spawnPosition": {
-        "x": 290.28458482414,
-        "y": 320.4494934444681
+        "x": 592.6985145244422,
+        "y": 360.9586955916221
       },
       "variationApplied": true,
       "changedGeneKeys": [],
@@ -398,80 +408,90 @@
     },
     "randomSelected": {
       "id": 193,
-      "x": 290.28458482414,
-      "y": 320.4494934444681,
+      "x": 592.6985145244422,
+      "y": 360.9586955916221,
       "dead": false
     },
     "speciesNavigator": {
       "diet": "h",
       "group": "species",
-      "selectedKey": "3001224",
-      "livingCount": 17,
+      "selectedKey": "0210014",
+      "livingCount": 20,
       "groups": [
         {
-          "key": "3001224",
-          "count": 1,
+          "key": "0210014",
+          "count": 2,
           "representativeId": 5
         },
         {
-          "key": "1300113",
+          "key": "3310214",
           "count": 1,
-          "representativeId": 12
+          "representativeId": 4
         },
         {
-          "key": "3100223",
+          "key": "3011224",
           "count": 1,
-          "representativeId": 13
+          "representativeId": 8
         },
         {
-          "key": "2230116",
+          "key": "3321224",
+          "count": 1,
+          "representativeId": 11
+        },
+        {
+          "key": "0011015",
           "count": 1,
           "representativeId": 14
         },
         {
-          "key": "2210214",
+          "key": "3211223",
           "count": 1,
-          "representativeId": 17
+          "representativeId": 15
         },
         {
-          "key": "2310113",
+          "key": "1020115",
+          "count": 1,
+          "representativeId": 19
+        },
+        {
+          "key": "1010114",
+          "count": 1,
+          "representativeId": 23
+        },
+        {
+          "key": "0130006",
           "count": 1,
           "representativeId": 24
         },
         {
-          "key": "2311214",
+          "key": "0220005",
           "count": 1,
-          "representativeId": 25
+          "representativeId": 27
         },
         {
-          "key": "3030226",
+          "key": "1000112",
           "count": 1,
-          "representativeId": 28
+          "representativeId": 41
         },
         {
-          "key": "1001113",
+          "key": "1300113",
           "count": 1,
-          "representativeId": 34
+          "representativeId": 42
         },
         {
-          "key": "0220015",
-          "count": 1,
-          "representativeId": 35
-        },
-        {
-          "key": "2321115",
-          "count": 1,
-          "representativeId": 37
-        },
-        {
-          "key": "2330117",
-          "count": 1,
-          "representativeId": 39
-        },
-        {
-          "key": "2010124",
+          "key": "0200003",
           "count": 1,
           "representativeId": 49
+        },
+        {
+          "key": "1330116",
+          "count": 1,
+          "representativeId": 51
+        },
+        {
+          "key": "0230016",
+          "count": 1,
+          "representativeId": 55
         },
         {
           "key": "1111114",
@@ -489,7 +509,7 @@
           "representativeId": 63
         },
         {
-          "key": "3121225",
+          "key": "1031116",
           "count": 1,
           "representativeId": 193
         }
@@ -501,24 +521,24 @@
       "sourceId": 5,
       "mode": "random-within-species",
       "diet": "h",
-      "speciesKey": "3001224",
+      "speciesKey": "0210014",
       "packId": null,
       "joinedPack": false,
       "randomPosition": true,
       "spawnPosition": {
-        "x": 245.7767227991393,
-        "y": 194.45091570309773
+        "x": 268.61885719355246,
+        "y": 263.2874210624874
       },
       "variationApplied": true,
       "changedGeneKeys": [
-        "fecundity"
+        "metabolism"
       ],
       "population": 66
     },
     "speciesSelected": {
       "id": 194,
-      "x": 245.7767227991393,
-      "y": 194.45091570309773,
+      "x": 268.61885719355246,
+      "y": 263.2874210624874,
       "dead": false
     },
     "packRestore": {
@@ -533,7 +553,7 @@
         "predationBlooms": 0,
         "membranes": 0,
         "corpses": 0,
-        "species": 61
+        "species": 60
       },
       "world": {
         "worldVersion": 2,
@@ -716,7 +736,7 @@
       "diet": "c",
       "group": "pack",
       "selectedKey": "pack-1",
-      "livingCount": 23,
+      "livingCount": 22,
       "groups": [
         {
           "key": "pack-1",
@@ -736,20 +756,19 @@
       "joinedPack": true,
       "randomPosition": true,
       "spawnPosition": {
-        "x": 817.5794855845272,
-        "y": 479.3954772751808
+        "x": 275.97341483487276,
+        "y": 758.4715179639568
       },
       "variationApplied": true,
       "changedGeneKeys": [
-        "sense",
-        "formSeed"
+        "energyCapacity"
       ],
       "population": 67
     },
     "packSelected": {
       "id": 261,
-      "x": 817.5794855845272,
-      "y": 479.3954772751808,
+      "x": 275.97341483487276,
+      "y": 758.4715179639568,
       "dead": false
     },
     "packPopulationBefore": 66,
@@ -801,17 +820,17 @@
       "dietButtons": [
         {
           "diet": "h",
-          "text": "🌿 草食 16",
+          "text": "🌿 草食 19",
           "pressed": "false"
         },
         {
           "diet": "m",
-          "text": "🍽️ 雑食 27",
+          "text": "🍽️ 雑食 25",
           "pressed": "false"
         },
         {
           "diet": "c",
-          "text": "🍖 肉食 24",
+          "text": "🍖 肉食 23",
           "pressed": "true"
         }
       ],
@@ -828,7 +847,7 @@
         }
       ],
       "showButtonText": "フィールドに出す",
-      "navigatorCount": "24個体",
+      "navigatorCount": "23個体",
       "randomLabel": "ランダム個体（草食）— 現在の個体をコピーしません",
       "chartWidth": 330,
       "chartHeight": 120

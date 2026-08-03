@@ -16,6 +16,26 @@
   - local browser smoke test when the local server is running
   - hash check for the untouched original HTML
 
+## 2026-08-03 通常表示と顕微鏡表示の二段階ビジュアル統合
+
+### 実装
+
+- `organism_roster_art.js` を通常表示と顕微鏡表示で共有する描画器 `roster-art-v3-dual-mode` にした。
+- 通常表示は `closeUp:false` の非ガラス・イラスト調。顕微鏡レンズ内だけ `closeUp:true` のガラス質・内部構造・DIC調を使う。
+- 両表示は同じ個体、種の固定シルエット、色、表面、内部スロットを共有し、表示モードによって生物の正体が変わらないようにした。
+- 通常表示は種ごとの静的スプライトをキャッシュし、描画時にごく小さい脈動と揺れだけを加える。生態モデル、保存形式、乱数列は変更していない。
+- Claude側のスケッチが上向き `-y`、ゲームの進行方向が右向き `+x` なので、通常・顕微鏡の両方で `+π/2` 補正した。
+- 診断用に `setNormalOrganismRenderer('roster'|'legacy')` と `normalOrganismRendererSummary()` を追加した。通常既定値は `roster`。
+
+### 検証
+
+- `scripts/normal_visual_integration_smoke.cjs`: 通常と顕微鏡で同一個体IDを描くこと、通常が `closeUp:false`、顕微鏡が `closeUp:true`、`Math.random()` 消費0、モデル状態・個体数不変、console/page error 0を確認。
+- 通常表示の最終 draw ms（60 samples、中央値 / p95）: 64個体 `2.38 / 3.36`、200個体 `2.94 / 3.50`、1000個体 `10.46 / 11.17`。
+- `scripts/microscope_visual_integration_smoke.cjs`: レンズOFF `2.53 / 3.58ms`、ON `5.59 / 6.77ms`、最大10個体制限内、乱数消費0、モデル非干渉、エラー0。
+- `scripts/algae_population_controls_smoke.cjs` を再実行し、藻類スライダー、save/load、履歴、種・Packナビゲーション、reset、エラーなしを確認。
+- 関連JSと3 HTMLの構文確認、`git diff --check` 合格。`alife_symbolic_shapes_v1.html` と `index.html` の SHA-256 は `7DE78272222E2989F815067E28A8835BB0051814FC51CF939FF4DF40B8CA5F89` で一致。凍結版は未変更。
+- 目視資料: `artifacts/normal-visual-integration/normal-roster.png`、`artifacts/visual-integration/microscope-lens.png`。
+
 ## Current Public Page
 
 - GitHub Pages: https://san-myaku.github.io/alife/

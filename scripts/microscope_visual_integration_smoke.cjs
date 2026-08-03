@@ -134,7 +134,7 @@ function assert(condition,message){ if(!condition) throw new Error(message); }
     assert(before.running===true,'simulation was not paused at load');
     assert(before.frame.available===true,'microscope renderer is unavailable');
     assert(enabled.summary.enabled===true && enabled.button.pressed==='true','microscope button did not enable the lens');
-    assert(enabled.summary.rendererVersion==='generator-art-v2-microscope','unexpected microscope renderer version');
+    assert(enabled.summary.rendererVersion==='roster-art-v3-dual-mode','unexpected microscope renderer version');
     assert(enabled.summary.lastDrawn>0 && enabled.summary.lastDrawn<=enabled.summary.maxOrganisms,'lens drew no organisms or exceeded its cap');
     assert(enabled.performance.microscopeLens.enabled===true,'performance summary did not expose the enabled lens');
     assert(after.summary.enabled===false && after.button.pressed==='false','microscope button did not disable the lens');

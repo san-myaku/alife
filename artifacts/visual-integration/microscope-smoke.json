@@ -20,12 +20,12 @@
       "predationBlooms": 0,
       "membranes": 0,
       "corpses": 0,
-      "species": 61
+      "species": 62
     },
     "lens": {
       "enabled": false,
       "available": true,
-      "rendererVersion": "generator-art-v2-microscope",
+      "rendererVersion": "roster-art-v3-dual-mode",
       "x": 436,
       "y": 344,
       "radius": 184,
@@ -38,22 +38,22 @@
     "summary": {
       "enabled": true,
       "available": true,
-      "rendererVersion": "generator-art-v2-microscope",
+      "rendererVersion": "roster-art-v3-dual-mode",
       "x": 443.7477477477477,
       "y": 344,
       "radius": 184,
       "magnification": 3.2,
       "maxOrganisms": 10,
-      "lastDrawn": 3
+      "lastDrawn": 6
     },
     "button": {
       "text": "🔎 顕微鏡レンズ: ON (3.2x)",
       "pressed": "true"
     },
     "performance": {
-      "fps": 22,
+      "fps": 25,
       "updateMs": 0,
-      "drawMs": 3.61,
+      "drawMs": 6.88,
       "speciesCardMs": 0,
       "neighborQueriesPerSample": 0,
       "predationScansPerSample": 0,
@@ -80,19 +80,37 @@
       "lowRender": false,
       "tinyRender": false,
       "renderMode": "full",
+      "normalOrganismRenderer": {
+        "style": "roster",
+        "requested": "roster",
+        "available": true,
+        "rendererVersion": "roster-art-v3-dual-mode",
+        "baseScale": 0.46,
+        "spriteCache": {
+          "size": 65,
+          "hits": 1617,
+          "misses": 65,
+          "bakes": 65,
+          "evictions": 0,
+          "imageBitmaps": 65,
+          "peakSize": 65,
+          "frameKeys": 65,
+          "effectiveLimit": 1800
+        }
+      },
       "microscopeLens": {
         "enabled": true,
         "available": true,
-        "rendererVersion": "generator-art-v2-microscope",
+        "rendererVersion": "roster-art-v3-dual-mode",
         "x": 443.7477477477477,
         "y": 344,
         "radius": 184,
         "magnification": 3.2,
         "maxOrganisms": 10,
-        "lastDrawn": 3
+        "lastDrawn": 6
       },
       "meshCount": 7,
-      "complexCount": 46,
+      "complexCount": 43,
       "heavyComplex": false,
       "visibleOrganisms": 65,
       "culledOrganisms": 0,
@@ -120,12 +138,12 @@
       "predationBlooms": 0,
       "membranes": 0,
       "corpses": 0,
-      "species": 61
+      "species": 62
     },
     "lens": {
       "enabled": false,
       "available": true,
-      "rendererVersion": "generator-art-v2-microscope",
+      "rendererVersion": "roster-art-v3-dual-mode",
       "x": 443.7477477477477,
       "y": 344,
       "radius": 184,
@@ -143,18 +161,18 @@
     "on": {
       "enabled": true,
       "available": true,
-      "rendererVersion": "generator-art-v2-microscope",
+      "rendererVersion": "roster-art-v3-dual-mode",
       "x": 443.7477477477477,
       "y": 344,
       "radius": 184,
       "magnification": 3.2,
       "maxOrganisms": 10,
-      "lastDrawn": 3
+      "lastDrawn": 6
     },
     "off": {
       "enabled": false,
       "available": true,
-      "rendererVersion": "generator-art-v2-microscope",
+      "rendererVersion": "roster-art-v3-dual-mode",
       "x": 443.7477477477477,
       "y": 344,
       "radius": 184,
@@ -169,7 +187,7 @@
       "lens": {
         "enabled": false,
         "available": true,
-        "rendererVersion": "generator-art-v2-microscope",
+        "rendererVersion": "roster-art-v3-dual-mode",
         "x": 443.7477477477477,
         "y": 344,
         "radius": 184,
@@ -179,15 +197,15 @@
       },
       "frameMs": {
         "samples": 60,
-        "median": 16.700000000000273,
-        "p95": 33.40000000000009,
-        "max": 33.40000000000009
+        "median": 33.30000000000018,
+        "p95": 49.90000000000009,
+        "max": 50.100000000000364
       },
       "drawMs": {
         "samples": 60,
-        "median": 1.66,
-        "p95": 1.98,
-        "max": 2.3
+        "median": 2.53,
+        "p95": 3.58,
+        "max": 3.73
       }
     },
     "on": {
@@ -195,25 +213,25 @@
       "lens": {
         "enabled": true,
         "available": true,
-        "rendererVersion": "generator-art-v2-microscope",
+        "rendererVersion": "roster-art-v3-dual-mode",
         "x": 443.7477477477477,
         "y": 344,
         "radius": 184,
         "magnification": 3.2,
         "maxOrganisms": 10,
-        "lastDrawn": 3
+        "lastDrawn": 6
       },
       "frameMs": {
         "samples": 60,
-        "median": 33.30000000000018,
-        "p95": 50,
-        "max": 50.099999999999454
+        "median": 50,
+        "p95": 66.70000000000073,
+        "max": 83.30000000000109
       },
       "drawMs": {
         "samples": 60,
-        "median": 2.71,
-        "p95": 3.05,
-        "max": 3.18
+        "median": 5.59,
+        "p95": 6.77,
+        "max": 7.02
       }
     }
   },
