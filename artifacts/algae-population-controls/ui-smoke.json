@@ -1,7 +1,7 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "environment": "Playwright Chromium headless",
-  "targetUrl": "file:///C:/Users/yuhim/Documents/ALIFE/.codex_worktrees/simplify_species_lineage_pack/index.html?ui-smoke=1",
+  "targetUrl": "file:///C:/Users/yuhim/Documents/ALIFE/.codex_worktrees/visual_integration/index.html?ui-smoke=1",
   "result": {
     "initial": {
       "control": {
@@ -50,7 +50,7 @@
         "predationBlooms": 0,
         "membranes": 0,
         "corpses": 0,
-        "species": 57
+        "species": 61
       },
       "world": {
         "worldVersion": 2,
@@ -149,7 +149,7 @@
         "predationBlooms": 0,
         "membranes": 0,
         "corpses": 0,
-        "species": 57
+        "species": 61
       },
       "world": {
         "worldVersion": 2,
@@ -241,18 +241,18 @@
       "length": 1,
       "latest": {
         "frame": 0,
-        "h": 21,
-        "m": 28,
-        "c": 15,
+        "h": 16,
+        "m": 27,
+        "c": 21,
         "total": 64,
         "season": 0.6
       },
       "rows": [
         {
           "frame": 0,
-          "h": 21,
-          "m": 28,
-          "c": 15,
+          "h": 16,
+          "m": 27,
+          "c": 21,
           "total": 64,
           "season": 0.6
         }
@@ -263,26 +263,26 @@
       "length": 2,
       "latest": {
         "frame": 22,
-        "h": 21,
-        "m": 28,
-        "c": 15,
+        "h": 16,
+        "m": 27,
+        "c": 21,
         "total": 64,
         "season": 0.6276362340245113
       },
       "rows": [
         {
           "frame": 0,
-          "h": 21,
-          "m": 28,
-          "c": 15,
+          "h": 16,
+          "m": 27,
+          "c": 21,
           "total": 64,
           "season": 0.6
         },
         {
           "frame": 22,
-          "h": 21,
-          "m": 28,
-          "c": 15,
+          "h": 16,
+          "m": 27,
+          "c": 21,
           "total": 64,
           "season": 0.6276362340245113
         }
@@ -294,87 +294,72 @@
       "diet": "h",
       "group": "species",
       "selectedKey": "__random__",
-      "livingCount": 21,
+      "livingCount": 16,
       "groups": [
         {
-          "key": "1030116",
-          "count": 2,
-          "representativeId": 4
-        },
-        {
-          "key": "3330216",
-          "count": 2,
-          "representativeId": 27
-        },
-        {
-          "key": "0000013",
+          "key": "3001224",
           "count": 1,
           "representativeId": 5
         },
         {
-          "key": "1010115",
-          "count": 1,
-          "representativeId": 9
-        },
-        {
-          "key": "3131226",
-          "count": 1,
-          "representativeId": 10
-        },
-        {
-          "key": "3121225",
+          "key": "1300113",
           "count": 1,
           "representativeId": 12
         },
         {
-          "key": "2331216",
+          "key": "3100223",
+          "count": 1,
+          "representativeId": 13
+        },
+        {
+          "key": "2230116",
           "count": 1,
           "representativeId": 14
         },
         {
-          "key": "2120115",
+          "key": "2210214",
           "count": 1,
-          "representativeId": 23
+          "representativeId": 17
         },
         {
-          "key": "1201113",
+          "key": "2310113",
           "count": 1,
           "representativeId": 24
         },
         {
-          "key": "1310114",
+          "key": "2311214",
           "count": 1,
-          "representativeId": 29
+          "representativeId": 25
         },
         {
-          "key": "1310115",
+          "key": "3030226",
+          "count": 1,
+          "representativeId": 28
+        },
+        {
+          "key": "1001113",
+          "count": 1,
+          "representativeId": 34
+        },
+        {
+          "key": "0220015",
           "count": 1,
           "representativeId": 35
         },
         {
-          "key": "3000223",
+          "key": "2321115",
+          "count": 1,
+          "representativeId": 37
+        },
+        {
+          "key": "2330117",
           "count": 1,
           "representativeId": 39
         },
         {
-          "key": "1100114",
+          "key": "2010124",
           "count": 1,
-          "representativeId": 41
-        },
-        {
-          "key": "2030226",
-          "count": 1,
-          "representativeId": 42
-        },
-        {
-          "key": "0211004",
-          "count": 1,
-          "representativeId": 43
-        },
-        {
-          "key": "0001013",
-          "count": 1,
-          "representativeId": 53
+          "representativeId": 49
         },
         {
           "key": "1111114",
@@ -399,13 +384,13 @@
       "sourceId": null,
       "mode": "random-diet",
       "diet": "h",
-      "speciesKey": "3110224",
+      "speciesKey": "3121225",
       "packId": null,
       "joinedPack": false,
       "randomPosition": true,
       "spawnPosition": {
-        "x": 599.3035243841069,
-        "y": 222.29622918952714
+        "x": 290.28458482414,
+        "y": 320.4494934444681
       },
       "variationApplied": true,
       "changedGeneKeys": [],
@@ -413,95 +398,80 @@
     },
     "randomSelected": {
       "id": 193,
-      "x": 599.3035243841069,
-      "y": 222.29622918952714,
+      "x": 290.28458482414,
+      "y": 320.4494934444681,
       "dead": false
     },
     "speciesNavigator": {
       "diet": "h",
       "group": "species",
-      "selectedKey": "1030116",
-      "livingCount": 22,
+      "selectedKey": "3001224",
+      "livingCount": 17,
       "groups": [
         {
-          "key": "1030116",
-          "count": 2,
-          "representativeId": 4
-        },
-        {
-          "key": "3330216",
-          "count": 2,
-          "representativeId": 27
-        },
-        {
-          "key": "0000013",
+          "key": "3001224",
           "count": 1,
           "representativeId": 5
         },
         {
-          "key": "1010115",
-          "count": 1,
-          "representativeId": 9
-        },
-        {
-          "key": "3131226",
-          "count": 1,
-          "representativeId": 10
-        },
-        {
-          "key": "3121225",
+          "key": "1300113",
           "count": 1,
           "representativeId": 12
         },
         {
-          "key": "2331216",
+          "key": "3100223",
+          "count": 1,
+          "representativeId": 13
+        },
+        {
+          "key": "2230116",
           "count": 1,
           "representativeId": 14
         },
         {
-          "key": "2120115",
+          "key": "2210214",
           "count": 1,
-          "representativeId": 23
+          "representativeId": 17
         },
         {
-          "key": "1201113",
+          "key": "2310113",
           "count": 1,
           "representativeId": 24
         },
         {
-          "key": "1310114",
+          "key": "2311214",
           "count": 1,
-          "representativeId": 29
+          "representativeId": 25
         },
         {
-          "key": "1310115",
+          "key": "3030226",
+          "count": 1,
+          "representativeId": 28
+        },
+        {
+          "key": "1001113",
+          "count": 1,
+          "representativeId": 34
+        },
+        {
+          "key": "0220015",
           "count": 1,
           "representativeId": 35
         },
         {
-          "key": "3000223",
+          "key": "2321115",
+          "count": 1,
+          "representativeId": 37
+        },
+        {
+          "key": "2330117",
           "count": 1,
           "representativeId": 39
         },
         {
-          "key": "1100114",
+          "key": "2010124",
           "count": 1,
-          "representativeId": 41
-        },
-        {
-          "key": "2030226",
-          "count": 1,
-          "representativeId": 42
-        },
-        {
-          "key": "0211004",
-          "count": 1,
-          "representativeId": 43
-        },
-        {
-          "key": "0001013",
-          "count": 1,
-          "representativeId": 53
+          "representativeId": 49
         },
         {
           "key": "1111114",
@@ -519,38 +489,36 @@
           "representativeId": 63
         },
         {
-          "key": "3110224",
+          "key": "3121225",
           "count": 1,
           "representativeId": 193
         }
       ],
-      "selectedOrganismId": 4
+      "selectedOrganismId": 5
     },
     "speciesResult": {
       "organismId": 194,
-      "sourceId": 4,
+      "sourceId": 5,
       "mode": "random-within-species",
       "diet": "h",
-      "speciesKey": "1030116",
+      "speciesKey": "3001224",
       "packId": null,
       "joinedPack": false,
       "randomPosition": true,
       "spawnPosition": {
-        "x": 312.06821476533,
-        "y": 63.44088661966617
+        "x": 245.7767227991393,
+        "y": 194.45091570309773
       },
       "variationApplied": true,
       "changedGeneKeys": [
-        "metabolism",
-        "formSeed",
-        "energyCapacity"
+        "fecundity"
       ],
       "population": 66
     },
     "speciesSelected": {
       "id": 194,
-      "x": 312.06821476533,
-      "y": 63.44088661966617,
+      "x": 245.7767227991393,
+      "y": 194.45091570309773,
       "dead": false
     },
     "packRestore": {
@@ -565,7 +533,7 @@
         "predationBlooms": 0,
         "membranes": 0,
         "corpses": 0,
-        "species": 57
+        "species": 61
       },
       "world": {
         "worldVersion": 2,
@@ -736,11 +704,19 @@
         }
       ]
     },
+    "packCreated": {
+      "ok": true,
+      "packId": "pack-1",
+      "memberIds": [
+        259,
+        260
+      ]
+    },
     "packNavigator": {
       "diet": "c",
       "group": "pack",
       "selectedKey": "pack-1",
-      "livingCount": 17,
+      "livingCount": 23,
       "groups": [
         {
           "key": "pack-1",
@@ -760,20 +736,20 @@
       "joinedPack": true,
       "randomPosition": true,
       "spawnPosition": {
-        "x": 469.6038149338641,
-        "y": 231.23844446480572
+        "x": 817.5794855845272,
+        "y": 479.3954772751808
       },
       "variationApplied": true,
       "changedGeneKeys": [
-        "diet",
+        "sense",
         "formSeed"
       ],
       "population": 67
     },
     "packSelected": {
       "id": 261,
-      "x": 469.6038149338641,
-      "y": 231.23844446480572,
+      "x": 817.5794855845272,
+      "y": 479.3954772751808,
       "dead": false
     },
     "packPopulationBefore": 66,
@@ -825,17 +801,17 @@
       "dietButtons": [
         {
           "diet": "h",
-          "text": "🌿 草食 21",
+          "text": "🌿 草食 16",
           "pressed": "false"
         },
         {
           "diet": "m",
-          "text": "🍽️ 雑食 28",
+          "text": "🍽️ 雑食 27",
           "pressed": "false"
         },
         {
           "diet": "c",
-          "text": "🍖 肉食 18",
+          "text": "🍖 肉食 24",
           "pressed": "true"
         }
       ],
@@ -852,7 +828,7 @@
         }
       ],
       "showButtonText": "フィールドに出す",
-      "navigatorCount": "18個体",
+      "navigatorCount": "24個体",
       "randomLabel": "ランダム個体（草食）— 現在の個体をコピーしません",
       "chartWidth": 330,
       "chartHeight": 120
@@ -877,7 +853,6 @@
     "noExistingOrganismCopy": true,
     "packSpawnAndJoin": true,
     "randomLabelAccurate": true,
-    "proceduralRolePalette": true,
     "resetDefault": true,
     "noErrors": true
   },

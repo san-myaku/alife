@@ -241,6 +241,9 @@
       <button id="microview-btn" class="btn" style="width:100%">🔬 遠景観察: ON</button>
     </div>
     <div class="row">
+      <button id="microscope-btn" class="btn" style="width:100%" type="button" aria-pressed="false" title="ポインター周辺をClaude版の高精細な顕微鏡表現で拡大します">🔎 顕微鏡レンズ: OFF</button>
+    </div>
+    <div class="row">
       <button id="perf-btn" class="btn" style="width:100%">⚙ 軽量モード: OFF</button>
     </div>
     <div class="row">
@@ -381,6 +384,7 @@
 </div>
 
 <script src="organism_render.js?v=20260718-canonical-reference-geometry"></script>
+<script src="organism_roster_art.js?v=20260803-microscope-integration"></script>
 <script>
 (function(){
   'use strict';
@@ -607,6 +611,61 @@
   }
   window.addEventListener('resize',resize,{passive:true}); resize();
   const hash01 = (s)=>{ let h=2166136261>>>0; for(let i=0;i<s.length;i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return (h>>>0)/2**32; };
+  const microscopeLens={
+    enabled:false,
+    x:VIEW_W*0.5,
+    y:VIEW_H*0.5,
+    magnification:3.2,
+    maxOrganisms:10,
+    lastDrawn:0
+  };
+  function microscopeLensRadius(){
+    return Math.max(92,Math.min(IS_MOBILE_VIEW?132:184,Math.min(VIEW_W,VIEW_H)*0.27));
+  }
+  function clampMicroscopeLensPosition(){
+    const r=microscopeLensRadius();
+    microscopeLens.x=clamp(Number(microscopeLens.x)||VIEW_W*0.5,-r*0.08,VIEW_W+r*0.08);
+    microscopeLens.y=clamp(Number(microscopeLens.y)||VIEW_H*0.5,-r*0.08,VIEW_H+r*0.08);
+    return {x:microscopeLens.x,y:microscopeLens.y,r};
+  }
+  function syncMicroscopeLensButton(){
+    const btn=$('microscope-btn');
+    if(!btn) return;
+    const available=!!window.OrganismRosterArt?.drawOrganism;
+    if(!available) microscopeLens.enabled=false;
+    btn.disabled=!available;
+    btn.classList.toggle('on',microscopeLens.enabled);
+    btn.setAttribute('aria-pressed',String(microscopeLens.enabled));
+    btn.textContent=microscopeLens.enabled ? `🔎 顕微鏡レンズ: ON (${microscopeLens.magnification.toFixed(1)}x)` : '🔎 顕微鏡レンズ: OFF';
+  }
+  function setMicroscopeLens(enabled=true,options={}){
+    microscopeLens.enabled=enabled!==false && !!window.OrganismRosterArt?.drawOrganism;
+    if(Number.isFinite(Number(options.magnification))) microscopeLens.magnification=clamp(Number(options.magnification),2,6);
+    if(Number.isFinite(Number(options.x))) microscopeLens.x=Number(options.x);
+    if(Number.isFinite(Number(options.y))) microscopeLens.y=Number(options.y);
+    if(microscopeLens.enabled && selectedOrganism && !selectedOrganism.dead && options.followSelection!==false){
+      const screen=worldToScreen(selectedOrganism.x,selectedOrganism.y);
+      microscopeLens.x=screen.x;
+      microscopeLens.y=screen.y;
+    }
+    clampMicroscopeLensPosition();
+    syncMicroscopeLensButton();
+    return microscopeLensSummary();
+  }
+  function microscopeLensSummary(){
+    const p=clampMicroscopeLensPosition();
+    return {
+      enabled:microscopeLens.enabled,
+      available:!!window.OrganismRosterArt?.drawOrganism,
+      rendererVersion:window.OrganismRosterArt?.version ?? null,
+      x:p.x,
+      y:p.y,
+      radius:p.r,
+      magnification:microscopeLens.magnification,
+      maxOrganisms:microscopeLens.maxOrganisms,
+      lastDrawn:microscopeLens.lastDrawn
+    };
+  }
 
   // ===== Design config =====
   // Keep tuning and ecology ledgers in one place before deeper model/render/ui splits.
@@ -18603,6 +18662,11 @@ function triggerEvent(type){
   view.addEventListener('pointerdown',ev=>{
     ev.preventDefault();
     const screen=canvasScreenPoint(ev);
+    if(microscopeLens.enabled){
+      microscopeLens.x=screen.x;
+      microscopeLens.y=screen.y;
+      clampMicroscopeLensPosition();
+    }
     activeCanvasPointers.set(ev.pointerId,screen);
     try{ view.setPointerCapture(ev.pointerId); }catch(_){}
     if(activeCanvasPointers.size>=2){ beginPinch(); return; }
@@ -18615,6 +18679,12 @@ function triggerEvent(type){
     pendingCanvasTap={pointerId:ev.pointerId,startX:screen.x,startY:screen.y,lastX:screen.x,lastY:screen.y,moved:false};
   });
   view.addEventListener('pointermove',ev=>{
+    if(microscopeLens.enabled){
+      const lensPoint=canvasScreenPoint(ev);
+      microscopeLens.x=lensPoint.x;
+      microscopeLens.y=lensPoint.y;
+      clampMicroscopeLensPosition();
+    }
     if(!activeCanvasPointers.has(ev.pointerId)) return;
     ev.preventDefault();
     const screen=canvasScreenPoint(ev);
@@ -18675,6 +18745,8 @@ function triggerEvent(type){
     if(!selectedOrganism || selectedOrganism.dead){ selectOrganism(null); return; }
     focusCameraOn(selectedOrganism.x,selectedOrganism.y,Math.max(camera.zoom,getFitCamera().zoom*2.2));
   });
+  $('microscope-btn').addEventListener('click',()=>setMicroscopeLens(!microscopeLens.enabled));
+  syncMicroscopeLensButton();
   function defaultToolAction(){
     if(ui.tool==='food'){
       for(let i=0;i<16;i++){
@@ -23695,6 +23767,90 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     stadiumSyncControls();
   }
 
+  function drawMicroscopeLens(){
+    if(!microscopeLens.enabled || !window.OrganismRosterArt?.drawOrganism){
+      microscopeLens.lastDrawn=0;
+      return 0;
+    }
+    const lens=clampMicroscopeLensPosition();
+    const magnification=microscopeLens.magnification;
+    const worldCenter=screenToWorld(lens.x,lens.y);
+    const screenScale=camera.zoom*magnification;
+    const candidates=[];
+    for(const o of organisms){
+      if(!o || o.dead) continue;
+      const sx=lens.x+(o.x-worldCenter.x)*screenScale;
+      const sy=lens.y+(o.y-worldCenter.y)*screenScale;
+      const sizeGene=clamp(Number(o.genes?.size ?? 0.5),0,1);
+      const bodyR=clamp((16+sizeGene*22)*(magnification/2.6),16,lens.r*0.40);
+      const distance=Math.hypot(sx-lens.x,sy-lens.y);
+      if(distance>lens.r+bodyR*1.7) continue;
+      candidates.push({o,sx,sy,bodyR,distance,selected:o===selectedOrganism});
+    }
+    candidates.sort((a,b)=>Number(b.selected)-Number(a.selected) || a.distance-b.distance);
+    const chosen=candidates.slice(0,microscopeLens.maxOrganisms);
+    chosen.sort((a,b)=>Number(a.selected)-Number(b.selected) || b.distance-a.distance);
+
+    ctx.save();
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    ctx.beginPath();
+    ctx.arc(lens.x,lens.y,lens.r,0,TAU);
+    ctx.clip();
+    const field=ctx.createRadialGradient(
+      lens.x-lens.r*0.18,lens.y-lens.r*0.22,lens.r*0.05,
+      lens.x,lens.y,lens.r*1.15
+    );
+    field.addColorStop(0,'rgba(126,174,238,0.97)');
+    field.addColorStop(0.58,'rgba(77,132,216,0.96)');
+    field.addColorStop(1,'rgba(34,72,164,0.98)');
+    ctx.fillStyle=field;
+    ctx.fillRect(lens.x-lens.r,lens.y-lens.r,lens.r*2,lens.r*2);
+    const condenser=ctx.createLinearGradient(lens.x-lens.r,lens.y-lens.r,lens.x+lens.r,lens.y+lens.r);
+    condenser.addColorStop(0,'rgba(220,242,255,0.18)');
+    condenser.addColorStop(0.5,'rgba(255,255,255,0)');
+    condenser.addColorStop(1,'rgba(8,24,76,0.22)');
+    ctx.fillStyle=condenser;
+    ctx.fillRect(lens.x-lens.r,lens.y-lens.r,lens.r*2,lens.r*2);
+
+    for(const item of chosen){
+      const diameter=item.bodyR*2;
+      ctx.save();
+      ctx.translate(item.sx,item.sy);
+      ctx.rotate(Number.isFinite(item.o.heading) ? item.o.heading : 0);
+      ctx.translate(-item.bodyR,-item.bodyR);
+      window.OrganismRosterArt.drawOrganism(ctx,item.o,diameter,diameter,{fill:0.52,closeUp:true});
+      ctx.restore();
+    }
+    const innerShade=ctx.createRadialGradient(lens.x,lens.y,lens.r*0.74,lens.x,lens.y,lens.r);
+    innerShade.addColorStop(0,'rgba(0,0,0,0)');
+    innerShade.addColorStop(0.86,'rgba(5,18,54,0.08)');
+    innerShade.addColorStop(1,'rgba(2,10,34,0.52)');
+    ctx.fillStyle=innerShade;
+    ctx.fillRect(lens.x-lens.r,lens.y-lens.r,lens.r*2,lens.r*2);
+    ctx.restore();
+
+    ctx.save();
+    ctx.setTransform(DPR,0,0,DPR,0,0);
+    ctx.lineWidth=Math.max(3,lens.r*0.018);
+    ctx.strokeStyle='rgba(226,246,255,0.94)';
+    ctx.beginPath(); ctx.arc(lens.x,lens.y,lens.r,0,TAU); ctx.stroke();
+    ctx.globalCompositeOperation='screen';
+    ctx.lineWidth=Math.max(1.2,lens.r*0.010);
+    ctx.strokeStyle='rgba(86,224,255,0.56)';
+    ctx.beginPath(); ctx.arc(lens.x-lens.r*0.008,lens.y-lens.r*0.008,lens.r*0.992,0,TAU); ctx.stroke();
+    ctx.strokeStyle='rgba(255,112,210,0.44)';
+    ctx.beginPath(); ctx.arc(lens.x+lens.r*0.008,lens.y+lens.r*0.008,lens.r*1.006,0,TAU); ctx.stroke();
+    ctx.globalCompositeOperation='source-over';
+    ctx.fillStyle='rgba(5,16,36,0.78)';
+    ctx.font='700 12px system-ui,sans-serif';
+    ctx.textAlign='right';
+    ctx.textBaseline='bottom';
+    ctx.fillText(`${magnification.toFixed(1)}x / ${chosen.length}体`,lens.x+lens.r-10,lens.y+lens.r-9);
+    ctx.restore();
+    microscopeLens.lastDrawn=chosen.length;
+    return chosen.length;
+  }
+
   function draw(){
     ctx.setTransform(DPR,0,0,DPR,0,0);
     ctx.globalCompositeOperation='source-over';
@@ -23788,6 +23944,9 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     ctx.restore();
     ctx.setTransform(DPR,0,0,DPR,0,0);
     const perfUiScreenStarted=perfStart();
+    const perfMicroscopeStarted=perfStart();
+    const microscopeOrganismsDrawn=drawMicroscopeLens();
+    perfEnd('microscopeDraw',perfMicroscopeStarted,microscopeOrganismsDrawn);
     drawSelectionScreenOverlay();
     drawObservationLabel();
     drawHUD();
@@ -33098,6 +33257,8 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     clearSelection(){ selectOrganism(null); return true; },
     selectedOrganism(){ const o=selectedOrganism; return o ? {id:o.id,x:o.x,y:o.y,dead:!!o.dead} : null; },
+    microscopeLensSummary(){ return microscopeLensSummary(); },
+    setMicroscopeLens(enabled=true,options={}){ return setMicroscopeLens(enabled,options); },
     setTool(name){ setTool(String(name)); return ui.tool; },
     interactionState(){
       return {
@@ -33117,6 +33278,15 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
     },
     spawnOrganisms(options={}){
       return spawnOrganisms(options);
+    },
+    createPackForDiagnostic(organismIds=[]){
+      const candidates=(Array.isArray(organismIds) ? organismIds : [])
+        .map(id=>organismById(Number(id)))
+        .filter(Boolean);
+      const pack=createPackIdentity(candidates,{reason:'diagnostic'});
+      return pack
+        ? {ok:true,packId:pack.id,memberIds:(pack.memberIds||[]).slice()}
+        : {ok:false,error:'packCreationFailed',organismIds:candidates.map(o=>o.id)};
     },
     runMicroScenario(options={}){
       return runMicroScenario(options);
@@ -33898,6 +34068,7 @@ function polyLobedPath(cx,cy,rx,ry,points,amp,phase){
         lowRender: renderPerf.low,
         tinyRender: renderPerf.tiny,
         renderMode: renderPerf.mode,
+        microscopeLens: microscopeLensSummary(),
         meshCount: renderPerf.meshCount,
         complexCount: renderPerf.complexCount,
         heavyComplex: renderPerf.heavyComplex,

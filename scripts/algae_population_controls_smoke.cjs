@@ -16,7 +16,6 @@ const {chromium}=require('playwright');
 const outDir=path.resolve('artifacts','algae-population-controls');
 const targetUrl='file:///'+path.resolve('index.html').replace(/\\/g,'/')+'?ui-smoke=1';
 fs.mkdirSync(outDir,{recursive:true});
-const proceduralSource=fs.readFileSync(path.resolve('webgl_procedural_organism_renderer.js'),'utf8');
 
 function assert(condition,message){ if(!condition) throw new Error(message); }
 function closeTo(actual,expected,epsilon=1e-9){ return Math.abs(Number(actual)-Number(expected))<=epsilon; }
@@ -90,7 +89,7 @@ function insideWorld(point,world){
       const packSave='ALIFE2:'+btoa(unescape(encodeURIComponent(JSON.stringify(packDecoded))));
       const packRestore=debug.restoreSaveData(packSave);
       const packSeed=debug.spawnOrganisms({count:2,dietType:'carnivore',preset:'viable',ageMode:'mature',positionMode:'center',energyMode:'full'});
-      debug.modelStep(20);
+      const packCreated=debug.createPackForDiagnostic(packSeed.organismIds);
       let packNavigator=debug.setPopulationNavigator({diet:'c',group:'pack'});
       const packKey=packNavigator.groups[0]?.key || null;
       if(packKey) packNavigator=debug.setPopulationNavigator({diet:'c',group:'pack',selectedKey:packKey});
@@ -112,7 +111,7 @@ function insideWorld(point,world){
       debug.setAlgaeRegrowthPercent(200);
       debug.resetSimulation();
       const afterReset=debug.algaeRegrowthControlSummary();
-      return {initial,at10,at200,savedRestore,afterSavedRestore,legacyRestore,afterLegacyRestore,historyInitial,historyAfter,beforePopulation,afterPopulation,randomNavigator,randomResult,randomSelected,speciesNavigator,speciesResult,speciesSelected,packRestore,packSeed,packNavigator,packResult,packSelected,packPopulationBefore,packPopulationAfter,world:debug.worldGeometry(),ui,afterReset};
+      return {initial,at10,at200,savedRestore,afterSavedRestore,legacyRestore,afterLegacyRestore,historyInitial,historyAfter,beforePopulation,afterPopulation,randomNavigator,randomResult,randomSelected,speciesNavigator,speciesResult,speciesSelected,packRestore,packSeed,packCreated,packNavigator,packResult,packSelected,packPopulationBefore,packPopulationAfter,world:debug.worldGeometry(),ui,afterReset};
     });
 
     assert(result.initial.slider.min==='10' && result.initial.slider.max==='200' && result.initial.slider.step==='10','slider range is not 10..200 step 10');
@@ -134,18 +133,17 @@ function insideWorld(point,world){
     assert(result.speciesResult.speciesKey===result.speciesNavigator.selectedKey && result.speciesResult.organismId===result.speciesSelected?.id,'species-constrained spawn did not preserve the selected species');
     assert(result.speciesResult.randomPosition===true && result.speciesResult.variationApplied===true,'species-constrained spawn reused an exact gene copy');
     assert(result.afterPopulation===result.beforePopulation+2,'navigator did not add the two diagnostic organisms');
-    assert(result.packRestore.ok && result.packSeed.spawnedCount===2 && result.packNavigator.groups.length>0,'Pack test setup did not create an active Pack');
+    assert(result.packRestore.ok && result.packSeed.spawnedCount===2 && result.packCreated.ok && result.packNavigator.groups.length>0,`Pack test setup did not create an active Pack: ${JSON.stringify({packRestore:result.packRestore,packSeed:result.packSeed,packCreated:result.packCreated,groups:result.packNavigator.groups})}`);
     assert(result.packResult?.mode==='random-within-pack-species' && result.packResult.joinedPack===true && result.packResult.packId===result.packNavigator.selectedKey,'Pack-constrained random spawn did not join the selected Pack');
     assert(result.packResult.variationApplied===true && result.packResult.organismId===result.packSelected?.id && result.packPopulationAfter===result.packPopulationBefore+1,'Pack-constrained spawn copied genes, was not selected, or was not added');
     assert(result.ui.randomLabel.includes('ランダム個体') && !result.ui.randomLabel.includes('新種'),'random option still promises an unverified new species');
-    assert(proceduralSource.includes('const hues={ambusher:285,pursuit:6,scav:45,filter:145,other:200};'),'Procedural role colors do not match the Canvas role palette');
     assert(result.afterReset.percent===100 && closeTo(result.afterReset.effectiveScale,0.70),'reset did not restore 100');
     assert(errors.length===0,errors.join('\n'));
 
     await page.evaluate(()=>window.__alifeDebug.setPopulationNavigator({diet:'h',group:'species'}));
     await page.locator('#mix-canvas').scrollIntoViewIfNeeded();
     await page.screenshot({path:path.join(outDir,'panel.png')});
-    const artifact={schemaVersion:3,environment:'Playwright Chromium headless',targetUrl,result,assertions:{sliderRange:true,current100Preserved:true,tenAndTwoHundredMapped:true,saveRoundTrip:true,legacyDefault:true,historyFourSeries:true,speedThreeSampling:true,randomDietSpawn:true,randomSpeciesSpawn:true,noExistingOrganismCopy:true,packSpawnAndJoin:true,randomLabelAccurate:true,proceduralRolePalette:true,resetDefault:true,noErrors:true},errors};
+    const artifact={schemaVersion:4,environment:'Playwright Chromium headless',targetUrl,result,assertions:{sliderRange:true,current100Preserved:true,tenAndTwoHundredMapped:true,saveRoundTrip:true,legacyDefault:true,historyFourSeries:true,speedThreeSampling:true,randomDietSpawn:true,randomSpeciesSpawn:true,noExistingOrganismCopy:true,packSpawnAndJoin:true,randomLabelAccurate:true,resetDefault:true,noErrors:true},errors};
     fs.writeFileSync(path.join(outDir,'ui-smoke.json'),JSON.stringify(artifact,null,2));
     console.log(JSON.stringify({ok:true,artifact:path.join(outDir,'ui-smoke.json'),screenshot:path.join(outDir,'panel.png'),summary:{initial:result.initial.control,at10:result.at10.control,at200:result.at200.control,historyLength:result.historyAfter.length,navigatorGroups:result.speciesNavigator.groups.length,randomResult:result.randomResult,speciesResult:result.speciesResult,packGroups:result.packNavigator.groups.length}},null,2));
   }finally{

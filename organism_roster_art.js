@@ -118,6 +118,9 @@
   }
 
   function drawShadow(ctx, r) {
+    // Close-up cells float in fluid — a floor-cast ellipse looks wrong. The DIC directional
+    // shadow is cast per-body in glassBody (it needs the real silhouette), so skip here.
+    if (CLOSEUP) return;
     ctx.save();
     ctx.fillStyle = "rgba(28,58,72,.16)";
     ctx.beginPath();
@@ -164,7 +167,229 @@
     ctx.closePath();
   }
 
+  // Close-up "glass vessel": the body reads as translucent silica/membrane — the field
+  // shows through it, light gathers and refracts at the rim, and internal structures are
+  // suspended inside. This is what a microorganism looks like under a microscope, and is
+  // deliberately NOT an opaque coloured blob. Assumes the caller left the body path on ctx.
+  function glassBody(ctx, r, pal) {
+    // Everything here uses fill/stroke/fillRect/clip only — NEVER beginPath — because the
+    // caller still needs the body path on ctx for its own clip + interior drawing.
+    //
+    // 0. DIC pseudo-3D shadow. The object floats in fluid, so instead of a floor ellipse it
+    //    casts light toward the lower-right (the shear direction): a wide soft penumbra, a
+    //    tighter darker contact shadow hugging the body, and a bright bloom thrown to the
+    //    upper-left. All re-use the exact body silhouette (the current path) offset a little;
+    //    translate/fill/stroke never disturb the path the caller still needs.
+    const canBlur = typeof ctx.filter === "string";
+    ctx.save();
+    if (canBlur) ctx.filter = "blur(" + (r * 0.20) + "px)";      // wide soft penumbra
+    ctx.globalAlpha = 0.34;
+    ctx.translate(r * 0.22, r * 0.26);
+    ctx.fillStyle = "rgba(4,14,38,.9)";
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    if (canBlur) ctx.filter = "blur(" + (r * 0.06) + "px)";      // tight contact shadow
+    ctx.globalAlpha = 0.5;
+    ctx.translate(r * 0.09, r * 0.11);
+    ctx.fillStyle = "rgba(3,10,30,.92)";
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    if (canBlur) ctx.filter = "blur(" + (r * 0.10) + "px)";      // upper-left bloom
+    ctx.globalCompositeOperation = "screen";
+    ctx.translate(-r * 0.13, -r * 0.16);
+    ctx.strokeStyle = "rgba(198,236,255,.55)";
+    ctx.lineWidth = Math.max(1, r * 0.07);
+    ctx.stroke();
+    ctx.restore();
+    // 1. luminous translucent fill: keeps the trophic tint but stays see-through.
+    const gf = ctx.createRadialGradient(-r * 0.24, -r * 0.30, r * 0.05, 0, 0, r * 1.08);
+    gf.addColorStop(0, hsla(pal.hue + 18, 46, 86, 0.30));
+    gf.addColorStop(0.66, hsla(pal.hue, 48, 60, 0.34));
+    gf.addColorStop(0.9, hsla(pal.hue + 14, 54, 78, 0.42));
+    gf.addColorStop(1, hsla(pal.hue + 26, 60, 96, 0.56));
+    ctx.fillStyle = gf;
+    ctx.fill();
+    // 2. DIC relief: oblique light makes the cell read as a raised 3-D lens. A linear
+    //    gradient across the body (bright upper-left -> dark lower-right), blended as
+    //    overlay, gives a strong bulge; a wet specular hotspot sits on the lit side.
+    ctx.save();
+    ctx.clip();
+    ctx.globalCompositeOperation = "overlay";
+    const lin = ctx.createLinearGradient(-r * 0.72, -r * 0.92, r * 0.72, r * 0.92);
+    lin.addColorStop(0, "rgba(255,255,255,.62)");
+    lin.addColorStop(0.46, "rgba(128,128,128,0)");
+    lin.addColorStop(0.56, "rgba(128,128,128,0)");
+    lin.addColorStop(1, "rgba(2,10,32,.6)");
+    ctx.fillStyle = lin;
+    ctx.fillRect(-r * 2.2, -r * 2.2, r * 4.4, r * 4.4);
+    ctx.globalCompositeOperation = "screen";
+    const sp = ctx.createRadialGradient(-r * 0.4, -r * 0.5, r * 0.02, -r * 0.32, -r * 0.42, r * 0.78);
+    sp.addColorStop(0, "rgba(255,255,255,.6)");
+    sp.addColorStop(0.5, "rgba(215,242,255,.12)");
+    sp.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = sp;
+    ctx.fillRect(-r * 2.2, -r * 2.2, r * 4.4, r * 4.4);
+    // thin-film iridescence: gold -> cyan -> magenta -> blue sheens sweeping across the
+    // frustule, the way real silica shells split light under the microscope. Two crossed
+    // bands make the colour shift read as true interference rather than a flat tint.
+    ctx.globalCompositeOperation = "screen";
+    const iri = ctx.createLinearGradient(-r * 0.9, -r * 0.55, r * 0.9, r * 0.55);
+    iri.addColorStop(0, hsla(42, 96, 60, 0.30));
+    iri.addColorStop(0.30, hsla(150, 92, 60, 0.14));
+    iri.addColorStop(0.5, hsla(190, 94, 64, 0.20));
+    iri.addColorStop(0.72, hsla(305, 92, 66, 0.20));
+    iri.addColorStop(1, hsla(215, 96, 60, 0.30));
+    ctx.fillStyle = iri;
+    ctx.fillRect(-r * 2.2, -r * 2.2, r * 4.4, r * 4.4);
+    const iri2 = ctx.createLinearGradient(-r * 0.5, r * 0.85, r * 0.5, -r * 0.85);
+    iri2.addColorStop(0, hsla(280, 92, 66, 0.14));
+    iri2.addColorStop(0.5, hsla(60, 96, 62, 0.08));
+    iri2.addColorStop(1, hsla(175, 94, 62, 0.16));
+    ctx.fillStyle = iri2;
+    ctx.fillRect(-r * 2.2, -r * 2.2, r * 4.4, r * 4.4);
+    // refraction caustic: light entering the upper-left focuses through the glass and
+    // brightens the FAR (lower-right) inner edge — the tell-tale bright crescent of a
+    // glass bead or water drop. A ring centred at upper-left lands its bright band there.
+    ctx.globalCompositeOperation = "screen";
+    const cau = ctx.createRadialGradient(-r * 0.34, -r * 0.38, r * 0.86, -r * 0.34, -r * 0.38, r * 1.6);
+    cau.addColorStop(0, "rgba(255,255,255,0)");
+    cau.addColorStop(0.62, "rgba(226,246,255,.5)");
+    cau.addColorStop(0.82, "rgba(255,255,255,.12)");
+    cau.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = cau;
+    ctx.fillRect(-r * 2.2, -r * 2.2, r * 4.4, r * 4.4);
+    // sharp secondary glint: a small crisp hotspot on the lit shoulder (wet glass sparkle)
+    const gl2 = ctx.createRadialGradient(-r * 0.36, -r * 0.46, 0, -r * 0.36, -r * 0.46, r * 0.16);
+    gl2.addColorStop(0, "rgba(255,255,255,.9)");
+    gl2.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = gl2;
+    ctx.fillRect(-r * 2.2, -r * 2.2, r * 4.4, r * 4.4);
+    ctx.restore();
+    // 3. crisp dark contour for definition (thin), sitting under the relief rim.
+    ctx.save();
+    ctx.lineWidth = Math.max(1, r * 0.03);
+    ctx.strokeStyle = hsla(pal.hue - 14, 44, 20, 0.55);
+    ctx.stroke();
+    // 4. DIC relief rim: one gradient stroke = brilliant lit edge (upper-left) fading to a
+    //    deep navy shadow edge (lower-right). This is what makes it read as glass sculpture.
+    const dic = ctx.createLinearGradient(-r * 0.8, -r * 0.8, r * 0.8, r * 0.8);
+    dic.addColorStop(0, "rgba(240,252,255,.95)");
+    dic.addColorStop(0.34, "rgba(198,228,244,.42)");
+    dic.addColorStop(0.5, hsla(pal.hue + 6, 30, 52, 0.18));
+    dic.addColorStop(0.68, hsla(pal.hue - 12, 46, 28, 0.55));
+    dic.addColorStop(1, "rgba(10,22,52,.95)");
+    ctx.lineWidth = Math.max(1, r * 0.07);
+    ctx.strokeStyle = dic;
+    ctx.stroke();
+    // 5. chromatic aberration: cyan fringe on the lit side, magenta on the shadow side.
+    ctx.globalCompositeOperation = "screen";
+    ctx.save();
+    ctx.translate(-r * 0.032, -r * 0.032);
+    ctx.lineWidth = Math.max(0.7, r * 0.022);
+    ctx.strokeStyle = "rgba(90,220,255,.5)";
+    ctx.stroke();
+    ctx.restore();
+    ctx.translate(r * 0.032, r * 0.032);
+    ctx.lineWidth = Math.max(0.7, r * 0.022);
+    ctx.strokeStyle = "rgba(255,120,205,.42)";
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // a single silica pore that reads as a punched dimple under oblique light: a bright
+  // highlight lip on the upper-left, a dark hole toward the lower-right. Neutral tones so
+  // it works over any shell colour and stays consistent with the DIC lighting direction.
+  function punchPore(ctx, x, y, rr) {
+    ctx.fillStyle = "rgba(255,255,255,.30)";
+    ctx.beginPath(); ctx.arc(x - rr * 0.30, y - rr * 0.30, rr, 0, TAU); ctx.fill();
+    ctx.fillStyle = "rgba(6,16,40,.36)";
+    ctx.beginPath(); ctx.arc(x + rr * 0.22, y + rr * 0.22, rr * 0.82, 0, TAU); ctx.fill();
+  }
+
+  // dense hex lattice of punched pores — silica areolae etched across the shell.
+  function drawAreolae(ctx, r, pal) {
+    const step = Math.max(2.6, r * 0.056), R = r * 1.12, rr = step * 0.30;
+    ctx.save();
+    for (let gy = -R; gy <= R; gy += step * 0.87) {
+      const off = (Math.round(gy / (step * 0.87)) % 2) * step * 0.5;
+      for (let gx = -R + off; gx <= R; gx += step) {
+        if (gx * gx + gy * gy > R * R) continue;
+        punchPore(ctx, gx, gy, rr);
+      }
+    }
+    ctx.restore();
+  }
+
+  // pennate diatom: rows of pores running across the shell (transverse striae) with a
+  // clear central rib (raphe) down the long axis and a bright central nodule.
+  function drawStriae(ctx, r, pal, rng) {
+    const R = r * 1.15, rowStep = Math.max(2.4, r * 0.062), dotStep = Math.max(2.2, r * 0.055);
+    const rr = dotStep * 0.32;
+    ctx.save();
+    for (let y = -R; y <= R; y += rowStep) {
+      const halfW = Math.sqrt(Math.max(0, R * R - y * y));
+      for (let x = -halfW; x <= halfW; x += dotStep) {
+        if (Math.abs(x) < r * 0.085) continue;      // leave the raphe clear
+        punchPore(ctx, x, y, rr);
+      }
+    }
+    // raphe: a bright refractive slit down the centre (dark groove + bright lip), nodule.
+    ctx.strokeStyle = "rgba(10,22,50,.5)";
+    ctx.lineWidth = Math.max(0.6, r * 0.024);
+    ctx.beginPath(); ctx.moveTo(0, -R * 0.9); ctx.lineTo(0, R * 0.9); ctx.stroke();
+    ctx.globalCompositeOperation = "screen";
+    ctx.strokeStyle = "rgba(220,246,255,.6)";
+    ctx.lineWidth = Math.max(0.5, r * 0.012);
+    ctx.beginPath(); ctx.moveTo(-r * 0.012, -R * 0.9); ctx.lineTo(-r * 0.012, R * 0.9); ctx.stroke();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "rgba(235,250,255,.7)";
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.055, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+
+  // centric diatom: ribs radiating from the centre with pores along them, plus faint
+  // concentric rings — the look of the round/star silica shells.
+  function drawRadialRibs(ctx, r, pal, rng) {
+    const R = r * 1.12, ribs = 22 + Math.round(rng() * 14), rot = rng() * TAU;
+    const rr = Math.max(1.4, r * 0.026);
+    ctx.save();
+    // pores packed along each radial rib, spacing scaled so outer rows stay even.
+    for (let i = 0; i < ribs; i++) {
+      const a = rot + i / ribs * TAU, ca = Math.cos(a), sa = Math.sin(a);
+      for (let d = r * 0.20; d < R; d += r * 0.072) punchPore(ctx, ca * d, sa * d, rr);
+    }
+    // faint concentric rings binding the ribs, plus a bright central nodule.
+    ctx.globalCompositeOperation = "screen";
+    ctx.strokeStyle = "rgba(210,238,255,.12)";
+    ctx.lineWidth = Math.max(0.4, r * 0.01);
+    for (let ring = r * 0.30; ring < R; ring += r * 0.14) {
+      ctx.beginPath(); ctx.arc(0, 0, ring, 0, TAU); ctx.stroke();
+    }
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "rgba(235,250,255,.6)";
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.075, 0, TAU); ctx.fill();
+    ctx.fillStyle = "rgba(10,22,50,.3)";
+    ctx.beginPath(); ctx.arc(r * 0.02, r * 0.02, r * 0.045, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+
+  // pick the shell texture that fits the silhouette, the way real diatoms differ:
+  // elongated shells get transverse striae, round/radial ones get radial ribs.
+  function drawShellPattern(ctx, o, r, pal, rng) {
+    const kind = visualKind(o), form = o.form || {}, topo = topologyOf(o);
+    if (/needle|serpent|finned|dart|spindle|crescent|barb|leaf/.test(kind) || (form.aspect || 1) > 1.5) {
+      drawStriae(ctx, r, pal, rng);
+    } else if (/radial|ring|star|triangle|fan|clover|trefoil|gourd/.test(kind) || topo === "radial" || topo === "ring") {
+      drawRadialRibs(ctx, r, pal, rng);
+    } else {
+      drawAreolae(ctx, r, pal);
+    }
+  }
+
   function fillAndStroke(ctx, r, pal, alpha) {
+    if (CLOSEUP) { glassBody(ctx, r, pal); return; }
     ctx.fillStyle = bodyGradient(ctx, r, pal, alpha == null ? 0.82 : alpha);
     ctx.fill();
     // glassy top-left glaze: light passing through the translucent membrane (clipped to body)
@@ -288,6 +513,60 @@
     ctx.restore();
   }
 
+  // ---- close-up (microscope) detail. Each helper is drawn INSIDE the body clip. ----
+  // Translucent chloroplast masses: irregular green lobes that let the shell pattern glow
+  // through, each lit from the upper-left (matching the DIC light) with a bright pyrenoid.
+  function drawChloroplastMasses(ctx, r, rng, count) {
+    ctx.save();
+    for (let i = 0; i < count; i++) {
+      const a = rng() * TAU, d = r * (0.1 + rng() * 0.4);
+      const cx = Math.cos(a) * d, cy = Math.sin(a) * d * 0.85, rr = r * (0.26 + rng() * 0.22);
+      const baseHue = lerp(102, 138, rng());
+      // lobed silhouette
+      ctx.beginPath();
+      const lob = 5 + (i % 3);
+      for (let k = 0; k <= lob; k++) {
+        const t = k / lob * TAU, rad = rr * (0.78 + 0.28 * Math.sin(t * 3 + i));
+        const px = cx + Math.cos(t) * rad, py = cy + Math.sin(t) * rad * 0.9;
+        if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      // translucent green body (lets the etched shell show faintly through)
+      const g = ctx.createRadialGradient(cx - rr * 0.34, cy - rr * 0.38, rr * 0.08, cx, cy, rr);
+      g.addColorStop(0, hsla(baseHue - 6, 66, 60, 0.72));
+      g.addColorStop(0.6, hsla(baseHue, 66, 38, 0.72));
+      g.addColorStop(1, hsla(baseHue + 8, 58, 22, 0.62));
+      ctx.fillStyle = g;
+      ctx.fill();
+      // grainy internal texture (thylakoid stacks)
+      ctx.save();
+      ctx.clip();
+      for (let gcount = 0; gcount < 10; gcount++) {
+        const gx = cx + (rng() - 0.5) * rr * 1.4, gy = cy + (rng() - 0.5) * rr * 1.4;
+        ctx.fillStyle = hsla(baseHue - 10, 60, 26, 0.28);
+        ctx.beginPath(); ctx.arc(gx, gy, rr * 0.10, 0, TAU); ctx.fill();
+      }
+      // upper-left sheen
+      ctx.globalCompositeOperation = "screen";
+      const sh = ctx.createRadialGradient(cx - rr * 0.4, cy - rr * 0.44, rr * 0.02, cx - rr * 0.3, cy - rr * 0.34, rr * 0.9);
+      sh.addColorStop(0, hsla(baseHue - 20, 70, 70, 0.4));
+      sh.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = sh;
+      ctx.fillRect(cx - rr * 1.6, cy - rr * 1.6, rr * 3.2, rr * 3.2);
+      ctx.restore();
+      // bright pyrenoid (starch body) with a dark ring
+      const pxr = cx - rr * 0.1, pyr = cy + rr * 0.06, pr = rr * 0.24;
+      ctx.fillStyle = "rgba(8,26,14,.5)";
+      ctx.beginPath(); ctx.arc(pxr, pyr, pr * 1.12, 0, TAU); ctx.fill();
+      const pg = ctx.createRadialGradient(pxr - pr * 0.3, pyr - pr * 0.3, pr * 0.05, pxr, pyr, pr);
+      pg.addColorStop(0, "rgba(240,255,240,.92)");
+      pg.addColorStop(1, hsla(baseHue, 40, 72, 0.7));
+      ctx.fillStyle = pg;
+      ctx.beginPath(); ctx.arc(pxr, pyr, pr, 0, TAU); ctx.fill();
+    }
+    ctx.restore();
+  }
+
   function drawFineHalo(ctx, r, pal, rng, count, len, alpha) {
     ctx.save();
     ctx.lineCap = "round";
@@ -315,6 +594,25 @@
     ctx.translate(x, y);
     ctx.rotate(angle || 0);
     const rr = Math.max(rx, ry);
+    if (CLOSEUP) {
+      // translucent glass bead: field shows through, bright refractive rim, a wet highlight.
+      const gg = ctx.createRadialGradient(-rx * 0.24, -ry * 0.28, rr * 0.04, 0, 0, rr);
+      gg.addColorStop(0, hsla(pal.hue + 20, 44, 90, 0.30));
+      gg.addColorStop(0.7, hsla(pal.hue, 44, 64, 0.34));
+      gg.addColorStop(1, hsla(pal.hue + 20, 54, 92, 0.5));
+      ctx.fillStyle = gg;
+      ctx.beginPath(); ctx.ellipse(0, 0, rx, ry, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = hsla(pal.hue - 14, 40, 26, 0.55);
+      ctx.lineWidth = Math.max(0.4, rr * 0.05); ctx.stroke();
+      ctx.globalCompositeOperation = "screen";
+      ctx.strokeStyle = "rgba(200,240,255,.5)"; ctx.lineWidth = Math.max(0.3, rr * 0.03); ctx.stroke();
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = "rgba(255,255,255,.5)";
+      ctx.beginPath(); ctx.ellipse(-rx * 0.3, -ry * 0.36, rx * 0.2, ry * 0.16, 0, 0, TAU); ctx.fill();
+      drawNucleus(ctx, -rx * 0.06, ry * 0.04, Math.min(rx, ry) * 0.28, pal, rng, 0.8);
+      ctx.restore();
+      return;
+    }
     const g = ctx.createRadialGradient(-rx * 0.26, -ry * 0.30, rr * 0.05, 0, 0, rr);
     g.addColorStop(0, hsla(pal.hue + 24, 64, 94, alpha || 0.78));
     g.addColorStop(0.52, hsla(pal.hue, pal.sat, pal.light + 12, (alpha || 0.78) * 0.86));
@@ -892,6 +1190,16 @@
     const interior = opts.interior || interiorOf(o);
     const surface = opts.surface || surfaceOf(o);
     const chl = !!(o.flags && o.flags.chl);
+    const diet = clamp((o.genes || {}).diet == null ? 0.5 : o.genes.diet, 0, 1);
+    if (CLOSEUP) {
+      // Drawn inside the caller's body clip. glassBody already laid down the fill, DIC
+      // relief and specular; here we etch the shell pattern and suspend the organelles.
+      drawShellPattern(ctx, o, r, pal, rng);
+      if (chl || diet < 0.42) drawChloroplastMasses(ctx, r, rng, 2 + Math.round(detail * 2));
+      else if (interior === "vacuoles") drawVacuoles(ctx, r, pal, rng, Math.max(2, Math.round((3 + detail * 3) * scale)));
+      else drawGranules(ctx, r, pal, rng, Math.round((4 + detail * 5) * scale), chl);
+      return;
+    }
     if (interior === "vacuoles") {
       drawVacuoles(ctx, r, pal, rng, Math.max(2, Math.round((3 + detail * 3) * scale)));
       if (chl) drawGranules(ctx, r, pal, rng, Math.round(4 * scale), true);
@@ -1195,24 +1503,26 @@
     if (opts && opts.slim) kind = (kind === "spikes" || diet > 0.66) ? "spikes" : "cilia";
     ctx.save();
     ctx.lineCap = "round"; ctx.lineJoin = "round";
+    const gl = CLOSEUP;   // glass styling: translucent shafts with a bright refractive edge
     if (kind === "cilia") {
-      ctx.strokeStyle = hsla(pal.hue + 30, 70, 82, 0.30); ctx.lineWidth = Math.max(0.5, r * 0.017);
+      ctx.strokeStyle = gl ? "rgba(210,240,255,.5)" : hsla(pal.hue + 30, 70, 82, 0.30); ctx.lineWidth = Math.max(0.5, r * 0.017);
       const count = Math.min(pts.length, 34 + Math.round(h * 26));
       for (let i=0;i<count;i++){ const idx = Math.floor(i/count*pts.length); const p = pts[idx]; const nn = norm(p, idx); const len = r*(0.09 + 0.05*Math.abs(Math.sin(i*1.7))); ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(p.x+nn.nx*len, p.y+nn.ny*len); ctx.stroke(); }
     } else if (kind === "spikes") {
-      ctx.strokeStyle = hsla(pal.hue - 10, 88, 52, 0.55); ctx.fillStyle = hsla(pal.hue + 8, 88, 70, 0.28); ctx.lineWidth = Math.max(0.8, r * 0.028);
+      ctx.strokeStyle = gl ? "rgba(200,240,255,.55)" : hsla(pal.hue - 10, 88, 52, 0.55); ctx.fillStyle = gl ? hsla(pal.hue + 10, 44, 82, 0.16) : hsla(pal.hue + 8, 88, 70, 0.28); ctx.lineWidth = Math.max(0.8, r * (gl ? 0.02 : 0.028));
       const spikes = 9 + Math.round(h * 8);
       for (let i=0;i<spikes;i++){ const idx = Math.floor(i/spikes*pts.length); const p = pts[idx]; const nn = norm(p, idx); const len = r*(0.26 + h*0.22); const tx=p.x+nn.nx*len, ty=p.y+nn.ny*len; const bw = r*0.05; ctx.beginPath(); ctx.moveTo(p.x-(-nn.ny)*bw, p.y-(nn.nx)*bw); ctx.lineTo(tx,ty); ctx.lineTo(p.x+(-nn.ny)*bw, p.y+(nn.nx)*bw); ctx.closePath(); ctx.fill(); ctx.stroke(); }
     } else if (kind === "spokes") {
       // long, narrow, tapered spines radiating outward (proper thorns, not hairs)
-      ctx.strokeStyle = hsla(pal.hue - 8, 82, 44, 0.58); ctx.lineWidth = Math.max(0.7, r * 0.02);
+      ctx.strokeStyle = gl ? "rgba(200,240,255,.5)" : hsla(pal.hue - 8, 82, 44, 0.58); ctx.lineWidth = Math.max(0.7, r * 0.02);
       const nsp = 11 + Math.round(h * 8), bw = r * 0.055;
       for (let i=0;i<nsp;i++){
         const idx = Math.floor(i/nsp*pts.length), p = pts[idx], nn = norm(p, idx);
         const len = r*(0.52 + h*0.34) * (0.86 + (i%2)*0.18);
         const tx = p.x+nn.nx*len, ty = p.y+nn.ny*len, px = -nn.ny, py = nn.nx;
         const grd = ctx.createLinearGradient(p.x, p.y, tx, ty);
-        grd.addColorStop(0, hsla(pal.hue+8, 82, 66, 0.52)); grd.addColorStop(1, hsla(pal.hue-8, 86, 50, 0.10));
+        if (gl) { grd.addColorStop(0, hsla(pal.hue+14, 40, 86, 0.28)); grd.addColorStop(1, hsla(pal.hue+20, 46, 94, 0.02)); }
+        else { grd.addColorStop(0, hsla(pal.hue+8, 82, 66, 0.52)); grd.addColorStop(1, hsla(pal.hue-8, 86, 50, 0.10)); }
         ctx.fillStyle = grd;
         ctx.beginPath(); ctx.moveTo(p.x+px*bw, p.y+py*bw); ctx.lineTo(tx, ty); ctx.lineTo(p.x-px*bw, p.y-py*bw); ctx.closePath(); ctx.fill(); ctx.stroke();
       }
@@ -1226,11 +1536,11 @@
         for (let b=1;b<=nb;b++){ const d = r*0.18 + b*r*0.16, bx = p.x+nn.nx*d, by = p.y+nn.ny*d, rr = r*(0.095 - b*0.012); drawOvalCell(ctx, bx, by, rr*1.1, rr*0.92, Math.atan2(nn.ny, nn.nx), pal, rng, 0.7); }
       }
     } else if (kind === "antennae") {
-      ctx.strokeStyle = hsla(pal.hue + 35, 72, 48, 0.55); ctx.lineWidth = Math.max(0.9, r * 0.028);
+      ctx.strokeStyle = gl ? "rgba(200,238,255,.5)" : hsla(pal.hue + 35, 72, 48, 0.55); ctx.lineWidth = Math.max(0.9, r * (gl ? 0.02 : 0.028));
       const upper = pts.slice().sort(function(a,b){return a.y-b.y;}).slice(0,3);
-      for (let i=0;i<upper.length;i++){ const p = upper[i]; const nn = norm(p); const len = r*(0.7 + rng()*0.4); const ex=p.x+nn.nx*len, ey=p.y+nn.ny*len; ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.quadraticCurveTo(p.x+nn.nx*len*0.5+(rng()-0.5)*r*0.1, p.y+nn.ny*len*0.5, ex, ey); ctx.stroke(); drawNucleus(ctx, ex, ey, r*0.12, pal, rng, 0.85); }
+      for (let i=0;i<upper.length;i++){ const p = upper[i]; const nn = norm(p); const len = r*(0.7 + rng()*0.4); const ex=p.x+nn.nx*len, ey=p.y+nn.ny*len; ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.quadraticCurveTo(p.x+nn.nx*len*0.5+(rng()-0.5)*r*0.1, p.y+nn.ny*len*0.5, ex, ey); ctx.stroke(); drawNucleus(ctx, ex, ey, r*0.12, pal, rng, gl ? 0.7 : 0.85); }
     } else {
-      ctx.strokeStyle = hsla(pal.hue + 16, 80, 74, 0.40); ctx.lineWidth = Math.max(0.7, r * 0.03);
+      ctx.strokeStyle = gl ? "rgba(200,238,255,.42)" : hsla(pal.hue + 16, 80, 74, 0.40); ctx.lineWidth = Math.max(0.7, r * 0.03);
       const lower = pts.slice().sort(function(a,b){return b.y-a.y;}).slice(0, 3 + Math.round(h*3));
       for (let i=0;i<lower.length;i++){ const p = lower[i]; const len = r*(1.1 + rng()*0.7); const segs = 7; ctx.beginPath(); ctx.moveTo(p.x,p.y); for (let s=1;s<=segs;s++){ const tt=s/segs; ctx.lineTo(p.x + Math.sin(tt*6+i)*r*0.16*tt, p.y + len*tt); } ctx.stroke(); }
     }
@@ -1783,8 +2093,16 @@
     ctx.restore();
   }
 
+  // Close-up ("microscope lens") mode. Rendering is synchronous, so a module flag
+  // safely carries the mode into the inner draw helpers without threading opts through
+  // every call. Only set inside drawOrganism; always reset before it returns.
+  let CLOSEUP = false;
+
   function drawOrganism(ctx, o, w, h, opts) {
     opts = opts || {};
+    const previousCloseup = CLOSEUP;
+    CLOSEUP = !!opts.closeUp;
+    try {
     const g = genesOf(o);
     const key = canonicalProfileFor(o) ? canonicalSeedKey(o, "draw") : (o.speciesKey || "x") + ":" + (o.id || "") + ":" + Math.round((g.formSeed || 0) * 1000);
     const rng = rngFrom(key);
@@ -1833,10 +2151,13 @@
       ctx.restore();
     }
     ctx.restore();
+    } finally {
+      CLOSEUP = previousCloseup;
+    }
   }
 
   global.OrganismRosterArt = {
-    version: "generator-art-v1",
+    version: "generator-art-v2-microscope",
     drawOrganism,
     visualKind,
     singleShapes: SINGLE_SHAPES,

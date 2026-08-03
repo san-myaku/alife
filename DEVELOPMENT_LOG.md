@@ -975,3 +975,19 @@ feature ON の繁殖では、親の総投資 energy をクラッチで分け、�
 
 ### 検証
 inline script 構文 OK、`organism_model.js` 構文 OK、`organism_render.js` 構文 OK、`scripts/*.cjs` 構文 OK、`git diff --check` OK。通常版起動 OK、開発者版起動 OK、save/load round trip OK。`runLifeHistoryMicroTests()` OK。短い seeded smoke（seed `41001`, `120` steps）で page error `0`、NaN/Infinity `0`、energy creation `0`、nutrient creation `0`。feature OFF の `averageMaxEnergy` は `160`、ON の初期平均 `maxEnergy` は約 `257.26`。
+
+## 2026-08-03 B最新版整理とClaude顕微鏡表現の統合
+
+### ベース整理
+`origin/main` 以後の B 系列を分類し、Canvas 最適化までの `f48bd4b` と、藻類再生スライダー・個体数グラフ／ナビゲーターの3コミットを採用した。WebGL／プロシージャル描画／近接LOD／高個体数クリフ調査は診断・実験成果として元ブランチに残し、通常版のベースからは除外した。
+
+### 顕微鏡レンズ
+Claude と調整した `organism_roster_art.js` の高精細・半透明・DIC風表現を通常描画へ常時置換せず、明示的にONにする円形の「顕微鏡レンズ」として統合した。レンズ外は既存 Canvas 描画を維持し、レンズ内だけ最大10体を 3.2x で再描画する。`Math.random()` は消費せず、保存対象のモデル状態・個体数へ影響しない。独立確認用 `lens_prototype.html` も残した。
+
+### 検証と性能
+`scripts/microscope_visual_integration_smoke.cjs` で UI ON/OFF、renderer 読込、描画上限、モデル／個体数非干渉、visual RNG 非干渉、console/page error なしを確認。固定した生物位置で3体を描画し、最終 headless Chromium 60 samples では draw ms 中央値／p95 が OFF `1.66/1.98`、ON `2.71/3.05`。スクリーンショット `artifacts/visual-integration/microscope-lens.png` を目視し、円形池・通常描画・レンズ境界・UIに崩れなし。
+
+既存 `scripts/algae_population_controls_smoke.cjs` は Pack の自然成立を20 step待つランダム依存があったため、指定個体から診断用 Pack を明示生成する `createPackForDiagnostic()` を追加して再現可能にした。UI smoke は藻類スライダー、save/load、履歴、種／Pack ナビゲーション、reset、エラーなしを再確認した。
+
+### ファイルと判定
+`alife_symbolic_shapes_v1.html` を正本として `index.html` に同期し、SHA-256 一致。`node scripts/check_inline_script.cjs index.html`、関連JSとsmoke scriptの `node --check`、`git diff --check` は合格。凍結版 HTML は未変更。統合候補として採用し、公開は別判断とする。

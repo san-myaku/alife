@@ -1,0 +1,221 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>ALIFE 接近モード試作（顕微鏡レンズ）</title>
+<style>
+  html,body{margin:0;height:100%;background:#0a1622;overflow:hidden;font-family:system-ui,sans-serif;color:#cfe3f2;-webkit-user-select:none;user-select:none;}
+  #wrap{position:fixed;inset:0;}
+  canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none;}
+  #hud{position:fixed;left:12px;top:12px;font-size:13px;line-height:1.5;background:rgba(8,18,30,.6);padding:8px 12px;border-radius:10px;pointer-events:none;max-width:70vw;}
+  #hud b{color:#8fd0ff;}
+  .btn{position:fixed;bottom:14px;background:rgba(14,30,48,.85);border:1px solid #2b5a7e;color:#cfe3f2;padding:10px 14px;border-radius:10px;font-size:14px;}
+  #reseed{right:14px;} #zoomBtn{right:120px;}
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="pond"></canvas></div>
+<div id="hud">
+  <b>接近モード試作</b> — 池を指/マウスでなぞるとレンズが移動。<br>
+  レンズの中だけ拡大＋顕微鏡風の高精細描画。外は遠景の記号表示。
+</div>
+<button class="btn" id="zoomBtn">拡大率: 2.6x</button>
+<button class="btn" id="reseed">別の池</button>
+
+<script src="organism_model.js"></script>
+<script src="organism_render.js"></script>
+<script src="organism_roster_art.js"></script>
+<script>
+(function(){
+  var M = window.OrganismModel, R = window.OrganismRender, A = window.OrganismRosterArt;
+  var GENE_KEYS = ['speed','size','metabolism','fecundity','sense','diet','formSeed'];
+
+  var buildEnv = {
+    SYMBOL_SHAPES: M.SYMBOL_SHAPES, clamp: M.clamp, formFromGenes: M.formFromGenes,
+    rngFromKey: M.rngFromKey, speciesKey: M.speciesKey, speciesPalette: M.speciesPalette,
+    topologyFromGenes: M.topologyFromGenes
+  };
+
+  function genesFromSeed(seed){
+    var s=seed>>>0, g={};
+    function rr(){ s=(s+0x6D2B79F5)|0; var t=Math.imul(s^(s>>>15),1|s); t=(t+Math.imul(t^(t>>>7),61|t))^t; return((t^(t>>>14))>>>0)/4294967296; }
+    for(var i=0;i<GENE_KEYS.length;i++) g[GENE_KEYS[i]]=rr();
+    return g;
+  }
+  function buildCreature(seed){
+    var g = genesFromSeed(seed);
+    var o = M.buildOrganismBase(g, (seed>>>0)||1);
+    o.flags = {};
+    try { var b = R.buildSymbol(o, buildEnv); o._symbol = b.symbol; o.personalSpaceR = b.personalSpaceR; } catch(e){}
+    return o;
+  }
+
+  var pond = document.getElementById('pond'), pctx = pond.getContext('2d');
+  var DPR = Math.min(2, window.devicePixelRatio || 1);
+  var W=0, H=0;
+  function resize(){ W=window.innerWidth; H=window.innerHeight; pond.width=W*DPR; pond.height=H*DPR; pctx.setTransform(DPR,0,0,DPR,0,0); }
+  window.addEventListener('resize', resize); resize();
+
+  // ---- a small mock pond of drifting organisms (no real sim; enough to judge the look) ----
+  var creatures = [], N = 26;
+  function reseed(base){
+    creatures = [];
+    for(var i=0;i<N;i++){
+      var o = buildCreature((base*7919 + i*104729) >>> 0);
+      o._x = Math.random()*W; o._y = Math.random()*H;
+      o._vx = (Math.random()-0.5)*0.25; o._vy=(Math.random()-0.5)*0.25;
+      o._r = 16 + (o.genes.size||0.5)*22;           // distant on-pond radius
+      o._spin = (Math.random()-0.5)*0.004; o._ang=Math.random()*6.28;
+      creatures.push(o);
+    }
+  }
+  var seedBase = (Math.random()*1e6)|0; reseed(seedBase);
+  window.__lensDebug = { get creatures(){ return creatures; }, get lens(){ return lens; }, setLens:function(x,y){ lens.x=x; lens.y=y; } };
+
+  // ---- lens state ----
+  var lens = { x: W*0.5, y: H*0.5, r: Math.min(W,H)*0.26, active:false };
+  var ZOOMS = [2.6, 4.0, 6.0], zi = 0;
+  document.getElementById('zoomBtn').addEventListener('click', function(){ zi=(zi+1)%ZOOMS.length; this.textContent='拡大率: '+ZOOMS[zi]+'x'; });
+  document.getElementById('reseed').addEventListener('click', function(){ seedBase=(Math.random()*1e6)|0; reseed(seedBase); });
+
+  function pointer(e){
+    var t = e.touches ? e.touches[0] : e;
+    lens.x = t.clientX; lens.y = t.clientY; lens.active = true;
+  }
+  pond.addEventListener('pointerdown', function(e){ lens.active=true; pointer(e); });
+  pond.addEventListener('pointermove', function(e){ if(lens.active || e.pressure>0 || e.buttons) pointer(e); });
+  window.addEventListener('pointerup', function(){ lens.active=false; });
+  // also follow hover on desktop so it's easy to try
+  pond.addEventListener('pointermove', function(e){ if(e.pointerType==='mouse'){ lens.x=e.clientX; lens.y=e.clientY; } });
+
+  // ---- distant (symbolic) render for the whole pond ----
+  function drawDistant(){
+    // pond background gradient
+    var bg = pctx.createLinearGradient(0,0,0,H);
+    bg.addColorStop(0,'#0e2a3a'); bg.addColorStop(1,'#08202e');
+    pctx.fillStyle=bg; pctx.fillRect(0,0,W,H);
+    // faint algae mottle
+    for(var i=0;i<40;i++){
+      var x=(i*97.13%W), y=((i*57.7)%H);
+      pctx.fillStyle='rgba(60,150,120,.05)';
+      pctx.beginPath(); pctx.arc(x,y,30,0,6.283); pctx.fill();
+    }
+    for(var c=0;c<creatures.length;c++){
+      var o=creatures[c];
+      // drawOrganism centres itself in its w*h box (adds w/2,h/2), so offset by -r to
+      // land the creature's centre exactly on (_x,_y).
+      pctx.save(); pctx.translate(o._x - o._r, o._y - o._r);
+      A.drawOrganism(pctx, o, o._r*2, o._r*2, { fill:0.42 });
+      pctx.restore();
+    }
+  }
+
+  // ---- close-up (microscopy) render: high detail + DIC-ish post inside the lens ----
+  var lc = document.createElement('canvas'), lctx = lc.getContext('2d');
+  function drawCloseUp(){
+    var Z = ZOOMS[zi];
+    var LR = lens.r * DPR;              // device px
+    if(lc.width !== LR*2) { lc.width=LR*2; lc.height=LR*2; }
+    lctx.setTransform(1,0,0,1,0,0);
+    lctx.clearRect(0,0,lc.width,lc.height);
+
+    // DIC-like blue field: luminous electric blue, brighter at centre like backlit glass.
+    var fld = lctx.createRadialGradient(LR*0.82, LR*0.82, LR*0.1, LR, LR, LR*1.35);
+    fld.addColorStop(0,'#7aa8ee'); fld.addColorStop(0.55,'#568fe0'); fld.addColorStop(1,'#2f5cc0');
+    lctx.fillStyle=fld; lctx.fillRect(0,0,lc.width,lc.height);
+    // faint oblique sheen across the field (the condenser light)
+    var shn = lctx.createLinearGradient(0,0,LR*2,LR*2);
+    shn.addColorStop(0,'rgba(200,230,255,.18)'); shn.addColorStop(0.5,'rgba(255,255,255,0)'); shn.addColorStop(1,'rgba(10,30,80,.20)');
+    lctx.fillStyle=shn; lctx.fillRect(0,0,lc.width,lc.height);
+
+    // map: pond point -> lens-canvas point.  lens centre shows pond(lens.x,lens.y) magnified Z.
+    lctx.save();
+    lctx.translate(LR, LR);
+    lctx.scale(Z*DPR, Z*DPR);
+    lctx.translate(-lens.x, -lens.y);
+
+    for(var c=0;c<creatures.length;c++){
+      var o=creatures[c];
+      // cull to lens region (in pond space, radius covers zoomed extent)
+      var dx=o._x-lens.x, dy=o._y-lens.y;
+      var reach = lens.r/Z + o._r*1.5;
+      if(dx*dx+dy*dy > reach*reach) continue;
+      lctx.save(); lctx.translate(o._x - o._r, o._y - o._r);
+      // high-detail: bigger fill, plus microscopy post per-organism
+      A.drawOrganism(lctx, o, o._r*2, o._r*2, { fill:0.52, closeUp:true });
+      lctx.restore();
+    }
+    lctx.restore();
+
+    // chromatic aberration + soft vignette to sell the "lens/microscope" feel
+    microscopePost(lctx, lc.width, lc.height);
+
+    // blit lens canvas into the pond, clipped to the circle
+    var X=lens.x, Y=lens.y, LRr=lens.r;
+    pctx.save();
+    pctx.beginPath(); pctx.arc(X,Y,LRr,0,6.283); pctx.clip();
+    pctx.drawImage(lc, X-LRr, Y-LRr, LRr*2, LRr*2);
+    // --- glass lens edge, drawn inside the clip so it hugs the rim ---
+    // 1. inner refraction ring: near the edge the magnified image compresses & darkens,
+    //    the way it does around the rim of a real magnifier / water drop.
+    var ir = pctx.createRadialGradient(X,Y,LRr*0.80, X,Y,LRr);
+    ir.addColorStop(0,'rgba(0,0,0,0)');
+    ir.addColorStop(0.72,'rgba(10,28,60,0)');
+    ir.addColorStop(0.93,'rgba(8,22,52,.42)');
+    ir.addColorStop(1,'rgba(4,12,34,.66)');
+    pctx.fillStyle=ir; pctx.fillRect(X-LRr,Y-LRr,LRr*2,LRr*2);
+    pctx.restore();
+    // 3. chromatic glass rim: crisp bright edge + cyan/magenta split + outer bevel shadow
+    pctx.save();
+    pctx.lineWidth=Math.max(2,LRr*0.02); pctx.strokeStyle='rgba(214,240,255,.9)';
+    pctx.beginPath(); pctx.arc(X,Y,LRr,0,6.283); pctx.stroke();
+    pctx.globalCompositeOperation='screen';
+    pctx.lineWidth=Math.max(1,LRr*0.014); pctx.strokeStyle='rgba(90,220,255,.5)';
+    pctx.beginPath(); pctx.arc(X-LRr*0.01,Y-LRr*0.01,LRr*0.995,0,6.283); pctx.stroke();
+    pctx.strokeStyle='rgba(255,120,205,.42)';
+    pctx.beginPath(); pctx.arc(X+LRr*0.01,Y+LRr*0.01,LRr*1.006,0,6.283); pctx.stroke();
+    pctx.globalCompositeOperation='source-over';
+    pctx.lineWidth=Math.max(4,LRr*0.05); pctx.strokeStyle='rgba(10,24,44,.3)';
+    pctx.beginPath(); pctx.arc(X,Y,LRr+LRr*0.03,0,6.283); pctx.stroke();
+    pctx.restore();
+  }
+
+  // cheap chromatic aberration: offset R and B channels radially, plus vignette.
+  function microscopePost(ctx, w, h){
+    var img;
+    try { img = ctx.getImageData(0,0,w,h); } catch(e){ return; }
+    var d = img.data, cx=w/2, cy=h/2, maxd=Math.hypot(cx,cy);
+    var out = ctx.createImageData(w,h), od = out.data, shift = Math.max(1, w*0.004);
+    for(var y=0;y<h;y++){
+      for(var x=0;x<w;x++){
+        var i=(y*w+x)*4;
+        var nx=(x-cx)/maxd, ny=(y-cy)/maxd;
+        var rx=Math.round(x - nx*shift), ry=Math.round(y - ny*shift);
+        var bx=Math.round(x + nx*shift), by=Math.round(y + ny*shift);
+        var ri=((Math.min(h-1,Math.max(0,ry)))*w + Math.min(w-1,Math.max(0,rx)))*4;
+        var bi=((Math.min(h-1,Math.max(0,by)))*w + Math.min(w-1,Math.max(0,bx)))*4;
+        var vig = 1 - 0.35*Math.pow(Math.hypot(nx,ny),2.2);
+        od[i]   = d[ri]*vig;
+        od[i+1] = d[i+1]*vig;
+        od[i+2] = d[bi+2]*vig;
+        od[i+3] = 255;
+      }
+    }
+    ctx.putImageData(out,0,0);
+  }
+
+  function step(){
+    for(var c=0;c<creatures.length;c++){
+      var o=creatures[c];
+      o._x+=o._vx; o._y+=o._vy; o._ang+=o._spin;
+      if(o._x<-40)o._x=W+40; if(o._x>W+40)o._x=-40;
+      if(o._y<-40)o._y=H+40; if(o._y>H+40)o._y=-40;
+    }
+  }
+  function frame(){ step(); drawDistant(); drawCloseUp(); requestAnimationFrame(frame); }
+  frame();
+})();
+</script>
+</body>
+</html>
